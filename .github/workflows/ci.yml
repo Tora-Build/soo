@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  js:
+    name: JS workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      # `pnpm -r build` is a no-op while packages/* is empty (no recursive
+      # targets resolved). Once packages exist, each is responsible for its
+      # own `build` script.
+      - name: Build (recursive)
+        run: pnpm -r build
+
+  rust:
+    name: Rust workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cargo build
+        run: cargo build --workspace
+
+      # Empty workspace has zero .rs files, so fmt/clippy succeed trivially.
+      # Once members are added under packages/programs-core/, these gates
+      # start enforcing.
+      - name: Cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: Cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
