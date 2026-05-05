@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+    # Anchor programs and shared crates will be added under packages/programs-core/
+    # once implementation begins. See packages/programs-core/docs/architecture.md.
+    # Example future members:
+    #   "packages/programs-core/programs/sooth_launchpad",
+    #   "packages/programs-core/programs/sooth_amm",
+    #   "packages/programs-core/programs/sooth_market",
+    #   "packages/programs-core/programs/sooth_book",
+    #   "packages/programs-core/programs/sooth_adjudicator",
+    #   "packages/programs-core/crates/sooth-book-matcher",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/Tora-Build/sooth-solana"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1

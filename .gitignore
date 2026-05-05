@@ -1,0 +1,32 @@
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+.pnpm-debug.log*
+
+# Rust / Anchor
+target/
+Cargo.lock
+.anchor/
+test-ledger/
+
+# IDLs are generated, not committed
+packages/programs-core/target/idl/
+
+# Build artifacts
+*.so
+*.wasm
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
