@@ -57,6 +57,24 @@
 
 **Spike artifact**: `_spikes/lmsr-cu/` (Cargo workspace-private; bench reproducible via `cargo build-sbf && cargo test-sbf -- --nocapture`). Cargo.lock pinned because three transitive deps had to be downgraded to escape edition2024 dependencies that platform-tools v1.51's cargo 1.84.0 rejects — note for whoever ports the math into `sooth_amm`.
 
+### D5. Atomic escrow is structurally load-bearing in production; D2 stands (2026-05-05; resolves P4)
+
+**Decision**: `escrow=true` is not a user-toggled feature — it is the only way the production telegram app expresses limit sells on SoothBook. The Solana orderbook MUST preserve atomic escrow. This re-confirms D2.
+
+**Why**: Reading the EVM SDK source (no Postgres query needed). Two pieces of code make the answer structural rather than statistical:
+
+- `sooth-alpha/packages/sdk/src/core/contracts/soothCore.ts:934–965` — `buildSoothBookSellRequest` returns a tuple typed as `readonly [...,  true, bigint]`. The 4th argument (the SoothBook `escrow` flag) is a literal `true` in the **return type**, not a parameter. There is no runtime path where this helper produces an order with `escrow: false`.
+- `sooth-alpha/apps/telegram/core/hooks/useOrderbookPlace.ts:181–197` — the telegram app's only orderbook entry point. Limit BUY → `buildSoothBookBuyRequest({ ..., escrow: false })`. Limit SELL → `buildSoothBookSellRequest(...)` (which is forced-true per above).
+
+The SoothBook crossing rule (commented at `soothCore.ts:943–951`) explains why: "sell YES at tick T" is modeled as an escrow buy on the NO side at tick `1000 - T`. The escrow flag is what tells the contract to debit the user's opposite-side shares as collateral instead of pulling USDC. Without atomic escrow, the sell flow does not exist.
+
+**Implication**:
+
+- The "what % of trades use escrow" question reduces to "what % of SoothBook orders are sells" — structurally ~50% by symmetry, with the actual ratio bounded by user behavior, not by feature adoption.
+- Phoenix and OpenBook v2 remain disqualified per D2. A non-atomic escrow path would silently break every limit sell in the telegram app, not just an opt-in feature.
+- Combined with the P1 investigation result, the orderbook direction is effectively decided modulo founder approval: **fork Monaco** with escrow added as a first-class field, per the insertion point already scoped in `docs/research/monaco-investigation-week-01.md` (~200 LOC in `process_order_request` + `MarketPosition` accounting). The atomicity caveat noted in the spike-2 report — verify the Monaco queue step doesn't break atomicity — is now load-bearing and must be resolved before any sell flow ships on Solana.
+- For the indexer, the schema column already exists (`packages/indexer/ponder.schema.ts:202` — `escrow: boolean NOT NULL` on the `order` table). When the Solana adapter writes order events, it must populate the same column to preserve query parity with EVM.
+
 ---
 
 ## Pending — block implementation
@@ -102,13 +120,9 @@ Resolved 2026-05-05. Spike `_spikes/lmsr-cu/` shows peak 55k CU vs 300k typical 
 
 **Status**: open. Either path works; needs explicit choice before the registry-api worker is updated.
 
-### P4. Is `escrow=true` actually used in production?
+### P4. Is `escrow=true` actually used in production? — **RESOLVED, see D5**
 
-**Decision needed**: pull telegram app analytics — what percentage of orderbook trades use `escrow: true`?
-
-**Why this matters**: If escrow usage is <5%, removing the feature in v1 of Solana support becomes feasible, which would unlock Phoenix/OpenBook integration as alternatives. If it's >20%, escrow is load-bearing and the Solana orderbook MUST preserve it (locking us into custom build or Monaco fork).
-
-**Status**: open. Analytics expected to live with the indexer or Privy.
+Resolved 2026-05-05 from EVM SDK source reading (no Postgres query needed). `buildSoothBookSellRequest` (`sooth-alpha/packages/sdk/src/core/contracts/soothCore.ts:937,963`) hardcodes `escrow: true` as a literal in its return type — every limit sell in the telegram app routes through the escrow path by construction. D2 stands; Phoenix/OpenBook remain disqualified. See D5 above for the binding decision.
 
 ### P5. What's the acceptance threshold for race-induced retries on Solana?
 
@@ -155,4 +169,4 @@ The auto-match SDK incompatibility was thoroughly analyzed in conversation; the 
 
 ---
 
-_Last updated: 2026-05-05 (D4 resolved P2; P1 has investigation results — recommendation: fork Monaco, awaiting founder approval)._
+_Last updated: 2026-05-05 (D4 resolved P2; D5 resolved P4; P1 has investigation results — recommendation: fork Monaco, awaiting founder approval)._
