@@ -1,0 +1,40 @@
+[package]
+name = "lmsr-cu-spike"
+version = "0.0.0"
+edition = "2021"
+description = "Spike 1: LMSR cost function CU benchmark on Solana (bare solana-program, no Anchor)"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "lmsr_cu_spike"
+
+# We deliberately stay off Anchor to keep CU overhead attributable to the LMSR
+# math. solana-program 1.18.x is the most recent stable supported by the
+# locally-installed `cargo-build-sbf` (Agave 3.0.13, platform-tools v1.51) at
+# the time of writing. If you bump it, re-run the bench — exp/ln CU costs are
+# sensitive to compiler version because the BPF backend inlining differs.
+[dependencies]
+solana-program = "1.18"
+
+[dev-dependencies]
+solana-program-test = "1.18"
+solana-sdk = "1.18"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[features]
+# Toggle between the two math variants documented in src/math.rs.
+#   default          -> Taylor-series exact (variant A)
+#   lut              -> Lookup-table approximation (variant B)
+default = []
+lut = []
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+
+# Excluded from the workspace at /Users/danieltang/GitHub/sooth-solana/Cargo.toml
+# so we don't pollute the empty workspace bootstrap with this throwaway spike.
+[workspace]

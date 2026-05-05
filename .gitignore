@@ -10,6 +10,9 @@ Cargo.lock
 .anchor/
 test-ledger/
 
+# Spike crates pin their own Cargo.lock for reproducibility
+!_spikes/**/Cargo.lock
+
 # IDLs are generated, not committed
 packages/programs-core/target/idl/
 
