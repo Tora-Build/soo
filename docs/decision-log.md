@@ -42,6 +42,21 @@
 - The integrator contract (`packages/sdk-solana/docs/integrator-contract.md`) §4.1 is updated: integrators install `@sooth/sdk` (always) and `@sooth/sdk-solana` (when targeting Solana, as an optional peer dep). Dynamic import keeps the loading transparent.
 - This supersedes earlier framing that suggested keeping both products in `sooth-alpha/packages/`.
 
+### D4. LMSR fits within Solana's CU budget; proceed with exact-math `sooth_amm` (2026-05-05; resolves P2)
+
+**Decision**: `sooth_amm::trade_positions` will be implemented in production with the Taylor-series exact `exp`/`ln` math at WAD precision (no LUT, no crank, no constant-product fallback).
+
+**Why**: Spike prototype `_spikes/lmsr-cu/` (bare `solana-program` 1.18, log-sum-exp shifted Taylor series, hand-rolled u256 wad ops) ran on `solana-program-test` (BanksClient) across 8 representative cases. Peak 55,467 CU on the imbalanced-10× case; 42–49k CU on the typical band; 32,768 CU on the 100× tail (log-sum-exp pushes the smaller exp arg below the saturation clamp, returning 0 without running Taylor). 5–9× headroom against the 300k typical / 500k tail targets from `programs-core/docs/architecture.md §5`.
+
+**Implication**:
+
+- Production `trade_positions` envelope projected at ≈75–80k CU including 2× SPL token CPI, account validation, and fee-router CPI — under the 200k default per-instruction CU limit, so callers do **not** need to attach `ComputeBudgetInstruction::set_compute_unit_limit` on every trade. Document this in the SDK adapter's submit path.
+- Variant B (precomputed exp/ln lookup tables) is not needed and is dropped from the architecture spec's mitigation list. It can return as a future escape hatch if the production envelope drifts above 150k CU after fee-router and adjudicator CPI are wired in.
+- The crank-pattern mitigation (split cost calc into two TXs) and the LMSR-replacement mitigation (constant-product AMM) are both moot. `programs-core/docs/architecture.md §5` should be edited to reflect this when the architecture doc gets its next pass.
+- This unblocks `sooth_amm` as the first production program in the implementation sequence (per `HANDOVER.md` "Sequencing for actual implementation").
+
+**Spike artifact**: `_spikes/lmsr-cu/` (Cargo workspace-private; bench reproducible via `cargo build-sbf && cargo test-sbf -- --nocapture`). Cargo.lock pinned because three transitive deps had to be downgraded to escape edition2024 dependencies that platform-tools v1.51's cargo 1.84.0 rejects — note for whoever ports the math into `sooth_amm`.
+
 ---
 
 ## Pending — block implementation
@@ -57,21 +72,22 @@
 
 **Gates**: investigation week reading `programs/monaco_protocol/src` end-to-end. Specifically: how many call sites assume `liquidities.len() < 100`? <5 → fork wins; >20 → custom build is cleaner.
 
-**Status**: open. Requires founder-level decision after investigation week. See [`./monaco-fork-analysis.md §6`](./monaco-fork-analysis.md) for the recommended evaluation protocol.
+**Investigation result (2026-05-05)**: see [`./research/monaco-investigation-week-01.md`](./research/monaco-investigation-week-01.md) for the full report against Monaco v0.15.5 (`96d4d79`).
 
-### P2. Does LMSR fit within Solana's CU budget?
+- **Hard-rewrite sites: 2** — `LIQUIDITIES_VEC_LENGTH = 30` const at `state/market_liquidities.rs:22` and the `is_full()` comparison at `:412–415`. Account-space `SIZE` const cascades automatically. Plus 3 SOFT sites for CU re-validation.
+- **Total touched sites: 5–7** — well below the 20-site fork-cliff threshold.
+- **Refines the prior 60-cap framing in [`./monaco-fork-analysis.md`](./monaco-fork-analysis.md)**: the 30 is a per-side liquidity-density cap, not a price-ladder cap. Monaco's default price ladder is 317 prices (`state/price_ladder.rs:4`). More importantly, `MATCH_CAPACITY = 10` at `instructions/matching/on_order_creation.rs:13` caps per-order matching to 10 fills regardless of liquidity vec depth — so lifting the vec from 30 to 1000 does **not** cascade into matching-engine CU blow-up. The price-index lift is orthogonal to matching cost.
+- **Lifecycle**: Monaco's `Initializing → Open → Locked → ReadyForSettlement → Settled` maps cleanly to Sooth's; only the authority-gate model needs swapping for adjudicator CPI (~150 LOC).
+- **Outcome model**: Sooth's binary outcome is a strict subset of Monaco's n-way; disabling cross-matching removes ~300–500 LOC of dead code (net simplification).
+- **Escrow flag**: natural insertion point in `process_order_request` + `MarketPosition` accounting (~200 LOC). Caveat: verify the queue step in `process_order_request` does not break atomicity — must be re-checked before D2 is honored end-to-end.
+- **Engineering estimate**: 3–4 months, ~1,000–1,300 net Rust LOC (lower than the prior 1,300–1,500 estimate).
+- **Recommendation: fork.** Confidence medium-high. Confidence raises to high after a CU bench on `solana-test-validator` with a populated 1000-entry `MarketLiquidities` confirming the outcome-filter scan in `match_for_order`/`match_against_order` (`on_order_creation.rs:37–44`, `:171–185`) stays under 400k CU per typical trade. Decidable in week 1 of fork work.
 
-**Decision needed**: confirm `sooth_amm::trade_positions` runs within Solana's CU budget (target ≤300k CU per trade).
+**Status**: open pending founder approval of the fork direction. Engineering has a clear recommendation (fork) but the months commitment and audit-scope choice belong to the founder.
 
-**Mitigations if it doesn't**:
+### P2. Does LMSR fit within Solana's CU budget? — **RESOLVED, see D4**
 
-1. Approximation tables for `exp`/`ln` (~5x faster, ~1e-6 precision)
-2. Crank pattern (split cost calc into two TXs — hurts UX)
-3. Drop LMSR for constant-product AMM (major design change)
-
-**Gates**: 1-week Rust prototype + benchmark on `solana-test-validator`. Documented in [`programs-core/docs/architecture.md §5`](../packages/programs-core/docs/architecture.md) and [`§13`](../packages/programs-core/docs/architecture.md).
-
-**Status**: open. This is the single most important technical unknown for the entire Solana port.
+Resolved 2026-05-05. Spike `_spikes/lmsr-cu/` shows peak 55k CU vs 300k typical / 500k tail targets — 5–9× headroom. Variant A (Taylor exact) sufficient; LUT and crank mitigations dropped. See D4 above for the binding decision and implications.
 
 ### P3. Indexer namespace strategy: widen `chainId` or namespace Solana to integers?
 
@@ -139,4 +155,4 @@ The auto-match SDK incompatibility was thoroughly analyzed in conversation; the 
 
 ---
 
-_Last updated: 2026-05-05._
+_Last updated: 2026-05-05 (D4 resolved P2; P1 has investigation results — recommendation: fork Monaco, awaiting founder approval)._
