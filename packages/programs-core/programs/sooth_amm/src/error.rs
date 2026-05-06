@@ -30,4 +30,7 @@ pub enum SoothAmmError {
 
     #[msg("Liquidity parameter b must be > 0")]
     InvalidLiquidity,
+
+    #[msg("Caller is not authorized for this action (creator mismatch)")]
+    Unauthorized,
 }

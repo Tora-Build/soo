@@ -47,6 +47,16 @@ pub const USDC_MINT_DEVNET: Pubkey = anchor_lang::pubkey!(
 pub mod sooth_amm {
     use super::*;
 
+    /// Initialize the per-market `AmmState` PDA. Must be called by the
+    /// market creator after `sooth_market::initialize_market_vaults`. See
+    /// `instructions/initialize_amm_state.rs`.
+    pub fn initialize_amm_state(
+        ctx: Context<InitializeAmmState>,
+        args: InitializeAmmStateArgs,
+    ) -> Result<()> {
+        instructions::initialize_amm_state::handler(ctx, args)
+    }
+
     /// Buy or sell YES/NO shares against the LMSR.
     ///
     /// `delta_shares > 0` is a buy; `delta_shares < 0` is a sell. The cost

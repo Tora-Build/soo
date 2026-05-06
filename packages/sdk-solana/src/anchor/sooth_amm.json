@@ -1,0 +1,880 @@
+{
+  "address": "SoothAMM11111111111111111111111111111111111",
+  "metadata": {
+    "name": "sooth_amm",
+    "version": "0.0.0",
+    "spec": "0.1.0",
+    "description": "Sooth Protocol AMM (LMSR) program — first production Anchor program",
+    "repository": "https://github.com/Tora-Build/sooth-solana"
+  },
+  "instructions": [
+    {
+      "name": "initialize_amm_state",
+      "docs": [
+        "Initialize the per-market `AmmState` PDA. Must be called by the",
+        "market creator after `sooth_market::initialize_market_vaults`. See",
+        "`instructions/initialize_amm_state.rs`."
+      ],
+      "discriminator": [
+        107,
+        21,
+        178,
+        73,
+        206,
+        85,
+        154,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "docs": [
+            "The Market PDA — owned by `sooth_market`. PDA pinning mirrors the",
+            "pattern in `trade_positions::TradePositions`."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        {
+          "name": "amm_state",
+          "docs": [
+            "Per-market AMM cursor — `init` (not `init_if_needed`) so re-init is",
+            "impossible on the same market."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "docs": [
+            "Must match `market.creator` (architecture §4.1 — the creator-deposits-",
+            "seed-liquidity flow). Re-using the equality check via `has_one` so",
+            "Anchor's discriminator validation doesn't deserialize Market twice."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializeAmmStateArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "trade_positions",
+      "docs": [
+        "Buy or sell YES/NO shares against the LMSR.",
+        "",
+        "`delta_shares > 0` is a buy; `delta_shares < 0` is a sell. The cost",
+        "(signed in WAD) is `C(q + Δ) - C(q)` with `C(q_yes, q_no, b) = b · ln(",
+        "exp(q_yes/b) + exp(q_no/b))`. See architecture §4.2 / §4.3."
+      ],
+      "discriminator": [
+        14,
+        33,
+        158,
+        91,
+        88,
+        26,
+        89,
+        136
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "docs": [
+            "Market PDA — owned by `sooth_market`. The `Account<'info, Market>` type",
+            "pins ownership against `sooth_market::ID` (via the `Owner` trait the",
+            "`#[account]` macro derives in `sooth_market`); the explicit",
+            "`seeds::program` here additionally pins the PDA derivation to",
+            "`sooth_market`'s address space so a malicious caller can't forge a",
+            "`Market` from a different program's PDA namespace."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        {
+          "name": "amm_state",
+          "docs": [
+            "Per-market AMM cursor. Seeds match architecture §2.2."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Per-(user, market) Position. Lazily created on first trade per",
+            "architecture §4.2 — `init_if_needed` keeps the surface single-ix from",
+            "the SDK's perspective."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority signer-only PDA owned by `sooth_market`. Declared here",
+            "so the `market_vault.token::authority` constraint below has a concrete",
+            "account to bind against. The AMM never *signs* with this PDA on the",
+            "buy path (the user signs the `Transfer`); declaring it is purely a",
+            "constraint anchor."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        {
+          "name": "user_usdc_ata",
+          "docs": [
+            "User's USDC ATA — debited on buy, credited on sell."
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_vault",
+          "docs": [
+            "Market USDC vault (ATA owned by `vault_authority`). Constraints close",
+            "the hole where any USDC token account could be passed: the vault must",
+            "be the canonical USDC mint and must be authority-owned by the",
+            "`vault_authority` PDA derived above. Cross-checked against the",
+            "`Market` record so a stale/forged ATA is rejected."
+          ],
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "docs": [
+            "USDC mint reference. Pinned to the canonical cluster USDC via the",
+            "`address = ...` constraint so the `token::mint = usdc_mint` checks on",
+            "the user/vault ATAs above transitively bind to the same canonical mint.",
+            "Devnet value lives in `sooth_amm::USDC_MINT_DEVNET`; the SDK swaps the",
+            "constant per cluster at deploy time."
+          ],
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": "u8"
+        },
+        {
+          "name": "delta_shares",
+          "type": "i128"
+        },
+        {
+          "name": "max_cost_wad",
+          "type": "u128"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "AmmState",
+      "discriminator": [
+        66,
+        127,
+        244,
+        168,
+        102,
+        12,
+        95,
+        2
+      ]
+    },
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
+      "name": "Position",
+      "discriminator": [
+        170,
+        188,
+        143,
+        228,
+        122,
+        64,
+        247,
+        208
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "LiquidityProvided",
+      "discriminator": [
+        94,
+        97,
+        39,
+        34,
+        15,
+        96,
+        79,
+        135
+      ]
+    },
+    {
+      "name": "PositionTraded",
+      "discriminator": [
+        47,
+        104,
+        4,
+        110,
+        61,
+        85,
+        215,
+        178
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "SlippageExceeded",
+      "msg": "Slippage: cost exceeded max_cost_wad"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidOutcome",
+      "msg": "Invalid outcome (must be NO=0 or YES=1)"
+    },
+    {
+      "code": 6002,
+      "name": "ZeroDelta",
+      "msg": "delta_shares must be non-zero"
+    },
+    {
+      "code": 6003,
+      "name": "InsufficientShares",
+      "msg": "Insufficient shares to sell"
+    },
+    {
+      "code": 6004,
+      "name": "MarketNotLive",
+      "msg": "Market is not live"
+    },
+    {
+      "code": 6005,
+      "name": "MarketDismissed",
+      "msg": "Market is dismissed"
+    },
+    {
+      "code": 6006,
+      "name": "MathOverflow",
+      "msg": "LMSR math overflow or domain error"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidLiquidity",
+      "msg": "Liquidity parameter b must be > 0"
+    },
+    {
+      "code": 6008,
+      "name": "Unauthorized",
+      "msg": "Caller is not authorized for this action (creator mismatch)"
+    }
+  ],
+  "types": [
+    {
+      "name": "AmmState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": [
+              "Backlink to the market PDA (parity with EVM addressing)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "q_yes",
+            "docs": [
+              "Outstanding YES shares in WAD. Signed because intermediate `q + Δ` can",
+              "dip during multi-leg trades (see architecture §4.2)."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "q_no",
+            "docs": [
+              "Outstanding NO shares in WAD."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "b",
+            "docs": [
+              "LMSR liquidity parameter in WAD. > 0 by invariant."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "seed_q_yes",
+            "docs": [
+              "Initial seed liquidity (creator deposit). Used by the dismiss/refund",
+              "flow per architecture §9."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "seed_q_no",
+            "type": "i128"
+          },
+          {
+            "name": "fee_b_base_wad",
+            "docs": [
+              "Accumulator for the bBase fee leg (50% pre-graduation per §8).",
+              "In WAD; CPI'd out to the fee router after graduation."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "trial_end_at",
+            "type": "i64"
+          },
+          {
+            "name": "is_graduated",
+            "type": "bool"
+          },
+          {
+            "name": "is_dismissed",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitializeAmmStateArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "initial_b",
+            "docs": [
+              "Initial LMSR liquidity parameter `b` in WAD. Must be > 0.",
+              "Architecture §2.2 / §4.2 — `b` controls the curve's price elasticity;",
+              "the SDK's `WAD * 1000` default mirrors the LMSR golden test."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "trial_end_at",
+            "docs": [
+              "`trial_end_at` from architecture §4.2 — usually `market.deadline` so",
+              "the trial / graduation accumulator window closes on settle. Stored",
+              "alongside `b` to keep this ix arg-driven (the alternative — read it",
+              "off `Market` — would re-introduce the cross-program type-coupling",
+              "the spec calls out as load-bearing)."
+            ],
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LiquidityProvided",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "lp_amount",
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market_id",
+            "docs": [
+              "Deterministic id derived from `keccak256(question || creator || nonce)`,",
+              "truncated to 16 bytes per architecture §2.2. Seed for every per-market",
+              "PDA in the protocol — see module comment."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator",
+            "docs": [
+              "Adjudicator program id. The adjudicator-CPI auth check on `lock` /",
+              "`settle` will validate the caller's program against this."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "question_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "yes_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "no_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "docs": [
+              "USDC ATA owned by `vault_authority` PDA. All collateral for this market."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "lock_vault",
+            "docs": [
+              "USDC ATA owned by `lock_authority` PDA. AMM lock-on-sell escrow."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "start_time",
+            "type": "i64"
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          },
+          {
+            "name": "lifecycle",
+            "type": {
+              "defined": {
+                "name": "MarketLifecycle"
+              }
+            }
+          },
+          {
+            "name": "winning_outcome",
+            "docs": [
+              "Resolved outcome, valid only when `lifecycle == Settled`.",
+              "0 = NO, 1 = YES, 2 = INVALID per protocol-wide OUTCOME encoding."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Bump for the `Market` PDA itself."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "vault_authority_bump",
+            "docs": [
+              "Bump for the `vault_authority` signer PDA."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "lock_authority_bump",
+            "docs": [
+              "Bump for the `lock_authority` signer PDA."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "yes_mint_bump",
+            "docs": [
+              "Bump for `yes_mint` PDA."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "no_mint_bump",
+            "docs": [
+              "Bump for `no_mint` PDA."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketLifecycle",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Initializing"
+          },
+          {
+            "name": "Open"
+          },
+          {
+            "name": "Locked"
+          },
+          {
+            "name": "Settled"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "yes_shares",
+            "docs": [
+              "Outstanding YES shares the user holds, WAD. Always ≥ 0."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "no_shares",
+            "docs": [
+              "Outstanding NO shares the user holds, WAD. Always ≥ 0."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionTraded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "docs": [
+              "0 = NO, 1 = YES (matches protocol-wide OUTCOME encoding)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "delta_shares",
+            "docs": [
+              "Signed share delta in WAD. Positive = buy; negative = sell."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "cost_wad",
+            "docs": [
+              "Signed cost in WAD. Positive = paid; negative = proceeds (sell)."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "ts",
+            "docs": [
+              "Unix timestamp from `Clock`."
+            ],
+            "type": "i64"
+          }
+        ]
+      }
+    }
+  ]
+}

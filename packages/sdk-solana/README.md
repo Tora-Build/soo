@@ -27,15 +27,70 @@ The integrator contract is **canonical** — it freezes the public API. The impl
 
 ## Status
 
-**Design spec only.** No code, no adapter implementations.
+**Buy-path scaffold landed.** The package now exports a real `SolanaChainAdapter` class with the AMM buy path wired end-to-end (read state, build tx, sign+submit, read back). A solana-bankrun smoke test exercises the full vertical and asserts the expected on-chain mutations.
 
-Implementation is gated by:
+What's real today:
+
+- `readSnapshot(market, user?)` — Market PDA + AmmState PDA + Position PDA
+- `readQuote(market, outcome, deltaShares)` — off-chain LMSR cost (TS port mirrors `_spikes/lmsr-cu`)
+- `readPosition(market, user)`
+- `buildTrade(market, args)` for `side: "buy"`
+- `submit(req, signer)` via `Connection.sendRawTransaction` + `confirmTransaction`
+
+What still throws `SoothError({ kind: "NotImplemented" })`:
+
+- `readPortfolio`, `buildClaim`, `buildOrderbook*`, `buildCreateMarket`, `preflight`,
+  `subscribeMarketEvents`, `subscribePositionEvents`, `getCollateralBalance`, `buildApprove`
+- `buildTrade(side: "sell")` — the on-chain sell branch in
+  `programs/sooth_amm/src/instructions/trade_positions.rs §6` is itself stubbed (no USDC outflow).
+
+The ChainAdapter interface and supporting types are **vendored** at the top of `src/types.ts` with a `// VENDORED — replace with @sooth/sdk@0.3.0` comment. When upstream Phase A ships, replace the vendored types with the upstream import; the swap is mechanical.
+
+### Completed gating items
+
+- [x] Phase A refactor of existing `@sooth/sdk` to extract the `ChainAdapter` interface — **vendored locally** until upstream lands
+- [x] LMSR CU spike — `trade_positions` benches at ~70k CU (well inside 300k budget)
+
+### Still gating production rollout
 
 1. The `sooth-core-solana` design landing on a final orderbook strategy (custom build vs Monaco fork)
-2. A 1-week LMSR + matcher CU spike succeeding (Solana programs are feasible at all)
-3. Phase A refactor of existing `@sooth/sdk` to extract the `ChainAdapter` interface (no Solana code needed; pure cleanup)
+2. Real upstream `@sooth/sdk@0.3.0` shipping the canonical ChainAdapter
 
 See [`docs/implementation-guide.md §8`](./docs/implementation-guide.md) for the two-phase migration plan.
+
+## Quick usage
+
+```ts
+import { SolanaChainAdapter, encodePubkeyRef } from "@sooth/sdk-solana";
+import { PublicKey } from "@solana/web3.js";
+
+const adapter = new SolanaChainAdapter({
+  node: {
+    id: "sol-devnet",
+    chainKind: "solana",
+    chainId: "devnet",
+    rpcUrl: "https://api.devnet.solana.com",
+    programs: {
+      soothAmm: "SoothAMM11111111111111111111111111111111111",
+      soothMarket: "SoothMkt11111111111111111111111111111111111",
+    },
+  },
+});
+
+const marketRef = encodePubkeyRef(new PublicKey("…"));
+const snap = await adapter.readSnapshot(marketRef);
+console.log(snap.market.qYes, snap.market.qNo, snap.market.b);
+```
+
+## Building / testing locally
+
+```sh
+pnpm install                               # from repo root
+pnpm -F @sooth/sdk-solana build            # tsc compile
+pnpm -F @sooth/sdk-solana test             # vitest, including bankrun smoke test
+```
+
+The smoke test boots `solana-bankrun`, deploys both Sooth programs from `target/deploy/`, hand-builds the Market + AmmState fixtures, and runs a buy-1%-of-b YES against a fresh USDC mint. Total runtime <1s on a developer laptop. See `tests/fixtures/setup.ts` for the gory details — including the bankrun `setAccount` workaround for two on-chain bugs noted in the change report.
 
 ## Layout
 

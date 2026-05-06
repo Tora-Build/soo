@@ -62,6 +62,21 @@ pub mod sooth_market {
         instructions::initialize_market::handler(ctx, args)
     }
 
+    /// Second leg of the create-market flow — initializes both outcome SPL
+    /// mints. Split from `initialize_market` and `initialize_market_vaults`
+    /// so each ix's `try_accounts` codegen stays under the SBF 4 KB stack
+    /// frame; see `instructions/initialize_market.rs` module comment.
+    pub fn initialize_outcome_mints(ctx: Context<InitializeOutcomeMints>) -> Result<()> {
+        instructions::initialize_outcome_mints::handler(ctx)
+    }
+
+    /// Third leg of the create-market flow — initializes the USDC vault +
+    /// lock-vault ATAs, then flips the market lifecycle from `Initializing`
+    /// → `Open`. Split per the rationale in `initialize_market.rs`.
+    pub fn initialize_market_vaults(ctx: Context<InitializeMarketVaults>) -> Result<()> {
+        instructions::initialize_market_vaults::handler(ctx)
+    }
+
     /// Mint a "complete set" — pull `amount` USDC from user, mint `amount`
     /// YES + `amount` NO into the user's outcome ATAs. EVM analogue:
     /// `OrderEngine._mint` (`OrderEngine.sol:680-694`).

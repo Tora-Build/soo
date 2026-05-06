@@ -11,6 +11,8 @@
 #![allow(ambiguous_glob_reexports)]
 
 pub mod initialize_market;
+pub mod initialize_market_vaults;
+pub mod initialize_outcome_mints;
 pub mod lock_for_resolution;
 pub mod merge_complete_set;
 pub mod mint_complete_set;
@@ -18,6 +20,8 @@ pub mod redeem;
 pub mod settle;
 
 pub use initialize_market::*;
+pub use initialize_market_vaults::*;
+pub use initialize_outcome_mints::*;
 pub use lock_for_resolution::*;
 pub use merge_complete_set::*;
 pub use mint_complete_set::*;

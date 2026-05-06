@@ -1,18 +1,22 @@
-//! `initialize_market` — create the Market PDA, outcome mints, and USDC vault.
+//! `initialize_market` — create the Market PDA only.
 //!
 //! Architecture §4.1 (call chain). EVM analogue: `LaunchpadEngine.createMarket`
 //! deploying a `TruthMarket` clone + ERC-20 outcome tokens. On Solana the
-//! deploy step collapses into native PDA initialization, all in one ix.
+//! deploy step collapses into native PDA initialization, but the SPL mint /
+//! ATA leg is split out into `initialize_market_vaults` because Anchor 0.30.1
+//! `try_accounts` codegen overflows the SBF 4 KB stack frame when both legs
+//! are in one ix even with every payload-bearing account `Box<>`'d (~6.9 KB
+//! frame observed in `cargo build-sbf` warnings; runtime corrupts the
+//! `args` struct on the stack — verified empirically against bankrun, see
+//! report). The split keeps `try_accounts` lean.
 //!
 //! ## Accounts created (REAL — no `init_if_needed`; reuse must be impossible)
 //!
 //! - `Market` PDA           seeds = `[b"market", market_id]`
-//! - `yes_mint` SPL Mint     seeds = `[b"mint", market_id, b"y"]`,
-//!                           mint_authority = `vault_authority` PDA, decimals = 6
-//! - `no_mint`  SPL Mint     seeds = `[b"mint", market_id, b"n"]`,
-//!                           mint_authority = `vault_authority` PDA, decimals = 6
-//! - `vault`    USDC ATA     owner = `vault_authority` PDA
-//! - `lock_vault` USDC ATA   owner = `lock_authority` PDA
+//!
+//! The outcome mints, USDC vault, and lock vault are created by the follow-up
+//! `initialize_market_vaults` ix. Their bumps and addresses are computed and
+//! stored on `Market` here so the second ix is a pure validate-and-create.
 //!
 //! `vault_authority` and `lock_authority` are signer-only PDAs (no data
 //! account; only their signer seeds are used). Bumps stored on `Market`.
@@ -27,8 +31,6 @@
 //! a deliberate v1 simplification — flag in report.
 
 use anchor_lang::prelude::*;
-use anchor_spl::associated_token::AssociatedToken;
-use anchor_spl::token::{Mint, Token, TokenAccount};
 
 use crate::error::SoothMarketError;
 use crate::events::MarketInitialized;
@@ -61,74 +63,10 @@ pub struct InitializeMarket<'info> {
     )]
     pub market: Box<Account<'info, Market>>,
 
-    /// Signer-only PDA. Mint authority for both outcome mints, owner of
-    /// `vault`. CHECK: the signer-seed derivation alone is the safety
-    /// constraint — there is no on-chain data on this account.
-    /// CHECK: derived via seeds; safe.
-    #[account(
-        seeds = [b"vault", args.market_id.as_ref()],
-        bump,
-    )]
-    pub vault_authority: UncheckedAccount<'info>,
-
-    /// Signer-only PDA. Owner of `lock_vault` (AMM 24h sell-cooldown escrow).
-    /// CHECK: derived via seeds; safe.
-    #[account(
-        seeds = [b"lock", args.market_id.as_ref()],
-        bump,
-    )]
-    pub lock_authority: UncheckedAccount<'info>,
-
-    #[account(
-        init,
-        payer = creator,
-        seeds = [b"mint", args.market_id.as_ref(), b"y"],
-        bump,
-        mint::decimals = 6,
-        mint::authority = vault_authority,
-    )]
-    pub yes_mint: Box<Account<'info, Mint>>,
-
-    #[account(
-        init,
-        payer = creator,
-        seeds = [b"mint", args.market_id.as_ref(), b"n"],
-        bump,
-        mint::decimals = 6,
-        mint::authority = vault_authority,
-    )]
-    pub no_mint: Box<Account<'info, Mint>>,
-
-    /// USDC mint reference. Pinned by the SDK to canonical mainnet USDC
-    /// (`EPjFW...`) or the cluster-appropriate devnet faucet equivalent.
-    pub usdc_mint: Box<Account<'info, Mint>>,
-
-    /// Market USDC vault — created as the ATA of `vault_authority`.
-    #[account(
-        init,
-        payer = creator,
-        associated_token::mint = usdc_mint,
-        associated_token::authority = vault_authority,
-    )]
-    pub vault: Box<Account<'info, TokenAccount>>,
-
-    /// AMM lock-on-sell escrow vault. See `lock_vault` placement note in
-    /// `state/market.rs` and architecture §4.3.
-    #[account(
-        init,
-        payer = creator,
-        associated_token::mint = usdc_mint,
-        associated_token::authority = lock_authority,
-    )]
-    pub lock_vault: Box<Account<'info, TokenAccount>>,
-
     #[account(mut)]
     pub creator: Signer<'info>,
 
     pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub rent: Sysvar<'info, Rent>,
 }
 
 pub fn handler(ctx: Context<InitializeMarket>, args: InitializeMarketArgs) -> Result<()> {
@@ -137,27 +75,46 @@ pub fn handler(ctx: Context<InitializeMarket>, args: InitializeMarketArgs) -> Re
         SoothMarketError::InvalidDeadline
     );
 
+    // Compute the addresses + bumps for every per-market PDA up front, even
+    // for the accounts that don't exist yet (yes_mint, no_mint, vault_authority,
+    // lock_authority). `find_program_address` works without the account being
+    // initialized — it's a pure derivation. Storing these on Market means
+    // `initialize_market_vaults` is a pure validate-and-create flow.
+    let market_id_seed = args.market_id.as_ref();
+    let program_id = ctx.program_id;
+    let (_vault_authority, vault_authority_bump) =
+        Pubkey::find_program_address(&[b"vault", market_id_seed], program_id);
+    let (_lock_authority, lock_authority_bump) =
+        Pubkey::find_program_address(&[b"lock", market_id_seed], program_id);
+    let (yes_mint, yes_mint_bump) =
+        Pubkey::find_program_address(&[b"mint", market_id_seed, b"y"], program_id);
+    let (no_mint, no_mint_bump) =
+        Pubkey::find_program_address(&[b"mint", market_id_seed, b"n"], program_id);
+
     let market = &mut ctx.accounts.market;
     market.market_id = args.market_id;
     market.creator = ctx.accounts.creator.key();
     market.adjudicator = args.adjudicator;
     market.question_hash = args.question_hash;
-    market.yes_mint = ctx.accounts.yes_mint.key();
-    market.no_mint = ctx.accounts.no_mint.key();
-    market.vault = ctx.accounts.vault.key();
-    market.lock_vault = ctx.accounts.lock_vault.key();
+    market.yes_mint = yes_mint;
+    market.no_mint = no_mint;
+    // `vault` / `lock_vault` are ATA-derived; we leave them as default until
+    // `initialize_market_vaults` populates them with the real addresses (which
+    // depend on the canonical USDC mint and so are computed there, not here).
+    market.vault = Pubkey::default();
+    market.lock_vault = Pubkey::default();
     market.start_time = args.start_time;
     market.deadline = args.deadline;
-    // Happy-path: open immediately. The transient `Initializing` state exists
-    // for a future "configure then open" flow (e.g. adjudicator-deposited
-    // bond). v1 doesn't use it.
-    market.lifecycle = MarketLifecycle::Open;
+    // Start in `Initializing` — flips to `Open` when `initialize_market_vaults`
+    // completes the SPL leg. Trades against `Initializing` are rejected by
+    // `Market::is_open()` in `sooth_amm`.
+    market.lifecycle = MarketLifecycle::Initializing;
     market.winning_outcome = 0;
     market.bump = ctx.bumps.market;
-    market.vault_authority_bump = ctx.bumps.vault_authority;
-    market.lock_authority_bump = ctx.bumps.lock_authority;
-    market.yes_mint_bump = ctx.bumps.yes_mint;
-    market.no_mint_bump = ctx.bumps.no_mint;
+    market.vault_authority_bump = vault_authority_bump;
+    market.lock_authority_bump = lock_authority_bump;
+    market.yes_mint_bump = yes_mint_bump;
+    market.no_mint_bump = no_mint_bump;
 
     let now = Clock::get()?.unix_timestamp;
     emit!(MarketInitialized {
@@ -166,6 +123,10 @@ pub fn handler(ctx: Context<InitializeMarket>, args: InitializeMarketArgs) -> Re
         adjudicator: market.adjudicator,
         yes_mint: market.yes_mint,
         no_mint: market.no_mint,
+        // Vault is populated by the follow-up ix; emit `default` here and a
+        // second `MarketInitialized`-like event from `initialize_market_vaults`
+        // would be redundant. Indexers should treat `vault == default()` as
+        // "vault leg pending".
         vault: market.vault,
         start_time: market.start_time,
         deadline: market.deadline,

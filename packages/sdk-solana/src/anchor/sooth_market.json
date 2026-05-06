@@ -1,0 +1,1474 @@
+{
+  "address": "SoothMkt11111111111111111111111111111111111",
+  "metadata": {
+    "name": "sooth_market",
+    "version": "0.0.0",
+    "spec": "0.1.0",
+    "description": "Sooth Protocol market lifecycle + custody program (TruthMarket + OrderEngine port)",
+    "repository": "https://github.com/Tora-Build/sooth-solana"
+  },
+  "instructions": [
+    {
+      "name": "initialize_market",
+      "docs": [
+        "Create the Market PDA, both outcome SPL mints, and the USDC vault ATA.",
+        "Architecture §4.1; mirrors EVM `LaunchpadEngine.createMarket` (which",
+        "deployed a TruthMarket clone) — on Solana we collapse the deploy step",
+        "into native PDA initialization."
+      ],
+      "discriminator": [
+        35,
+        35,
+        189,
+        193,
+        155,
+        48,
+        170,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "docs": [
+            "New Market PDA. `init` (not `init_if_needed`) — re-init must be",
+            "impossible on this account."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "args.market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializeMarketArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_market_vaults",
+      "docs": [
+        "Third leg of the create-market flow — initializes the USDC vault +",
+        "lock-vault ATAs, then flips the market lifecycle from `Initializing`",
+        "→ `Open`. Split per the rationale in `initialize_market.rs`."
+      ],
+      "discriminator": [
+        79,
+        116,
+        4,
+        9,
+        242,
+        212,
+        26,
+        84
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "docs": [
+            "Existing Market PDA — must be in `Initializing`. Bumps were pinned at",
+            "`initialize_market`; we re-derive seeds here to validate the address."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Signer-only PDA. Owner of the USDC vault ATA. CHECK: derived via",
+            "seeds; safe."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock_authority",
+          "docs": [
+            "Signer-only PDA. Owner of the lock-vault ATA. CHECK: derived via",
+            "seeds; safe."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "docs": [
+            "USDC mint reference. Pinned by the SDK to canonical mainnet USDC",
+            "(`EPjFW...`) or the cluster-appropriate devnet faucet equivalent."
+          ]
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Market USDC vault — created as the ATA of `vault_authority`."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault_authority"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "lock_vault",
+          "docs": [
+            "AMM lock-on-sell escrow vault. See `lock_vault` placement note in",
+            "`state/market.rs` and architecture §4.3."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "lock_authority"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_outcome_mints",
+      "docs": [
+        "Second leg of the create-market flow — initializes both outcome SPL",
+        "mints. Split from `initialize_market` and `initialize_market_vaults`",
+        "so each ix's `try_accounts` codegen stays under the SBF 4 KB stack",
+        "frame; see `instructions/initialize_market.rs` module comment."
+      ],
+      "discriminator": [
+        223,
+        167,
+        202,
+        135,
+        111,
+        93,
+        151,
+        249
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "docs": [
+            "Existing Market PDA — must be in `Initializing` and the outcome mints",
+            "must still be unpopulated (yes_mint == default())."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Signer-only PDA. Mint authority for both outcome mints. CHECK:",
+            "derived via seeds; safe."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "no_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  110
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "lock_for_resolution",
+      "docs": [
+        "Lock the market for resolution (LIVE → LOCKED). EVM analogue:",
+        "`TruthMarket.resolve` (`TruthMarket.sol:90-106`)."
+      ],
+      "discriminator": [
+        218,
+        72,
+        208,
+        132,
+        202,
+        195,
+        86,
+        239
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "adjudicator",
+          "docs": [
+            "Stubbed adjudicator authority signer. In v1 this is the literal",
+            "`market.adjudicator` pubkey (signer-style for the manual adjudicator).",
+            "In v2 with `sooth_adjudicator` running its own program this becomes",
+            "either an instruction-introspection check or a program-derived signer."
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "merge_complete_set",
+      "docs": [
+        "Merge a complete set — burn `amount` YES + `amount` NO, return",
+        "`amount` USDC to the user. EVM analogue: `OrderEngine._merge`",
+        "(`OrderEngine.sol:696-712`)."
+      ],
+      "discriminator": [
+        245,
+        171,
+        74,
+        49,
+        59,
+        192,
+        150,
+        216
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "docs": [
+            "User's USDC ATA — credited."
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_yes_ata",
+          "docs": [
+            "User's YES outcome-token ATA — burned from."
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_no_ata",
+          "docs": [
+            "User's NO outcome-token ATA — burned from."
+          ],
+          "writable": true
+        },
+        {
+          "name": "user",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "mint_complete_set",
+      "docs": [
+        "Mint a \"complete set\" — pull `amount` USDC from user, mint `amount`",
+        "YES + `amount` NO into the user's outcome ATAs. EVM analogue:",
+        "`OrderEngine._mint` (`OrderEngine.sol:680-694`)."
+      ],
+      "discriminator": [
+        70,
+        222,
+        130,
+        148,
+        234,
+        103,
+        137,
+        61
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority PDA — signs the mint_to CPIs."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Market USDC vault. Constraint pin: must match the address stored on",
+            "`Market` at init time."
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "docs": [
+            "User's USDC ATA — debited."
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_yes_ata",
+          "docs": [
+            "User's YES outcome-token ATA — credited."
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_no_ata",
+          "docs": [
+            "User's NO outcome-token ATA — credited."
+          ],
+          "writable": true
+        },
+        {
+          "name": "user",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "redeem",
+      "docs": [
+        "Redeem winning shares for USDC. EVM analogue:",
+        "`OrderEngine.settlePosition` (`OrderEngine.sol:399-431`).",
+        "**STUB** — body is `todo!()` until `sooth_adjudicator` is wired."
+      ],
+      "discriminator": [
+        184,
+        12,
+        86,
+        149,
+        70,
+        196,
+        97,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "user_yes_ata",
+          "writable": true
+        },
+        {
+          "name": "user_no_ata",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "settle",
+      "docs": [
+        "Settle the market with the adjudicator's winning outcome",
+        "(LOCKED → SETTLED). EVM analogue: `TruthMarket.attest` +",
+        "`TruthMarket.settle` collapsed (`TruthMarket.sol:112-131`)."
+      ],
+      "discriminator": [
+        175,
+        42,
+        185,
+        87,
+        144,
+        131,
+        102,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "adjudicator",
+          "docs": [
+            "shape; the auth check is unimplemented pending `sooth_adjudicator`."
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "winning_outcome",
+          "type": "u8"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CompleteSetMerged",
+      "discriminator": [
+        191,
+        93,
+        106,
+        227,
+        82,
+        141,
+        252,
+        156
+      ]
+    },
+    {
+      "name": "CompleteSetMinted",
+      "discriminator": [
+        138,
+        100,
+        135,
+        145,
+        242,
+        178,
+        224,
+        155
+      ]
+    },
+    {
+      "name": "MarketInitialized",
+      "discriminator": [
+        134,
+        160,
+        122,
+        87,
+        50,
+        3,
+        255,
+        81
+      ]
+    },
+    {
+      "name": "MarketLocked",
+      "discriminator": [
+        57,
+        30,
+        242,
+        116,
+        238,
+        156,
+        185,
+        189
+      ]
+    },
+    {
+      "name": "MarketSettled",
+      "discriminator": [
+        237,
+        212,
+        22,
+        175,
+        201,
+        117,
+        215,
+        99
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "MarketNotOpen",
+      "msg": "Market is not in the Open lifecycle state"
+    },
+    {
+      "code": 6001,
+      "name": "MarketNotLocked",
+      "msg": "Market is not in the Locked lifecycle state"
+    },
+    {
+      "code": 6002,
+      "name": "MarketNotSettled",
+      "msg": "Market is not Settled"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidLifecycleTransition",
+      "msg": "Lifecycle transition not permitted from current state"
+    },
+    {
+      "code": 6004,
+      "name": "NotAdjudicator",
+      "msg": "Caller is not the registered adjudicator for this market"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidOutcome",
+      "msg": "Invalid outcome (must be NO=0, YES=1, or INVALID=2)"
+    },
+    {
+      "code": 6006,
+      "name": "ZeroAmount",
+      "msg": "Amount must be non-zero"
+    },
+    {
+      "code": 6007,
+      "name": "InsufficientOutcomeShares",
+      "msg": "Insufficient outcome-token balance"
+    },
+    {
+      "code": 6008,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 6009,
+      "name": "VaultAuthorityMismatch",
+      "msg": "Vault / mint authority mismatch"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidDeadline",
+      "msg": "Deadline must be greater than start_time"
+    }
+  ],
+  "types": [
+    {
+      "name": "CompleteSetMerged",
+      "docs": [
+        "Mirror of EVM `OrderEngine.Merged` (`OrderEngine.sol:125`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc",
+            "docs": [
+              "USDC base units returned to user."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CompleteSetMinted",
+      "docs": [
+        "Mirror of EVM `OrderEngine.Minted` (`OrderEngine.sol:124`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc",
+            "docs": [
+              "USDC base units pulled from user."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitializeMarketArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market_id",
+            "docs": [
+              "Deterministic 16-byte id (truncated keccak256 of question || creator",
+              "|| nonce). Architecture §2.2."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "question_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "start_time",
+            "type": "i64"
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          },
+          {
+            "name": "adjudicator",
+            "docs": [
+              "Adjudicator program id. The CPI auth check on lifecycle setters will",
+              "validate against this — left as `todo!()` for now."
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market_id",
+            "docs": [
+              "Deterministic id derived from `keccak256(question || creator || nonce)`,",
+              "truncated to 16 bytes per architecture §2.2. Seed for every per-market",
+              "PDA in the protocol — see module comment."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator",
+            "docs": [
+              "Adjudicator program id. The adjudicator-CPI auth check on `lock` /",
+              "`settle` will validate the caller's program against this."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "question_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "yes_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "no_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "docs": [
+              "USDC ATA owned by `vault_authority` PDA. All collateral for this market."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "lock_vault",
+            "docs": [
+              "USDC ATA owned by `lock_authority` PDA. AMM lock-on-sell escrow."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "start_time",
+            "type": "i64"
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          },
+          {
+            "name": "lifecycle",
+            "type": {
+              "defined": {
+                "name": "MarketLifecycle"
+              }
+            }
+          },
+          {
+            "name": "winning_outcome",
+            "docs": [
+              "Resolved outcome, valid only when `lifecycle == Settled`.",
+              "0 = NO, 1 = YES, 2 = INVALID per protocol-wide OUTCOME encoding."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Bump for the `Market` PDA itself."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "vault_authority_bump",
+            "docs": [
+              "Bump for the `vault_authority` signer PDA."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "lock_authority_bump",
+            "docs": [
+              "Bump for the `lock_authority` signer PDA."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "yes_mint_bump",
+            "docs": [
+              "Bump for `yes_mint` PDA."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "no_mint_bump",
+            "docs": [
+              "Bump for `no_mint` PDA."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator",
+            "type": "pubkey"
+          },
+          {
+            "name": "yes_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "no_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "start_time",
+            "type": "i64"
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketLifecycle",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Initializing"
+          },
+          {
+            "name": "Open"
+          },
+          {
+            "name": "Locked"
+          },
+          {
+            "name": "Settled"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketLocked",
+      "docs": [
+        "Mirror of EVM `TruthMarket.MarketResolved` (LIVE → RESOLVING). Renamed to",
+        "\"Locked\" to match Solana lifecycle names — the semantic intent is the same:",
+        "trading halts pending adjudicator outcome. See `state/lifecycle.rs`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketSettled",
+      "docs": [
+        "Mirror of EVM `TruthMarket.MarketSettled` (`TruthMarket.sol:130`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "winning_outcome",
+            "docs": [
+              "0=NO, 1=YES, 2=INVALID per protocol-wide OUTCOME encoding."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    }
+  ]
+}

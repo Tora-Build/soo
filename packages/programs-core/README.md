@@ -56,9 +56,11 @@ cargo build-sbf --manifest-path packages/programs-core/programs/sooth_amm/Cargo.
 cargo build-sbf --manifest-path packages/programs-core/programs/sooth_market/Cargo.toml   # → target/deploy/sooth_market.so
 ```
 
+**`cargo build-sbf` must be invoked per-program, not at workspace level.** `sooth_amm` declares `sooth_market` as a path dep with `features = ["cpi"]`, which causes a workspace-level build to unify `cpi`+`no-entrypoint` features and emit a 896-byte stub `sooth_market.so` with no entrypoint (unloadable). Building each program from its own manifest path produces the correct loadable `.so`.
+
 `anchor build` is deferred until the Anchor.toml at `packages/programs-core/Anchor.toml` is exercised against real keypairs (currently uses placeholder program IDs — replace via `solana-keygen new -o target/deploy/<program>-keypair.json` and update `declare_id!` + `Anchor.toml`).
 
-`sooth_market`'s `cargo build-sbf` emits a "Stack offset … exceeded max offset" warning on the `InitializeMarket::try_accounts` codegen frame (~6.8 KB > 4 KB SBF limit). The build still produces a working `.so`; the warning surfaces because the ix init's 5 SPL accounts (Mint × 2, TokenAccount × 2, Market PDA) at once. Mitigation if it triggers a runtime stack panic on devnet: split into a 2-ix flow (`init_market_pda` + `init_market_vaults`).
+`sooth_market` originally co-init'd the Market PDA, both outcome mints, and both USDC vaults in a single `initialize_market` instruction. Anchor 0.30.1's `try_accounts` codegen frame for that combined accounts struct exceeded the SBF 4 KB stack limit by ~2.8 KB even with every payload-bearing field `Box<>`'d, and at runtime the overflow corrupted the deserialized `args` struct (e.g. `args.deadline > args.start_time` evaluating false on plainly-ordered literals). The flow is now split across three instructions — `initialize_market` (Market PDA only), `initialize_outcome_mints` (yes_mint + no_mint), and `initialize_market_vaults` (USDC vault + lock vault, flips lifecycle to `Open`) — each of which compiles under the 4 KB ceiling with no warnings. SDKs must call all three (in order) to land a tradeable market.
 
 ## Layout
 
