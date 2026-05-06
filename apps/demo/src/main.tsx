@@ -34,9 +34,14 @@ function Root() {
     [],
   );
 
+  // `autoConnect` is intentionally OFF. Silent autoConnect failures (e.g.
+  // wallet on the wrong network, or the dapp loaded before the extension
+  // injected) are the most common cause of "the connect button does
+  // nothing." Requiring an explicit click keeps the failure path visible
+  // and ties any error to the wallet-adapter modal where the user can act.
   return (
     <ConnectionProvider endpoint={demoConfig.node.rpcUrl}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={wallets} autoConnect={false}>
         <WalletModalProvider>
           <DemoProvider>
             <BrowserRouter>

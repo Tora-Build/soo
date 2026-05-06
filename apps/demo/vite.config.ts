@@ -27,6 +27,7 @@ export default defineConfig({
     include: ["buffer"],
   },
   server: {
-    port: 5173,
+    port: 5175,
+    strictPort: true,
   },
 });

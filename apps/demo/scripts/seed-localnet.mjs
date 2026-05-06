@@ -1,0 +1,443 @@
+#!/usr/bin/env node
+// Seed script for the localnet demo. Two-phase, both phases run as plain
+// Node ESM (no tsx/ts-node) so we depend only on `@sooth/sdk-solana/dist`
+// which is already built before this script runs.
+//
+// Phase 1 — `prepare`:
+//   - Generate a USDC mint authority keypair (.localnet/mint-authority.json)
+//   - Hand-build the SPL Mint account blob and write it as a
+//     solana-test-validator-compatible JSON dump
+//     (.localnet/usdc-mint-account.json)
+//   - This phase must run BEFORE the validator boots, so the validator can
+//     `--account 4zMM... .localnet/usdc-mint-account.json` preload the mint
+//     at the canonical address that the on-chain programs constrain against.
+//
+// Phase 2 — `init`:
+//   - Connect to http://127.0.0.1:8899
+//   - Generate creator + user keypairs (or read user pubkey from CLI/env)
+//   - Airdrop SOL to creator + user
+//   - Create the user's USDC ATA + mint 1000 USDC into it (mint authority
+//     keypair from phase 1 signs)
+//   - Run all 4 init instructions to create a Sooth market
+//     (initializeMarket → initializeOutcomeMints → initializeMarketVaults →
+//     initializeAmmState)
+//   - Write apps/demo/.env.local with VITE_DEMO_MARKET_REF + companion vars
+//   - Print the user keypair so the operator can import into Phantom
+//
+// Wire shape mirrors apps/demo/tests/fixtures/bootDemo.ts (bankrun) but
+// against a real Connection. Differences from bankrun:
+//   - We can't setAccount() the USDC mint into existence at runtime; we
+//     pre-bake the JSON dump and let solana-test-validator load it.
+//   - Lamport funding is via requestAirdrop + confirmTransaction, not a
+//     direct write.
+//   - Anchor's AnchorProvider talks to the real Connection so all RPC calls
+//     are network round-trips.
+//
+// No emojis in script output (project rule).
+
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Anchor + sdk-solana ship as CommonJS or have a deep CJS dep
+// (`@coral-xyz/anchor`). Node's ESM loader rejects named imports from those
+// modules — unlike vitest/esbuild which transparently rewrites them. Use
+// the default-import + destructure dance for any package that surfaces the
+// CJS named-export error at runtime.
+import anchor from "@coral-xyz/anchor";
+const { AnchorProvider, BN, Program } = anchor;
+
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  MintLayout,
+  MINT_SIZE,
+  TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountInstruction,
+  createMintToInstruction,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
+import {
+  Connection,
+  Keypair,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  SystemProgram,
+  SYSVAR_RENT_PUBKEY,
+  Transaction,
+  sendAndConfirmTransaction,
+} from "@solana/web3.js";
+
+// We can't `import` from the `@sooth/sdk-solana` package root: its index
+// re-exports `SolanaChainAdapter`, which transitively imports
+// `@coral-xyz/anchor` with named exports. Anchor 0.30 is CommonJS, and
+// Node's ESM loader rejects `import { BN } from "@coral-xyz/anchor"` at
+// parse time. Vitest/esbuild rewrite this transparently, but plain
+// `node` doesn't.
+//
+// We can't deep-import from `@sooth/sdk-solana/dist/...` either — the
+// package's `exports` map restricts subpaths.
+//
+// Workaround: dynamic-import the leaf dist modules via filesystem URLs.
+// This bypasses both the package `exports` gate AND the adapter.js side
+// effect. A future SDK build that renames internal dist paths would
+// break this script. The alternative — adding subpath exports to the
+// SDK — is out of scope per the task brief.
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const DEMO_ROOT = resolve(__dirname, "..");
+const REPO_ROOT = resolve(DEMO_ROOT, "..", "..");
+const LOCALNET_DIR = resolve(DEMO_ROOT, ".localnet");
+
+const SDK_DIST = resolve(REPO_ROOT, "packages", "sdk-solana", "dist");
+const sdkUrl = (rel) => new URL(`file://${SDK_DIST}/${rel}`).href;
+
+const { soothAmmIdl, soothMarketIdl } = await import(sdkUrl("anchor/index.js"));
+const {
+  deriveAmmStatePda,
+  deriveLockAuthorityPda,
+  deriveLockVaultAta,
+  deriveMarketPda,
+  deriveMarketVaultAta,
+  deriveNoMintPda,
+  deriveVaultAuthorityPda,
+  deriveYesMintPda,
+} = await import(sdkUrl("pdas.js"));
+const { WAD } = await import(sdkUrl("math/lmsr.js"));
+
+const SOOTH_AMM_ID = new PublicKey(soothAmmIdl.address);
+const SOOTH_MARKET_ID = new PublicKey(soothMarketIdl.address);
+const PROGRAMS = { soothAmm: SOOTH_AMM_ID, soothMarket: SOOTH_MARKET_ID };
+
+// Canonical USDC mint baked into the on-chain programs' `address = ...`
+// constraint. The mint MUST exist at this address on the validator or
+// initialize_market_vaults / trade_positions will fail.
+const USDC_MINT_DEVNET = new PublicKey(
+  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+);
+
+const MINT_AUTHORITY_PATH = resolve(LOCALNET_DIR, "mint-authority.json");
+const USER_KEYPAIR_PATH = resolve(LOCALNET_DIR, "user-keypair.json");
+const CREATOR_KEYPAIR_PATH = resolve(LOCALNET_DIR, "creator-keypair.json");
+const USDC_MINT_DUMP_PATH = resolve(LOCALNET_DIR, "usdc-mint-account.json");
+const ENV_LOCAL_PATH = resolve(DEMO_ROOT, ".env.local");
+
+const RPC_URL = process.env.SOLANA_RPC_URL ?? "http://127.0.0.1:8899";
+
+function log(msg) {
+  process.stdout.write(`[seed-localnet] ${msg}\n`);
+}
+
+function die(msg, code = 1) {
+  process.stderr.write(`[seed-localnet] ERROR: ${msg}\n`);
+  process.exit(code);
+}
+
+function ensureLocalnetDir() {
+  mkdirSync(LOCALNET_DIR, { recursive: true });
+}
+
+function loadOrCreateKeypair(path) {
+  if (existsSync(path)) {
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    return Keypair.fromSecretKey(Uint8Array.from(raw));
+  }
+  const kp = Keypair.generate();
+  writeFileSync(path, JSON.stringify(Array.from(kp.secretKey)));
+  return kp;
+}
+
+// ─── Phase 1 ──────────────────────────────────────────────────────────────
+async function prepare() {
+  ensureLocalnetDir();
+  const mintAuthority = loadOrCreateKeypair(MINT_AUTHORITY_PATH);
+  log(`mint authority pubkey: ${mintAuthority.publicKey.toBase58()}`);
+
+  // Build the SPL Mint binary blob. Layout matches `@solana/spl-token`'s
+  // MintLayout exactly (4+32+8+1+1+4+32 = 82 bytes).
+  const data = Buffer.alloc(MintLayout.span);
+  MintLayout.encode(
+    {
+      mintAuthorityOption: 1,
+      mintAuthority: mintAuthority.publicKey,
+      supply: 0n,
+      decimals: 6,
+      isInitialized: true,
+      freezeAuthorityOption: 0,
+      freezeAuthority: PublicKey.default,
+    },
+    data,
+  );
+
+  // Rent-exempt minimum for 82-byte account. The validator computes its
+  // own rent, but we still set lamports >= the empirically-known minimum
+  // (~1.46M lamports for 82 bytes at default rates). 10 SOL is overkill
+  // and works in every case.
+  const lamports = 10 * LAMPORTS_PER_SOL;
+
+  const dump = {
+    pubkey: USDC_MINT_DEVNET.toBase58(),
+    account: {
+      lamports,
+      data: [data.toString("base64"), "base64"],
+      owner: TOKEN_PROGRAM_ID.toBase58(),
+      executable: false,
+      rentEpoch: 0,
+      space: MINT_SIZE,
+    },
+  };
+  writeFileSync(USDC_MINT_DUMP_PATH, JSON.stringify(dump, null, 2));
+  log(`wrote usdc mint dump: ${USDC_MINT_DUMP_PATH}`);
+  log(`  pubkey: ${USDC_MINT_DEVNET.toBase58()}`);
+  log(`  authority: ${mintAuthority.publicKey.toBase58()}`);
+  log(`  decimals: 6`);
+}
+
+// ─── Phase 2 ──────────────────────────────────────────────────────────────
+async function init() {
+  ensureLocalnetDir();
+
+  if (!existsSync(MINT_AUTHORITY_PATH)) {
+    die("mint authority keypair missing — run `prepare` phase first");
+  }
+  const mintAuthority = Keypair.fromSecretKey(
+    Uint8Array.from(JSON.parse(readFileSync(MINT_AUTHORITY_PATH, "utf8"))),
+  );
+  const creator = loadOrCreateKeypair(CREATOR_KEYPAIR_PATH);
+  const user = loadOrCreateKeypair(USER_KEYPAIR_PATH);
+
+  log(`creator: ${creator.publicKey.toBase58()}`);
+  log(`user:    ${user.publicKey.toBase58()}`);
+
+  const connection = new Connection(RPC_URL, "confirmed");
+
+  // Sanity-check: validator running + USDC mint preloaded.
+  try {
+    await connection.getVersion();
+  } catch (e) {
+    die(`cannot reach validator at ${RPC_URL}: ${e.message ?? e}`);
+  }
+
+  const usdcMintAcc = await connection.getAccountInfo(USDC_MINT_DEVNET);
+  if (!usdcMintAcc) {
+    die(
+      `USDC mint not present at ${USDC_MINT_DEVNET.toBase58()} — did you boot the validator with --account?`,
+    );
+  }
+  if (!usdcMintAcc.owner.equals(TOKEN_PROGRAM_ID)) {
+    die(
+      `USDC mint at ${USDC_MINT_DEVNET.toBase58()} is owned by ${usdcMintAcc.owner.toBase58()}, expected SPL Token program`,
+    );
+  }
+  log(`USDC mint preloaded: OK`);
+
+  // ─── Airdrop SOL to creator + user + mintAuthority ─────────────────────
+  for (const [name, kp] of [
+    ["creator", creator],
+    ["user", user],
+    ["mintAuthority", mintAuthority],
+  ]) {
+    const balance = await connection.getBalance(kp.publicKey);
+    if (balance >= 5 * LAMPORTS_PER_SOL) {
+      log(
+        `${name} already funded (${balance / LAMPORTS_PER_SOL} SOL), skip airdrop`,
+      );
+      continue;
+    }
+    const sig = await connection.requestAirdrop(
+      kp.publicKey,
+      10 * LAMPORTS_PER_SOL,
+    );
+    await connection.confirmTransaction(sig, "confirmed");
+    log(`airdropped 10 SOL to ${name}`);
+  }
+
+  // ─── Mint 1000 USDC to the user ───────────────────────────────────────
+  const userAta = getAssociatedTokenAddressSync(
+    USDC_MINT_DEVNET,
+    user.publicKey,
+  );
+  const ataInfo = await connection.getAccountInfo(userAta);
+  if (!ataInfo) {
+    const tx = new Transaction().add(
+      createAssociatedTokenAccountInstruction(
+        creator.publicKey,
+        userAta,
+        user.publicKey,
+        USDC_MINT_DEVNET,
+      ),
+    );
+    await sendAndConfirmTransaction(connection, tx, [creator]);
+    log(`created user USDC ATA: ${userAta.toBase58()}`);
+  } else {
+    log(`user USDC ATA exists: ${userAta.toBase58()}`);
+  }
+
+  const userUsdc = 1_000_000_000n; // 1000 USDC (6 decimals)
+  const mintTx = new Transaction().add(
+    createMintToInstruction(
+      USDC_MINT_DEVNET,
+      userAta,
+      mintAuthority.publicKey,
+      userUsdc,
+    ),
+  );
+  await sendAndConfirmTransaction(connection, mintTx, [mintAuthority]);
+  log(`minted 1000 USDC to user`);
+
+  // ─── Build Anchor providers + create market ───────────────────────────
+  const wallet = {
+    publicKey: creator.publicKey,
+    signTransaction: async (tx) => {
+      tx.partialSign(creator);
+      return tx;
+    },
+    signAllTransactions: async (txs) => {
+      for (const tx of txs) tx.partialSign(creator);
+      return txs;
+    },
+    payer: creator,
+  };
+  const provider = new AnchorProvider(connection, wallet, {
+    commitment: "confirmed",
+    preflightCommitment: "confirmed",
+  });
+
+  const marketProgram = new Program(soothMarketIdl, provider);
+  const ammProgram = new Program(soothAmmIdl, provider);
+
+  // 16-byte random market id.
+  const marketId = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) marketId[i] = (Math.random() * 256) | 0;
+
+  const [marketPda] = deriveMarketPda(marketId, PROGRAMS);
+  const [vaultAuthority] = deriveVaultAuthorityPda(marketId, PROGRAMS);
+  const [lockAuthority] = deriveLockAuthorityPda(marketId, PROGRAMS);
+  const [yesMint] = deriveYesMintPda(marketId, PROGRAMS);
+  const [noMint] = deriveNoMintPda(marketId, PROGRAMS);
+  const vault = deriveMarketVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
+  const lockVault = deriveLockVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
+  const [ammStatePda] = deriveAmmStatePda(marketId, PROGRAMS);
+
+  // Use chain time, not 1_000_000 sentinel (real validator wall clock).
+  const startTime = Math.floor(Date.now() / 1000);
+  const deadline = startTime + 7 * 24 * 60 * 60;
+  const bWad = 1_000n * WAD;
+
+  log(`creating market PDA ${marketPda.toBase58()}...`);
+
+  // 1. initializeMarket
+  await marketProgram.methods
+    .initializeMarket({
+      marketId: Array.from(marketId),
+      questionHash: Array(32).fill(0),
+      startTime: new BN(startTime),
+      deadline: new BN(deadline),
+      adjudicator: PublicKey.default,
+    })
+    .accounts({
+      market: marketPda,
+      creator: creator.publicKey,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([creator])
+    .rpc();
+  log("  initializeMarket OK");
+
+  // 2. initializeOutcomeMints
+  await marketProgram.methods
+    .initializeOutcomeMints()
+    .accounts({
+      market: marketPda,
+      vaultAuthority,
+      yesMint,
+      noMint,
+      creator: creator.publicKey,
+      systemProgram: SystemProgram.programId,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      rent: SYSVAR_RENT_PUBKEY,
+    })
+    .signers([creator])
+    .rpc();
+  log("  initializeOutcomeMints OK");
+
+  // 3. initializeMarketVaults
+  await marketProgram.methods
+    .initializeMarketVaults()
+    .accounts({
+      market: marketPda,
+      vaultAuthority,
+      lockAuthority,
+      usdcMint: USDC_MINT_DEVNET,
+      vault,
+      lockVault,
+      creator: creator.publicKey,
+      systemProgram: SystemProgram.programId,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      rent: SYSVAR_RENT_PUBKEY,
+    })
+    .signers([creator])
+    .rpc();
+  log("  initializeMarketVaults OK");
+
+  // 4. initializeAmmState
+  await ammProgram.methods
+    .initializeAmmState({
+      initialB: new BN(bWad.toString()),
+      trialEndAt: new BN(deadline),
+    })
+    .accounts({
+      market: marketPda,
+      ammState: ammStatePda,
+      creator: creator.publicKey,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([creator])
+    .rpc();
+  log("  initializeAmmState OK");
+
+  // ─── Write .env.local for vite ────────────────────────────────────────
+  const envBody = [
+    "# Auto-generated by apps/demo/scripts/seed-localnet.mjs.",
+    "# Regenerated every time `pnpm dev:localnet` runs.",
+    "# Do not commit — see apps/demo/.gitignore.",
+    "",
+    `VITE_SOLANA_RPC_URL=${RPC_URL}`,
+    `VITE_SOOTH_AMM_ID=${SOOTH_AMM_ID.toBase58()}`,
+    `VITE_SOOTH_MARKET_ID=${SOOTH_MARKET_ID.toBase58()}`,
+    `VITE_USDC_MINT=${USDC_MINT_DEVNET.toBase58()}`,
+    `VITE_DEMO_MARKET_REF=sol:${marketPda.toBase58()}`,
+    `# Pre-funded user pubkey (1000 USDC, 10 SOL). Import the keypair`,
+    `# at apps/demo/.localnet/user-keypair.json into Phantom or Solflare`,
+    `# (Settings → Add/Connect Wallet → Import Private Key) to test trades.`,
+    `VITE_DEMO_AIRDROP_RECIPIENT=${user.publicKey.toBase58()}`,
+    "",
+  ].join("\n");
+  writeFileSync(ENV_LOCAL_PATH, envBody);
+  log(`wrote ${ENV_LOCAL_PATH}`);
+
+  log("");
+  log("=== Seed complete ===");
+  log(`market PDA:    ${marketPda.toBase58()}`);
+  log(`market ref:    sol:${marketPda.toBase58()}`);
+  log(`user pubkey:   ${user.publicKey.toBase58()}`);
+  log(`user keypair:  ${USER_KEYPAIR_PATH}`);
+  log(
+    `Import the user keypair into Phantom/Solflare to trade against the demo.`,
+  );
+}
+
+// ─── Entry ────────────────────────────────────────────────────────────────
+const phase = process.argv[2];
+if (phase === "prepare") {
+  await prepare();
+} else if (phase === "init") {
+  await init();
+} else {
+  die(
+    "usage: node scripts/seed-localnet.mjs <prepare|init>\n" +
+      "  prepare: pre-validator (writes mint dump JSON)\n" +
+      "  init:    post-validator (creates market + funds user)",
+  );
+}

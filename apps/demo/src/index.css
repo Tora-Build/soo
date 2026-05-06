@@ -11,3 +11,32 @@ body,
 #root {
   height: 100%;
 }
+
+/*
+ * wallet-adapter-react-ui ships its own CSS that targets `.wallet-adapter-*`
+ * classes with high specificity. Tailwind's preflight + `dark` variant can
+ * partially clobber colors on these elements. We use `:where(...)` so our
+ * overrides have zero specificity bump on top of the library's rules,
+ * keeping the library defaults intact while ensuring text remains
+ * readable inside the demo's dark theme.
+ *
+ * The wallet-adapter modal is rendered into a portal at the body root, so
+ * it sits outside our React tree's Tailwind class scope. These rules
+ * survive that.
+ */
+:where(.wallet-adapter-modal-wrapper) {
+  background: #0f172a; /* slate-900 */
+  color: #e2e8f0; /* slate-200 */
+}
+:where(.wallet-adapter-modal-title) {
+  color: #f8fafc; /* slate-50 */
+}
+:where(.wallet-adapter-modal-list .wallet-adapter-button) {
+  color: #f8fafc;
+}
+:where(.wallet-adapter-button-trigger) {
+  background-color: #1e293b !important; /* slate-800 */
+}
+:where(.wallet-adapter-button-trigger:hover) {
+  background-color: #334155 !important; /* slate-700 */
+}

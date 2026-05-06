@@ -7,11 +7,12 @@ import { MarketList } from "./pages/MarketList";
 import { MarketDetail } from "./pages/MarketDetail";
 import { Stub } from "./pages/Stub";
 import { WalletButton } from "./components/WalletButton";
+import { RpcStatus } from "./components/RpcStatus";
 
 export function App() {
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-slate-800 px-6 py-3 flex items-center justify-between">
+      <header className="border-b border-slate-800 px-6 py-3 flex items-center justify-between gap-3">
         <Link
           to="/"
           className="font-mono text-sm text-slate-100"
@@ -19,7 +20,10 @@ export function App() {
         >
           sooth · solana demo
         </Link>
-        <WalletButton />
+        <div className="flex items-center gap-3">
+          <RpcStatus />
+          <WalletButton />
+        </div>
       </header>
       <main className="flex-1">
         <Routes>

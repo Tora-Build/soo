@@ -49,6 +49,11 @@ interface DemoCtx {
   signer: SignerRef | null;
   marketRef: string | null;
   connected: boolean;
+  // True when the test injected its own adapter+signer via `override={...}`.
+  // Components that would normally read from wallet-adapter hooks
+  // (`useWallet`, `useConnection`) check this and skip those hooks — the
+  // test path doesn't mount the wallet-adapter providers.
+  isOverride: boolean;
 }
 
 const DemoContextObj = createContext<DemoCtx | null>(null);
@@ -66,6 +71,7 @@ export function DemoProvider({ children, override }: DemoProviderProps) {
       signer: override.signer,
       marketRef: override.marketRef,
       connected: true,
+      isOverride: true,
     };
     return (
       <DemoContextObj.Provider value={value}>
@@ -122,6 +128,7 @@ function ProductionDemoProvider({ children }: { children: ReactNode }) {
     signer,
     marketRef: demoConfig.marketRef,
     connected: !!wallet.connected,
+    isOverride: false,
   };
 
   return (

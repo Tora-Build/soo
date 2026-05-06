@@ -1,0 +1,9 @@
+# Localnet artifacts produced by scripts/dev-localnet.sh.
+# Contains keypairs and a market PDA — both ephemeral, both per-machine.
+.localnet/
+.localnet.pid
+
+# Vite env files (also covered by repo root, repeated here for clarity).
+.env
+.env.local
+.env.*.local

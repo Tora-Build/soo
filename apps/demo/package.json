@@ -7,6 +7,9 @@
   "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",
+    "dev:localnet": "bash scripts/dev-localnet.sh",
+    "seed:prepare": "node scripts/seed-localnet.mjs prepare",
+    "seed:init": "node scripts/seed-localnet.mjs init",
     "build": "tsc -p tsconfig.build.json && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.test.json --noEmit",
