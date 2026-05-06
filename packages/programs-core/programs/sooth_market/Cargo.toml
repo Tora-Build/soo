@@ -1,0 +1,33 @@
+[package]
+name = "sooth_market"
+version = "0.0.0"
+edition = "2021"
+description = "Sooth Protocol market lifecycle + custody program (TruthMarket + OrderEngine port)"
+license = "Apache-2.0"
+repository = "https://github.com/Tora-Build/sooth-solana"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "sooth_market"
+
+# ── Toolchain notes ─────────────────────────────────────────────────────────
+# Same Anchor 0.30.1 / solana-program 1.18.x envelope as `sooth_amm`. The
+# transitive dep pins documented in `packages/programs-core/README.md`
+# "Toolchain pins" already cover this crate — if `cargo build-sbf` reports
+# edition2024 errors, replay the recipe.
+# ----------------------------------------------------------------------------
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = { version = "0.30.1" }
+anchor-spl = { version = "0.30.1", features = ["token", "associated_token"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "allow" }

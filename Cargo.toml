@@ -2,9 +2,9 @@
 resolver = "2"
 members = [
     "packages/programs-core/programs/sooth_amm",
+    "packages/programs-core/programs/sooth_market",
     # Future members (uncomment as the programs land):
     #   "packages/programs-core/programs/sooth_launchpad",
-    #   "packages/programs-core/programs/sooth_market",
     #   "packages/programs-core/programs/sooth_book",
     #   "packages/programs-core/programs/sooth_adjudicator",
     #   "packages/programs-core/crates/sooth-book-matcher",

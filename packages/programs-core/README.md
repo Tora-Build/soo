@@ -20,17 +20,17 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full mapping.
 
 ## Status
 
-**Implementation in progress.** First Anchor program (`sooth_amm`) scaffolded; the rest are still spec.
+**Implementation in progress.** Two Anchor programs (`sooth_amm`, `sooth_market`) scaffolded; the rest are still spec.
 
 ### Programs
 
-| Program             | Status                                                                                                                                                                                                                                          |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sooth_amm`         | **Scaffolded.** LMSR math wired in (D4 ported from `_spikes/lmsr-cu/`); state mutation real; CPIs / fee router / LP mint / lock-on-sell stubbed with `todo!()`. See `programs/sooth_amm/src/instructions/trade_positions.rs` for the TODO list. |
-| `sooth_launchpad`   | Spec only. Will own fee router, LP mint, market factory.                                                                                                                                                                                        |
-| `sooth_market`      | Spec only. Will own market PDA, vault, lifecycle, redemption.                                                                                                                                                                                   |
-| `sooth_book`        | Spec only. Gated on P1 (Monaco fork vs custom build).                                                                                                                                                                                           |
-| `sooth_adjudicator` | Spec only. Manual variant first; ZkTLS later.                                                                                                                                                                                                   |
+| Program             | Status                                                                                                                                                                                                                                                                                                                                              |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sooth_amm`         | **Scaffolded.** LMSR math wired in (D4 ported from `_spikes/lmsr-cu/`); state mutation real; CPIs / fee router / LP mint / lock-on-sell stubbed with `todo!()`. See `programs/sooth_amm/src/instructions/trade_positions.rs` for the TODO list.                                                                                                     |
+| `sooth_market`      | **Scaffolded.** Market PDA + lifecycle state machine real; `initialize_market` / `mint_complete_set` / `merge_complete_set` real (USDC ↔ outcome-mint CPIs wired); `lock_for_resolution` / `settle` real state mutation but adjudicator-CPI auth check is `todo!()` (architecture §4.4); `redeem` is a `todo!()` stub gated on `sooth_adjudicator`. |
+| `sooth_launchpad`   | Spec only. Will own fee router, LP mint, market factory.                                                                                                                                                                                                                                                                                            |
+| `sooth_book`        | Spec only. Gated on P1 (Monaco fork vs custom build).                                                                                                                                                                                                                                                                                               |
+| `sooth_adjudicator` | Spec only. Manual variant first; ZkTLS later.                                                                                                                                                                                                                                                                                                       |
 
 ### Toolchain
 
@@ -49,12 +49,16 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full mapping.
 ### Build commands
 
 ```bash
-cargo check --workspace                                                          # green
-cargo test -p sooth_amm                                                          # 24 unit tests, all green (15 inline + 9 integration)
-cargo build-sbf --manifest-path packages/programs-core/programs/sooth_amm/Cargo.toml   # produces target/deploy/sooth_amm.so
+cargo check --workspace                                                              # green
+cargo test -p sooth_amm                                                              # 24 unit tests (15 inline + 9 integration)
+cargo test -p sooth_market                                                           # 6 unit tests (1 inline + 5 lifecycle integration)
+cargo build-sbf --manifest-path packages/programs-core/programs/sooth_amm/Cargo.toml      # → target/deploy/sooth_amm.so
+cargo build-sbf --manifest-path packages/programs-core/programs/sooth_market/Cargo.toml   # → target/deploy/sooth_market.so
 ```
 
-`anchor build` is deferred until the Anchor.toml at `packages/programs-core/Anchor.toml` is exercised against a real keypair (currently uses a placeholder program ID — replace via `solana-keygen new -o target/deploy/sooth_amm-keypair.json` and update `declare_id!` + `Anchor.toml`).
+`anchor build` is deferred until the Anchor.toml at `packages/programs-core/Anchor.toml` is exercised against real keypairs (currently uses placeholder program IDs — replace via `solana-keygen new -o target/deploy/<program>-keypair.json` and update `declare_id!` + `Anchor.toml`).
+
+`sooth_market`'s `cargo build-sbf` emits a "Stack offset … exceeded max offset" warning on the `InitializeMarket::try_accounts` codegen frame (~6.8 KB > 4 KB SBF limit). The build still produces a working `.so`; the warning surfaces because the ix init's 5 SPL accounts (Mint × 2, TokenAccount × 2, Market PDA) at once. Mitigation if it triggers a runtime stack panic on devnet: split into a 2-ix flow (`init_market_pda` + `init_market_vaults`).
 
 ## Layout
 
@@ -65,21 +69,32 @@ packages/programs-core/
 ├── docs/
 │   └── architecture.md        # complete program design (5 programs, account model, call chains, CU budgets)
 └── programs/
-    └── sooth_amm/             # SCAFFOLDED — LMSR math + trade_positions
+    ├── sooth_amm/             # SCAFFOLDED — LMSR math + trade_positions
+    │   ├── Cargo.toml
+    │   ├── src/
+    │   │   ├── lib.rs
+    │   │   ├── error.rs
+    │   │   ├── events.rs
+    │   │   ├── math/          # wad.rs + lmsr.rs (ported from _spikes/lmsr-cu)
+    │   │   ├── state/         # market, amm_state, position, lock_entry
+    │   │   └── instructions/  # trade_positions
+    │   └── tests/
+    │       └── lmsr_unit.rs   # host-side math tests
+    └── sooth_market/          # SCAFFOLDED — lifecycle + custody + mint/merge/redeem
         ├── Cargo.toml
         ├── src/
         │   ├── lib.rs
         │   ├── error.rs
         │   ├── events.rs
-        │   ├── math/          # wad.rs + lmsr.rs (ported from _spikes/lmsr-cu)
-        │   ├── state/         # market, amm_state, position, lock_entry
-        │   └── instructions/  # trade_positions
+        │   ├── state/         # market, lifecycle (state machine)
+        │   └── instructions/  # initialize_market, mint_complete_set,
+        │                      # merge_complete_set, lock_for_resolution,
+        │                      # settle, redeem (stub)
         └── tests/
-            └── lmsr_unit.rs   # host-side math tests
+            └── lifecycle.rs   # host-side state-machine transition tests
 
 # Future workspace members (uncomment in root Cargo.toml as they land):
 #   programs/sooth_launchpad
-#   programs/sooth_market
 #   programs/sooth_book
 #   programs/sooth_adjudicator
 #   crates/sooth-book-matcher
