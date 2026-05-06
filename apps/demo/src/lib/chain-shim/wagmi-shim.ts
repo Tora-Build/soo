@@ -21,8 +21,40 @@ import {
   dispatchAmmWrite,
   NOT_HANDLED,
   type AmmBridgeCtx,
+  type ReadCallShape,
 } from "./amm-bridge";
+import {
+  dispatchPortfolioRead,
+  PORTFOLIO_NOT_HANDLED,
+  type PortfolioBridgeCtx,
+} from "./portfolio-bridge";
 import { DemoContextObj } from "../DemoContext";
+
+// ─── Read dispatch order ────────────────────────────────────────────────────
+//
+// Bridge precedence (most-specific first):
+//
+//   1. portfolio-bridge — claims `getMarkets`, market-PDA-derived reads
+//      (`isSettled`, `winningOutcome`, `price`, `questionHash`, …) plus the
+//      LP/locked-funds graceful-zero set.
+//   2. amm-bridge — claims AMM-shaped reads (`getMarketState`, `getPosition`,
+//      `getPositionQuote`, `getLiquidity`, `markets`, `balanceOf`,
+//      `allowance`, `decimals`, …).
+//   3. Sentinel fallback — `undefined` (publicClient) or `data: undefined`
+//      (hook-shape).
+//
+// Function-name uniqueness: when both bridges define a name, the portfolio
+// bridge wins. Today the only collision is none — `getPosition` is amm-only
+// and `isSettled` / `price` are portfolio-only.
+async function dispatchRead(
+  call: ReadCallShape,
+  amm: AmmBridgeCtx,
+  portfolio: PortfolioBridgeCtx,
+): Promise<unknown | typeof NOT_HANDLED> {
+  const portfolioOut = await dispatchPortfolioRead(call, portfolio);
+  if (portfolioOut !== PORTFOLIO_NOT_HANDLED) return portfolioOut;
+  return dispatchAmmRead(call, amm);
+}
 
 // ─── Account / chain hooks (real, backed by wallet-adapter) ─────────────────
 
@@ -151,6 +183,7 @@ export interface ShimPublicClient {
 function makeShimPublicClient(
   connection: unknown,
   bridge: AmmBridgeCtx | null,
+  portfolio: PortfolioBridgeCtx | null,
 ): ShimPublicClient {
   // Methods are loosely typed because upstream destructures result fields
   // freely (event-log shape, multicall tuple shape, etc.). Most return
@@ -160,16 +193,39 @@ function makeShimPublicClient(
   const getLogs = async <_E = unknown>(_args?: any): Promise<any[]> => [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const readContract = async (args?: any): Promise<any> => {
-    if (!bridge || !args) return undefined;
-    const out = await dispatchAmmRead(args, bridge);
+    if (!bridge || !portfolio || !args) return undefined;
+    const out = await dispatchRead(args, bridge, portfolio);
     return out === NOT_HANDLED ? undefined : out;
+  };
+  // Multicall fan-out: walk each `{address, functionName, args}` tuple and
+  // route each through the same dispatch chain, then aggregate into the
+  // wagmi multicall shape `{status, result}`. Failures inside a leg
+  // surface as `{status: "failure", error}` so upstream multicall consumers
+  // (useReadContracts.data[i].result) keep their per-leg fallbacks.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const multicallFanout = async (mcArgs?: any): Promise<any[]> => {
+    if (!bridge || !portfolio || !mcArgs) return [];
+    const contracts = (mcArgs.contracts ?? []) as ReadCallShape[];
+    return Promise.all(
+      contracts.map(async (call) => {
+        try {
+          const out = await dispatchRead(call, bridge, portfolio);
+          if (out === NOT_HANDLED) {
+            return { status: "success", result: undefined };
+          }
+          return { status: "success", result: out };
+        } catch (err) {
+          return { status: "failure", error: err as Error };
+        }
+      }),
+    );
   };
   return {
     solanaConnection: connection,
     chain: { id: 1, name: "solana" },
     readContract,
-    readContracts: async () => [],
-    multicall: async () => [],
+    readContracts: multicallFanout,
+    multicall: multicallFanout,
     // simulateContract: upstream's SimpleTradingPanel calls this to surface
     // pre-flight reverts. For AMM trades the real adapter's `submit` does
     // its own preflight; returning a successful empty result here lets
@@ -201,8 +257,8 @@ export function usePublicClient(_args?: unknown): ShimPublicClient {
   // with a bankrun-backed shim, and balance reads need to flow through
   // *that* connection (not the wallet-adapter ConnectionProvider's).
   const effectiveConnection = demo?.adapter?.connection ?? connection;
-  // Build the bridge context lazily — when DemoProvider isn't mounted
-  // (e.g. some early-render paths) bridge is null and reads fall through
+  // Build the bridge contexts lazily — when DemoProvider isn't mounted
+  // (e.g. some early-render paths) both are null and reads fall through
   // to `undefined` like before.
   const bridge: AmmBridgeCtx | null = demo
     ? {
@@ -214,7 +270,13 @@ export function usePublicClient(_args?: unknown): ShimPublicClient {
         signer: demo.signer,
       }
     : null;
-  return makeShimPublicClient(effectiveConnection, bridge);
+  const portfolio: PortfolioBridgeCtx | null = demo
+    ? {
+        adapter: demo.adapter,
+        knownMarkets: demo.marketRef ? [demo.marketRef] : [],
+      }
+    : null;
+  return makeShimPublicClient(effectiveConnection, bridge, portfolio);
 }
 
 export function useWalletClient(_args?: unknown) {
@@ -340,9 +402,13 @@ export function useReadContract<T = any>(
       userBase58: demo.userRef ? demo.userRef.replace(/^sol:/, "") : undefined,
       signer: demo.signer,
     };
+    const portfolio: PortfolioBridgeCtx = {
+      adapter: demo.adapter,
+      knownMarkets: demo.marketRef ? [demo.marketRef] : [],
+    };
     void (async () => {
       try {
-        const out = await dispatchAmmRead(call, bridge);
+        const out = await dispatchRead(call, bridge, portfolio);
         if (cancelled) return;
         if (out === NOT_HANDLED) {
           setState({ data: undefined, error: null });
@@ -395,8 +461,89 @@ export interface ReadContractsResult<
 
 export function useReadContracts<
   T extends readonly unknown[] = readonly ReadContractsItem[],
->(_args?: unknown): ReadContractsResult<T> {
-  return stableEmptyRead as unknown as ReadContractsResult<T>;
+>(args?: unknown): ReadContractsResult<T> {
+  // Multicall hook: walk the contracts list and route each leg through the
+  // same dispatch chain `useReadContract` uses. Returns
+  // `{status, result}` per leg in upstream's expected shape so destructuring
+  // (`data?.[i]?.result`) keeps working.
+  const { connection } = useConnection();
+  const demo = useContext(DemoContextObj);
+  const call = (args ?? {}) as {
+    contracts?: ReadCallShape[];
+    query?: { enabled?: boolean };
+  };
+  const enabled = call.query?.enabled !== false;
+  const contracts = call.contracts ?? [];
+  // Stable-ish dependency key: function names + arg shapes.
+  const contractsKey = JSON.stringify(
+    contracts.map((c) => ({
+      a: c?.address,
+      f: c?.functionName,
+      g: c?.args ?? [],
+    })),
+    (_k, v) => (typeof v === "bigint" ? `${v}n` : v),
+  );
+
+  const [state, setState] = useState<{
+    data: ReadContractsItem[] | undefined;
+    error: Error | null;
+  }>({ data: undefined, error: null });
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!enabled || !demo || contracts.length === 0) {
+      setState({ data: undefined, error: null });
+      return;
+    }
+    const effectiveConnection = demo.adapter?.connection ?? connection;
+    const bridge: AmmBridgeCtx = {
+      adapter: demo.adapter,
+      connection: effectiveConnection as never,
+      userBase58: demo.userRef ? demo.userRef.replace(/^sol:/, "") : undefined,
+      signer: demo.signer,
+    };
+    const portfolio: PortfolioBridgeCtx = {
+      adapter: demo.adapter,
+      knownMarkets: demo.marketRef ? [demo.marketRef] : [],
+    };
+    void (async () => {
+      const results: ReadContractsItem[] = await Promise.all(
+        contracts.map(async (c) => {
+          try {
+            const out = await dispatchRead(c, bridge, portfolio);
+            if (out === NOT_HANDLED) {
+              return { status: "success", result: undefined };
+            }
+            return { status: "success", result: out };
+          } catch (e) {
+            return {
+              status: "failure",
+              result: undefined,
+              error: e as Error,
+            };
+          }
+        }),
+      );
+      if (cancelled) return;
+      setState({ data: results, error: null });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demo, contractsKey, enabled, connection]);
+
+  return {
+    data: state.data as unknown as T | undefined,
+    error: state.error,
+    isLoading: false,
+    isError: !!state.error,
+    isSuccess: state.data !== undefined,
+    isPending: false,
+    isFetching: false,
+    status: state.error ? "error" : "success",
+    refetch: STABLE_REFETCH,
+  } as unknown as ReadContractsResult<T>;
 }
 
 // ─── Write hooks (real failure path) ────────────────────────────────────────
