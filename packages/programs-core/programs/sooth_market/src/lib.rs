@@ -47,6 +47,17 @@ pub use instructions::*;
 // placeholder pattern in `sooth_amm::lib.rs`.
 declare_id!("SoothMkt11111111111111111111111111111111111");
 
+/// Canonical devnet USDC mint. Must match `sooth_amm::USDC_MINT_DEVNET` —
+/// a workspace-shared crate (`sooth-protocol-types`) is the right long-term
+/// home for this constant, but until that crate exists this is duplicated
+/// here intentionally with a sync comment. Used by `initialize_market_vaults`,
+/// `mint_complete_set`, `merge_complete_set`, and `redeem` to pin the
+/// `usdc_mint` account against a forged/malicious mint passed by the caller.
+/// Mainnet uses `EPjFW...`; the SDK swaps the constant per cluster at deploy.
+pub const USDC_MINT_DEVNET: Pubkey = anchor_lang::pubkey!(
+    "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+);
+
 #[program]
 pub mod sooth_market {
     use super::*;

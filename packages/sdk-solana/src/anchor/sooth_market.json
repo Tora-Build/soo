@@ -175,9 +175,16 @@
         {
           "name": "usdc_mint",
           "docs": [
-            "USDC mint reference. Pinned by the SDK to canonical mainnet USDC",
-            "(`EPjFW...`) or the cluster-appropriate devnet faucet equivalent."
-          ]
+            "USDC mint reference. H1 (Codex): pinned on-chain to the canonical",
+            "cluster USDC via the `address = ...` constraint so a malicious caller",
+            "cannot bootstrap a market with their own mint — `mint_complete_set`,",
+            "`merge_complete_set`, and (when implemented) `redeem` all trust",
+            "`vault.mint` as USDC by transitivity through this pin. EVM analogue:",
+            "`OrderEngine.sol:68` declares `baseToken` as `immutable` and rejects",
+            "the zero address at construction (`OrderEngine.sol:180`); on Solana",
+            "we enforce the equivalent at vault-init time."
+          ],
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
         },
         {
           "name": "vault",
@@ -673,6 +680,12 @@
         },
         {
           "name": "vault",
+          "docs": [
+            "Market USDC vault. H1 (Codex): the canonical-USDC pin lives on",
+            "`initialize_market_vaults::usdc_mint` and is transitively enforced",
+            "here via `vault.mint == USDC_MINT_DEVNET`. See the matching comment",
+            "in `mint_complete_set.rs`."
+          ],
           "writable": true
         },
         {
@@ -791,7 +804,12 @@
           "name": "vault",
           "docs": [
             "Market USDC vault. Constraint pin: must match the address stored on",
-            "`Market` at init time."
+            "`Market` at init time. H1 (Codex): the canonical-USDC pin lives on",
+            "`initialize_market_vaults::usdc_mint` (`address = USDC_MINT_DEVNET`),",
+            "and the vault was created at that ix as ATA-of-`vault_authority` with",
+            "`associated_token::mint = usdc_mint`, so `vault.mint` is transitively",
+            "bound to `USDC_MINT_DEVNET` here — the `token::mint = vault.mint`",
+            "constraint on the user ATA below therefore pins the user side too."
           ],
           "writable": true
         },
@@ -906,6 +924,15 @@
         },
         {
           "name": "vault",
+          "docs": [
+            "Market USDC vault. H1 (Codex): when the body lands, add",
+            "`constraint = vault.mint == crate::USDC_MINT_DEVNET` here (the same",
+            "pin used by `mint_complete_set`/`merge_complete_set`) to keep the",
+            "canonical-USDC chain unbroken — `initialize_market_vaults` pins",
+            "`usdc_mint` at vault-creation time, so this is transitive-trust",
+            "today, but the explicit constraint is cheap defense-in-depth and",
+            "keeps the IDL self-documenting once redeem is wired."
+          ],
           "writable": true
         },
         {

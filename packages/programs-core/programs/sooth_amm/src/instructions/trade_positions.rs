@@ -59,7 +59,7 @@ pub struct TradePositions<'info> {
         mut,
         seeds = [b"amm", market.market_id.as_ref()],
         bump = amm_state.bump,
-        constraint = amm_state.market == market.key() @ SoothAmmError::MarketNotLive,
+        constraint = amm_state.market == market.key() @ SoothAmmError::MarketNotOpen,
     )]
     pub amm_state: Box<Account<'info, AmmState>>,
 
@@ -105,7 +105,7 @@ pub struct TradePositions<'info> {
         mut,
         token::mint = usdc_mint,
         token::authority = vault_authority,
-        constraint = market_vault.key() == market.vault @ SoothAmmError::MarketNotLive,
+        constraint = market_vault.key() == market.vault @ SoothAmmError::MarketNotOpen,
     )]
     pub market_vault: Box<Account<'info, TokenAccount>>,
 
@@ -138,8 +138,35 @@ pub fn handler(
     );
     require!(delta_shares != 0, SoothAmmError::ZeroDelta);
 
+    // H4 (Codex): hard-error on sell until the lock-on-sell flow lands.
+    //
+    // The `delta_shares < 0` branch below mutates `q_yes/q_no` and `Position`
+    // but does NOT transfer USDC out — see the long comment block at the
+    // sell branch site for the full prerequisite list (LockEntry PDA,
+    // claim_unlocked ix, PDA-signed market_vault → lock_vault transfer).
+    // Reaching that branch with the current code path would let a holder
+    // burn their position with no offsetting USDC outflow. Refuse it on-
+    // chain; the SDK already throws `NotImplemented` on `buildTrade(sell)`.
+    require!(delta_shares > 0, SoothAmmError::SellNotImplemented);
+
     let market = &ctx.accounts.market;
-    require!(market.is_open(), SoothAmmError::MarketNotLive);
+    require!(market.is_open(), SoothAmmError::MarketNotOpen);
+
+    // C1 (Codex): trading window guard. EVM analogue —
+    // `AMMEngine.tradePositions` (`AMMEngine.sol:245-246`):
+    //   require(ITruthMarket(market).isLive(), MarketNotLive());
+    //   require(block.timestamp < ITruthMarket(market).deadline(), DeadlinePassed());
+    // The Solana port adds the symmetric `start_time <= now` check the EVM
+    // contract enforces structurally via `BeforeStart()` in `TruthMarket.sol:92`.
+    // Without these, a market past its event-resolution deadline is still
+    // tradeable — someone holding underpriced winning shares can dump them
+    // post-event before the adjudicator settles.
+    let now = Clock::get()?.unix_timestamp;
+    require!(
+        now >= market.start_time,
+        SoothAmmError::TradingNotStarted
+    );
+    require!(now < market.deadline, SoothAmmError::TradingClosed);
 
     let amm = &mut ctx.accounts.amm_state;
     require!(!amm.is_dismissed, SoothAmmError::MarketDismissed);
@@ -213,7 +240,8 @@ pub fn handler(
         );
         token::transfer(cpi_ctx, cost_usdc)?;
     }
-    // SELL (cost_wad < 0): STUB — falls through to state mutation only.
+    // SELL (cost_wad < 0): UNREACHABLE — the early-return at the top of this
+    // handler hard-errors with `SellNotImplemented` for any `delta_shares < 0`.
     //
     // Before this branch can come out of stub status, four things are needed
     // that this commit deliberately does NOT introduce (architecture §4.3):
@@ -230,9 +258,9 @@ pub fn handler(
     //      by `vault_authority` using `market.market_id` and
     //      `market.vault_authority_bump`.
     //
-    // Until those land the sell branch produces an on-chain `PositionTraded`
-    // event + state mutation but NO USDC outflow — clearly identifiable as a
-    // stub state and not reachable from the demo's buy-only TDD harness.
+    // The lock_vault + lock_authority PDAs already exist on `sooth_market`
+    // (see `initialize_market_vaults.rs`); what's missing is the `LockEntry`
+    // PDA layout and the matching `claim_unlocked` ix on `sooth_amm`.
 
     // ── 7. State mutation (REAL) ─────────────────────────────────────────
     if outcome == OUTCOME_YES {
@@ -262,7 +290,9 @@ pub fn handler(
     }
 
     // ── 9. Emit (REAL) ───────────────────────────────────────────────────
-    let now = Clock::get()?.unix_timestamp;
+    // `now` is the same `Clock::get()` snapshot used by the C1 trading-window
+    // guard above — re-using avoids a second sysvar load (~100 CU) and keeps
+    // the emitted timestamp consistent with the guard.
     emit!(PositionTraded {
         market: market.key(),
         user: ctx.accounts.user.key(),

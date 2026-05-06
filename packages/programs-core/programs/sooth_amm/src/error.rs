@@ -19,8 +19,8 @@ pub enum SoothAmmError {
     #[msg("Insufficient shares to sell")]
     InsufficientShares,
 
-    #[msg("Market is not live")]
-    MarketNotLive,
+    #[msg("Market is not in the Open lifecycle state")]
+    MarketNotOpen,
 
     #[msg("Market is dismissed")]
     MarketDismissed,
@@ -33,4 +33,13 @@ pub enum SoothAmmError {
 
     #[msg("Caller is not authorized for this action (creator mismatch)")]
     Unauthorized,
+
+    #[msg("Trading window has not started yet (now < start_time)")]
+    TradingNotStarted,
+
+    #[msg("Trading window has closed (now >= deadline)")]
+    TradingClosed,
+
+    #[msg("Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3")]
+    SellNotImplemented,
 }

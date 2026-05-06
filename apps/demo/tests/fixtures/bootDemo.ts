@@ -39,7 +39,7 @@ import {
   VersionedTransaction,
   type TransactionInstruction,
 } from "@solana/web3.js";
-import { start, type ProgramTestContext } from "solana-bankrun";
+import { Clock, start, type ProgramTestContext } from "solana-bankrun";
 
 import {
   WAD,
@@ -291,6 +291,20 @@ export async function bootDemo(
           .instruction(),
       ],
       creator.publicKey,
+    ),
+  );
+
+  // C1 (Codex): warp bankrun's clock past `startTime` so the trade-window
+  // guard in `trade_positions` (`now >= start_time`) passes. See the
+  // matching note in `packages/sdk-solana/tests/fixtures/setup.ts`.
+  const existingClock = await ctx.banksClient.getClock();
+  ctx.setClock(
+    new Clock(
+      existingClock.slot,
+      existingClock.epochStartTimestamp,
+      existingClock.epoch,
+      existingClock.leaderScheduleEpoch,
+      BigInt(startTime + 1),
     ),
   );
 

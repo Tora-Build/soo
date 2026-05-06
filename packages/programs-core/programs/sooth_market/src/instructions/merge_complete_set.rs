@@ -56,9 +56,15 @@ pub struct MergeCompleteSet<'info> {
     )]
     pub no_mint: Box<Account<'info, Mint>>,
 
+    /// Market USDC vault. H1 (Codex): the canonical-USDC pin lives on
+    /// `initialize_market_vaults::usdc_mint` and is transitively enforced
+    /// here via `vault.mint == USDC_MINT_DEVNET`. See the matching comment
+    /// in `mint_complete_set.rs`.
     #[account(
         mut,
         address = market.vault @ SoothMarketError::VaultAuthorityMismatch,
+        constraint = vault.mint == crate::USDC_MINT_DEVNET
+            @ SoothMarketError::VaultAuthorityMismatch,
     )]
     pub vault: Box<Account<'info, TokenAccount>>,
 

@@ -22,7 +22,10 @@ export type SoothErrorKind =
   | "BookMoved"
   | "ProgramError"
   | "NotImplemented"
-  | "AccountNotFound";
+  | "AccountNotFound"
+  | "TradingNotStarted"
+  | "TradingClosed"
+  | "SellNotImplemented";
 
 export interface SoothErrorInit {
   kind: SoothErrorKind;
@@ -39,6 +42,8 @@ export interface SoothErrorInit {
   msg?: string;
   // Adapter-specific stub annotation.
   method?: string;
+  // Solana-specific: the tx signature for explorer lookup on submit failures.
+  signature?: string;
 }
 
 export class SoothError extends Error {
@@ -58,19 +63,24 @@ function formatMessage(
   kind: SoothErrorKind,
   fields: Omit<SoothErrorInit, "kind">,
 ): string {
+  const sigSuffix = fields.signature ? ` sig=${fields.signature}` : "";
   switch (kind) {
     case "NotImplemented":
       return `SoothError: ${kind} (${fields.method ?? "?"})`;
     case "ProgramError":
-      return `SoothError: ${kind} code=${fields.code ?? "?"} msg=${fields.msg ?? ""}`;
+      return `SoothError: ${kind} code=${fields.code ?? "?"} msg=${fields.msg ?? ""}${sigSuffix}`;
     case "SlippageExceeded":
-      return `SoothError: ${kind} expected=${fields.expected} actual=${fields.actual}`;
+      return `SoothError: ${kind} expected=${fields.expected} actual=${fields.actual}${sigSuffix}`;
     case "InsufficientShares":
-      return `SoothError: ${kind} needed=${fields.needed} available=${fields.available}`;
+      return `SoothError: ${kind} needed=${fields.needed} available=${fields.available}${sigSuffix}`;
     case "AccountNotFound":
       return `SoothError: ${kind} ${fields.msg ?? ""}`;
+    case "TradingNotStarted":
+    case "TradingClosed":
+    case "SellNotImplemented":
+      return `SoothError: ${kind} ${fields.msg ?? ""}${sigSuffix}`;
     default:
-      return `SoothError: ${kind}`;
+      return `SoothError: ${kind}${sigSuffix}`;
   }
 }
 

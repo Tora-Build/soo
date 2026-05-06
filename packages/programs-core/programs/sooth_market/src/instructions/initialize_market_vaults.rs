@@ -62,8 +62,15 @@ pub struct InitializeMarketVaults<'info> {
     )]
     pub lock_authority: UncheckedAccount<'info>,
 
-    /// USDC mint reference. Pinned by the SDK to canonical mainnet USDC
-    /// (`EPjFW...`) or the cluster-appropriate devnet faucet equivalent.
+    /// USDC mint reference. H1 (Codex): pinned on-chain to the canonical
+    /// cluster USDC via the `address = ...` constraint so a malicious caller
+    /// cannot bootstrap a market with their own mint — `mint_complete_set`,
+    /// `merge_complete_set`, and (when implemented) `redeem` all trust
+    /// `vault.mint` as USDC by transitivity through this pin. EVM analogue:
+    /// `OrderEngine.sol:68` declares `baseToken` as `immutable` and rejects
+    /// the zero address at construction (`OrderEngine.sol:180`); on Solana
+    /// we enforce the equivalent at vault-init time.
+    #[account(address = crate::USDC_MINT_DEVNET)]
     pub usdc_mint: Box<Account<'info, Mint>>,
 
     /// Market USDC vault — created as the ATA of `vault_authority`.

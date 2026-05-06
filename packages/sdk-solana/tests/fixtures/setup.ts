@@ -45,7 +45,7 @@ import {
   Transaction,
   type VersionedTransaction,
 } from "@solana/web3.js";
-import { start, type ProgramTestContext } from "solana-bankrun";
+import { Clock, start, type ProgramTestContext } from "solana-bankrun";
 
 import { soothAmmIdl, soothMarketIdl } from "../../src/anchor/index.js";
 import {
@@ -303,6 +303,24 @@ export async function bootSmoke(
           .instruction(),
       ],
       creator.publicKey,
+    ),
+  );
+
+  // ─── Advance bankrun's clock past `startTime` ──────────────────────────
+  // C1 (Codex) added a `start_time <= now < deadline` guard to
+  // `trade_positions`. Bankrun boots with `unix_timestamp = 0`; warp the
+  // sysvar clock to a slot inside the trading window so the buy path can
+  // execute. We pick `startTime + 1` as the smallest legal value — keeps
+  // the gap to `deadline` maximal. The other fields on `Clock` are read by
+  // very few programs; preserving their defaults is fine.
+  const existingClock = await ctx.banksClient.getClock();
+  ctx.setClock(
+    new Clock(
+      existingClock.slot,
+      existingClock.epochStartTimestamp,
+      existingClock.epoch,
+      existingClock.leaderScheduleEpoch,
+      BigInt(startTime + 1),
     ),
   );
 

@@ -504,8 +504,8 @@
     },
     {
       "code": 6004,
-      "name": "MarketNotLive",
-      "msg": "Market is not live"
+      "name": "MarketNotOpen",
+      "msg": "Market is not in the Open lifecycle state"
     },
     {
       "code": 6005,
@@ -526,6 +526,21 @@
       "code": 6008,
       "name": "Unauthorized",
       "msg": "Caller is not authorized for this action (creator mismatch)"
+    },
+    {
+      "code": 6009,
+      "name": "TradingNotStarted",
+      "msg": "Trading window has not started yet (now < start_time)"
+    },
+    {
+      "code": 6010,
+      "name": "TradingClosed",
+      "msg": "Trading window has closed (now >= deadline)"
+    },
+    {
+      "code": 6011,
+      "name": "SellNotImplemented",
+      "msg": "Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3"
     }
   ],
   "types": [

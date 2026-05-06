@@ -60,10 +60,17 @@ pub struct MintCompleteSet<'info> {
     pub no_mint: Box<Account<'info, Mint>>,
 
     /// Market USDC vault. Constraint pin: must match the address stored on
-    /// `Market` at init time.
+    /// `Market` at init time. H1 (Codex): the canonical-USDC pin lives on
+    /// `initialize_market_vaults::usdc_mint` (`address = USDC_MINT_DEVNET`),
+    /// and the vault was created at that ix as ATA-of-`vault_authority` with
+    /// `associated_token::mint = usdc_mint`, so `vault.mint` is transitively
+    /// bound to `USDC_MINT_DEVNET` here — the `token::mint = vault.mint`
+    /// constraint on the user ATA below therefore pins the user side too.
     #[account(
         mut,
         address = market.vault @ SoothMarketError::VaultAuthorityMismatch,
+        constraint = vault.mint == crate::USDC_MINT_DEVNET
+            @ SoothMarketError::VaultAuthorityMismatch,
     )]
     pub vault: Box<Account<'info, TokenAccount>>,
 

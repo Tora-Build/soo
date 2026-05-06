@@ -32,6 +32,32 @@ type Status =
   | { kind: "success"; txId: string }
   | { kind: "error"; msg: string };
 
+// M3 (Codex): validation error reasons surfaced via toast + buy-status.
+type DeltaError =
+  | "empty"
+  | "tooLong"
+  | "notNumeric"
+  | "tooManyDecimals"
+  | "nonPositive"
+  | "overflow";
+
+function validationMessage(reason: DeltaError): string {
+  switch (reason) {
+    case "empty":
+      return "Enter a positive share amount.";
+    case "tooLong":
+      return "Share input is too long (max 30 characters).";
+    case "notNumeric":
+      return "Share input must be a positive decimal number.";
+    case "tooManyDecimals":
+      return "Share input has more than 18 decimal digits (WAD precision boundary).";
+    case "nonPositive":
+      return "Share amount must be greater than zero.";
+    case "overflow":
+      return "Share amount exceeds the i128 maximum after WAD scaling.";
+  }
+}
+
 export function BuyForm({ marketRef, onSubmitted }: BuyFormProps) {
   const { adapter, userRef, signer, connected } = useDemo();
   const [outcome, setOutcome] = useState<0 | 1>(1);
@@ -40,35 +66,58 @@ export function BuyForm({ marketRef, onSubmitted }: BuyFormProps) {
   const [slippagePct, setSlippagePct] = useState(20);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
-  const deltaShares = useMemo<bigint | null>(() => {
+  // M3 (Codex): tighten share-input validation before constructing the
+  // bigint. We reject:
+  //   - leading whitespace, empty, or non-numeric inputs (`null` → no quote)
+  //   - inputs longer than 30 characters (the largest plausible WAD value
+  //     is 39 digits; 30 leaves headroom for legit decimals while bounding
+  //     accidental paste-bombs)
+  //   - more than 18 fractional digits (the WAD precision boundary —
+  //     truncation here was silent before and gave the user different
+  //     numbers than they typed)
+  //   - zero, negative, NaN
+  //   - values that would exceed `i128::MAX` after WAD scaling. The on-
+  //     chain code in `initialize_amm_state` (M1) and the LMSR math now
+  //     reject these too, but failing fast in the UI surfaces a clear
+  //     error instead of a generic ProgramError after a round-trip.
+  const I128_MAX = (1n << 127n) - 1n;
+  const MAX_INPUT_LEN = 30;
+  const deltaResult = useMemo<
+    { ok: true; value: bigint } | { ok: false; reason: DeltaError }
+  >(() => {
     const trimmed = shareInput.trim();
-    if (!trimmed) return null;
-    // Accept `1`, `1.5`, `10` etc. Multiply by WAD with up to 18 fractional
-    // digits — anything beyond is truncated.
-    const [whole, frac = ""] = trimmed.split(".");
-    if (!/^[0-9]+$/.test(whole) || (frac && !/^[0-9]+$/.test(frac))) {
-      return null;
+    if (!trimmed) return { ok: false, reason: "empty" };
+    if (trimmed.length > MAX_INPUT_LEN) return { ok: false, reason: "tooLong" };
+    // Single optional decimal point; digits on both sides; reject leading +/-.
+    if (!/^[0-9]+(\.[0-9]+)?$/.test(trimmed)) {
+      return { ok: false, reason: "notNumeric" };
     }
+    const [whole, frac = ""] = trimmed.split(".");
+    if (frac.length > 18) return { ok: false, reason: "tooManyDecimals" };
     const fracPadded = (frac + "0".repeat(18)).slice(0, 18);
-    const combined = BigInt(whole) * WAD + BigInt(fracPadded);
-    if (combined <= 0n) return null;
-    return combined;
+    const combined = BigInt(whole!) * WAD + BigInt(fracPadded);
+    if (combined <= 0n) return { ok: false, reason: "nonPositive" };
+    if (combined > I128_MAX) return { ok: false, reason: "overflow" };
+    return { ok: true, value: combined };
   }, [shareInput]);
+  const deltaShares = deltaResult.ok ? deltaResult.value : null;
 
   const quote = useCallback(async () => {
-    if (deltaShares === null) {
-      setStatus({ kind: "error", msg: "Enter a positive share amount." });
+    if (!deltaResult.ok) {
+      const msg = validationMessage(deltaResult.reason);
+      setStatus({ kind: "error", msg });
+      toast.error(msg);
       return;
     }
     setStatus({ kind: "quoting" });
     try {
-      const q = await adapter.readQuote(marketRef, outcome, deltaShares);
+      const q = await adapter.readQuote(marketRef, outcome, deltaResult.value);
       setStatus({ kind: "ready", quote: q });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setStatus({ kind: "error", msg });
     }
-  }, [adapter, marketRef, outcome, deltaShares]);
+  }, [adapter, marketRef, outcome, deltaResult]);
 
   const submit = useCallback(async () => {
     if (status.kind !== "ready") return;

@@ -120,26 +120,49 @@ LaunchpadEngine.createMarket(question, startTime, deadline, adjudicator, bBase, 
   → BaseToken.transferFrom(creator, this, deposit)
 ```
 
-**Solana** (single transaction, multiple instructions):
+**Solana** — implemented as **four** sequential instructions (lifecycle in
+parens after each step):
 
 ```
-TX:
-  ix1: sooth_launchpad::create_market
-    accounts: [config, market PDA, amm_state PDA, lp_mint, yes_mint, no_mint, vault, creator_usdc_ata, market_usdc_ata, creator, system, token, rent]
-    args: { question_hash, start_time, deadline, adjudicator_program, b_base, initial_prob_wad, adj_config }
-    body:
-      - create + init Market PDA (CPI to system_program::create_account)
-      - create + init AmmState PDA
-      - create LpMint, YesMint, NoMint (CPI to spl-token)
-      - create vault ATA owned by Market PDA
-      - transfer deposit USDC from creator_ata → vault (CPI to token::transfer)
-      - CPI to adjudicator_program::configure_market(adj_config)
+ix1: sooth_market::initialize_market         (Initializing — Market PDA only)
+  args: { market_id, question_hash, start_time, deadline, adjudicator }
+  body:
+    - init Market PDA at [b"market", market_id]; record creator + lifecycle = Initializing.
+
+ix2: sooth_market::initialize_outcome_mints  (Initializing)
+  body:
+    - init yes_mint and no_mint SPL Mints (mint authority = vault_authority PDA).
+
+ix3: sooth_market::initialize_market_vaults  (Initializing → Open)
+  accounts: [market, vault_authority, lock_authority, usdc_mint, vault, lock_vault, …]
+  body:
+    - init `vault` ATA (owner = vault_authority, mint = USDC).
+    - init `lock_vault` ATA (owner = lock_authority, mint = USDC).
+    - flip lifecycle Initializing → Open.
+    - usdc_mint is pinned to USDC_MINT_DEVNET (H1 in security review).
+
+ix4: sooth_amm::initialize_amm_state         (Open — trade-ready)
+  args: { initial_b, trial_end_at }
+  body:
+    - init AmmState PDA at [b"amm", market_id]; q_yes/q_no = 0; b = initial_b.
+    - require initial_b > 0 and initial_b ≤ i128::MAX (M1 in security review).
 ```
 
 Notes:
 
-- All account creations must be in the same TX; client pre-derives PDAs and includes them.
-- **TX size limit**: 1232 bytes. The init TX is dense. May need to split into "preallocate accounts" + "configure" — common Anchor pattern.
+- The split into four instructions is **not** a design preference but a hard
+  requirement of Anchor 0.30.1's `try_accounts` codegen on BPF: with every
+  `Account<'info, T>` boxed, four SPL inits in one ix overflow the SBF
+  4 KB stack frame (~6 KB observed with mints + ATAs together; ~5.4 KB with
+  mints alone; ~4 KB with ATAs alone). Discovered during the SDK adapter
+  smoke-test work — see `programs-core/README.md` "Build commands". When
+  Anchor or SBF stack ceiling changes, these can collapse back down.
+- A market in `Initializing` lifecycle is partially set up but **not**
+  tradeable: `trade_positions` requires `market.is_open()` and the
+  AmmState PDA, neither of which is true until ix3+ix4 complete.
+- All four instructions are typically batched into one transaction by the
+  SDK's `buildCreateMarket` — but split-tx submission is also valid as
+  long as ix4 lands before any `trade_positions` call.
 
 ### 4.2 AMM Trade (buyYes)
 
@@ -161,7 +184,9 @@ ix: sooth_amm::trade_positions
   accounts: [market, amm_state, position PDA (init_if_needed), user_usdc_ata, market_vault, lp_mint, user_lp_ata (init_if_needed), fee_destinations, user, token]
   args: { outcome: u8, delta_shares: i128, max_cost_wad: u128 }
   body:
-    - require market.is_live()
+    - require market.is_open()
+    - require market.start_time ≤ now < market.deadline   (C1 in security review)
+    - require delta_shares > 0                            (H4: sell hard-error)
     - cost_wad = LMSR.cost(amm_state, outcome, delta) // ⚠ CU hotspot
     - fee_wad = fee_router::split(cost_wad, amm_state.is_graduated)
     - require cost_wad + fee_wad ≤ max_cost_wad
@@ -172,6 +197,12 @@ ix: sooth_amm::trade_positions
     - if !is_graduated: CPI mint_to(lp_mint → user_lp_ata, lp_amount)
     - emit!(PositionTraded { ... })
 ```
+
+**Prerequisite**: `initialize_amm_state` (§4.1 ix4) must have run for this
+market before any `trade_positions` call. Until that ix runs, the AmmState
+PDA does not exist and the trade fails at account-load time
+(`AccountNotInitialized`). The market must additionally be in `Open`
+lifecycle (ix3 of §4.1 sets this).
 
 **Compute budget**: target ≤ 200k CU per trade. If LMSR alone eats 150k+, we'll need `ComputeBudgetInstruction::set_compute_unit_limit(400_000)` on every trade — workable but raises priority fee cost.
 

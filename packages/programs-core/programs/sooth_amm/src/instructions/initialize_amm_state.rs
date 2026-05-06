@@ -63,6 +63,16 @@ pub struct InitializeAmmState<'info> {
 
 pub fn handler(ctx: Context<InitializeAmmState>, args: InitializeAmmStateArgs) -> Result<()> {
     require!(args.initial_b > 0, SoothAmmError::InvalidLiquidity);
+    // M1 (Codex): bound `initial_b` to the i128 positive range so the
+    // `as i128` cast below cannot wrap to a negative value. Without this
+    // check, `u128` values above `i128::MAX` reinterpret as negative `b`,
+    // bricking the AMM permanently (LMSR `cost_delta` underflows on every
+    // trade). The `>= i128::MAX as u128` boundary is fine: the value space
+    // beyond it is well past any plausible market liquidity (~1.7e38 WAD).
+    require!(
+        args.initial_b <= i128::MAX as u128,
+        SoothAmmError::InvalidLiquidity
+    );
 
     let amm = &mut ctx.accounts.amm_state;
     amm.market = ctx.accounts.market.key();

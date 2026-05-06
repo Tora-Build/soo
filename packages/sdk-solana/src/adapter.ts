@@ -517,14 +517,35 @@ export class SolanaChainAdapter implements ChainAdapter {
       requireAllSignatures: false,
     });
     const signedBytes = await signer.signTransaction(serialized);
-    const sig = await this.connection.sendRawTransaction(signedBytes, {
-      skipPreflight: false,
-      preflightCommitment: "confirmed",
-    });
-    await this.connection.confirmTransaction(
+    // `sendRawTransaction` already throws on preflight rejection; that path
+    // surfaces as a thrown SendTransactionError with `transactionLogs` —
+    // wrap it so the caller gets a `SoothError` shape regardless of where
+    // the failure originated. We don't have the signature yet at this
+    // point, so the wrapped error carries `signature: undefined`.
+    let sig: string;
+    try {
+      sig = await this.connection.sendRawTransaction(signedBytes, {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      });
+    } catch (e) {
+      throw decodeSubmitError(e, undefined);
+    }
+    const confirmation = await this.connection.confirmTransaction(
       { signature: sig, blockhash, lastValidBlockHeight },
       "confirmed",
     );
+
+    // H5 (Codex): inspect confirmation.value.err. `confirmTransaction`
+    // resolves successfully even for transactions whose execution reverted —
+    // the failure surface is the `value.err` field, not a thrown exception.
+    // Without this branch failed trades returned a "success" SubmitReceipt.
+    if (
+      confirmation.value.err !== null &&
+      confirmation.value.err !== undefined
+    ) {
+      throw decodeSubmitError(confirmation.value.err, sig);
+    }
 
     return {
       txId: encodeSignatureRef(sig),
@@ -640,4 +661,114 @@ function lifecycleName(v: unknown): ResolvedMarket["lifecycle"] {
   // Defensive default — anything we don't understand is "Initializing"
   // (most-conservative interpretation; trades won't be allowed).
   return "Initializing";
+}
+
+// H5 (Codex): map a Solana RPC error (thrown by sendRawTransaction or
+// surfaced via confirmation.value.err) to a SoothError. Anchor returns
+// program errors as `{ InstructionError: [ixIndex, { Custom: code }] }`.
+// We match that exact shape and look up the code against the sooth_amm
+// error table inlined here (the IDL ships these but importing for the
+// lookup would tie the helper to a specific program — keep it cheap and
+// local).
+//
+// Codes mirror `programs/sooth_amm/src/error.rs`. Anchor numbers user
+// errors starting at 6000 in declaration order; reorder the enum and these
+// have to be updated.
+const SOOTH_AMM_ERROR_TABLE: Record<number, { kind: string; msg: string }> = {
+  6000: {
+    kind: "SlippageExceeded",
+    msg: "Slippage: cost exceeded max_cost_wad",
+  },
+  6001: {
+    kind: "ProgramError",
+    msg: "Invalid outcome (must be NO=0 or YES=1)",
+  },
+  6002: { kind: "ProgramError", msg: "delta_shares must be non-zero" },
+  6003: { kind: "InsufficientShares", msg: "Insufficient shares to sell" },
+  6004: {
+    kind: "MarketNotActive",
+    msg: "Market is not in the Open lifecycle state",
+  },
+  6005: { kind: "MarketNotActive", msg: "Market is dismissed" },
+  6006: { kind: "ProgramError", msg: "LMSR math overflow or domain error" },
+  6007: { kind: "ProgramError", msg: "Liquidity parameter b must be > 0" },
+  6008: {
+    kind: "ProgramError",
+    msg: "Caller is not authorized for this action",
+  },
+  6009: {
+    kind: "TradingNotStarted",
+    msg: "Trading window has not started yet",
+  },
+  6010: { kind: "TradingClosed", msg: "Trading window has closed" },
+  6011: {
+    kind: "SellNotImplemented",
+    msg: "Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3",
+  },
+};
+
+function decodeSubmitError(
+  raw: unknown,
+  signature: string | undefined,
+): SoothError {
+  const code = extractCustomCode(raw);
+  if (code !== undefined) {
+    const entry = SOOTH_AMM_ERROR_TABLE[code];
+    if (entry) {
+      return new SoothError({
+        kind: entry.kind as SoothError["kind"],
+        code,
+        msg: entry.msg,
+        signature,
+      });
+    }
+    return new SoothError({
+      kind: "ProgramError",
+      code,
+      msg: `Unknown program error code ${code}`,
+      signature,
+    });
+  }
+
+  // Fall through — surface whatever string representation we have.
+  let msg: string;
+  if (raw instanceof Error) {
+    msg = raw.message;
+  } else if (typeof raw === "string") {
+    msg = raw;
+  } else {
+    try {
+      msg = JSON.stringify(raw);
+    } catch {
+      msg = String(raw);
+    }
+  }
+  return new SoothError({ kind: "ProgramError", msg, signature });
+}
+
+function extractCustomCode(raw: unknown): number | undefined {
+  // Shape A — confirmation.value.err: `{ InstructionError: [n, { Custom: code }] }`
+  if (raw && typeof raw === "object") {
+    const ix = (raw as { InstructionError?: unknown }).InstructionError;
+    if (Array.isArray(ix) && ix.length >= 2) {
+      const inner = ix[1];
+      if (inner && typeof inner === "object") {
+        const custom = (inner as { Custom?: unknown }).Custom;
+        if (typeof custom === "number") return custom;
+      }
+    }
+  }
+  // Shape B — SendTransactionError surfaces the failure as a string with
+  // "custom program error: 0x.." somewhere in `.message`. Parse the hex
+  // tail off whatever string-shaped representation we got.
+  const text =
+    raw instanceof Error ? raw.message : typeof raw === "string" ? raw : "";
+  if (text) {
+    const m = /custom program error:\s*0x([0-9a-f]+)/i.exec(text);
+    if (m && m[1]) {
+      const code = Number.parseInt(m[1], 16);
+      if (Number.isFinite(code)) return code;
+    }
+  }
+  return undefined;
 }

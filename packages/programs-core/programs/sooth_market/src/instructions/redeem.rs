@@ -55,6 +55,13 @@ pub struct Redeem<'info> {
     #[account(mut, address = market.no_mint)]
     pub no_mint: Box<Account<'info, Mint>>,
 
+    /// Market USDC vault. H1 (Codex): when the body lands, add
+    /// `constraint = vault.mint == crate::USDC_MINT_DEVNET` here (the same
+    /// pin used by `mint_complete_set`/`merge_complete_set`) to keep the
+    /// canonical-USDC chain unbroken — `initialize_market_vaults` pins
+    /// `usdc_mint` at vault-creation time, so this is transitive-trust
+    /// today, but the explicit constraint is cheap defense-in-depth and
+    /// keeps the IDL self-documenting once redeem is wired.
     #[account(mut, address = market.vault)]
     pub vault: Box<Account<'info, TokenAccount>>,
 
