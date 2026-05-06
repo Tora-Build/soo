@@ -36,7 +36,11 @@ interface DemoCtx {
   isOverride: boolean;
 }
 
-const DemoContextObj = createContext<DemoCtx | null>(null);
+// Exported (in addition to the `useDemo` hook) so the chain-shim layer can
+// peek at the adapter without imposing the "throw if unmounted" constraint
+// that `useDemo` enforces — `usePublicClient` is called from contexts that
+// pre-date DemoProvider during initial render and must degrade gracefully.
+export const DemoContextObj = createContext<DemoCtx | null>(null);
 
 export interface DemoProviderProps {
   children: ReactNode;

@@ -13,9 +13,16 @@
 // or `any` so upstream call sites compile without modification. The Solana
 // fork doesn't actually decode any of these — they're inputs to a sentinel.
 
-import { useEffect } from "react";
+import { useEffect, useContext, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import type { Address, Chain, Hash, TransactionReceipt } from "./viem-shim";
+import {
+  dispatchAmmRead,
+  dispatchAmmWrite,
+  NOT_HANDLED,
+  type AmmBridgeCtx,
+} from "./amm-bridge";
+import { DemoContextObj } from "../DemoContext";
 
 // ─── Account / chain hooks (real, backed by wallet-adapter) ─────────────────
 
@@ -34,7 +41,14 @@ export interface UseAccountReturn {
 
 export function useAccount(): UseAccountReturn {
   const wallet = useWallet();
-  const base58 = wallet.publicKey?.toBase58();
+  const demo = useContext(DemoContextObj);
+  // In test-injection mode the DemoProvider receives a userRef directly;
+  // wallet-adapter never connects a wallet. Surface the injected user as
+  // the active account so upstream's `if (!isConnected)` gates flip on.
+  const injected = demo?.isOverride ? demo.userRef : null;
+  const base58 = injected
+    ? injected.replace(/^sol:/, "")
+    : wallet.publicKey?.toBase58();
   // Coerce the Solana base58 pubkey into the EVM-shaped `0x${string}` literal
   // so upstream code that pipes the address through wagmi-typed slots
   // continues to type-check. The Solana fork never reads the value as an
@@ -134,18 +148,33 @@ export interface ShimPublicClient {
   [k: string]: any;
 }
 
-function makeShimPublicClient(connection: unknown): ShimPublicClient {
+function makeShimPublicClient(
+  connection: unknown,
+  bridge: AmmBridgeCtx | null,
+): ShimPublicClient {
   // Methods are loosely typed because upstream destructures result fields
-  // freely (event-log shape, multicall tuple shape, etc.). The shim never
-  // produces real values; consumers handle the empty case.
+  // freely (event-log shape, multicall tuple shape, etc.). Most return
+  // sentinels; `readContract` dispatches AMM-shaped reads through the
+  // bridge and falls through to `undefined` for unhandled function names.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getLogs = async <_E = unknown>(_args?: any): Promise<any[]> => [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const readContract = async (args?: any): Promise<any> => {
+    if (!bridge || !args) return undefined;
+    const out = await dispatchAmmRead(args, bridge);
+    return out === NOT_HANDLED ? undefined : out;
+  };
   return {
     solanaConnection: connection,
     chain: { id: 1, name: "solana" },
-    readContract: async () => undefined,
+    readContract,
     readContracts: async () => [],
     multicall: async () => [],
+    // simulateContract: upstream's SimpleTradingPanel calls this to surface
+    // pre-flight reverts. For AMM trades the real adapter's `submit` does
+    // its own preflight; returning a successful empty result here lets
+    // upstream's catch path stay quiet while the bridged write still
+    // surfaces real errors via the toast pipeline.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     simulateContract: async (_args?: any) => ({ result: undefined }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -165,7 +194,27 @@ function makeShimPublicClient(connection: unknown): ShimPublicClient {
 
 export function usePublicClient(_args?: unknown): ShimPublicClient {
   const { connection } = useConnection();
-  return makeShimPublicClient(connection);
+  const demo = useContext(DemoContextObj);
+  // Use the adapter's connection (e.g. BankrunConnection in tests). In
+  // production both routes converge on the same Connection instance via
+  // ProductionDemoProvider — but the test override path replaces it
+  // with a bankrun-backed shim, and balance reads need to flow through
+  // *that* connection (not the wallet-adapter ConnectionProvider's).
+  const effectiveConnection = demo?.adapter?.connection ?? connection;
+  // Build the bridge context lazily — when DemoProvider isn't mounted
+  // (e.g. some early-render paths) bridge is null and reads fall through
+  // to `undefined` like before.
+  const bridge: AmmBridgeCtx | null = demo
+    ? {
+        adapter: demo.adapter,
+        connection: effectiveConnection as never,
+        userBase58: demo.userRef
+          ? demo.userRef.replace(/^sol:/, "")
+          : undefined,
+        signer: demo.signer,
+      }
+    : null;
+  return makeShimPublicClient(effectiveConnection, bridge);
 }
 
 export function useWalletClient(_args?: unknown) {
@@ -252,9 +301,76 @@ const stableEmptyRead = Object.freeze({
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useReadContract<T = any>(
-  _args?: unknown,
+  args?: unknown,
 ): ReadContractResult<T> {
-  return stableEmptyRead as unknown as ReadContractResult<T>;
+  // Hook-shape consumer (vs. publicClient.readContract). When the bridge
+  // can serve the call (balanceOf / allowance / decimals in particular)
+  // we drive a useState + useEffect to fetch async; otherwise return
+  // the existing stable-empty sentinel.
+  const { connection } = useConnection();
+  const demo = useContext(DemoContextObj);
+  const call = (args ?? {}) as {
+    functionName?: string;
+    args?: readonly unknown[];
+    address?: unknown;
+    query?: { enabled?: boolean };
+  };
+  const enabled = call.query?.enabled !== false;
+  const fnName = call.functionName;
+  const argsKey = JSON.stringify(call.args ?? [], (_k, v) =>
+    typeof v === "bigint" ? `${v}n` : v,
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [state, setState] = useState<{ data: any; error: Error | null }>({
+    data: undefined,
+    error: null,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!enabled || !demo || !fnName) {
+      setState({ data: undefined, error: null });
+      return;
+    }
+    const effectiveConnection = demo.adapter?.connection ?? connection;
+    const bridge: AmmBridgeCtx = {
+      adapter: demo.adapter,
+      connection: effectiveConnection as never,
+      userBase58: demo.userRef ? demo.userRef.replace(/^sol:/, "") : undefined,
+      signer: demo.signer,
+    };
+    void (async () => {
+      try {
+        const out = await dispatchAmmRead(call, bridge);
+        if (cancelled) return;
+        if (out === NOT_HANDLED) {
+          setState({ data: undefined, error: null });
+        } else {
+          setState({ data: out, error: null });
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setState({ data: undefined, error: e as Error });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demo, fnName, argsKey, enabled, connection]);
+
+  return {
+    data: state.data,
+    error: state.error,
+    isLoading: false,
+    isError: !!state.error,
+    isSuccess: state.data !== undefined,
+    isPending: false,
+    isFetching: false,
+    status: state.error ? "error" : "success",
+    refetch: STABLE_REFETCH,
+  } as unknown as ReadContractResult<T>;
 }
 
 export interface ReadContractsItem<T = unknown> {
@@ -307,29 +423,91 @@ interface WriteCallbacks {
 }
 
 export function useWriteContract(_opts?: unknown) {
+  const { connection } = useConnection();
+  const demo = useContext(DemoContextObj);
+  const [data, setData] = useState<Hash | undefined>(undefined);
+  const [error, setError] = useState<Error | null>(null);
+  const [isPending, setIsPending] = useState(false);
+
+  const buildBridge = (): AmmBridgeCtx | null => {
+    if (!demo) return null;
+    const effectiveConnection = demo.adapter?.connection ?? connection;
+    return {
+      adapter: demo.adapter,
+      connection: effectiveConnection as never,
+      userBase58: demo.userRef ? demo.userRef.replace(/^sol:/, "") : undefined,
+      signer: demo.signer,
+    };
+  };
+
+  const run = async (args?: WriteArgs): Promise<Hash> => {
+    const bridge = buildBridge();
+    if (bridge) {
+      const out = await dispatchAmmWrite(args ?? {}, bridge);
+      if (out !== NOT_HANDLED) {
+        return out as Hash;
+      }
+    }
+    throw new SolanaForkUnsupported(args?.functionName ?? "writeContract");
+  };
+
   return {
     writeContract: (args?: WriteArgs, opts?: WriteCallbacks): void => {
-      const err = new SolanaForkUnsupported(
-        args?.functionName ?? "writeContract",
-      );
-      // Surface the error through the callback shape upstream uses, so
-      // toast.error() calls inside onError fire as expected.
-      opts?.onError?.(err);
-      opts?.onSettled?.(undefined, err);
+      setIsPending(true);
+      setError(null);
+      void run(args)
+        .then((hash) => {
+          setData(hash);
+          setIsPending(false);
+          opts?.onSuccess?.(hash);
+          opts?.onSettled?.(hash, null);
+        })
+        .catch((err: Error) => {
+          setError(err);
+          setIsPending(false);
+          opts?.onError?.(err);
+          opts?.onSettled?.(undefined, err);
+        });
     },
     writeContractAsync: async (
       args?: WriteArgs,
-      _opts?: WriteCallbacks,
+      opts?: WriteCallbacks,
     ): Promise<Hash> => {
-      throw new SolanaForkUnsupported(args?.functionName ?? "writeContract");
+      setIsPending(true);
+      setError(null);
+      try {
+        const hash = await run(args);
+        setData(hash);
+        setIsPending(false);
+        opts?.onSuccess?.(hash);
+        opts?.onSettled?.(hash, null);
+        return hash;
+      } catch (err) {
+        const e = err as Error;
+        setError(e);
+        setIsPending(false);
+        opts?.onError?.(e);
+        opts?.onSettled?.(undefined, e);
+        throw e;
+      }
     },
-    data: undefined as Hash | undefined,
-    error: null as Error | null,
-    isPending: false,
-    isError: false,
-    isSuccess: false,
-    reset: () => {},
-    status: "idle" as const,
+    data,
+    error,
+    isPending,
+    isError: !!error,
+    isSuccess: !!data && !error,
+    reset: () => {
+      setData(undefined);
+      setError(null);
+      setIsPending(false);
+    },
+    status: (isPending
+      ? "pending"
+      : error
+        ? "error"
+        : data
+          ? "success"
+          : "idle") as "idle" | "pending" | "error" | "success",
   };
 }
 
@@ -378,17 +556,35 @@ export interface WaitForTxReceiptResult {
 }
 
 export function useWaitForTransactionReceipt(
-  _args?: UseWaitForTxReceiptArgs,
+  args?: UseWaitForTxReceiptArgs,
 ): WaitForTxReceiptResult {
+  // The Solana adapter's `submit` awaits confirmation before resolving.
+  // By the time upstream's `useWriteContract.onSuccess` callback hands the
+  // hash to this hook, the transaction has already been confirmed. Mirror
+  // EVM semantics by reporting `isSuccess` immediately when a hash is
+  // present.
+  const hasHash = !!args?.hash;
+  if (!hasHash) {
+    return {
+      data: undefined,
+      error: null,
+      isLoading: false,
+      isError: false,
+      isSuccess: false,
+      isPending: false,
+      isFetching: false,
+      status: "pending",
+    };
+  }
   return {
-    data: undefined,
+    data: { transactionHash: args!.hash as Hash, logs: [] },
     error: null,
     isLoading: false,
     isError: false,
-    isSuccess: false,
+    isSuccess: true,
     isPending: false,
     isFetching: false,
-    status: "pending",
+    status: "success",
   };
 }
 
