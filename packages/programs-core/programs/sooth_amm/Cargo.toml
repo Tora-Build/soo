@@ -34,6 +34,10 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 [dependencies]
 anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
 anchor-spl = { version = "0.30.1", features = ["token"] }
+# `sooth_market` is the source of truth for the `Market` PDA (owner program +
+# layout + seeds). The `cpi` feature pulls only the no-entrypoint surface so
+# we don't double-register the program entrypoint in this crate.
+sooth_market = { path = "../sooth_market", features = ["cpi"] }
 
 [dev-dependencies]
 # Host-side math unit tests — no SBF, no anchor framework. The tests in

@@ -33,6 +33,16 @@ pub use instructions::*;
 // base58 below decodes to a valid (non-curve) pubkey usable as a placeholder.
 declare_id!("SoothAMM11111111111111111111111111111111111");
 
+/// Canonical devnet USDC mint, used to pin the `usdc_mint` account on every
+/// instruction that touches the market vault. Mainnet uses `EPjFW...`; the
+/// SDK swaps the constant per cluster at deploy time.
+///
+/// TODO: replace with a workspace-shared constant once a `sooth-protocol-types`
+/// crate exists. Both `sooth_amm` and `sooth_market` will pin the same value.
+pub const USDC_MINT_DEVNET: Pubkey = anchor_lang::pubkey!(
+    "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+);
+
 #[program]
 pub mod sooth_amm {
     use super::*;
