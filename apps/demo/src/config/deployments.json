@@ -1,0 +1,59 @@
+{
+  "version": "0.2.1",
+  "networks": {
+    "baseSepolia": {
+      "chainId": 84532,
+      "nodeId": "8d69658b",
+      "coreVersion": "0.2.1",
+      "contracts": {
+        "LaunchpadEngine": "0x8B44C61692461496043257f1605E8Af73Dcd952b",
+        "SoothBook": "0x20c0a274aB8D90452859809B3804Ef2cFA595132",
+        "AMMEngine": "0x1Bab97dBCE105E8715A29B33cd18F0d8B9871383",
+        "OrderEngine": "0x14941AA509e484e14A7A7C1cb97fcfcfC96C02A2",
+        "TruthMarket": "0x6c4f2460e0e6DFb58C6a1a044DC6C1Ccd274C850",
+        "FeeRouter": "0x7007c321B82F96C16e5Ca114019Fb669633e6219",
+        "AdjudicatorRegistry": "0x122E97eFeCCC921713D24f5a81351A9457E1c266",
+        "MockUSDC": "0xaf24cBb3E8A2c991412eD76acF2c7719b987Df21",
+        "baseTokenDecimals": 6
+      },
+      "markets": [],
+      "startBlock": 40933166
+    },
+    "megaethTestnet": {
+      "chainId": 6343,
+      "nodeId": "3b02bcfd",
+      "coreVersion": "0.2.1",
+      "contracts": {
+        "LaunchpadEngine": "0x8B44C61692461496043257f1605E8Af73Dcd952b",
+        "SoothBook": "0x20c0a274aB8D90452859809B3804Ef2cFA595132",
+        "AMMEngine": "0x1Bab97dBCE105E8715A29B33cd18F0d8B9871383",
+        "OrderEngine": "0x14941AA509e484e14A7A7C1cb97fcfcfC96C02A2",
+        "TruthMarket": "0x6c4f2460e0e6DFb58C6a1a044DC6C1Ccd274C850",
+        "FeeRouter": "0x7007c321B82F96C16e5Ca114019Fb669633e6219",
+        "AdjudicatorRegistry": "0x122E97eFeCCC921713D24f5a81351A9457E1c266",
+        "MockUSDC": "0x881C78A52a813b9b711514E9f0518D2faCB01F84",
+        "baseTokenDecimals": 6
+      },
+      "markets": [],
+      "startBlock": 17669139
+    },
+    "ethSepolia": {
+      "chainId": 11155111,
+      "nodeId": "0d896a4f",
+      "coreVersion": "0.2.1",
+      "contracts": {
+        "LaunchpadEngine": "0x8B44C61692461496043257f1605E8Af73Dcd952b",
+        "SoothBook": "0x20c0a274aB8D90452859809B3804Ef2cFA595132",
+        "AMMEngine": "0x1Bab97dBCE105E8715A29B33cd18F0d8B9871383",
+        "OrderEngine": "0x14941AA509e484e14A7A7C1cb97fcfcfC96C02A2",
+        "TruthMarket": "0x6c4f2460e0e6DFb58C6a1a044DC6C1Ccd274C850",
+        "FeeRouter": "0x7007c321B82F96C16e5Ca114019Fb669633e6219",
+        "AdjudicatorRegistry": "0x122E97eFeCCC921713D24f5a81351A9457E1c266",
+        "MockUSDC": "0x58F35BE6A5e3D2be4C3575853043322B02FEeD84",
+        "baseTokenDecimals": 6
+      },
+      "markets": [],
+      "startBlock": 10749016
+    }
+  }
+}

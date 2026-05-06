@@ -1,0 +1,435 @@
+// chain-shim/wagmi-shim.ts — stand-in implementations of the `wagmi` hook
+// surface upstream consumes. Each hook accepts the same input shape upstream
+// uses and returns the same output shape, but the chain-integration body is
+// either:
+//
+//   1. Routed through `@solana/wallet-adapter-react` (account / chain ID),
+//   2. Returns a stable "not available in Solana fork" sentinel (every
+//      `useReadContract` / `useReadContracts` / `useWatchContractEvent`),
+//   3. Throws at write time (`useWriteContract.writeContract*`) — the
+//      upstream form/error UX surfaces the failure verbatim.
+//
+// Type permissiveness: input args are typed as wide `Record<string, unknown>`
+// or `any` so upstream call sites compile without modification. The Solana
+// fork doesn't actually decode any of these — they're inputs to a sentinel.
+
+import { useEffect } from "react";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import type { Address, Chain, Hash, TransactionReceipt } from "./viem-shim";
+
+// ─── Account / chain hooks (real, backed by wallet-adapter) ─────────────────
+
+export interface UseAccountReturn {
+  address: Address | undefined;
+  addresses: readonly Address[] | undefined;
+  chain: Chain | undefined;
+  chainId: number | undefined;
+  connector: unknown;
+  isConnecting: boolean;
+  isReconnecting: boolean;
+  isConnected: boolean;
+  isDisconnected: boolean;
+  status: "connected" | "reconnecting" | "connecting" | "disconnected";
+}
+
+export function useAccount(): UseAccountReturn {
+  const wallet = useWallet();
+  const base58 = wallet.publicKey?.toBase58();
+  // Coerce the Solana base58 pubkey into the EVM-shaped `0x${string}` literal
+  // so upstream code that pipes the address through wagmi-typed slots
+  // continues to type-check. The Solana fork never reads the value as an
+  // EVM address — toasts and key props treat it as an opaque string.
+  const address = base58 ? (`0x${base58}` as Address) : undefined;
+  const isConnected = !!address;
+  return {
+    address,
+    addresses: address ? [address] : undefined,
+    chain: undefined,
+    chainId: isConnected ? 1 : undefined,
+    connector: undefined,
+    isConnecting: !!wallet.connecting,
+    isReconnecting: false,
+    isConnected,
+    isDisconnected: !isConnected,
+    status: isConnected
+      ? "connected"
+      : wallet.connecting
+        ? "connecting"
+        : "disconnected",
+  };
+}
+
+export function useChainId(): number {
+  return 1;
+}
+
+export function useDisconnect() {
+  const wallet = useWallet();
+  return {
+    disconnect: () => {
+      void wallet.disconnect?.();
+    },
+    disconnectAsync: async () => {
+      await wallet.disconnect?.();
+    },
+    isPending: false,
+    error: null,
+  };
+}
+
+export function useConnect() {
+  return {
+    connect: () => {},
+    connectAsync: async () => undefined,
+    connectors: [] as unknown[],
+    isPending: false,
+    error: null,
+  };
+}
+
+export function useSwitchChain() {
+  return {
+    switchChain: (_args?: { chainId?: number }) => {},
+    switchChainAsync: async (_args?: { chainId?: number }) => undefined,
+    chains: [] as Chain[],
+    isPending: false,
+    error: null,
+  };
+}
+
+// ─── Public client (Solana Connection wrapped in EVM-shaped methods) ───────
+//
+// Upstream code often calls `publicClient.readContract(...)`,
+// `publicClient.waitForTransactionReceipt(...)`, `publicClient.getLogs(...)`,
+// `publicClient.multicall(...)`, etc. The Solana fork has no equivalent of
+// any of these by ABI dispatch; the methods exist on the shim's public
+// client purely to satisfy upstream's call sites and return sentinel
+// values that upstream's catch blocks handle.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface ShimPublicClient {
+  readonly solanaConnection: unknown;
+  chain?: { id: number; name: string };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readContract: (args?: any) => Promise<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readContracts: (args?: any) => Promise<any[]>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  multicall: (args?: any) => Promise<any[]>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  simulateContract: (args?: any) => Promise<{ result: any }>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  waitForTransactionReceipt: (args?: any) => Promise<TransactionReceipt>;
+  getBlockNumber: () => Promise<bigint>;
+  // Generic to satisfy upstream's `typeof publicClient.getLogs<typeof X>`.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getLogs: <_E = unknown>(args?: any) => Promise<any[]>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getBalance: (args?: any) => Promise<bigint>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  estimateContractGas: (args?: any) => Promise<bigint>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  request: (args?: any) => Promise<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [k: string]: any;
+}
+
+function makeShimPublicClient(connection: unknown): ShimPublicClient {
+  // Methods are loosely typed because upstream destructures result fields
+  // freely (event-log shape, multicall tuple shape, etc.). The shim never
+  // produces real values; consumers handle the empty case.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getLogs = async <_E = unknown>(_args?: any): Promise<any[]> => [];
+  return {
+    solanaConnection: connection,
+    chain: { id: 1, name: "solana" },
+    readContract: async () => undefined,
+    readContracts: async () => [],
+    multicall: async () => [],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    simulateContract: async (_args?: any) => ({ result: undefined }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    waitForTransactionReceipt: async (
+      _args?: unknown,
+    ): Promise<TransactionReceipt> => ({
+      transactionHash: "0x0" as Hash,
+      logs: [],
+    }),
+    getBlockNumber: async () => 0n,
+    getLogs,
+    getBalance: async () => 0n,
+    estimateContractGas: async () => 0n,
+    request: async () => undefined,
+  };
+}
+
+export function usePublicClient(_args?: unknown): ShimPublicClient {
+  const { connection } = useConnection();
+  return makeShimPublicClient(connection);
+}
+
+export function useWalletClient(_args?: unknown) {
+  // No EVM wallet client — return undefined data so upstream form code
+  // gates on `if (!walletClient)`.
+  return {
+    data: undefined,
+    error: null,
+    isLoading: false,
+    isError: false,
+    isSuccess: false,
+  };
+}
+
+export function useBalance(_args?: unknown) {
+  return {
+    data: undefined as
+      | { value: bigint; decimals: number; symbol: string; formatted: string }
+      | undefined,
+    error: null,
+    isLoading: false,
+    isError: false,
+    isSuccess: false,
+    refetch: STABLE_REFETCH,
+  };
+}
+
+export function useBlockNumber(_opts?: {
+  watch?: boolean;
+  cacheTime?: number;
+  query?: { enabled?: boolean };
+}) {
+  return {
+    data: undefined as bigint | undefined,
+    error: null,
+    isLoading: false,
+  };
+}
+
+export interface ShimWagmiConfig {
+  chains: readonly Chain[];
+  connectors: readonly unknown[];
+}
+
+export function useConfig(): ShimWagmiConfig {
+  // Upstream code accesses `useConfig().chains.find(...)` on a wagmi config.
+  // We return an inert config-like object — chains is empty and `find()`
+  // returns undefined, so callers that branch on the chain not being
+  // present already cover this path.
+  return {
+    chains: [] as readonly Chain[],
+    connectors: [] as readonly unknown[],
+  };
+}
+
+// ─── Read hooks (sentinel — Solana fork has no EVM ABI dispatcher) ──────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface ReadContractResult<T = any> {
+  data: T | undefined;
+  error: Error | null;
+  isLoading: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+  isPending: boolean;
+  isFetching: boolean;
+  status: "pending" | "error" | "success";
+  refetch: () => Promise<{ data: T | undefined; error: Error | null }>;
+}
+
+const STABLE_REFETCH = async () => ({ data: undefined, error: null });
+
+const stableEmptyRead = Object.freeze({
+  data: undefined,
+  error: null,
+  isLoading: false,
+  isError: false,
+  isSuccess: false,
+  isPending: false,
+  isFetching: false,
+  status: "success" as const,
+  refetch: STABLE_REFETCH,
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function useReadContract<T = any>(
+  _args?: unknown,
+): ReadContractResult<T> {
+  return stableEmptyRead as unknown as ReadContractResult<T>;
+}
+
+export interface ReadContractsItem<T = unknown> {
+  status: "success" | "failure";
+  result: T | undefined;
+  error?: Error;
+}
+
+export interface ReadContractsResult<
+  T extends readonly unknown[] = readonly unknown[],
+> {
+  data: T | undefined;
+  error: Error | null;
+  isLoading: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+  isPending: boolean;
+  isFetching: boolean;
+  status: "pending" | "error" | "success";
+  refetch: () => Promise<{ data: T | undefined; error: Error | null }>;
+}
+
+export function useReadContracts<
+  T extends readonly unknown[] = readonly ReadContractsItem[],
+>(_args?: unknown): ReadContractsResult<T> {
+  return stableEmptyRead as unknown as ReadContractsResult<T>;
+}
+
+// ─── Write hooks (real failure path) ────────────────────────────────────────
+
+export class SolanaForkUnsupported extends Error {
+  constructor(operation: string) {
+    super(
+      `[sooth-solana] EVM contract write '${operation}' is not available in the Solana fork. ` +
+        "The chain-shim layer surfaces this gap intentionally; wire the call to @sooth/sdk-solana to enable.",
+    );
+    this.name = "SolanaForkUnsupported";
+  }
+}
+
+interface WriteArgs {
+  functionName?: string;
+  [k: string]: unknown;
+}
+
+interface WriteCallbacks {
+  onSuccess?: (data: Hash) => void;
+  onError?: (error: Error) => void;
+  onSettled?: (data: Hash | undefined, error: Error | null) => void;
+}
+
+export function useWriteContract(_opts?: unknown) {
+  return {
+    writeContract: (args?: WriteArgs, opts?: WriteCallbacks): void => {
+      const err = new SolanaForkUnsupported(
+        args?.functionName ?? "writeContract",
+      );
+      // Surface the error through the callback shape upstream uses, so
+      // toast.error() calls inside onError fire as expected.
+      opts?.onError?.(err);
+      opts?.onSettled?.(undefined, err);
+    },
+    writeContractAsync: async (
+      args?: WriteArgs,
+      _opts?: WriteCallbacks,
+    ): Promise<Hash> => {
+      throw new SolanaForkUnsupported(args?.functionName ?? "writeContract");
+    },
+    data: undefined as Hash | undefined,
+    error: null as Error | null,
+    isPending: false,
+    isError: false,
+    isSuccess: false,
+    reset: () => {},
+    status: "idle" as const,
+  };
+}
+
+export function useSendTransaction(_opts?: unknown) {
+  return {
+    sendTransaction: (_args?: unknown, _opts2?: unknown): void => {
+      throw new SolanaForkUnsupported("sendTransaction");
+    },
+    sendTransactionAsync: async (
+      _args?: unknown,
+      _opts2?: unknown,
+    ): Promise<Hash> => {
+      throw new SolanaForkUnsupported("sendTransaction");
+    },
+    data: undefined as Hash | undefined,
+    error: null as Error | null,
+    isPending: false,
+    isError: false,
+    isSuccess: false,
+    reset: () => {},
+    status: "idle" as const,
+  };
+}
+
+// ─── Tx receipt watcher (sentinel) ──────────────────────────────────────────
+
+export interface UseWaitForTxReceiptArgs {
+  hash?: Hash | undefined;
+  chainId?: number;
+  query?: { enabled?: boolean };
+  confirmations?: number;
+  timeout?: number;
+  pollingInterval?: number;
+  [k: string]: unknown;
+}
+
+export interface WaitForTxReceiptResult {
+  data: TransactionReceipt | undefined;
+  error: Error | null;
+  isLoading: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+  isPending: boolean;
+  isFetching: boolean;
+  status: "pending" | "error" | "success";
+}
+
+export function useWaitForTransactionReceipt(
+  _args?: UseWaitForTxReceiptArgs,
+): WaitForTxReceiptResult {
+  return {
+    data: undefined,
+    error: null,
+    isLoading: false,
+    isError: false,
+    isSuccess: false,
+    isPending: false,
+    isFetching: false,
+    status: "pending",
+  };
+}
+
+// ─── Watch / subscribe (no-op) ──────────────────────────────────────────────
+
+export interface UseWatchContractEventArgs {
+  address?: Address;
+  abi?: unknown;
+  eventName?: string;
+  args?: unknown;
+  onLogs?: (logs: unknown[]) => void;
+  onError?: (error: Error) => void;
+  enabled?: boolean;
+  chainId?: number;
+  poll?: boolean;
+  pollingInterval?: number;
+  syncConnectedChain?: boolean;
+  [k: string]: unknown;
+}
+
+export function useWatchContractEvent(args?: UseWatchContractEventArgs): void {
+  useEffect(() => {
+    void args;
+  }, [args]);
+}
+
+// ─── Provider / config helpers (no-op) ──────────────────────────────────────
+
+import type { ReactNode } from "react";
+
+export function WagmiProvider({ children }: { children: ReactNode }) {
+  // The Solana fork mounts `<ConnectionProvider>` + `<WalletProvider>` in
+  // `main.tsx`. WagmiProvider is a no-op here; upstream code never imports
+  // this directly into pages — only `main.tsx` does.
+  return children as unknown as ReturnType<() => ReactNode>;
+}
+
+export function createConfig(_args: unknown): unknown {
+  return {};
+}
+
+export function createConnector<T>(creator: (config: unknown) => T): T {
+  return creator({});
+}

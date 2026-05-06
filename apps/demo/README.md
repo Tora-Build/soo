@@ -1,38 +1,45 @@
-# @sooth/demo — Solana-only TDD harness
+# @sooth/demo — Faithful Solana fork of `sooth-alpha/apps/demo`
 
-A minimal React demo that exercises `@sooth/sdk-solana`'s public surface end-to-end. Forked in concept from `sooth-alpha/apps/demo`, but rebuilt lean: the upstream's chain-agnostic abstractions (Reown AppKit, wagmi, viem, registry-based dispatch) didn't survive the strip pass cleanly, so the Solana fork is built from scratch around the adapter.
+This is a **faithful** fork of `sooth-alpha/apps/demo`, not a clean reimplementation. Upstream's React tree (pages, components, hooks, stores, validation, toast UX, i18n, error boundaries) is preserved as-is; only the chain integration layer is swapped via `src/lib/chain-shim/`.
 
-## What works
+The TDD value of this fork comes from **running upstream's actual UX flows against `@sooth/sdk-solana`**. A lean rebuild would only validate what we already know works — it wouldn't surface the gaps real-world consumer code triggers.
 
-| Route          | Status                                                    |
-| -------------- | --------------------------------------------------------- |
-| `/`            | Real — minimal market list (single configured market)     |
-| `/m/:marketId` | Real — buy YES/NO shares end-to-end                       |
-| `/portfolio`   | Stub — `readPortfolio` is `NotImplemented` in the adapter |
-| `/orderbook`   | Stub — `buildOrderbook*` are `NotImplemented`             |
-| `/launchpad`   | Stub — `buildCreateMarket` is `NotImplemented`            |
-| anything else  | redirects to `/`                                          |
+## How the chain-shim works
 
-The buy flow:
+`src/lib/chain-shim/` is the ONE place EVM-flavored hook signatures map to Solana primitives. Re-syncing from upstream is "copy upstream src/ in, re-run import substitutions" — see [How to re-sync](#how-to-re-sync-from-upstream).
 
-1. Connect a Solana wallet (Phantom or Solflare) via the wallet-adapter UI.
-2. Land on `/m/<marketPda>`. The page shows pre-trade state: `qYes`, `qNo`, your position.
-3. Pick YES or NO, type a share count, set slippage. Click **Get quote**.
-4. Click **Submit trade**. The wallet-adapter signs; the adapter submits + confirms.
-5. The position display refetches and reflects the new shares.
+| Shim file               | Surface                                                                                                                                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `viem-shim.ts`          | `Address`/`Hash`/`Hex` types, `formatUnits`, `parseUnits`, `keccak256`, `encodePacked`, `parseAbi*`, `defineChain`, `http`, `fallback`                                                                         |
+| `wagmi-shim.ts`         | `useAccount`, `useChainId`, `useDisconnect`, `useConnect`, `useReadContract*`, `useWriteContract`, `useWaitForTransactionReceipt`, `useWatchContractEvent`, `usePublicClient`, `useWalletClient`, `useBalance` |
+| `appkit-shim.ts`        | `useAppKit`, `useAppKitAccount`, `WagmiAdapter`, `createAppKit`                                                                                                                                                |
+| `wagmi-actions-shim.ts` | `waitForTransactionReceipt`, `getAccount`, `connect`, `reconnect`, `readContract`, `writeContract`                                                                                                             |
+| `sooth-sdk-shim.ts`     | `WAD`, `MAX_UINT256`, `OutputLine`, `CommandResult`, EVM ABI placeholders                                                                                                                                      |
 
-## What is intentionally NOT here
+Hooks bound to wallet-adapter (`useAccount`, `useDisconnect`, `useAppKit`, `usePublicClient`) return real values backed by `@solana/wallet-adapter-react`. Hooks that read EVM contracts via ABI dispatch (`useReadContract`/`useReadContracts`/`useWatchContractEvent`/`useWriteContract`) return stable sentinel "no data / unsupported" values — the surrounding component renders, the empty state surfaces.
 
-- No EVM wallet/chain detection (no Reown AppKit, wagmi, viem, RainbowKit).
-- No registry-based chain dispatch.
-- No deployment-sync scripts (`scripts/sync-deployments.js`). Hardcoded localnet config in `src/lib/config.ts`.
-- No i18n.
-- No telegram embed.
-- No `@sooth/healthcheck`.
+## What's wired vs what throws NotImplemented
+
+| Route          | Status                                                                                                                                                                        |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/markets`     | Renders. Empty market list (Solana-side market discovery isn't wired through the shim).                                                                                       |
+| `/amm`         | Renders. AMM-state reads return empty; submitting a trade triggers `SolanaForkUnsupported` from the shim. AMM end-to-end requires wiring through `useDemo()` directly — TODO. |
+| `/orderbook`   | Renders. `buildOrderbook*` is `NotImplemented` in `SolanaChainAdapter`.                                                                                                       |
+| `/launchpad`   | Renders. `buildCreateMarket` is `NotImplemented`.                                                                                                                             |
+| `/portfolio`   | Renders. `readPortfolio` is `NotImplemented`.                                                                                                                                 |
+| `/operator`    | Renders. Adjudicator console is HyperEVM-precompile-locked; falls through to "no data" state.                                                                                 |
+| `/liquidity`   | Renders. LP holders / forecasts depend on EVM event indexing.                                                                                                                 |
+| `/lp-forecast` | Renders. Pure-function forecast helpers compile; live data points come from upstream EVM hooks → empty.                                                                       |
+| `/learn`       | Renders fully (static content).                                                                                                                                               |
+| `/faucet`      | Renders. Mint USDC is EVM-only; falls through to "feature unavailable" via the shim.                                                                                          |
+| `/geek`        | Renders. The terminal accepts commands; every command returns "Not available in Solana fork" (see `src/lib/sdk/index.ts`).                                                    |
+| `/__check`     | Replaced — EVM contract health-check is chain-locked.                                                                                                                         |
+
+The faithful fork accepts that most pages render but show empty/error states. That's the **honest gap surface** the brief calls out.
 
 ## Quick start (one-command localnet)
 
-The dapp needs three things to actually trade: a running validator, both Sooth programs deployed onto it, and a market initialized on top. `pnpm dev:localnet` does all three.
+The dapp needs a running validator with both Sooth programs deployed and a market initialized. `pnpm dev:localnet` does all three.
 
 ```sh
 # Prereqs (one time):
@@ -58,20 +65,13 @@ What it does, in order:
 7. Writes `apps/demo/.env.local` with the seeded `VITE_DEMO_MARKET_REF` etc.
 8. Starts vite on `:5175` (or `VITE_PORT` if set).
 
-Stop the dev server with Ctrl-C — the script kills the validator it started. (If you previously had a different validator running on `:8899`, the script refuses to start; stop the other one first.)
+Stop the dev server with Ctrl-C — the script kills the validator it started.
 
 ### Connecting a wallet against localnet
 
-The seeded user keypair is written to `apps/demo/.localnet/user-keypair.json`. To trade, import that keypair into your browser wallet:
-
-- **Phantom**: Settings → Add / Connect Wallet → Import Private Key. Paste the contents of `user-keypair.json` (it's a JSON array of bytes; Phantom also accepts base58, in which case use `solana-keygen pubkey --skip-seed-phrase-validation` to convert).
-- **Solflare**: similar — Add Wallet → Import → Private Key.
-
-Set the wallet's network to **Custom RPC** = `http://127.0.0.1:8899` so it talks to your local validator instead of mainnet-beta.
+The seeded user keypair is written to `apps/demo/.localnet/user-keypair.json`. To trade, import that keypair into your browser wallet and set the wallet's network to **Custom RPC** = `http://127.0.0.1:8899`.
 
 ## Manual run (validator already up)
-
-If you already manage your own validator, skip the orchestrator:
 
 ```sh
 # Terminal 1 — your validator
@@ -86,28 +86,61 @@ pnpm --filter @sooth/demo seed:init       # creates a market, writes .env.local
 pnpm --filter @sooth/demo dev             # vite
 ```
 
-## Smoke test
+## How to re-sync from upstream
 
-`tests/happy-path.test.tsx` is the load-bearing deliverable. It boots solana-bankrun (in-process; no external validator), deploys both programs, drives the four init instructions, mounts `<App>` with a `DemoProvider` override, and walks the buy form via `@testing-library/react`.
+The shim is designed so that pulling new upstream code is mostly a copy + import-substitution exercise:
+
+```sh
+# 1. Mirror the upstream src/ wholesale (preserves new files):
+rsync -a --delete ../../../sooth-alpha/apps/demo/src/ src/
+
+# 2. Re-run the import substitutions across the new files:
+find src -type f \( -name "*.ts" -o -name "*.tsx" \) | while read f; do
+  perl -i -0pe '
+    s|from "wagmi"|from "@/lib/chain-shim"|g;
+    s|from "wagmi/chains"|from "@/lib/chain-shim"|g;
+    s|from "wagmi/actions"|from "@/lib/chain-shim/wagmi-actions-shim"|g;
+    s|from "viem"|from "@/lib/chain-shim"|g;
+    s|from "viem/accounts"|from "@/lib/chain-shim"|g;
+    s|from "@reown/appkit/react"|from "@/lib/chain-shim"|g;
+    s|from "@reown/appkit/networks"|from "@/lib/chain-shim"|g;
+    s|from "@reown/appkit-adapter-wagmi"|from "@/lib/chain-shim"|g;
+    s|from "@sooth/sdk/core"|from "@/lib/chain-shim"|g;
+    s|from "@sooth/sdk/core/abis"|from "@/lib/chain-shim"|g;
+  ' "$f"
+done
+
+# 3. Restore the Solana-specific files from git (they live in src/ but
+#    are not in upstream):
+git restore -- src/main.tsx src/lib/polyfills.ts src/lib/config.ts \
+                src/lib/DemoContext.tsx src/lib/chain-shim/ \
+                src/lib/sdk/ src/pages/HealthCheckPage.tsx
+
+# 4. Run typecheck; new wagmi/viem symbols upstream uses might need to
+#    be added to the shim:
+pnpm typecheck
+```
+
+If a re-sync is "wholesale rewrite," the shim layer is wrong — open an issue and adjust the shim, not the upstream copy.
+
+## Tests
 
 ```sh
 pnpm -F @sooth/demo test
 ```
 
-The bankrun fixture (`tests/fixtures/bootDemo.ts`) is duplicated from `packages/sdk-solana/tests/fixtures/` because the SDK's `package.json` doesn't expose its test helpers. The `seed-localnet.mjs` script mirrors the same logic but against a real `Connection` — see the script's module comment for the diff.
+The current test (`tests/render.test.tsx`) is a smoke test: mounts the Markets page under the production provider stack to verify that the React tree (chain-shim + upstream components) initializes without throwing. End-to-end buy-flow tests require wiring more upstream pages through `useDemo()` directly — see TODO list below.
 
-## Why won't my wallet connect?
+For full SDK validation, see `pnpm -F @sooth/sdk-solana test` which exercises `SolanaChainAdapter` against `solana-bankrun`.
 
-The dev demo has four common failure modes for "I clicked connect and nothing happened":
+## TODOs
 
-1. **No wallet extension installed.** The header replaces the Connect button with "No Solana wallet detected — Install Phantom" if neither Phantom nor Solflare is detected. Install one of them and reload.
-2. **Local validator not running.** The header shows a red "Localnet · down" badge if `connection.getVersion()` fails. Run `pnpm --filter @sooth/demo dev:localnet` (or restart your manual validator).
-3. **Wallet on the wrong network.** Phantom defaults to mainnet-beta. The connection appears to succeed but every `readSnapshot` call fails. Set the wallet's RPC to `http://127.0.0.1:8899`.
-4. **autoConnect race.** The demo intentionally has `autoConnect={false}` (in `main.tsx`) — silent reconnects on page load are the most common cause of "the button is dead." If you'd like autoConnect back, flip it to `true` and accept that any silent failure won't surface in the UI.
+- Wire upstream's AMM page (`pages/AMM.tsx` / `components/features/market/AMMPageBody.tsx`) through `useDemo()` so the buy flow works against the SolanaChainAdapter, not just renders.
+- Add a fixture-driven page test that exercises buy via the upstream form (full TDD-via-demo loop).
+- When `buildOrderbook*` / `readPortfolio` land on `SolanaChainAdapter`, port the corresponding pages similarly.
+- Consider `manualChunks` config to break up the 1.5MB single bundle.
 
 ## Configuration
-
-Set via Vite env vars. `pnpm dev:localnet` writes a fresh `.env.local` on every run; manual setups can drop one in next to `vite.config.ts`.
 
 | Env                           | Default                                        | Purpose                                           |
 | ----------------------------- | ---------------------------------------------- | ------------------------------------------------- |
@@ -120,8 +153,7 @@ Set via Vite env vars. `pnpm dev:localnet` writes a fresh `.env.local` on every 
 
 ## Troubleshooting
 
-- **`port 8899 already in use`** — another validator (or `solana-test-validator` from a previous run) is still listening. `lsof -nP -iTCP:8899 -sTCP:LISTEN` to identify it, then kill it.
-- **`port 5175 already in use`** — vite is already running. Kill it, or run `VITE_PORT=5176 pnpm dev:localnet`.
-- **`missing target/deploy/sooth_amm.so`** — run `cd packages/programs-core && cargo build-sbf` from repo root.
-- **`USDC mint not present at 4zMM…`** — the validator started without `--account` preloading the mint. Re-run `pnpm dev:localnet` to rebuild the dump and restart.
-- **Wallet UI glows red after disconnect** — known wallet-adapter-react-ui quirk; reload the page.
+- **`port 8899 already in use`** — another validator is still listening. `lsof -nP -iTCP:8899 -sTCP:LISTEN` to identify, then kill.
+- **`port 5175 already in use`** — vite is already running. `VITE_PORT=5176 pnpm dev:localnet`.
+- **`missing target/deploy/sooth_amm.so`** — `cd packages/programs-core && cargo build-sbf` from repo root.
+- **Wallet shows no balance** — check the wallet's network is set to `http://127.0.0.1:8899` (not mainnet-beta).

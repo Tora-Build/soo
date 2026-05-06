@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Solana-only TDD harness for @sooth/sdk-solana",
+  "description": "Faithful Solana fork of sooth-alpha/apps/demo — TDD harness for @sooth/sdk-solana",
   "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",
@@ -25,12 +25,21 @@
     "@solana/wallet-adapter-wallets": "^0.19.32",
     "@solana/web3.js": "^1.98.0",
     "@sooth/sdk-solana": "workspace:*",
+    "@tanstack/react-query": "^5.51.11",
     "buffer": "^6.0.3",
     "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "framer-motion": "^12.23.25",
+    "i18next": "^26.0.3",
+    "lucide-react": "^0.424.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-hot-toast": "^2.4.1",
-    "react-router-dom": "^6.26.2"
+    "react-hot-toast": "^2.6.0",
+    "react-i18next": "^17.0.2",
+    "react-router-dom": "^7.10.1",
+    "tailwind-merge": "^2.4.0",
+    "tailwindcss-animate": "^1.0.7",
+    "zustand": "^4.5.4"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.0",

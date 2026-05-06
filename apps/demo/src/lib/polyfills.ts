@@ -1,16 +1,13 @@
-// Browser polyfills required by @solana/web3.js + @solana/wallet-adapter-*.
-// Both libs assume `Buffer` and `process` exist as globals (a Node-ism that
-// leaks through their dependency tree). Vite doesn't polyfill these by
-// default; we shim minimum surface here. Imported first thing in main.tsx.
+// Browser polyfills for the Solana wallet-adapter / web3.js stack.
+// `Buffer` and `process` aren't available in Vite's default browser bundle.
+// Imported FIRST in main.tsx so anything that touches these globals at
+// module-init time (e.g. wallet-adapter-base) sees them set.
 
 import { Buffer } from "buffer";
 
-// `window.process` and `window.Buffer` are typed by `@types/node` (process)
-// and `buffer` itself; we shim minimum surface and cast to `unknown` to
-// sidestep the strict `Process` shape that node types pull in.
-
 if (typeof window !== "undefined") {
-  const w = window as unknown as Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const w = window as any;
   if (!w.Buffer) w.Buffer = Buffer;
   if (!w.process) w.process = { env: {} };
   if (!w.global) w.global = window;

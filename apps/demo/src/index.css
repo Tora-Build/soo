@@ -1,42 +1,415 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: dark;
+@layer base {
+  :root {
+    --bg: #0d0d0c;
+    --bg-raised: #151513;
+    --bg-inset: #090908;
+    --border: #333330;
+    --border-subtle: #1e1e1c;
+    --text: #e8e5e0;
+    --text-muted: #8a8378;
+    --text-faint: #504e48;
+    --accent: #d4a04a;
+    --accent-muted: rgba(212, 160, 74, 0.06);
+    /* Soft variant: 35% accent blended with the raised bg so the hue
+       stays anchored to --accent. If --accent changes, --accent-soft
+       tracks it automatically. */
+    --accent-soft: color-mix(in srgb, var(--accent) 35%, var(--bg-raised));
+    /* Tooltip surface: neutral warm grey, brighter than bg-raised so it
+       "floats" above content without inheriting accent-hue confusion. */
+    --tooltip-bg: #282724;
+
+    /* Semantic tokens — directional (pos/neg) + state (warn/info).
+       Desaturated to sit at similar chroma to --accent on the warm near-black
+       canvas; pro panels use these for buy/sell, win/loss, yes/no, warnings. */
+    --pos: #6b9a6a;
+    --pos-soft: rgba(107, 154, 106, 0.1);
+    --neg: #c45a4a;
+    --neg-soft: rgba(196, 90, 74, 0.1);
+    --warn: #c88a3a;
+    --warn-soft: rgba(200, 138, 58, 0.1);
+    --info: var(--text-muted);
+    --error: var(--neg); /* alias — prefer --neg for new code */
+
+    --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: "DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* Compat tokens used by existing components */
+    --ring: rgba(212, 160, 74, 0.35);
+    --ring-strong: rgba(212, 160, 74, 0.45);
+    --border-strong: rgba(212, 160, 74, 0.35);
+    --shadow: none;
+    --shadow-soft: none;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background: rgba(212, 160, 74, 0.2);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-sans);
+    color: var(--text);
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--bg);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-faint);
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
 }
 
-html,
-body,
-#root {
-  height: 100%;
-}
+@layer components {
+  /* Panel (replaces glass-card) */
+  .panel {
+    background: var(--bg-raised);
+  }
+  .panel-inset {
+    background: var(--bg-inset);
+  }
 
-/*
- * wallet-adapter-react-ui ships its own CSS that targets `.wallet-adapter-*`
- * classes with high specificity. Tailwind's preflight + `dark` variant can
- * partially clobber colors on these elements. We use `:where(...)` so our
- * overrides have zero specificity bump on top of the library's rules,
- * keeping the library defaults intact while ensuring text remains
- * readable inside the demo's dark theme.
- *
- * The wallet-adapter modal is rendered into a portal at the body root, so
- * it sits outside our React tree's Tailwind class scope. These rules
- * survive that.
- */
-:where(.wallet-adapter-modal-wrapper) {
-  background: #0f172a; /* slate-900 */
-  color: #e2e8f0; /* slate-200 */
-}
-:where(.wallet-adapter-modal-title) {
-  color: #f8fafc; /* slate-50 */
-}
-:where(.wallet-adapter-modal-list .wallet-adapter-button) {
-  color: #f8fafc;
-}
-:where(.wallet-adapter-button-trigger) {
-  background-color: #1e293b !important; /* slate-800 */
-}
-:where(.wallet-adapter-button-trigger:hover) {
-  background-color: #334155 !important; /* slate-700 */
+  /* Compat aliases */
+  .glass-card {
+    background: var(--bg-raised);
+    border: 1px solid transparent;
+  }
+  .glass-card:hover {
+    border-color: transparent;
+  }
+  .glass-card:focus-within {
+    border-color: var(--accent);
+  }
+  .glass-card-premium {
+    background: var(--bg-raised);
+    border: 1px solid transparent;
+  }
+  .glass-card-premium:hover {
+    border-color: transparent;
+  }
+
+  /* Button */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    padding: 10px 20px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition:
+      background 100ms,
+      border-color 100ms,
+      color 100ms;
+  }
+  .btn:hover {
+    background: var(--border-subtle);
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+    font-weight: 700;
+  }
+  .btn-primary:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+    opacity: 0.92;
+  }
+  .btn-secondary {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
+  }
+  .btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
+  }
+  .btn-ghost:hover {
+    background: var(--border-subtle);
+    color: var(--text);
+  }
+  .btn-danger {
+    background: transparent;
+    border-color: var(--neg);
+    color: var(--neg);
+  }
+  .btn-danger:hover {
+    background: var(--neg-soft);
+  }
+
+  /* Input */
+  .input-field {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg-inset);
+    border: 1px solid transparent;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 100ms;
+  }
+  .input-field::placeholder {
+    color: var(--text-faint);
+  }
+  .input-field:focus {
+    border-color: var(--accent);
+  }
+  .input-field:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+  .input-field[aria-invalid="true"] {
+    border-color: var(--neg);
+  }
+
+  /* Badge */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    background: var(--bg-raised);
+  }
+  .badge-live {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+  }
+
+  /* Live stage signal — breathes */
+  .stage-live-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-muted);
+    animation: stage-live-pulse 2s ease-in-out infinite;
+  }
+  @keyframes stage-live-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+
+  .badge-success {
+    border-color: var(--text-muted);
+    color: var(--text);
+  }
+  .badge-danger {
+    border-color: var(--neg);
+    color: var(--neg);
+  }
+  .badge-warning {
+    border-color: var(--warn);
+    color: var(--warn);
+  }
+  .badge-info {
+    border-color: var(--text-faint);
+    color: var(--text-muted);
+  }
+
+  /* ── Range Slider ── */
+  .slider {
+    width: 100%;
+    height: 6px;
+    background: #333330;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--accent);
+    cursor: pointer;
+  }
+  .slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--accent);
+    border: none;
+    cursor: pointer;
+  }
+
+  /* Shimmer / Loading */
+  .shimmer {
+    background: var(--border-subtle);
+    animation: shimmer-pulse 1.5s ease-in-out infinite alternate;
+  }
+  @keyframes shimmer-pulse {
+    from {
+      opacity: 0.4;
+    }
+    to {
+      opacity: 0.8;
+    }
+  }
+
+  /* Loading cursor */
+  .loading-cursor::after {
+    content: "_";
+    animation: blink 1s step-end infinite;
+    color: var(--accent);
+  }
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
+
+  /* Value flash */
+  .value-flash {
+    animation: flash-accent 200ms ease-out;
+  }
+  @keyframes flash-accent {
+    from {
+      background: var(--accent-muted);
+    }
+    to {
+      background: transparent;
+    }
+  }
+
+  /* No scrollbar */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Kill all glow utilities */
+  .glow-cyan,
+  .glow-emerald,
+  .glow-magenta,
+  .glow-rose,
+  .glow-indigo,
+  .glow-violet,
+  .glow-purple,
+  .glow-amber,
+  .glow-accent {
+    box-shadow: none !important;
+  }
+
+  /* Compat no-ops */
+  .card-lift,
+  .card-lift:hover,
+  .cta-pulse {
+    /* no-op */
+  }
+  .bg-scanlines {
+    background: none;
+  }
+  .gradient-text {
+    color: var(--accent);
+    -webkit-text-fill-color: var(--accent);
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+  }
+  .status-pulse {
+    /* static */
+  }
+  .animate-fade-in-up {
+    /* no-op — instant */
+  }
 }

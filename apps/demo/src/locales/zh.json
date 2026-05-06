@@ -1,0 +1,1383 @@
+{
+  "nav": {
+    "launchpad": "发射台",
+    "liquidity": "流动性",
+    "lpForecast": "LP 实验室",
+    "amm": "AMM",
+    "orderbook": "订单簿",
+    "geek": "极客",
+    "portfolio": "投资组合",
+    "more": "更多",
+    "faucet": "水龙头",
+    "explore": "探索市场",
+    "operator": "运营",
+    "learn": "学习",
+    "markets": "市场"
+  },
+  "landing": {
+    "protocolPillars": "协议支柱"
+  },
+  "common": {
+    "connect": "连接",
+    "connectWallet": "连接钱包",
+    "disconnect": "断开",
+    "approve": "授权",
+    "approveUsdc": "授权 USDC",
+    "buy": "买入",
+    "sell": "卖出",
+    "yes": "是",
+    "no": "否",
+    "max": "最大",
+    "loading": "加载中...",
+    "error": "错误",
+    "success": "成功",
+    "confirm": "确认",
+    "cancel": "取消",
+    "close": "关闭",
+    "back": "返回",
+    "shares": "份额",
+    "price": "价格",
+    "amount": "数量",
+    "balance": "余额",
+    "wallet": "钱包",
+    "search": "搜索市场...",
+    "live": "进行中",
+    "settled": "已结算",
+    "finalized": "已完成",
+    "verifying": "验证中",
+    "submitting": "提交中...",
+    "ok": "好的",
+    "errorTryAgain": "出了些问题，请重试。",
+    "view": "查看",
+    "save": "保存",
+    "clear": "清除",
+    "refresh": "刷新",
+    "actions": "操作",
+    "status": "状态",
+    "market": "市场",
+    "category": "分类"
+  },
+  "amm": {
+    "title": "LMSR AMM 交易",
+    "currentPrice": "当前价格",
+    "poolShares": "池份额",
+    "buyingPower": "购买力",
+    "youPay": "支付",
+    "fee": "手续费",
+    "liquidityDepth": "流动性深度 (b)",
+    "priceImpact": "价格影响",
+    "yesProb": "YES 概率",
+    "allStages": "全部阶段",
+    "bonding": "绑定期",
+    "graduated": "已毕业",
+    "settled": "已结算",
+    "finalized": "已完成",
+    "dismissed": "已撤销",
+    "results": "结果",
+    "discoveringMarkets": "正在发现市场...",
+    "noMarketsFound": "未找到市场"
+  },
+  "bonding": {
+    "feeProgress": "手续费进度",
+    "feesEarned": "已赚手续费",
+    "feesAccrued": "已计手续费",
+    "title": "绑定曲线进度",
+    "subtitle": "每次交易增加流动性",
+    "toGraduation": "距毕业",
+    "earned": "已赚",
+    "target": "目标",
+    "trialPeriod": "试用期",
+    "graduateMarket": "市场毕业",
+    "graduating": "毕业中..."
+  },
+  "orderbook": {
+    "title": "SoothBook 终端",
+    "orderBook": "订单簿",
+    "chart": "图表",
+    "orders": "订单",
+    "mintMerge": "铸造 / 合并",
+    "historicalPrice": "历史价格",
+    "last": "最新",
+    "change": "变化",
+    "high": "最高",
+    "low": "最低",
+    "volume": "成交量",
+    "spread": "价差",
+    "noFillsYet": "成交数据不足，无法显示历史图表",
+    "bid": "买价",
+    "ask": "卖价",
+    "mid": "中间价",
+    "size": "数量",
+    "price": "价格",
+    "shares": "份额",
+    "cost": "成本",
+    "tokensBurned": "销毁代币",
+    "collateral": "抵押品",
+    "payoutIfCorrect": "正确时收益",
+    "return": "回报",
+    "notOnSoothBook": "市场尚未进入 SoothBook",
+    "bondingPhase": "该市场已从 Launchpad 绑定期毕业，但暂时仍未开放 SoothBook 订单簿交易。目前请通过 AMM 页面交易。",
+    "goToAmm": "前往 AMM"
+  },
+  "portfolio": {
+    "tradingAccount": "交易账户",
+    "walletCollateral": "钱包抵押品",
+    "approved": "已授权",
+    "readyToTrade": "准备交易",
+    "soothBookApproval": "SoothBook 授权",
+    "refreshBalance": "刷新余额",
+    "walletUsdcBalance": "钱包 USDC 余额",
+    "depositInstruction": "存入 USDC 即可在 SoothBook 订单簿上挂限价单。",
+    "reservedTooltip": "用于未成交订单或空头仓位的链上预留抵押品。如果订单是在之前的会话中下达，可能与可见订单不同。",
+    "approveUsdcForSoothBook": "为 SoothBook 授权 USDC",
+    "amountToApprove": "待授权金额",
+    "processing": "处理中...",
+    "walletModeActive": "钱包模式已启用",
+    "directWalletSettlement": "V12 使用钱包直结算，不需要存入/提取。",
+    "liquid": "可用",
+    "reserved": "已锁定",
+    "positions": "持仓",
+    "title": "投资组合概览",
+    "subtitle": "综合钱包持仓价值与 LP 敞口。",
+    "totalValue": "总价值",
+    "activePositionValue": "活跃持仓价值",
+    "lpFloorValue": "LP 底价价值",
+    "openMarkets": "参与市场",
+    "activePositions": "活跃持仓",
+    "noPositions": "暂无 AMM 持仓。",
+    "limitOrders": "限价单",
+    "lpPositions": "LP 持仓",
+    "yesShares": "YES 份额",
+    "noShares": "NO 份额",
+    "estimatedValue": "估计价值",
+    "connectDescription": "连接钱包以查看您的 AMM 和 LP 投资组合。",
+    "loadingPositions": "加载钱包持仓中...",
+    "loadingLpPositions": "加载 LP 持仓中...",
+    "noLpPositions": "暂无 LP 持仓。",
+    "shareOfPool": "池占比",
+    "lpBalance": "LP 余额",
+    "floorValue": "底价",
+    "ceilingValue": "天花板价",
+    "liveLpPosition": "活跃 LP 持仓",
+    "preLiveLpPosition": "预上线 LP 持仓",
+    "markets": "个市场",
+    "open": "个挂单",
+    "noActiveOrders": "暂无活跃订单"
+  },
+  "create": {
+    "title": "创建市场",
+    "subtitle": "60 秒部署一个预测市场",
+    "question": "问题",
+    "category": "分类",
+    "expiration": "到期时间",
+    "adjudicator": "裁判",
+    "launchMarket": "发射市场",
+    "completeForm": "完成表单",
+    "connectDescription": "连接钱包以创建预测市场。",
+    "success": "市场已创建！",
+    "successDescription": "您的预测市场已在绑定曲线上线。",
+    "viewMarket": "查看市场",
+    "browseMarkets": "浏览市场",
+    "details": "市场详情",
+    "liquidityTier": "流动性等级",
+    "liquidityNote": "更高等级提供更深的流动性，但需要更大的存款。",
+    "duration": "市场期限",
+    "resolution": "结算方式",
+    "resolutionNote": "市场结果将如何确定？",
+    "comingSoon": "（即将推出）"
+  },
+  "markets": {
+    "empty": "暂无市场",
+    "emptyDescription": "成为第一个在此链上创建预测市场的人。",
+    "createMarket": "创建市场",
+    "noGraduated": "未找到已毕业的市场"
+  },
+  "gov": {
+    "title": "治理",
+    "subtitle": "守护者控制与协议设置",
+    "guardian": "守护者",
+    "protocolOwner": "协议所有者",
+    "protocolSettings": "协议设置",
+    "admin": "管理员"
+  },
+  "operator": {
+    "resolve": "解析",
+    "title": "运营控制台",
+    "connectDescription": "连接以查看您的角色"
+  },
+  "liquidityPage": {
+    "expired": "已过期",
+    "depth": "深度",
+    "seed": "初始",
+    "growth": "增长",
+    "empty": "没有市场符合当前筛选条件。",
+    "selectPrompt": "在左侧选择一个市场以查看流动性详情。",
+    "filters": {
+      "all": "全部",
+      "expired": "已过期"
+    },
+    "sort": {
+      "depth": "深度（高到低）",
+      "growth": "流动性增长",
+      "recent": "最近创建",
+      "deadline": "最早到期",
+      "soonest": "最早到期"
+    },
+    "trial": "试用期",
+    "time": {
+      "yearShort": "{{count}}年",
+      "monthShort": "{{count}}个月",
+      "dayShort": "{{count}}天",
+      "hourShort": "{{count}}小时",
+      "dayHour": "{{days}}天 {{hours}}小时",
+      "hourMinute": "{{hours}}小时 {{minutes}}分钟",
+      "minuteShort": "{{count}}分钟"
+    }
+  },
+  "marketsPage": {
+    "all": "全部",
+    "noExpiry": "无到期日",
+    "stageLabel": "阶段",
+    "sortLabel": "排序",
+    "noMarketsOnChain": "该链上暂时还没有可用市场。",
+    "noMatch": "没有市场匹配“{{search}}”。",
+    "outcomesCount": "{{count}} 个结果",
+    "moreOutcome": "+ 还有 {{count}} 个结果",
+    "moreOutcomes": "+ 还有 {{count}} 个结果",
+    "categories": {
+      "sports": "体育",
+      "tech": "科技",
+      "culture": "文化",
+      "crypto": "加密",
+      "politics": "政治",
+      "weather": "天气",
+      "other": "其他"
+    },
+    "stage": {
+      "expired": "已过期",
+      "resolved": "已裁决"
+    },
+    "sort": {
+      "trending": "热门",
+      "newest": "最新",
+      "ending": "即将结束",
+      "depth": "流动性最高"
+    }
+  },
+  "operatorPage": {
+    "invalid": "无效",
+    "vetoed": "已否决",
+    "connectDescription": "连接钱包以访问运营控制台。",
+    "sections": {
+      "adjudicator": "裁判",
+      "owner": "所有者",
+      "editor": "编辑"
+    },
+    "tabs": {
+      "ready": "可处理",
+      "readyToSettle": "待裁决",
+      "pending": "处理中",
+      "history": "历史"
+    },
+    "time": {
+      "overdue": "已逾期 {{days}}天 {{hours}}小时",
+      "left": "剩余 {{days}}天 {{hours}}小时",
+      "vetoWindow": "处于否决窗口"
+    },
+    "actions": {
+      "select": "选择...",
+      "settle": "裁决"
+    },
+    "table": {
+      "deadline": "截止时间",
+      "vetoWindow": "否决窗口",
+      "settled": "已结算"
+    },
+    "education": {
+      "responsibilities": "职责",
+      "adjudicator": {
+        "title": "裁判指南",
+        "description": "裁判是负责确定预测市场结果的可信实体。当市场到达截止时间后，裁判会提交最终结果（YES、NO 或 INVALID）。",
+        "items": {
+          "0": "监控分配给你的市场是否已到截止时间",
+          "1": "研究并核实事件的实际结果",
+          "2": "提交正确结果的结算交易",
+          "3": "及时响应，避免交易者的兑付延迟"
+        },
+        "warning": "错误的裁决可能会在最终完成窗口内被 Guardian 否决。"
+      },
+      "owner": {
+        "title": "所有者指南",
+        "description": "协议所有者对协议参数拥有管理权限。该角色通常由多签或 DAO 持有，以确保去中心化治理。",
+        "items": {
+          "0": "配置手续费参数（绑定期手续费、交易手续费）",
+          "1": "设置手续费分配比例（流动性增长、LP 收益、金库）",
+          "2": "调整市场成熟度的毕业乘数",
+          "3": "在关键问题出现时紧急暂停协议"
+        },
+        "warning": "协议参数变更会影响所有市场。请先在测试网验证，再应用到主网。"
+      },
+      "editor": {
+        "title": "编辑指南",
+        "description": "当前注册节点的共享内容控制。可在此隐藏过期或不允许的市场，避免它们出现在节点驱动的发现和交易视图中。",
+        "items": {
+          "0": "在修改可见性前筛选并审查市场",
+          "1": "批量隐藏或显示选中的市场",
+          "2": "为所有用户维护节点级内容标准"
+        },
+        "warning": "一旦注册表写入成功，可见性变更会立即应用到使用该注册节点的所有用户。"
+      }
+    },
+    "adjudicator": {
+      "settlementAuthority": "裁决权限",
+      "activeMarkets": "已激活 · {{count}} 个市场",
+      "notAssigned": "未分配",
+      "noRoleTitle": "你不是该链上任何市场的裁判。",
+      "noRoleDescription": "创建市场或被分配为裁判后，才能看到待处理的结算。",
+      "noMarkets": "该链上没有市场"
+    },
+    "owner": {
+      "protocolOwner": "协议所有者",
+      "activeOwner": "当前所有者",
+      "notOwner": "非所有者",
+      "noRoleTitle": "你不是协议所有者。",
+      "noRoleDescription": "只有 LaunchpadEngine 的所有者可以修改协议设置。",
+      "feeConfiguration": "手续费配置",
+      "bondingFee": "绑定期手续费",
+      "postGraduationFee": "毕业后手续费",
+      "feeDistribution": "手续费分配（毕业后）",
+      "liquidityGrowth": "流动性增长",
+      "lpYield": "LP 收益",
+      "protocolTreasury": "协议金库",
+      "total": "总计",
+      "totalValid": "✓",
+      "totalInvalid": "（必须等于 100%）",
+      "protocolStatus": "协议状态",
+      "pauseProtocol": "暂停协议",
+      "pauseDescription": "紧急停止所有交易",
+      "pausedWarning": "协议已暂停，所有交易均已停止。",
+      "trialPeriodSettings": "试用期设置",
+      "defaultTrialCap": "默认试用期上限",
+      "days": "天",
+      "trialPeriodDescription": "每个新市场的试用期时长为",
+      "trialPeriodDescriptionTail": "更短期限的市场会自动得到更短的试用期。",
+      "previewChanges": "预览更改",
+      "applyChanges": "应用更改"
+    },
+    "editor": {
+      "contentControl": "内容控制",
+      "nodeOwner": "节点所有者",
+      "readOnly": "只读",
+      "noRoleTitle": "你不是该注册节点的部署所有者。",
+      "noRoleDescription": "你可以查看市场可见性，但只有节点所有者才能提交共享审核变更。",
+      "marketVisibility": "市场可见性",
+      "marketVisibilityDescription": "面向共享市场可见性的节点级审核控制。",
+      "hiddenCount": "{{count}} 个已隐藏",
+      "node": "节点",
+      "resolving": "解析中...",
+      "deployedBy": "部署者",
+      "unknown": "未知",
+      "registryAdminToken": "注册表管理员令牌",
+      "tokenPlaceholder": "共享审核写入所需",
+      "tokenSaved": "注册表令牌已保存在此浏览器中。",
+      "tokenCleared": "注册表令牌已清除。",
+      "endpointMissing": "注册表审核接口尚未部署。",
+      "updatedAt": "更新时间 {{value}}",
+      "searchPlaceholder": "问题或地址",
+      "creator": "创建者",
+      "creatorPlaceholder": "0x 创建者...",
+      "sort": "排序",
+      "sortOptions": {
+        "timeDesc": "最新优先",
+        "timeAsc": "最早优先",
+        "creatorAsc": "创建者 A-Z",
+        "categoryAsc": "分类 A-Z",
+        "status": "已隐藏优先"
+      },
+      "marketStatus": "市场状态",
+      "allStatuses": "全部状态",
+      "visibility": "可见性",
+      "visibilityFilter": "市场可见性筛选",
+      "showing": "显示中",
+      "hidden": "已隐藏",
+      "summary": "{{filtered}} 已筛选 • {{showing}} 显示中 • {{hidden}} 已隐藏 • {{selected}} 已选中",
+      "unselectFiltered": "取消选中已筛选项",
+      "selectFiltered": "选中已筛选项",
+      "hideSelected": "隐藏选中项",
+      "showSelected": "显示选中项",
+      "loadingMarkets": "正在加载市场...",
+      "noMarkets": "没有市场符合当前筛选条件。",
+      "resetFilters": "重置筛选",
+      "selectMarket": "选择市场 {{question}}",
+      "timeUnknown": "时间未知",
+      "showMarket": "显示市场",
+      "hideMarket": "隐藏市场",
+      "visibilityUpdated": "已对节点 {{nodeId}} 的 {{count}} 个市场执行“{{action}}”。",
+      "updateFailed": "更新隐藏市场失败。"
+    }
+  },
+  "faucet": {
+    "title": "协议水龙头",
+    "subtitle": "获取测试代币以体验 Sooth 协议",
+    "yourBalance": "您的余额",
+    "requestTokens": "领取 100,000 mUSDC",
+    "requesting": "领取中...",
+    "mockUsdc": "模拟 USDC",
+    "mintDescription": "向您的钱包铸造 100,000 mUSDC。该代币用作 Sooth 所有交易的抵押品。",
+    "notDeployed": "未部署"
+  },
+  "geek": {
+    "title": "极客模式",
+    "subtitle": "通过命令行直接交互协议",
+    "typeCommand": "输入命令...",
+    "history": "历史",
+    "unsupported": "不支持的网络",
+    "switchNetwork": "请使用导航栏中的链选择器切换到支持的网络。"
+  },
+  "accessGate": {
+    "tagline": "无许可的预测市场",
+    "earlyAccessInviteOnly": "早期访问 / 仅限邀请",
+    "earlyAccessBaseSepolia": "早期访问 / Base Sepolia",
+    "connectToContinue": "连接以继续",
+    "requestAnInvite": "申请邀请",
+    "emailPlaceholder": "邮箱（可选）",
+    "requestAccess": "申请访问",
+    "requestReceived": "申请已收到",
+    "reviewMessage": "我们将审核并尽快授予访问权限。",
+    "baseSepoliaTestnet": "Base Sepolia 测试网"
+  },
+  "filters": {
+    "name": "名称",
+    "id": "ID",
+    "status": "状态",
+    "yesPrice": "YES 价格",
+    "noPrice": "NO 价格",
+    "recent": "最近",
+    "allMarkets": "全部市场",
+    "trading": "交易中",
+    "cooldown": "冷却期",
+    "settled": "已结算",
+    "newest": "ID",
+    "price": "价格",
+    "desc": "降序",
+    "asc": "升序"
+  },
+  "stage": {
+    "dismissed": "已撤销",
+    "settled": "已结算",
+    "finalized": "已完成",
+    "graduated": "已毕业",
+    "bonding": "绑定期",
+    "expired": "已过期",
+    "live": "进行中",
+    "graduation": "毕业",
+    "allStages": "全部阶段"
+  },
+  "stageBadge": {
+    "bonding": {
+      "tip": "绑定期，交易可帮助市场毕业并赚取 LP 代币"
+    },
+    "expired": {
+      "tip": "试用期结束但尚未毕业。仍可通过 AMM 交易，后续手续费增长仍可能让市场毕业。"
+    },
+    "live": {
+      "tip": "已毕业，当前以 1% 手续费进行交易"
+    },
+    "settled": {
+      "tip": "结果已确定，等待最终完成"
+    },
+    "finalized": {
+      "tip": "已结算，可赎回获胜份额为 USDC"
+    },
+    "dismissed": {
+      "tip": "已撤销，可领取退款"
+    }
+  },
+  "navbar": {
+    "navigation": "导航",
+    "openMenu": "打开菜单"
+  },
+  "eventChart": {
+    "ammPriceHistory": "AMM 价格历史",
+    "total": "总计"
+  },
+  "marketDetails": {
+    "feeLabel": "{{fee}} 手续费",
+    "feeSuffix": "{{fee}} 手续费",
+    "addressCopied": "地址已复制",
+    "copyMarketAddress": "复制市场地址",
+    "viewCreator": "查看创建者",
+    "viewAdjudicator": "查看裁判",
+    "min": "分钟",
+    "window": "窗口",
+    "types": {
+      "zkOracle": "zk 预言机",
+      "zkRule": "zk 规则",
+      "aiAgent": "AI 代理",
+      "optimistic": "乐观式"
+    },
+    "rule": {
+      "source": "来源",
+      "adapter": "适配器",
+      "params": "参数",
+      "condition": "条件",
+      "contract": "合约",
+      "event": "事件",
+      "chain": "链",
+      "agent": "代理",
+      "validators": "验证者",
+      "prompt": "提示词",
+      "bond": "保证金",
+      "dispute": "争议期"
+    }
+  },
+  "liquidityDetail": {
+    "lpTokenRedemption": "LP 代币赎回",
+    "redeemPrompt": "你有 {{amount}} 个 LP 代币可赎回。",
+    "redeeming": "赎回中...",
+    "redeemLpTokens": "赎回 LP 代币",
+    "redeemedSuccess": "LP 代币赎回成功",
+    "redeemFailed": "赎回失败：{{message}}",
+    "unknownError": "未知错误"
+  },
+  "trust": {
+    "trustless": "无信任",
+    "trustRequired": "需要信任",
+    "trustlessLabel": "无信任"
+  },
+  "benefits": {
+    "lpGrows": "LP 价值随交易量增长",
+    "lossProtection": "亏损保护缓冲"
+  },
+  "proceeds": {
+    "ready": "可领取",
+    "locked": "锁定中"
+  },
+  "settlement": {
+    "marketSettled": "市场已结算",
+    "marketFinalized": "市场已完成",
+    "outcome": "结果",
+    "claimWinnings": "领取收益",
+    "noWinnings": "无可领取收益",
+    "redeemShares": "赎回份额",
+    "yourPosition": "您的持仓"
+  },
+  "lp": {
+    "leaderboard": "LP 排行榜",
+    "holderShare": "LP 持有者 / 份额",
+    "floorCeiling": "底价 / 天花板",
+    "creator": "创建者",
+    "you": "您",
+    "yieldPool": "LP 收益池",
+    "accruersPostGrad": "毕业后累计",
+    "noYieldYet": "尚无收益累计——收益来自毕业后的交易手续费。",
+    "yieldEmptyBonding": "收益池在绑定期内为空。LP 收益仅在毕业后累计。",
+    "yourShare": "您的份额",
+    "floor": "底价",
+    "ceiling": "天花板",
+    "finalized": "已完成",
+    "total": "合计：",
+    "totalAccounted": "100% 已核算"
+  },
+  "trading": {
+    "currentPrice": "当前价格",
+    "poolShares": "池份额",
+    "shares": "份额",
+    "liquidityDepth": "流动性深度 (b)",
+    "priceImpact": "价格影响",
+    "prob": "概率",
+    "youPay": "支付",
+    "youReceive": "收到",
+    "fee": "手续费",
+    "cost": "成本",
+    "payoutIfCorrect": "正确时收益",
+    "return": "回报",
+    "usingUpTo": "最多使用",
+    "fromSpendableProceeds": "来自可用收益。",
+    "walletUsdc": "钱包 USDC: $",
+    "needTestUsdc": "需要测试 USDC？去水龙头领取 →",
+    "buyOutcome": "用 {{cost}} 买入 {{outcome}}",
+    "sellOutcome": "以 {{cost}} 卖出 {{outcome}}",
+    "enterAmount": "输入数量",
+    "marketUninitialized": "市场未初始化",
+    "loadingQuote": "加载报价中...",
+    "quoteUnavailable": "报价不可用",
+    "insufficientBalance": "余额不足",
+    "insufficientPosition": "持仓不足",
+    "highImpact": "高影响！",
+    "highImpactDesc": "请考虑减小交易规模。",
+    "significantImpact": "价格影响显著，请检查执行价格。",
+    "connectWallet": "连接钱包",
+    "approveUsdc": "授权 USDC",
+    "switchWallet": "切换钱包",
+    "position": "持仓",
+    "trading": "交易中",
+    "settled": "已结算",
+    "buyingPower": "购买力",
+    "proceedsNote": "收益可立即使用但提现需锁定 24 小时。",
+    "notInitialized": "未初始化"
+  },
+  "trial": {
+    "label": "试用期",
+    "left": "剩余",
+    "active": "试用期进行中",
+    "ended": "试用期结束",
+    "remaining": "剩余"
+  },
+  "footer": {
+    "protocol": "SOOTH 协议",
+    "rpc": "RPC",
+    "block": "区块"
+  },
+  "launchpad": {
+    "categories": {
+      "all": "全部",
+      "sports": "体育",
+      "tech": "科技",
+      "cultures": "文化",
+      "crypto": "加密货币",
+      "politics": "政治",
+      "weather": "天气",
+      "others": "其他"
+    },
+    "questionLabel": "问题",
+    "categoryLabel": "分类",
+    "eventLabel": "事件（可选）",
+    "eventPlaceholder": "例如：crypto-q1-2026",
+    "eventHint": "同一创建者发布的同名事件市场会自动分组。",
+    "initialProbabilityLabel": "初始 YES 价格",
+    "initialProbabilityHint": "绑定曲线的初始 YES 概率百分比，非 50 会使 LMSR 从第一区块就有倾斜库存。",
+    "expirationLabel": "到期时间",
+    "adjudicatorLabel": "裁判",
+    "depositLabel": "存款 (USDC)",
+    "balancePrefix": "余额: $",
+    "openUntilResolved": "开放至结算",
+    "dateLabel": "日期",
+    "timeLabel": "时间（本地）",
+    "create": "创建",
+    "pageTitle": "创建市场",
+    "pageSubtitle": "60 秒部署一个预测市场",
+    "simulator": "模拟器",
+    "launchMarket": "发射市场",
+    "launching": "发射中...",
+    "approving": "授权中...",
+    "approveUsdc": "授权 USDC",
+    "completeFormToContinue": "请完善表单后继续",
+    "walletUsdc": "钱包 USDC: $",
+    "needTestUsdc": "需要测试 USDC？去水龙头领取 →",
+    "liquidityB": "流动性 (b)",
+    "graduationFee": "毕业费用",
+    "graduationVol": "毕业交易量",
+    "lmsrProperty": "LMSR:",
+    "lmsrDesc": "最大亏损 = 存款。最大收益 = 存款 + 飞轮效应。手续费收益始终归您所有。",
+    "adjudicator": {
+      "idealUseCase": "理想用例",
+      "zkOracle": "ZK 预言机",
+      "zkRule": "ZK 规则",
+      "agentAdjudicator": "AI 裁判",
+      "optimisticOracle": "乐观预言机",
+      "web2ApiProve": "Web2 API 证明",
+      "primus": "Primus",
+      "trustless": "无信任",
+      "brevis": "Brevis",
+      "hardwareTrust": "硬件信任",
+      "economicSecurity": "经济安全",
+      "innovation": "创新",
+      "zkOracleDesc": "使用 zkTLS 证明 Web2 API 响应的真实性和完整性。在裁决与结算之间插入验证步骤——裁决方必须提供加密证明，确认链下数据源返回了声明的结果。",
+      "zkOracleUseCase": "任何通过可证明的 Web2 数据解决的市场——价格、比分、API 结果",
+      "zkRuleDesc": "纯区块链事件解析。通过 ZK 证明跟踪和验证暂停协议事件——如果链上条件发生，解析将自动进行。最低信任配置。",
+      "zkRuleUseCase": "保险市场、协议熔断事件",
+      "agentDesc": "AI 代理通过单代理执行或多代理投票创建和解析市场。代理通过 ERC-8004 认证和 TEE 安全飞地验证，确保防篡改的自主解析。",
+      "agentUseCase": "AI 代理市场、自主市场创建和解析",
+      "optimisticDesc": "提议者断言后设有争议窗口。需要金融保证金以确保诚实。",
+      "optimisticUseCase": "高吞吐量主流市场、优先性能的解析"
+    },
+    "periodLabels": {
+      "7d": "7天",
+      "30d": "30天"
+    },
+    "sim": {
+      "creator": "创建者",
+      "gamingTrader": "博弈交易者",
+      "arbitrageur": "套利者",
+      "pvpTrader": "PvP 交易者",
+      "carolStrategy": "Carol 的策略：",
+      "carolDesc": "创建市场、注入流动性，从交易量中获利。无需交易！",
+      "aliceStrategy": "Alice 的策略：",
+      "aliceDesc": "早期交易赚取 LP 代币。即使预测错误也能获利！",
+      "bobStrategy": "Bob 的策略：",
+      "bobDesc": "捕获 AMM 和 SoothBook 之间的价差。当价差超过成本时即为无风险利润！",
+      "daveStrategy": "Dave 的策略：",
+      "daveDesc": "凭信念与其他交易者对赌。没有 LP 安全网——赢家通吃！",
+      "influenceFactors": "影响因素",
+      "liquidityB": "流动性 (b)",
+      "tradingVolume": "交易量",
+      "settlementLuck": "结算运气",
+      "yourLpOwnership": "您的 LP 持有量",
+      "lpEquation": "LP 方程",
+      "lpRedemption": "LP 赎回",
+      "deposit": "存款",
+      "flywheel": "飞轮",
+      "settlement": "结算",
+      "feeYield": "手续费收益",
+      "netPnL": "净盈亏",
+      "roi": "投资回报率",
+      "lmsrProperty": "LMSR 特性：",
+      "lmsrMaxLoss": "最大亏损 = 存款，最大收益 = 存款 + 飞轮效应。手续费收益始终归您所有。",
+      "tradeSize": "交易规模",
+      "entryPrice": "入场价格（您的方向）",
+      "predictionOutcome": "预测结果",
+      "correct": "正确",
+      "wrong": "错误",
+      "tradeEquation": "交易方程",
+      "tradePnL": "交易盈亏",
+      "payout": "收益",
+      "cost": "成本",
+      "postGrad": "毕业后",
+      "preGrad": "毕业前",
+      "volumeAfterEntry": "入场后交易量",
+      "preGradBonus": "毕业前奖励：",
+      "postGradNote": "较低的 1% 费用，但没有 LP 代币。纯交易盈亏。",
+      "priceDivergence": "价格偏差",
+      "gasCost": "Gas 费用 (2笔交易)",
+      "grossProfit": "毛利润",
+      "totalCosts": "总成本",
+      "netProfit": "净利润",
+      "profitable": "盈利！",
+      "notProfitable": "不盈利",
+      "minViableSpread": "最小可行价差",
+      "arbInsight": "套利者通过缩小价差提供服务。所有交易者都受益于他们的活动！",
+      "keyInsight": "关键洞察：",
+      "positionSize": "仓位大小",
+      "estimatedWinProb": "您估计的胜率",
+      "outcomeScenario": "结果场景",
+      "win": "赢",
+      "lose": "输",
+      "expected": "预期",
+      "sharesReceived": "获得份额",
+      "expectedValue": "期望值",
+      "ifWin": "如果赢",
+      "ifLose": "如果输",
+      "expectedPnL": "预期盈亏",
+      "actualPnL": "实际盈亏",
+      "return": "回报",
+      "pvpWarning": "PvP 交易没有 LP 安全网。如果你没有优势，你就是聪明资金对赌的对手方。",
+      "warning": "警告：",
+      "carolStory": "Carol 创建市场并从交易量中获利",
+      "aliceStory": "Alice 早期交易并赚取 LP 代币",
+      "bobStory": "Bob 在不同场所之间捕获价差",
+      "daveStory": "Dave 凭信念下注，赢家通吃"
+    },
+    "risk": {
+      "title": "风险披露",
+      "subtitle": "发射前请充分了解",
+      "lowVolumeTitle": "低交易量风险",
+      "lowVolumeDesc": "您的市场可能无法吸引足够的交易者。",
+      "lowVolumeMitigation": "选择热门话题并积极推广您的市场。",
+      "settlementTitle": "结算失衡",
+      "settlementDesc": "LP 价值取决于结算时 YES/NO 持仓的分布。",
+      "settlementMitigation": "LP 底价公式保证了最低赎回价值。",
+      "smartContractTitle": "智能合约风险",
+      "smartContractDesc": "所有 DeFi 协议都存在固有的智能合约风险。",
+      "smartContractMitigation": "Sooth 协议已通过审计。只存入您能承受损失的金额。",
+      "lpFloorProtection": "LP 底价保护",
+      "lpFloorDesc": "您的 LP 代币基于底价公式具有最低保证价值：",
+      "lpFloorWorstCase": "即使在最坏的情况下（所有赢家赎回），LP 也能保证获得至少底价价值。",
+      "acknowledgePreamble": "发射市场即表示您承认：",
+      "ack1": "LP 代币不保证盈利",
+      "ack2": "您的存款为交易者提供流动性",
+      "ack3": "尽管已审计，智能合约风险仍然存在",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "critical": "严重",
+      "impact": "影响",
+      "mitigation": "缓解措施："
+    }
+  },
+  "stats": {
+    "title": "市场统计",
+    "pureAmmAccounting": "纯 AMM 会计",
+    "cashBasis": "现金基础公式",
+    "cashBasisHint": "最大亏损 + 收益 + 盈亏 = 现金",
+    "equityFloor": "权益底价公式",
+    "equityFloorHint": "现金 - 负债 = 底价",
+    "valuation": "估值 (ExRate)",
+    "valuationHint": "权益 / 供应量 = 比率",
+    "tvl": "TVL 公式",
+    "tvlHint": "现金 + 锁定 = TVL",
+    "liquidityAnchor": "流动性锚定公式",
+    "liquidityAnchorHint": "b × ln(2) ≈ 供应量"
+  },
+  "uc": {
+    "common": {
+      "loadingHolders": "加载持有者...",
+      "no": "No",
+      "noHolders": "暂无 LP 持有者",
+      "noPositions": "暂无持仓",
+      "usdc": "USDC",
+      "yes": "Yes"
+    },
+    "create": {
+      "connectWallet": {
+        "description": "连接钱包以查看您的市场并创建新市场。",
+        "title": "连接钱包"
+      },
+      "emptyMarkets": {
+        "button": "创建您的第一个市场",
+        "description": "市场创建者从每笔交易中赚取手续费。立即开始赚取！",
+        "title": "暂无市场"
+      },
+      "emptySettlements": {
+        "description": "没有市场等待您的结算决定。",
+        "title": "全部处理完毕！"
+      },
+      "header": {
+        "subtitle": "管理您的市场并结算结果",
+        "title": "创建与管理"
+      },
+      "roles": {
+        "adjudicator": "裁判",
+        "creator": "创建者",
+        "lpTooltip": "什么是 LP 代币？"
+      },
+      "tabs": {
+        "create": "+ 创建新市场",
+        "markets": "我的市场",
+        "settlements": "待结算"
+      },
+      "wizard": {
+        "l": {
+          "description": "选择初始注入的 USDC 数量。这决定了交易深度。",
+          "maxLoss": "最大潜在亏损：$"
+        },
+        "q": {
+          "deadline": "结算截止日期",
+          "description": "创建一个清晰、无歧义的问题，可以用 YES 或 NO 来回答。",
+          "label": "问题",
+          "placeholder": "例如：「ETH 会在 2025 年 12 月 31 日前达到 $10,000 吗？」"
+        },
+        "r": {
+          "adjDesc": "可在截止日期后结算市场结果",
+          "adjLabel": "裁判地址",
+          "description": "指定谁可以结算市场结果以及谁可以否决错误的结算。",
+          "guardDesc": "可在 24 小时内否决错误结算",
+          "guardLabel": "守护者地址"
+        },
+        "review": {
+          "comingSoon": "部署市场（即将推出）",
+          "transactionDesc": "部署需要两笔交易：创建 TruthMarket 和注入初始流动性。"
+        },
+        "steps": {
+          "l": "设置初始流动性",
+          "q": "定义您的问题",
+          "r": "分配角色",
+          "review": "审核与部署"
+        }
+      }
+    },
+    "learn": {
+      "advantage": {
+        "table": {
+          "headers": {
+            "0": "特性",
+            "1": "传统方式",
+            "2": "Sooth"
+          },
+          "rows": {
+            "0": {
+              "0": "创建",
+              "1": "受限",
+              "2": "无许可"
+            },
+            "1": {
+              "0": "流动性",
+              "1": "混合/碎片化",
+              "2": "统一金库"
+            },
+            "2": {
+              "0": "结算",
+              "1": "中心化预言机",
+              "2": "ZK + 多类型"
+            }
+          }
+        },
+        "title": "Sooth 的优势"
+      },
+      "context": {
+        "mechanisms": {
+          "0": {
+            "desc": "保证流动性的算法",
+            "label": "LMSR"
+          },
+          "1": {
+            "desc": "追溯结算时间戳",
+            "label": "T*"
+          },
+          "2": {
+            "desc": "流动性深度参数",
+            "label": "b"
+          },
+          "3": {
+            "desc": "市场成熟度门槛",
+            "label": "毕业"
+          }
+        },
+        "mechanismsTitle": "核心机制",
+        "quotes": {
+          "creator": "Launchpad 将市场创建从特权操作转变为激励对齐的经济博弈。",
+          "gaming": "毕业前的手续费为交易者铸造 LP 代币，将他们从客户转变为利益相关者。",
+          "pro": "双场所套利通过纯粹的市场力量创造出紧密、高效的价格。",
+          "ready": "真相从市场本身中涌现。",
+          "thesis": "去中心化不是一种妥协——而是一种竞争优势。"
+        },
+        "title": "白皮书背景"
+      },
+      "creator": {
+        "example": {
+          "pnlLabel": "预计净盈亏",
+          "pnlValue": "+$807",
+          "text": "Carol 以 **$693 的存款** (b=$1,000) 创建了一个 50/50 市场。交易量产生了 **$150 的手续费**。作为 50% 的 LP 持有者，她从每笔交易中获利。非对称赔率需要更高的存款。",
+          "title": "创建者示例"
+        },
+        "plItems": {
+          "0": {
+            "event": "市场创建",
+            "impact": "-$693 存款",
+            "pos": "False"
+          },
+          "1": {
+            "event": "交易量",
+            "impact": "+LP 代币铸造",
+            "pos": "True"
+          },
+          "2": {
+            "event": "毕业",
+            "impact": "解锁收益流",
+            "pos": "True"
+          },
+          "3": {
+            "event": "盈利结算",
+            "impact": "+金库资产",
+            "pos": "True"
+          }
+        },
+        "plTitle": "创建者盈亏分析",
+        "tiers": {
+          "0": {
+            "b": "$100",
+            "dep": "$69",
+            "tier": "微型"
+          },
+          "1": {
+            "b": "$1k",
+            "dep": "$693",
+            "tier": "小型"
+          },
+          "2": {
+            "b": "$10k",
+            "dep": "$6.9k",
+            "tier": "中型"
+          },
+          "3": {
+            "b": "$100k",
+            "dep": "$69k",
+            "tier": "大型"
+          }
+        },
+        "tiersTitle": "流动性等级（50/50 赔率）"
+      },
+      "formulas": {
+        "items": {
+          "0": {
+            "desc": "核算 AMM 账本中的每一笔 USDC。总现金是可用于支撑交易和 LP 权益的资产总池。",
+            "formula": "Seed + Fees + P&L + Yield = Gross",
+            "name": "现金基础公式"
+          },
+          "1": {
+            "desc": "资金池的最低保证价值。负债按支付最大可能结果（最大份额）的成本计算。",
+            "formula": "Gross Cash - Max Liability = Floor",
+            "name": "权益底价公式"
+          },
+          "2": {
+            "desc": "1 个 LP 代币的实时赎回价值。与 V7 不同，V8 的 LP 代币是整个 AMM 金库的利益相关者。",
+            "formula": "Equity / LP Supply = Rate",
+            "name": "LP 估值 (ExRate)"
+          },
+          "3": {
+            "desc": "当累计交易手续费达到初始创建者存款的 100% 时，市场毕业至 SoothBook（默认 graduationBps = 10000）。",
+            "formula": "Deposit × graduationBps / 10000",
+            "name": "毕业门槛"
+          },
+          "4": {
+            "desc": "创建者存款 = b × -ln(min(p, 1-p))。在 50/50 赔率下简化为 b × ln(2)。非对称初始赔率会增加所需存款。",
+            "formula": "b × -ln(min(p, 1-p))",
+            "name": "创建者存款"
+          }
+        },
+        "subtitle": "Sooth V8.1 使用双场所账本和自动核算。",
+        "title": "协议会计"
+      },
+      "gaming": {
+        "mechanismSteps": {
+          "0": "交易者支付 5% 手续费",
+          "1": "手续费增加流动性深度 (b)",
+          "2": "LP 代币铸造给交易者"
+        },
+        "mechanismTitle": "手续费 → LP 机制",
+        "practiceTitle": "练习预测",
+        "pricingTitle": "定价动态 (LMSR)",
+        "sellLock": {
+          "description": "为防止快进快出的套利行为，卖出所得将锁定 24 小时。锁定期间仍可用于新交易，但只能在冷却期后提取。",
+          "title": "24 小时卖出锁定"
+        }
+      },
+      "header": {
+        "subtitle": "「当每个参与者的激励都对齐时，协议不需要看门人。真相从市场本身中涌现。」",
+        "title": "学习 Sooth 协议"
+      },
+      "pillars": {
+        "launchpad": {
+          "description": "无许可的市场创建，带有创建者经济模型。",
+          "innovation": "激励对齐",
+          "title": "Launchpad"
+        },
+        "soothBook": {
+          "description": "链上订单簿，1,000 档深度。",
+          "innovation": "高吞吐量 CLOB",
+          "title": "SoothBook"
+        },
+        "zkRules": {
+          "description": "通过 T* 实现自治、追溯式结算。",
+          "innovation": "追溯最终性",
+          "title": "ZK Rules"
+        }
+      },
+      "pro": {
+        "amm": {
+          "items": {
+            "0": {
+              "0": "资产",
+              "1": "持仓账本"
+            },
+            "1": {
+              "0": "定价",
+              "1": "LMSR 曲线"
+            },
+            "2": {
+              "0": "流动性",
+              "1": "始终可用"
+            },
+            "3": {
+              "0": "卖出锁定",
+              "1": "24小时冷却"
+            }
+          },
+          "title": "AMM（散户）"
+        },
+        "arb": {
+          "description": "套利者通过弥合 AMM 和 SoothBook 之间的价差来保持价格效率。他们在一个场所低价买入，在另一个场所高价卖出。",
+          "title": "套利者的角色"
+        },
+        "architectureTitle": "双场所架构",
+        "evolutionStages": {
+          "0": "启动",
+          "1": "成长",
+          "2": "成熟"
+        },
+        "evolutionStates": {
+          "0": "仅 AMM",
+          "1": "AMM + SoothBook",
+          "2": "SoothBook 主导"
+        },
+        "evolutionTitle": "市场演进",
+        "pvp": {
+          "description": "SoothBook 是信念碰撞信念的地方。没有 AMM 缓冲——纯粹的点对点交易。赢家获取输家的本金，零 LP 价差抽取。",
+          "title": "PvP 信念交易"
+        },
+        "soothBook": {
+          "items": {
+            "0": {
+              "0": "资产",
+              "1": "ERC20 代币"
+            },
+            "1": {
+              "0": "定价",
+              "1": "限价订单簿"
+            },
+            "2": {
+              "0": "流动性",
+              "1": "依赖深度"
+            },
+            "3": {
+              "0": "卖出锁定",
+              "1": "无（即时）"
+            }
+          },
+          "title": "SoothBook（专业）"
+        }
+      },
+      "proTip": "Sooth 是一个合作网络。每个参与者的行为都有助于发现未来事件的真实价格。",
+      "ready": {
+        "actors": {
+          "0": {
+            "motivation": "变现洞察力，赚取 LP",
+            "title": "创建者"
+          },
+          "1": {
+            "motivation": "预测并赚取奖励",
+            "title": "博弈交易者"
+          },
+          "2": {
+            "motivation": "从价格偏差中获利",
+            "title": "套利者"
+          },
+          "3": {
+            "motivation": "纯粹的信念交易",
+            "title": "PvP 交易者"
+          }
+        },
+        "subtitle": "Sooth 的生态是一个合作网络。你今天想扮演哪个角色？",
+        "title": "选择你的路径"
+      },
+      "steps": {
+        "0": {
+          "badge": "支柱 0 · 介绍",
+          "description": "Sooth 协议围绕一个核心论点设计：**去中心化创造更好的市场**。传统平台受制于受限的创建权和中心化的裁决。Sooth 通过三大基础支柱来解决这一问题。",
+          "id": "thesis",
+          "title": "去中心化论"
+        },
+        "1": {
+          "badge": "支柱 I · Launchpad",
+          "description": "市场创建是一场**经济博弈**。创建者存入资本并成为第一个 LP，使其利益与市场成功永久绑定。",
+          "id": "creator",
+          "title": "创建者"
+        },
+        "2": {
+          "badge": "支柱 II · 利益相关者奖励",
+          "description": "早期交易者在每笔交易中获得 **LP 代币**，从客户转变为协议利益相关者。",
+          "id": "gaming",
+          "title": "博弈交易者"
+        },
+        "3": {
+          "badge": "支柱 III · SoothBook",
+          "description": "Sooth 运营**双交易场所**以服务不同类型的交易者。专业交易者使用 SoothBook 获得交易所级别的执行体验。",
+          "id": "pro",
+          "title": "套利者与 PvP 交易者"
+        },
+        "4": {
+          "description": "Sooth 的生态是一个合作网络。你今天想扮演哪个角色？",
+          "id": "ready",
+          "title": "开始你的旅程"
+        }
+      }
+    },
+    "lp": {
+      "ceiling": "天花板",
+      "ceilingDescription": "所有持仓获胜时的 LP 最大价值",
+      "ceilingValue": "天花板价值",
+      "creatorFloor": "创建者底价",
+      "creator": "创建者",
+      "you": "您",
+      "redeemable": "可赎回",
+      "fairMinting": "公平铸造",
+      "holderShare": "LP 持有者 / 份额",
+      "fairMintingDescription": "公平铸造确保 LP 代币定价正确",
+      "floor": "底价",
+      "floorDescription": "LP 最低保证价值",
+      "holders": "持有者",
+      "leaderboard": "LP 排行",
+      "loadingHolders": "加载持有者...",
+      "noHolders": "暂无 LP 持有者",
+      "noPositions": "暂无 LP 持仓",
+      "redeemValue": "赎回价值",
+      "title": "LP 持仓",
+      "yourFloor": "您的底价",
+      "showHint": "显示说明",
+      "graduatedHint": "在毕业模式下，交易手续费分为三部分：(1) b 增长用于提升流动性深度，(2) LP 收益累计给现有 LP 持有人，(3) 协议手续费。交易不会再铸造新的 LP 代币，只有继续注入 LP 或赎回时，你的 LP 占比才会变化。",
+      "bondingHint": "在绑定期内，你进行的每笔交易都会奖励 LP 代币。绑定期交易越多，你的 LP 持仓就越大。市场毕业后，LP 铸造会停止，你的持仓份额将被锁定。越早参与的交易者通常获得更大的 LP 分配。"
+    },
+    "navbar": {
+      "adjudicator": "裁判",
+      "amm": "AMM",
+      "connect": "连接",
+      "faucet": "水龙头",
+      "gov": "治理",
+      "launchpad": "Launchpad",
+      "learn": "学习",
+      "pro": "订单簿"
+    },
+    "operator": {
+      "description": "管理市场运营",
+      "guardian": "守护者",
+      "resolve": "裁决",
+      "title": "运营控制台"
+    },
+    "pro": {
+      "activeOrders": {
+        "clearAll": "全部清除",
+        "empty": "暂无活跃限价单",
+        "title": "活跃订单"
+      },
+      "execution": {
+        "amountDollar": "金额（基于美元）",
+        "amountShares": "金额（份额）",
+        "buyYes": "买入 YES",
+        "estimatedValue": "估计价值",
+        "executeMarket": "执行市价单",
+        "limit": "限价（区间）",
+        "market": "市价",
+        "placeLimit": "下限价单",
+        "rangeLower": "区间下限（概率）",
+        "rangeUpper": "区间上限（可选）",
+        "rangeUpperPlaceholder": "留空为点位订单",
+        "sellYes": "卖出 YES",
+        "takerFee": "吃单手续费 (0.2%)"
+      },
+      "history": {
+        "empty": "暂无交易历史"
+      },
+      "inventory": {
+        "balances": "余额",
+        "details": "详情",
+        "merge": "合并",
+        "retroactive": "追溯",
+        "split": "拆分",
+        "truthFinality": "真相最终性"
+      },
+      "restricted": {
+        "description": "高性能订单簿场所仅对已毕业市场开放。该市场仍处于绑定期。",
+        "switchButton": "切换至交易",
+        "title": "SoothBook 受限"
+      },
+      "shortcuts": {
+        "buy": "买入",
+        "price": "价格",
+        "sell": "卖出",
+        "shortcuts": "快捷键",
+        "terminal": "V12 SOOTHBOOK 终端"
+      },
+      "tabs": {
+        "history": "历史",
+        "inventory": "持仓"
+      },
+      "utility": {
+        "latency": "延迟",
+        "network": "网络"
+      },
+      "visuals": {
+        "depthChart": "市场深度",
+        "liquidityMap": "流动性图谱",
+        "tickLadder": "价格阶梯",
+        "tickMap": "Tick 图 (1,000)",
+        "tickMapSub": "高保真位图"
+      }
+    },
+    "roles": {
+      "0": {
+        "description": "变现做市专业知识与社区洞察力",
+        "icon": "Palette",
+        "id": "creator",
+        "name": "创建者",
+        "path": "/create",
+        "story": "Carol 创建市场并从交易量中获利"
+      },
+      "1": {
+        "description": "预测事件并赚取协议利益相关者奖励",
+        "icon": "Gamepad2",
+        "id": "gaming",
+        "name": "博弈交易者",
+        "path": "/amm",
+        "story": "Alice 早期交易并赚取 LP 代币"
+      },
+      "2": {
+        "description": "捕获价差并维护跨场所效率",
+        "icon": "ArrowLeftRight",
+        "id": "arb",
+        "name": "套利者",
+        "path": "/orderbook",
+        "story": "Bob 在不同场所之间捕获价差"
+      },
+      "3": {
+        "description": "在 1,000 档订单簿上进行纯粹的信念交易",
+        "icon": "Swords",
+        "id": "pvp",
+        "name": "PvP 交易者",
+        "path": "/orderbook",
+        "story": "Dave 凭信念下注，赢家通吃"
+      }
+    },
+    "trade": {
+      "education": "预测市场新手？了解运作方式 →",
+      "header": {
+        "subtitle": "面向博弈交易者：买入/卖出 YES 或 NO，始终有可用流动性。绑定期内每笔交易赚取 LP 奖励。",
+        "title": "LMSR AMM 交易"
+      },
+      "panel": {
+        "deadline": "截止日期",
+        "goPro": "前往订单簿",
+        "graduated": "已毕业",
+        "preGrad": "绑定期",
+        "selectToStart": "选择一个市场开始交易"
+      },
+      "positions": {
+        "connectWallet": "连接钱包查看持仓",
+        "makePrediction": "做出你的第一个预测！",
+        "noPositions": "暂无持仓。",
+        "title": "我的持仓"
+      },
+      "selector": {
+        "noMarkets": "没有匹配的市场",
+        "searchPlaceholder": "搜索市场...",
+        "trending": "热门市场"
+      }
+    },
+    "trading": {
+      "bestPrice": "最优价格",
+      "buy": "买入",
+      "costPerShare": "每份成本",
+      "insufficientBalance": "余额不足",
+      "marketPrice": "市场价格",
+      "passiveOrder": "被动订单",
+      "sell": "卖出",
+      "settled": "已结算",
+      "shares": "份额",
+      "totalCost": "总成本",
+      "trading": "交易",
+      "yourPrice": "您的价格"
+    }
+  },
+  "risk": {
+    "title": "风险披露",
+    "subtitle": "发射前请充分了解",
+    "lowVolume": {
+      "title": "低交易量风险",
+      "description": "您的市场可能无法吸引足够的交易者。",
+      "mitigation": "选择热门话题并积极推广您的市场。"
+    },
+    "settlement": {
+      "title": "结算失衡",
+      "description": "LP 价值取决于结算时 YES/NO 持仓的分布。",
+      "mitigation": "LP 底价公式保证最低赎回价值。"
+    },
+    "smartContract": {
+      "title": "智能合约风险",
+      "description": "所有 DeFi 协议都存在固有的智能合约风险。",
+      "mitigation": "Sooth 协议已经过审计。请只投入您能承受损失的金额。"
+    },
+    "likelihood": {
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    },
+    "impact": "影响",
+    "mitigationLabel": "缓解措施：",
+    "floorProtection": "LP 底价保护",
+    "floorDescription": "您的 LP 代币基于底价公式具有最低保证价值：",
+    "floorWorstCase": "即使在最坏情况下（所有赢家赎回），LP 也能保证获得至少底价价值。",
+    "acknowledge": "发射市场即表示您确认：",
+    "ack1": "LP 代币不保证盈利",
+    "ack2": "您的存款为交易者提供流动性",
+    "ack3": "尽管经过审计，智能合约风险仍然存在"
+  }
+}

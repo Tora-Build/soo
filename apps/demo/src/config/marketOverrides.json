@@ -1,0 +1,8 @@
+{
+  "overrides": {
+    "0xe570ab7dbbb58241f2cd7e1d3e2dd43196daee97": {
+      "name": "Overridden Name",
+      "riskLevel": "HIGH"
+    }
+  }
+}

@@ -1,0 +1,836 @@
+import { useCallback, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useAccount,
+  usePublicClient,
+  useReadContract,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "@/lib/chain-shim";
+import {
+  decodeEventLog,
+  encodePacked,
+  formatUnits,
+  keccak256,
+  maxUint256,
+  parseUnits,
+} from "@/lib/chain-shim";
+import type { TransactionReceipt } from "@/lib/chain-shim";
+import toast from "react-hot-toast";
+import { ERC20_ABI, SOOTHBOOK_ABI } from "../config/abis";
+import { useDeployments } from "./useDeployments";
+import { useOrderStore } from "../store/useOrderStore";
+import { shortenAddress } from "../utils/format";
+
+type CancelTarget =
+  | {
+      kind: "level";
+      side: 0 | 1;
+      tick: number;
+    }
+  | {
+      kind: "id";
+      orderId: bigint;
+    };
+
+type WriteFunctionName =
+  | "buyYes"
+  | "buyNo"
+  | "cancel"
+  | "cancelById"
+  | "redeem";
+type ExecuteWriteOptions = {
+  silent?: boolean;
+  successMessage?: (receipt: TransactionReceipt) => string;
+};
+type RestingOrderEvent = {
+  id?: bigint;
+  side: 0 | 1;
+  tick: number;
+  amount: bigint;
+};
+type ParsedOrderReceipt = {
+  parsed: boolean;
+  filledQty: bigint;
+  restingQty: bigint;
+  restingOrders: RestingOrderEvent[];
+};
+
+const GAS_LIMIT_CAP = 25_000_000n;
+const MIN_SHARE_CHUNK = 10n ** 18n; // 1 share in WAD
+
+const clampTick = (price: string) => {
+  const value = Number(price);
+  if (!Number.isFinite(value)) return 500;
+  return Math.max(1, Math.min(999, Math.round(value * 1000)));
+};
+
+const toWad = (amount: bigint, decimals: number) => {
+  if (decimals === 18) return amount;
+  if (decimals < 18) return amount * 10n ** BigInt(18 - decimals);
+  return amount / 10n ** BigInt(decimals - 18);
+};
+
+const fromWad = (amount: bigint, decimals: number) => {
+  if (decimals === 18) return amount;
+  if (decimals < 18) return amount / 10n ** BigInt(18 - decimals);
+  return amount * 10n ** BigInt(decimals - 18);
+};
+
+const parseOrderId = (orderId: string): CancelTarget | null => {
+  const normalized = orderId.trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (/^\d+$/.test(normalized)) {
+    return { kind: "id", orderId: BigInt(normalized) };
+  }
+
+  const directMatch = normalized.match(/^(0|1):(\d{1,3})$/);
+  if (directMatch) {
+    const side = Number(directMatch[1]) as 0 | 1;
+    const tick = Number(directMatch[2]);
+    if (tick >= 1 && tick <= 999) return { kind: "level", side, tick };
+  }
+
+  const suffixTick = normalized.match(/(\d{1,3})$/);
+  if (!suffixTick) return null;
+
+  const tick = Number(suffixTick[1]);
+  if (tick < 1 || tick > 999) return null;
+
+  if (normalized.includes("no")) return { kind: "level", side: 0, tick };
+  if (normalized.includes("yes") || normalized.includes("bid"))
+    return { kind: "level", side: 1, tick };
+  if (normalized.includes("ask")) return { kind: "level", side: 0, tick };
+
+  return { kind: "level", side: 1, tick };
+};
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error ?? "");
+  }
+};
+
+const isGasCapMessage = (message: string): boolean => {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("exceeds maximum per-transaction gas limit") ||
+    lower.includes("gas-per-tx limit") ||
+    (lower.includes("transaction gas") && lower.includes("limit"))
+  );
+};
+
+const normalizeTxErrorMessage = (error: unknown): string => {
+  const message = getErrorMessage(error);
+  if (isGasCapMessage(message)) {
+    return "Order exceeds chain gas-per-tx limit. Split size or use a less aggressive price.";
+  }
+
+  const lower = message.toLowerCase();
+  if (lower.includes("user rejected") || lower.includes("user denied")) {
+    return "Transaction rejected in wallet.";
+  }
+
+  const reasonMatch = message.match(
+    /reverted with the following reason:\s*([^\n]+)/i,
+  );
+  if (reasonMatch?.[1]) {
+    return reasonMatch[1].trim();
+  }
+
+  const firstLine = message.split("\n")[0]?.trim();
+  return firstLine || "Transaction failed";
+};
+
+const fmtShares = (amountWad: bigint): string => {
+  const value = Number(formatUnits(amountWad, 18));
+  return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
+};
+
+const fmtPrice = (price: number): string =>
+  `$${price.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  })}`;
+
+const sameHex = (a: unknown, b: unknown): boolean =>
+  typeof a === "string" &&
+  typeof b === "string" &&
+  a.toLowerCase() === b.toLowerCase();
+
+const toBigInt = (value: unknown): bigint => {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number") return BigInt(value);
+  if (typeof value === "string") return BigInt(value);
+  return 0n;
+};
+
+const EMPTY_PARSED_ORDER_RECEIPT: ParsedOrderReceipt = {
+  parsed: false,
+  filledQty: 0n,
+  restingQty: 0n,
+  restingOrders: [],
+};
+
+const parseOrderReceipt = (
+  receipt: TransactionReceipt,
+  soothBookAddress: `0x${string}`,
+  marketKey: `0x${string}`,
+  userAddress: `0x${string}`,
+): ParsedOrderReceipt => {
+  try {
+    let filledQty = 0n;
+    let restingQty = 0n;
+    const restingOrders: RestingOrderEvent[] = [];
+    let matchedOrderEvent = false;
+
+    for (const log of receipt.logs) {
+      if (!sameHex(log.address, soothBookAddress)) continue;
+      if (log.topics.length === 0) continue;
+
+      // Per-log try/catch: a SoothBook event missing from SOOTHBOOK_ABI
+      // (e.g., post-upgrade ABI lag) must not abort parsing of sibling logs.
+      let decoded;
+      try {
+        decoded = decodeEventLog({
+          abi: SOOTHBOOK_ABI,
+          data: log.data,
+          topics: log.topics,
+        });
+      } catch {
+        continue;
+      }
+      const args = decoded.args as Record<string, unknown>;
+      if (!sameHex(args.marketKey, marketKey)) continue;
+
+      if (decoded.eventName === "OrderFilled") {
+        if (!sameHex(args.taker, userAddress)) continue;
+        matchedOrderEvent = true;
+        filledQty += toBigInt(args.amount);
+        continue;
+      }
+
+      if (decoded.eventName === "OrderPlaced") {
+        if (!sameHex(args.maker, userAddress)) continue;
+        const amount = toBigInt(args.amount);
+        matchedOrderEvent = true;
+        restingQty += amount;
+        restingOrders.push({
+          id: args.orderId === undefined ? undefined : toBigInt(args.orderId),
+          side: Number(args.side) as 0 | 1,
+          tick: Number(args.tick),
+          amount,
+        });
+      }
+    }
+
+    if (!matchedOrderEvent) {
+      console.warn("No OrderFilled/OrderPlaced events found in order receipt");
+      return EMPTY_PARSED_ORDER_RECEIPT;
+    }
+
+    return {
+      parsed: true,
+      filledQty,
+      restingQty,
+      restingOrders,
+    };
+  } catch (error) {
+    console.warn("Failed to parse order receipt events:", error);
+    return EMPTY_PARSED_ORDER_RECEIPT;
+  }
+};
+
+export function useOrderbookTrade(marketAddress: `0x${string}`) {
+  const { address: userAddress } = useAccount();
+  const publicClient = usePublicClient();
+  const { contracts } = useDeployments();
+  const queryClient = useQueryClient();
+  const soothBookAddress = contracts.SoothBook as `0x${string}` | undefined;
+  // OrderEngine is the actual USDC custodian — SoothBook delegates the
+  // safeTransferFrom call to it, so allowance must target OrderEngine.
+  const orderEngineAddress = contracts.OrderEngine as `0x${string}` | undefined;
+
+  const marketKey = useMemo(() => {
+    return keccak256(encodePacked(["address"], [marketAddress]));
+  }, [marketAddress]);
+  const collateralAddress = contracts.MockUSDC as `0x${string}` | undefined;
+
+  const { data: collateralDecimalsData = 6 } = useReadContract({
+    address: collateralAddress,
+    abi: ERC20_ABI,
+    functionName: "decimals",
+    query: { enabled: !!collateralAddress },
+  });
+
+  const collateralDecimals = Number(collateralDecimalsData);
+
+  const { data: walletBalanceRaw = 0n, refetch: refetchWalletBalance } =
+    useReadContract({
+      address: collateralAddress,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: userAddress ? [userAddress] : undefined,
+      query: { enabled: !!collateralAddress && !!userAddress },
+    });
+
+  const { data: allowance = 0n, refetch: refetchAllowance } = useReadContract({
+    address: collateralAddress,
+    abi: ERC20_ABI,
+    functionName: "allowance",
+    args:
+      userAddress && orderEngineAddress
+        ? [userAddress, orderEngineAddress]
+        : undefined,
+    query: {
+      enabled: !!collateralAddress && !!userAddress && !!orderEngineAddress,
+    },
+  });
+
+  const walletBalance = (walletBalanceRaw as bigint) ?? 0n;
+  const allowanceAmount = (allowance as bigint) ?? 0n;
+  const availableBalance = toWad(walletBalance, collateralDecimals);
+
+  const {
+    writeContractAsync,
+    data: txHash,
+    isPending: isWritePending,
+  } = useWriteContract();
+  const [localPending, setLocalPending] = useState(false);
+
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({
+    hash: txHash,
+    query: { enabled: !!txHash },
+  });
+
+  const refetchBalance = useCallback(async () => {
+    await Promise.all([refetchWalletBalance(), refetchAllowance()]);
+  }, [refetchAllowance, refetchWalletBalance]);
+
+  const ensureApproval = useCallback(
+    async (requiredWad: bigint) => {
+      if (
+        !collateralAddress ||
+        !orderEngineAddress ||
+        !userAddress ||
+        !publicClient
+      ) {
+        toast.error("Missing approval context");
+        return false;
+      }
+
+      const requiredRaw = fromWad(requiredWad, collateralDecimals);
+      if (allowanceAmount >= requiredRaw) return true;
+
+      const toastId = toast.loading("Approving collateral...");
+      try {
+        const approveHash = await writeContractAsync({
+          address: collateralAddress,
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [orderEngineAddress, maxUint256],
+        });
+        const approveReceipt = await publicClient.waitForTransactionReceipt({
+          hash: approveHash,
+        });
+        if (approveReceipt.status !== "success") {
+          throw new Error("Approval reverted on-chain");
+        }
+        toast.success("Approval confirmed", { id: toastId });
+        await refetchAllowance();
+        return true;
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : "Approval failed";
+        toast.error(message, { id: toastId });
+        return false;
+      }
+    },
+    [
+      allowanceAmount,
+      collateralAddress,
+      collateralDecimals,
+      publicClient,
+      refetchAllowance,
+      orderEngineAddress,
+      userAddress,
+      writeContractAsync,
+    ],
+  );
+
+  const executeWrite = useCallback(
+    async (
+      label: string,
+      functionName: WriteFunctionName,
+      args: readonly unknown[],
+      approvalWad?: bigint,
+      options?: ExecuteWriteOptions,
+    ) => {
+      if (!soothBookAddress || !marketKey || !userAddress || !publicClient) {
+        toast.error("Connect wallet and select a valid market");
+        return false;
+      }
+
+      if (approvalWad && approvalWad > 0n) {
+        const approved = await ensureApproval(approvalWad);
+        if (!approved) return false;
+      }
+
+      try {
+        const estimatedGas = await publicClient.estimateContractGas({
+          address: soothBookAddress,
+          abi: SOOTHBOOK_ABI,
+          functionName: functionName as never,
+          args: args as never,
+          account: userAddress,
+        });
+        if (estimatedGas > GAS_LIMIT_CAP) {
+          toast.error(
+            `Estimated gas ${estimatedGas.toString()} exceeds chain limit ${GAS_LIMIT_CAP.toString()}. Try smaller size or less aggressive price.`,
+          );
+          return false;
+        }
+      } catch (error: unknown) {
+        if (isGasCapMessage(getErrorMessage(error))) {
+          toast.error(
+            "Order exceeds chain gas-per-tx limit. Split into smaller orders or use a less aggressive price.",
+          );
+          return false;
+        }
+        console.error("Gas estimation failed:", error);
+        toast.error(normalizeTxErrorMessage(error));
+        return false;
+      }
+
+      setLocalPending(true);
+      const silent = options?.silent === true;
+      const toastId = silent ? "" : toast.loading(label);
+      try {
+        const hash = await writeContractAsync({
+          address: soothBookAddress,
+          abi: SOOTHBOOK_ABI,
+          functionName: functionName as never,
+          args: args as never,
+        });
+
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        if (receipt.status !== "success") {
+          throw new Error("Transaction reverted on-chain");
+        }
+        if (!silent) {
+          toast.success(
+            options?.successMessage?.(receipt) ?? "Transaction confirmed",
+            { id: toastId },
+          );
+        }
+        await refetchBalance();
+        return true;
+      } catch (error: unknown) {
+        const message = normalizeTxErrorMessage(error);
+        if (!silent) {
+          toast.error(message, { id: toastId });
+        }
+        return false;
+      } finally {
+        setLocalPending(false);
+      }
+    },
+    [
+      ensureApproval,
+      marketKey,
+      publicClient,
+      refetchBalance,
+      soothBookAddress,
+      userAddress,
+      writeContractAsync,
+    ],
+  );
+
+  const estimateGas = useCallback(
+    async (functionName: WriteFunctionName, args: readonly unknown[]) => {
+      if (!soothBookAddress || !userAddress || !publicClient) {
+        return { gasCapHit: false };
+      }
+
+      try {
+        const estimatedGas = await publicClient.estimateContractGas({
+          address: soothBookAddress,
+          abi: SOOTHBOOK_ABI,
+          functionName: functionName as never,
+          args: args as never,
+          account: userAddress,
+        });
+        return {
+          gasCapHit: estimatedGas > GAS_LIMIT_CAP,
+          estimatedGas,
+        };
+      } catch (error: unknown) {
+        if (isGasCapMessage(getErrorMessage(error))) {
+          return { gasCapHit: true };
+        }
+        return { gasCapHit: false };
+      }
+    },
+    [publicClient, soothBookAddress, userAddress],
+  );
+
+  // NOTE: This hook uses INVERTED outcome encoding internally — outcome===0 calls
+  // buyYes, outcome===1 calls buyNo. Callers must pass the inverted value
+  // (see SoothBookTerminal.tsx:312). Protocol canonical is 0=NO, 1=YES;
+  // align in a follow-up PR.
+  const placeOrder = useCallback(
+    async (
+      outcome: 0 | 1,
+      price: string,
+      amount: string,
+      isBuy = true,
+      escrow = true,
+    ) => {
+      if (!marketKey || !marketAddress || !soothBookAddress || !userAddress) {
+        toast.error("Market key unavailable");
+        return false;
+      }
+
+      let shares: bigint;
+      let maxCostWad: bigint;
+      try {
+        shares = parseUnits(amount, 18);
+        const priceNum = Number(price);
+        const amountNum = Number(amount);
+        if (!Number.isFinite(priceNum) || !Number.isFinite(amountNum)) {
+          toast.error("Invalid order inputs");
+          return false;
+        }
+        const estimatedCost = Math.max(0, priceNum * amountNum);
+        maxCostWad = parseUnits(estimatedCost.toFixed(18), 18);
+      } catch {
+        toast.error("Invalid order amount");
+        return false;
+      }
+
+      const directTick = clampTick(price);
+      const oppositeTick = clampTick((1 - Number(price)).toFixed(4));
+      const priceNum = Number(price);
+      const amountNum = Number(amount);
+
+      let success = false;
+      let actualSide: 0 | 1 = outcome;
+      let actualTick = directTick;
+      const receiptSummaries: ParsedOrderReceipt[] = [];
+      const orderWriteOptions: ExecuteWriteOptions = {
+        successMessage: (receipt) => {
+          const summary = parseOrderReceipt(
+            receipt,
+            soothBookAddress,
+            marketKey,
+            userAddress,
+          );
+          receiptSummaries.push(summary);
+          if (summary.parsed && summary.restingQty > 0n) {
+            return `Filled ${fmtShares(summary.filledQty)} shares; ${fmtShares(summary.restingQty)} resting at ${fmtPrice(priceNum)}`;
+          }
+          return "Transaction confirmed";
+        },
+      };
+
+      if (isBuy) {
+        if (outcome === 0) {
+          success = await executeWrite(
+            "Submitting buy YES order...",
+            "buyYes",
+            [marketKey, directTick, shares, false, 100],
+            maxCostWad,
+            orderWriteOptions,
+          );
+          actualSide = 1;
+          actualTick = directTick;
+        } else {
+          success = await executeWrite(
+            "Submitting buy NO order...",
+            "buyNo",
+            [marketKey, directTick, shares, false, 100],
+            maxCostWad,
+            orderWriteOptions,
+          );
+          actualSide = 0;
+          actualTick = directTick;
+        }
+      } else {
+        const sellFunction: WriteFunctionName =
+          outcome === 0 ? "buyNo" : "buyYes";
+        const sellLabel =
+          outcome === 0
+            ? "Submitting sell YES order..."
+            : "Submitting sell NO order...";
+        const matchLimit = 100;
+        const buildSellArgs = (chunkShares: bigint) =>
+          [marketKey, oppositeTick, chunkShares, escrow, matchLimit] as const;
+
+        const fullEstimate = await estimateGas(
+          sellFunction,
+          buildSellArgs(shares),
+        );
+        if (!fullEstimate.gasCapHit) {
+          success = await executeWrite(
+            sellLabel,
+            sellFunction,
+            buildSellArgs(shares),
+            undefined,
+            orderWriteOptions,
+          );
+        } else {
+          let chunkSize = shares / 2n;
+          if (chunkSize < MIN_SHARE_CHUNK) chunkSize = MIN_SHARE_CHUNK;
+
+          while (chunkSize >= MIN_SHARE_CHUNK) {
+            const check = await estimateGas(
+              sellFunction,
+              buildSellArgs(chunkSize),
+            );
+            if (!check.gasCapHit) break;
+            if (chunkSize === MIN_SHARE_CHUNK) {
+              toast.error(
+                "Order too deep for per-tx gas cap. Raise price or submit smaller slices manually.",
+              );
+              return false;
+            }
+            chunkSize = chunkSize / 2n;
+            if (chunkSize < MIN_SHARE_CHUNK) chunkSize = MIN_SHARE_CHUNK;
+          }
+
+          const totalShares = shares;
+          let remaining = shares;
+          let submitted = 0n;
+          toast("Large sweep detected. Splitting into smaller transactions.");
+
+          while (remaining > 0n) {
+            const currentChunk = remaining > chunkSize ? chunkSize : remaining;
+            const chunkSuccess = await executeWrite(
+              sellLabel,
+              sellFunction,
+              buildSellArgs(currentChunk),
+              undefined,
+              orderWriteOptions,
+            );
+            if (!chunkSuccess) {
+              if (submitted > 0n) {
+                const submittedShares = Number(formatUnits(submitted, 18));
+                toast.error(
+                  `Partially submitted ${submittedShares.toLocaleString(undefined, { maximumFractionDigits: 3 })} shares. Submit remaining manually.`,
+                );
+              }
+              return false;
+            }
+            submitted += currentChunk;
+            remaining -= currentChunk;
+          }
+
+          success = submitted === totalShares;
+        }
+
+        if (outcome === 0) {
+          actualSide = 0;
+          actualTick = oppositeTick;
+        } else {
+          actualSide = 1;
+          actualTick = oppositeTick;
+        }
+      }
+
+      if (success) {
+        const marketName = shortenAddress(marketAddress);
+        const allReceiptsParsed =
+          receiptSummaries.length > 0 &&
+          receiptSummaries.every((summary) => summary.parsed);
+        const restingOrders = receiptSummaries.flatMap(
+          (summary) => summary.restingOrders,
+        );
+
+        if (allReceiptsParsed) {
+          const totalFilledQty = receiptSummaries.reduce(
+            (sum, s) => sum + s.filledQty,
+            0n,
+          );
+          const preFillShares =
+            totalFilledQty > 0n ? Number(formatUnits(totalFilledQty, 18)) : 0;
+          for (const order of restingOrders) {
+            const orderId =
+              order.id?.toString() ?? `${order.side}:${order.tick}`;
+            useOrderStore.getState().addOrder({
+              id: orderId,
+              marketAddress,
+              marketName,
+              outcome: order.side,
+              price: priceNum,
+              amount: Number(formatUnits(order.amount, 18)),
+              timestamp: Date.now(),
+              isBuy,
+            });
+            if (order.id !== undefined && preFillShares > 0) {
+              useOrderStore.getState().setPreFillAmount(orderId, preFillShares);
+              // Invalidate orders query so fill % updates immediately without
+              // waiting for the 15s polling interval.
+              queryClient.invalidateQueries({ queryKey: ["indexer-orders"] });
+            }
+          }
+        } else {
+          const orderId = `${actualSide}:${actualTick}`;
+          useOrderStore.getState().addOrder({
+            id: orderId,
+            marketAddress,
+            marketName,
+            outcome: actualSide,
+            price: priceNum,
+            amount: amountNum,
+            timestamp: Date.now(),
+            isBuy,
+          });
+        }
+      }
+
+      return success;
+    },
+    [
+      estimateGas,
+      executeWrite,
+      marketKey,
+      marketAddress,
+      soothBookAddress,
+      userAddress,
+    ],
+  );
+
+  const placeSpotOrder = useCallback(
+    async (outcome: 0 | 1, price: string, amount: string) => {
+      return placeOrder(outcome, price, amount, false);
+    },
+    [placeOrder],
+  );
+
+  const executeHybridSell = useCallback(
+    async (outcome: 0 | 1, price: string, amount: string) => {
+      return placeOrder(outcome, price, amount, false);
+    },
+    [placeOrder],
+  );
+
+  const executeTakerOrder = useCallback(
+    async (outcome: 0 | 1, price: string, amount: string, isBuy: boolean) => {
+      return placeOrder(outcome, price, amount, isBuy);
+    },
+    [placeOrder],
+  );
+
+  const cancelOrder = useCallback(
+    async (orderId: string, options?: ExecuteWriteOptions) => {
+      if (!marketKey || !soothBookAddress) {
+        toast.error("Market key unavailable");
+        return false;
+      }
+
+      const target = parseOrderId(orderId);
+      if (!target) {
+        toast.error("Unable to decode order id for cancel");
+        return false;
+      }
+
+      // Pre-simulate so we can distinguish "order is gone on-chain" (most
+      // common: stale entry in local useOrderStore from a prior session
+      // that already filled or was cancelled) from real failures. On
+      // OrderNotActive we clean the local store entry silently instead
+      // of broadcasting a doomed tx.
+      if (publicClient && userAddress) {
+        try {
+          if (target.kind === "id") {
+            await publicClient.simulateContract({
+              account: userAddress,
+              address: soothBookAddress,
+              abi: SOOTHBOOK_ABI,
+              functionName: "cancelById",
+              args: [target.orderId],
+            });
+          } else {
+            await publicClient.simulateContract({
+              account: userAddress,
+              address: soothBookAddress,
+              abi: SOOTHBOOK_ABI,
+              functionName: "cancel",
+              args: [marketKey, target.side, target.tick],
+            });
+          }
+        } catch (error: unknown) {
+          const msg = getErrorMessage(error);
+          if (msg.includes("OrderNotActive") || msg.includes("0x1d4ecc5b")) {
+            useOrderStore.getState().removeOrder(orderId);
+            if (!options?.silent) {
+              toast.success("Order already cleared on-chain — removed locally");
+            }
+            return true;
+          }
+          // Other simulation errors (gas cap, market inactive, etc.) fall
+          // through to executeWrite which surfaces them via toast.
+        }
+      }
+
+      const success =
+        target.kind === "id"
+          ? await executeWrite(
+              "Cancelling order...",
+              "cancelById",
+              [target.orderId],
+              undefined,
+              options,
+            )
+          : await executeWrite(
+              "Cancelling order...",
+              "cancel",
+              [marketKey, target.side, target.tick],
+              undefined,
+              options,
+            );
+
+      if (success) {
+        useOrderStore.getState().removeOrder(orderId);
+      }
+
+      return success;
+    },
+    [executeWrite, marketKey, soothBookAddress, publicClient, userAddress],
+  );
+
+  const redeem = useCallback(async () => {
+    if (!marketKey) {
+      toast.error("Market key unavailable");
+      return false;
+    }
+    return executeWrite("Redeeming settled payout...", "redeem", [marketKey]);
+  }, [executeWrite, marketKey]);
+
+  const depositShares = useCallback(
+    async (_outcome: number, _amount: string) => {
+      toast("Shares are held in wallet in SoothBook mode.");
+      return false;
+    },
+    [],
+  );
+
+  return {
+    placeOrder,
+    placeSpotOrder,
+    executeHybridSell,
+    cancelOrder,
+    executeTakerOrder,
+    depositShares,
+    redeem,
+    isPending: localPending || isWritePending || isConfirming,
+    availableBalance,
+    internalYesShares: 0n,
+    internalNoShares: 0n,
+    refetchBalance,
+  };
+}

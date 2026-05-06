@@ -1,0 +1,480 @@
+{
+  "roles": [
+    {
+      "id": "creator",
+      "name": "Creator",
+      "icon": "Palette",
+      "path": "/create",
+      "description": "Monetize market-making expertise and community insight",
+      "story": "Carol creates markets and earns from volume"
+    },
+    {
+      "id": "gaming",
+      "name": "Gaming Trader",
+      "icon": "Gamepad2",
+      "path": "/amm",
+      "description": "Predict events and earn protocol stakeholder rewards",
+      "story": "Alice trades early and earns LP tokens"
+    },
+    {
+      "id": "arb",
+      "name": "Arbitrageur",
+      "icon": "ArrowLeftRight",
+      "path": "/orderbook",
+      "description": "Capture spreads and maintain cross-venue efficiency",
+      "story": "Bob captures spreads between venues"
+    },
+    {
+      "id": "pvp",
+      "name": "PvP Trader",
+      "icon": "Swords",
+      "path": "/orderbook",
+      "description": "Pure conviction trading on the 1,000-tick orderbook",
+      "story": "Dave bets on conviction, winner takes all"
+    }
+  ],
+  "learn": {
+    "header": {
+      "title": "Learn Sooth Protocol",
+      "subtitle": "\"When every participant has aligned incentives, the protocol doesn't need gatekeepers. Truth emerges from the market itself.\""
+    },
+    "steps": [
+      {
+        "id": "thesis",
+        "title": "The Decentralization Thesis",
+        "badge": "Pillar 0 · Introduction",
+        "description": "Sooth Protocol is designed around one core thesis: **decentralization creates better markets**. Traditional platforms suffer from gatekept creation and centralized resolution. Sooth solves this through three foundational pillars."
+      },
+      {
+        "id": "creator",
+        "title": "The Creator",
+        "badge": "Pillar I · Launchpad",
+        "description": "Market creation is an **economic game**. Creators deposit capital and become the first LP, permanently aligning their interests with the market's success."
+      },
+      {
+        "id": "gaming",
+        "title": "The Gaming Trader",
+        "badge": "Pillar II · Stakeholder Rewards",
+        "description": "Early traders receive **LP tokens** for every trade, converting from customers into protocol stakeholders."
+      },
+      {
+        "id": "pro",
+        "title": "The Arbitrageur & PvP Trader",
+        "badge": "Pillar III · SoothBook",
+        "description": "Sooth operates **dual trading venues** to serve different trader archetypes. Sophisticated traders use the SoothBook for CEX-grade execution."
+      },
+      {
+        "id": "ready",
+        "title": "Start Your Journey",
+        "description": "Sooth's ecosystem is a cooperative network. Which actor role will you play today?"
+      }
+    ],
+    "pillars": {
+      "launchpad": {
+        "title": "Launchpad",
+        "description": "Permissionless market creation with creator economics.",
+        "innovation": "Incentive Alignment"
+      },
+      "zkRules": {
+        "title": "ZK Rules",
+        "description": "Autonomous, retroactive settlement via T*.",
+        "innovation": "Retroactive Finality"
+      },
+      "soothBook": {
+        "title": "SoothBook",
+        "description": "On-chain orderbook with 1,000-tick depth.",
+        "innovation": "High-throughput CLOB"
+      }
+    },
+    "advantage": {
+      "title": "The Sooth Advantage",
+      "table": {
+        "headers": ["Feature", "Traditional", "Sooth"],
+        "rows": [
+          ["Creation", "Gatekept", "Permissionless"],
+          ["Liquidity", "Hybrid/Fragmented", "Unified Vault"],
+          ["Resolution", "Central Oracle", "ZK + Multi-class"]
+        ]
+      }
+    },
+    "creator": {
+      "plTitle": "Creator P&L Analysis",
+      "plItems": [
+        {
+          "event": "Market Created",
+          "impact": "-$693 Deposit",
+          "pos": false
+        },
+        {
+          "event": "Trading Volume",
+          "impact": "+LP Tokens Minted",
+          "pos": true
+        },
+        {
+          "event": "Graduation",
+          "impact": "Unlocks Yield Stream",
+          "pos": true
+        },
+        {
+          "event": "Profitable Settlement",
+          "impact": "+Vault Assets",
+          "pos": true
+        }
+      ],
+      "example": {
+        "title": "Creator Example",
+        "text": "Carol creates a 50/50 market with a **$693 deposit** (b=$1,000). Volume generates **$150 in fees**. As the 50% LP holder, she earns from every trade. Skewed odds would require a higher deposit.",
+        "pnlLabel": "Estimated Net P&L",
+        "pnlValue": "+$807"
+      },
+      "tiersTitle": "Liquidity Tiers (at 50/50 odds)",
+      "tiers": [
+        {
+          "tier": "Micro",
+          "b": "$100",
+          "dep": "$69"
+        },
+        {
+          "tier": "Small",
+          "b": "$1k",
+          "dep": "$693"
+        },
+        {
+          "tier": "Med",
+          "b": "$10k",
+          "dep": "$6.9k"
+        },
+        {
+          "tier": "Large",
+          "b": "$100k",
+          "dep": "$69k"
+        }
+      ]
+    },
+    "gaming": {
+      "mechanismTitle": "Fee → LP Mechanism",
+      "mechanismSteps": [
+        "Trader pays 5% fee on trade",
+        "Fee adds to liquidity depth (b)",
+        "LP tokens minted TO THE TRADER"
+      ],
+      "pricingTitle": "Pricing Dynamics (LMSR)",
+      "practiceTitle": "Practice Prediction",
+      "sellLock": {
+        "title": "24h Sell Lock",
+        "description": "To prevent hit-and-run extraction, sell proceeds are locked for 24h. They remain spendable for new trades, but can only be withdrawn after the cooldown."
+      }
+    },
+    "pro": {
+      "architectureTitle": "Dual Venue Architecture",
+      "amm": {
+        "title": "AMM (Retail)",
+        "items": [
+          ["Asset", "Position Ledger"],
+          ["Pricing", "LMSR Curve"],
+          ["Liquidity", "Always Available"],
+          ["Sell Lock", "24h Cooldown"]
+        ]
+      },
+      "soothBook": {
+        "title": "SoothBook (Pro)",
+        "items": [
+          ["Asset", "ERC20 Tokens"],
+          ["Pricing", "Limit Orderbook"],
+          ["Liquidity", "Depth-dependent"],
+          ["Sell Lock", "None (Instant)"]
+        ]
+      },
+      "arb": {
+        "title": "The Arbitrageur's Role",
+        "description": "Arbitrageurs keep prices efficient by bridging the gap between AMM and SoothBook. They buy cheap on one venue and sell expensive on the other."
+      },
+      "pvp": {
+        "title": "PvP Conviction",
+        "description": "The SoothBook is where conviction meets conviction. No AMM buffer—just peer-to-peer trading. Winners take the loser's stake with zero LP spread extraction."
+      },
+      "evolutionTitle": "Market Evolution",
+      "evolutionStages": ["LAUNCH", "GROWTH", "MATURE"],
+      "evolutionStates": ["AMM Only", "AMM + SoothBook", "SoothBook Dominant"]
+    },
+    "ready": {
+      "title": "Choose Your Path",
+      "subtitle": "Sooth's ecosystem is a cooperative network. Which actor role will you play today?",
+      "actors": [
+        {
+          "title": "Creator",
+          "motivation": "Monetize insight, earn LP"
+        },
+        {
+          "title": "Gaming Trader",
+          "motivation": "Predict & earn rewards"
+        },
+        {
+          "title": "Arbitrageur",
+          "motivation": "Profit from inefficiencies"
+        },
+        {
+          "title": "PvP Trader",
+          "motivation": "Pure conviction trading"
+        }
+      ]
+    },
+    "context": {
+      "title": "Whitepaper Context",
+      "quotes": {
+        "thesis": "Decentralization isn't a compromise—it's a competitive advantage.",
+        "creator": "The Launchpad transforms market creation from a privileged operation into an incentive-aligned economic game.",
+        "gaming": "Pre-graduation fees mint LP tokens to traders, converting them from customers into stakeholders.",
+        "pro": "Dual-venue arbitrage creates tight, efficient prices through pure market forces.",
+        "ready": "Truth emerges from the market itself."
+      },
+      "mechanismsTitle": "Key Mechanisms",
+      "mechanisms": [
+        {
+          "label": "LMSR",
+          "desc": "Guaranteed liquidity algorithm"
+        },
+        {
+          "label": "T*",
+          "desc": "Retroactive settlement timestamp"
+        },
+        {
+          "label": "b",
+          "desc": "Liquidity depth parameter"
+        },
+        {
+          "label": "Graduation",
+          "desc": "Market maturity threshold"
+        }
+      ]
+    },
+    "proTip": "Sooth is a cooperative network. Every participant's actions help discover the true price of future events.",
+    "formulas": {
+      "title": "Protocol Accounting",
+      "subtitle": "Sooth V8.1 uses a Dual-Venue ledger with automated reconciliation.",
+      "items": [
+        {
+          "name": "Cash Basis Formula",
+          "formula": "Seed + Fees + P&L + Yield = Gross",
+          "desc": "Reconciles every USDC in the AMM ledger. Gross Cash is the total pool of assets available to back trades and LP equity."
+        },
+        {
+          "name": "Equity Floor Formula",
+          "formula": "Gross Cash - Max Liability = Floor",
+          "desc": "The guaranteed minimum value of the pool. Liability is calculated as the cost to pay out the most probable outcome (max shares)."
+        },
+        {
+          "name": "LP Valuation (ExRate)",
+          "formula": "Equity / LP Supply = Rate",
+          "desc": "The real-time redemption value of 1 LP token. Unlike V7, V8 LP tokens are stakeholders in the entire AMM treasury."
+        },
+        {
+          "name": "Graduation Threshold",
+          "formula": "Deposit × graduationBps / 10000",
+          "desc": "Markets graduate to the SoothBook once cumulative trading fees reach 100% of the initial creator deposit (default graduationBps = 10000)."
+        },
+        {
+          "name": "Creator Deposit",
+          "formula": "b × -ln(min(p, 1-p))",
+          "desc": "Creator deposit = b × -ln(min(p, 1-p)). At 50/50 odds this simplifies to b × ln(2). Skewed initial odds increase the required deposit."
+        }
+      ]
+    }
+  },
+  "pro": {
+    "restricted": {
+      "title": "SoothBook Restricted",
+      "description": "Hyper-orderbook venues are only available for graduated markets. This market is still in its bonding phase.",
+      "switchButton": "Switch to Trade"
+    },
+    "utility": {
+      "network": "Network",
+      "latency": "Latency"
+    },
+    "tabs": {
+      "inventory": "INVENTORY",
+      "history": "HISTORY"
+    },
+    "inventory": {
+      "balances": "Balances",
+      "split": "SPLIT",
+      "merge": "MERGE",
+      "details": "Details",
+      "truthFinality": "Truth Finality",
+      "retroactive": "RETROACTIVE"
+    },
+    "history": {
+      "empty": "No trade history"
+    },
+    "visuals": {
+      "tickMap": "Tick Map (1,000)",
+      "tickMapSub": "HIGH FIDELITY BITMAP",
+      "tickLadder": "Tick Ladder",
+      "depthChart": "Market Depth"
+    },
+    "execution": {
+      "buyYes": "BUY YES",
+      "sellYes": "SELL YES",
+      "limit": "LIMIT (RANGE)",
+      "market": "MARKET",
+      "rangeLower": "Range Lower (Prob)",
+      "rangeUpper": "Range Upper (Optional)",
+      "rangeUpperPlaceholder": "Leave empty for point order",
+      "amountDollar": "Amount (Dollar Based)",
+      "amountShares": "Amount (Shares)",
+      "estimatedValue": "Estimated Value",
+      "takerFee": "Taker Fee (0.2%)",
+      "executeMarket": "Execute Market",
+      "placeLimit": "Place Limit"
+    },
+    "activeOrders": {
+      "title": "Active Orders",
+      "clearAll": "Clear All",
+      "empty": "No active limit orders"
+    },
+    "shortcuts": {
+      "buy": "BUY",
+      "sell": "SELL",
+      "price": "PRICE",
+      "shortcuts": "SHORTCUTS",
+      "terminal": "V12 SOOTHBOOK TERMINAL"
+    }
+  },
+  "trade": {
+    "header": {
+      "title": "Trading on LMSR AMM",
+      "subtitle": "For Gaming Traders: buy/sell YES or NO with always‑available liquidity. During Bonding, each trade earns LP rewards."
+    },
+    "selector": {
+      "searchPlaceholder": "Search markets...",
+      "trending": "Trending Markets",
+      "noMarkets": "No markets match your search"
+    },
+    "panel": {
+      "deadline": "Deadline",
+      "graduated": "Graduated",
+      "preGrad": "Bonding",
+      "goPro": "Go Orderbook",
+      "selectToStart": "Select a market to start trading"
+    },
+    "positions": {
+      "title": "My Positions",
+      "noPositions": "No positions yet.",
+      "makePrediction": "Make your first prediction!",
+      "connectWallet": "Connect wallet to view positions"
+    },
+    "education": "New to prediction markets? Learn how they work →"
+  },
+  "create": {
+    "header": {
+      "title": "Create & Manage",
+      "subtitle": "Manage your markets and settle outcomes"
+    },
+    "roles": {
+      "creator": "Creator",
+      "adjudicator": "Adjudicator",
+      "lpTooltip": "What are LP tokens?"
+    },
+    "tabs": {
+      "markets": "My Markets",
+      "settlements": "Pending Settlements",
+      "create": "+ Create New"
+    },
+    "emptyMarkets": {
+      "title": "No Markets Yet",
+      "description": "Market creators earn fees from every trade. Start earning today!",
+      "button": "Create Your First Market"
+    },
+    "emptySettlements": {
+      "title": "All Caught Up!",
+      "description": "No markets are awaiting your settlement decision."
+    },
+    "connectWallet": {
+      "title": "Connect Wallet",
+      "description": "Connect your wallet to view your markets and create new ones."
+    },
+    "wizard": {
+      "steps": {
+        "q": "Define Your Question",
+        "l": "Set Initial Liquidity",
+        "r": "Assign Roles",
+        "review": "Review & Deploy"
+      },
+      "q": {
+        "description": "Create a clear, unambiguous question that can be resolved as YES or NO.",
+        "label": "Question",
+        "placeholder": "e.g., \"Will ETH reach $10,000 by December 31, 2025?\"",
+        "deadline": "Resolution Deadline"
+      },
+      "l": {
+        "description": "Choose how much USDC to seed the market with. This determines trading depth.",
+        "maxLoss": "Max potential loss: $"
+      },
+      "r": {
+        "description": "Designate who can settle the market outcome and who can veto incorrect settlements.",
+        "adjLabel": "Adjudicator Address",
+        "adjDesc": "Can settle the market outcome after the deadline",
+        "guardLabel": "Guardian Address",
+        "guardDesc": "Can veto incorrect settlements within 24 hours"
+      },
+      "review": {
+        "transactionDesc": "Deploying will require two transactions: TruthMarket creation and initial liquidity deposit.",
+        "comingSoon": "Deploy Market (Coming Soon)"
+      }
+    }
+  },
+  "navbar": {
+    "launchpad": "Launchpad",
+    "amm": "AMM",
+    "pro": "Orderbook",
+    "gov": "Gov",
+    "adjudicator": "Adjudicator",
+    "learn": "Learn",
+    "faucet": "Faucet",
+    "connect": "Connect"
+  },
+  "trading": {
+    "buy": "Buy",
+    "sell": "Sell",
+    "passiveOrder": "Passive Order",
+    "marketPrice": "Market Price",
+    "bestPrice": "Best Price",
+    "yourPrice": "Your Price",
+    "shares": "Shares",
+    "costPerShare": "Cost Per Share",
+    "totalCost": "Total Cost",
+    "insufficientBalance": "Insufficient Balance",
+    "settled": "Settled",
+    "trading": "Trading"
+  },
+  "common": {
+    "yes": "Yes",
+    "no": "No",
+    "usdc": "USDC",
+    "noPositions": "No positions",
+    "loadingHolders": "Loading holders...",
+    "noHolders": "No LP holders"
+  },
+  "lp": {
+    "title": "LP Positions",
+    "noPositions": "No LP positions",
+    "redeemValue": "Redeem Value",
+    "holders": "Holders",
+    "floor": "Floor",
+    "floorDescription": "Minimum guaranteed LP value",
+    "ceiling": "Ceiling",
+    "ceilingDescription": "Maximum LP value if all positions win",
+    "fairMintingDescription": "Fair minting ensures LP tokens are priced correctly",
+    "loadingHolders": "Loading holders...",
+    "noHolders": "No LP holders",
+    "creatorFloor": "Creator Floor",
+    "yourFloor": "Your Floor",
+    "ceilingValue": "Ceiling Value"
+  },
+  "operator": {
+    "title": "Operator Console",
+    "description": "Manage market operations",
+    "resolve": "Resolve",
+    "guardian": "Guardian"
+  }
+}
