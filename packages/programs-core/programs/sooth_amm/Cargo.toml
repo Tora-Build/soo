@@ -1,0 +1,44 @@
+[package]
+name = "sooth_amm"
+version = "0.0.0"
+edition = "2021"
+description = "Sooth Protocol AMM (LMSR) program — first production Anchor program"
+license = "Apache-2.0"
+repository = "https://github.com/Tora-Build/sooth-solana"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "sooth_amm"
+
+# ── Toolchain notes ─────────────────────────────────────────────────────────
+# Anchor 0.30.1 is the latest 0.30.x release at the time of writing.
+#
+# The spike (`_spikes/lmsr-cu/`) pinned `solana-program = 1.18` because
+# platform-tools v1.51 (Solana CLI 3.0.13) ships cargo 1.84 which rejects
+# dependencies declaring `edition2024`. Anchor 0.30.x's transitive graph stays
+# inside that envelope (it pins solana-program ~1.18). If `cargo build-sbf`
+# starts failing with edition2024 errors after a `cargo update`, mirror the
+# pins documented in `_spikes/lmsr-cu/README.md` "Build status" section.
+# ----------------------------------------------------------------------------
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+# Enable Anchor's `init_if_needed` constraint, used for the per-(user, market)
+# Position PDA in `trade_positions` per architecture §4.2.
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
+anchor-spl = { version = "0.30.1", features = ["token"] }
+
+[dev-dependencies]
+# Host-side math unit tests — no SBF, no anchor framework. The tests in
+# `tests/lmsr_unit.rs` exercise the math module directly.
+
+[lints.rust]
+# Match the style the spike uses — silent on the BPF target's unexpected cfgs.
+unexpected_cfgs = { level = "allow" }

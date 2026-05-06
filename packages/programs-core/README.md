@@ -2,7 +2,7 @@
 
 > Anchor programs for Sooth Protocol on Solana — workspace member of the `sooth-solana` monorepo.
 > Analogous to `packages/contracts-core` in the EVM monorepo (`sooth-alpha`).
-> Status: spec only, no implementation yet.
+> Status: `sooth_amm` scaffolded; remaining four programs are spec only. See "Status" below.
 
 ## What this is
 
@@ -20,32 +20,69 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full mapping.
 
 ## Status
 
-**Design spec only.** No Rust code, no Anchor programs, no deployments. Implementation is gated by:
+**Implementation in progress.** First Anchor program (`sooth_amm`) scaffolded; the rest are still spec.
 
-1. 1-week LMSR + matcher CU spike (validate `sooth_amm::trade_positions` runs within Solana's CU budget)
-2. Founder-level decision on orderbook strategy (custom build, Monaco fork, or Phoenix integration — see [`../../docs/decision-log.md`](../../docs/decision-log.md))
-3. Founder-level decision on whether escrow atomicity is load-bearing (gates orderbook strategy)
+### Programs
+
+| Program             | Status                                                                                                                                                                                                                                          |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sooth_amm`         | **Scaffolded.** LMSR math wired in (D4 ported from `_spikes/lmsr-cu/`); state mutation real; CPIs / fee router / LP mint / lock-on-sell stubbed with `todo!()`. See `programs/sooth_amm/src/instructions/trade_positions.rs` for the TODO list. |
+| `sooth_launchpad`   | Spec only. Will own fee router, LP mint, market factory.                                                                                                                                                                                        |
+| `sooth_market`      | Spec only. Will own market PDA, vault, lifecycle, redemption.                                                                                                                                                                                   |
+| `sooth_book`        | Spec only. Gated on P1 (Monaco fork vs custom build).                                                                                                                                                                                           |
+| `sooth_adjudicator` | Spec only. Manual variant first; ZkTLS later.                                                                                                                                                                                                   |
+
+### Toolchain
+
+- **Anchor 0.30.1** (latest 0.30.x). The `init-if-needed` feature is enabled for the `Position` PDA pattern in `trade_positions`.
+- **Solana CLI 3.0.13 / platform-tools v1.51** (matches the spike). `cargo build-sbf` ships cargo 1.84.0, which rejects `edition2024`-tainted transitive deps. The same pins as the spike apply — already encoded in the workspace `Cargo.lock`:
+  ```bash
+  cargo update -p constant_time_eq --precise 0.4.2  # (auto-pinned via blake3 1.5.5)
+  cargo update -p blake3 --precise 1.5.5
+  cargo update -p proc-macro-crate@3.5.0 --precise 3.2.0
+  cargo update -p indexmap@2.14.0 --precise 2.6.0
+  cargo update -p hashbrown@0.17.0 --precise 0.15.2
+  cargo update -p unicode-segmentation --precise 1.12.0
+  ```
+  If a future `cargo update` reintroduces edition2024 errors, replay the equivalent set.
+
+### Build commands
+
+```bash
+cargo check --workspace                                                          # green
+cargo test -p sooth_amm                                                          # 24 unit tests, all green (15 inline + 9 integration)
+cargo build-sbf --manifest-path packages/programs-core/programs/sooth_amm/Cargo.toml   # produces target/deploy/sooth_amm.so
+```
+
+`anchor build` is deferred until the Anchor.toml at `packages/programs-core/Anchor.toml` is exercised against a real keypair (currently uses a placeholder program ID — replace via `solana-keygen new -o target/deploy/sooth_amm-keypair.json` and update `declare_id!` + `Anchor.toml`).
 
 ## Layout
 
 ```
-packages/programs-core/        # workspace member of sooth-solana monorepo
+packages/programs-core/
 ├── README.md                  # this file
+├── Anchor.toml                # workspace = ["programs/sooth_amm"], placeholder program ID
 ├── docs/
 │   └── architecture.md        # complete program design (5 programs, account model, call chains, CU budgets)
-└── (future)
-    ├── Anchor.toml
-    ├── Cargo.toml             # member of root Cargo workspace
-    ├── programs/
-    │   ├── sooth_launchpad/
-    │   ├── sooth_amm/
-    │   ├── sooth_market/
-    │   ├── sooth_book/
-    │   └── sooth_adjudicator/
-    ├── crates/
-    │   └── sooth-book-matcher/  # shared Rust matcher (BPF + wasm targets)
-    ├── tests/
-    └── target/idl/            # IDLs consumed by ../sdk-solana
+└── programs/
+    └── sooth_amm/             # SCAFFOLDED — LMSR math + trade_positions
+        ├── Cargo.toml
+        ├── src/
+        │   ├── lib.rs
+        │   ├── error.rs
+        │   ├── events.rs
+        │   ├── math/          # wad.rs + lmsr.rs (ported from _spikes/lmsr-cu)
+        │   ├── state/         # market, amm_state, position, lock_entry
+        │   └── instructions/  # trade_positions
+        └── tests/
+            └── lmsr_unit.rs   # host-side math tests
+
+# Future workspace members (uncomment in root Cargo.toml as they land):
+#   programs/sooth_launchpad
+#   programs/sooth_market
+#   programs/sooth_book
+#   programs/sooth_adjudicator
+#   crates/sooth-book-matcher
 ```
 
 ## Companions
