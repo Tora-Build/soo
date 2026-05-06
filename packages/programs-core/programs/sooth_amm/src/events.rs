@@ -30,3 +30,35 @@ pub struct LiquidityProvided {
     pub lp_amount: u64,
     pub ts: i64,
 }
+
+/// Emitted on the sell branch of `trade_positions` after the proceeds have
+/// been moved into the per-sell `LockEntry` PDA. Mirrors the EVM
+/// `ProceedsLocked` event (`AMMEngine.sol:1011-1013`).
+#[event]
+pub struct PositionSold {
+    pub market: Pubkey,
+    pub user: Pubkey,
+    /// 0 = NO, 1 = YES.
+    pub outcome: u8,
+    /// Absolute share count sold (positive). Matches `|delta_shares|`.
+    pub shares_sold: u128,
+    /// Lock account that escrows the USDC proceeds. The corresponding
+    /// `claim_unlocked` ix takes this pubkey as input.
+    pub lock_entry: Pubkey,
+    /// USDC base units escrowed (matches `lock_entry.amount_usdc`).
+    pub amount_usdc: u64,
+    /// Unix timestamp at which `claim_unlocked` becomes callable.
+    pub unlock_at: i64,
+}
+
+/// Emitted by `claim_unlocked` after a successful payout. Mirrors the EVM
+/// `LocksProcessed`/`LockEntryRemoved` event family
+/// (`AMMEngine.sol:392-407`).
+#[event]
+pub struct LockClaimed {
+    pub market: Pubkey,
+    pub user: Pubkey,
+    pub lock_entry: Pubkey,
+    pub amount_usdc: u64,
+    pub ts: i64,
+}

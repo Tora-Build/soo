@@ -18,6 +18,13 @@
 //   - Airdrop SOL to creator + user
 //   - Create the user's USDC ATA + mint 1000 USDC into it (mint authority
 //     keypair from phase 1 signs)
+//   - Bootstrap the adjudicator allowlist PDA + register the creator as the
+//     demo adjudicator (Codex C2 minimum-viable mitigation; sooth_market now
+//     rejects `initialize_market` if the named adjudicator is the default key
+//     OR is absent from the on-chain allowlist). On localnet we use the
+//     creator wallet as both the allowlist authority AND the adjudicator —
+//     in production these are separate roles (multisig vs adjudicator
+//     program) but the demo collapses them for convenience.
 //   - Run all 4 init instructions to create a Sooth market
 //     (initializeMarket → initializeOutcomeMints → initializeMarketVaults →
 //     initializeAmmState)
@@ -324,6 +331,70 @@ async function init() {
   const deadline = startTime + 7 * 24 * 60 * 60;
   const bWad = 1_000n * WAD;
 
+  // ─── Adjudicator allowlist (Codex C2 minimum-viable mitigation) ──────
+  //
+  // On-chain `initialize_market` now requires:
+  //   1. `args.adjudicator != Pubkey::default()`
+  //   2. The pubkey to be present on the singleton AdjudicatorAllowlist PDA.
+  //
+  // The allowlist is initialised once per program deployment. On localnet
+  // the creator wallet doubles as the allowlist authority AND the
+  // adjudicator pubkey for the demo market. In production these would be
+  // distinct (multisig governance + actual adjudicator program signer);
+  // the localnet collapse is purely for convenience. Re-running the seed
+  // is idempotent: we look up the PDA first and skip the bootstrap if it
+  // already exists.
+  const [allowlistPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("adjudicator_allowlist")],
+    SOOTH_MARKET_ID,
+  );
+  const allowlistInfo = await connection.getAccountInfo(allowlistPda);
+  if (!allowlistInfo) {
+    await marketProgram.methods
+      .initializeAdjudicatorAllowlist(creator.publicKey)
+      .accounts({
+        allowlist: allowlistPda,
+        signer: creator.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([creator])
+      .rpc();
+    log(
+      `  initializeAdjudicatorAllowlist OK (authority=${creator.publicKey.toBase58()})`,
+    );
+  } else {
+    log(
+      `  allowlist PDA already present at ${allowlistPda.toBase58()}, skipping bootstrap`,
+    );
+  }
+
+  // Register the demo adjudicator. We attempt-and-tolerate-already-listed
+  // because the PDA may have been initialised by a previous run while the
+  // creator keypair on disk has since been regenerated (rare but possible
+  // when the operator wipes only part of .localnet/). The on-chain
+  // AdjudicatorAlreadyAllowlisted error is thrown in that case.
+  const demoAdjudicator = creator.publicKey;
+  try {
+    await marketProgram.methods
+      .addAdjudicator(demoAdjudicator)
+      .accounts({
+        allowlist: allowlistPda,
+        authority: creator.publicKey,
+      })
+      .signers([creator])
+      .rpc();
+    log(`  addAdjudicator OK (adjudicator=${demoAdjudicator.toBase58()})`);
+  } catch (e) {
+    const msg = String(e?.message ?? e);
+    if (msg.includes("AdjudicatorAlreadyAllowlisted")) {
+      log(
+        `  adjudicator ${demoAdjudicator.toBase58()} already allow-listed, skipping`,
+      );
+    } else {
+      throw e;
+    }
+  }
+
   log(`creating market PDA ${marketPda.toBase58()}...`);
 
   // 1. initializeMarket
@@ -333,10 +404,11 @@ async function init() {
       questionHash: Array(32).fill(0),
       startTime: new BN(startTime),
       deadline: new BN(deadline),
-      adjudicator: PublicKey.default,
+      adjudicator: demoAdjudicator,
     })
     .accounts({
       market: marketPda,
+      adjudicatorAllowlist: allowlistPda,
       creator: creator.publicKey,
       systemProgram: SystemProgram.programId,
     })

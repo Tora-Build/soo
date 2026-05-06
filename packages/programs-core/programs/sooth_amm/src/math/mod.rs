@@ -14,4 +14,4 @@ pub mod lmsr;
 pub mod wad;
 
 pub use lmsr::{cost_delta, exp_wad, ln_wad, lmsr_cost, MathError};
-pub use wad::{wad_div, wad_mul, wad_to_usdc_ceil, LN2_WAD, WAD, WAD_U};
+pub use wad::{wad_div, wad_mul, wad_to_usdc_ceil, wad_to_usdc_floor, LN2_WAD, WAD, WAD_U};

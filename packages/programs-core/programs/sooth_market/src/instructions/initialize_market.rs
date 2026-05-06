@@ -34,7 +34,9 @@ use anchor_lang::prelude::*;
 
 use crate::error::SoothMarketError;
 use crate::events::MarketInitialized;
-use crate::state::{Market, MarketLifecycle};
+use crate::state::{
+    AdjudicatorAllowlist, Market, MarketLifecycle, ADJUDICATOR_ALLOWLIST_SEED,
+};
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct InitializeMarketArgs {
@@ -63,6 +65,17 @@ pub struct InitializeMarket<'info> {
     )]
     pub market: Box<Account<'info, Market>>,
 
+    /// Singleton allowlist of permitted adjudicator pubkeys. Read-only here;
+    /// the handler verifies `args.adjudicator` is present. Codex C2 minimum-
+    /// viable mitigation — see `state/adjudicator_allowlist.rs`.
+    /// Account-resolution will fail if the allowlist PDA has not been
+    /// initialised yet (closed-by-default posture).
+    #[account(
+        seeds = [ADJUDICATOR_ALLOWLIST_SEED],
+        bump = adjudicator_allowlist.bump,
+    )]
+    pub adjudicator_allowlist: Account<'info, AdjudicatorAllowlist>,
+
     #[account(mut)]
     pub creator: Signer<'info>,
 
@@ -73,6 +86,34 @@ pub fn handler(ctx: Context<InitializeMarket>, args: InitializeMarketArgs) -> Re
     require!(
         args.deadline > args.start_time,
         SoothMarketError::InvalidDeadline
+    );
+
+    // ── Adjudicator gating (Codex C2 minimum-viable mitigation) ───────────
+    //
+    // 1. Reject the all-zero default pubkey — guards against operators who
+    //    forget to set a real adjudicator and would otherwise create a market
+    //    that the loose signer-key check on `lock_for_resolution` / `settle`
+    //    cannot meaningfully authorise.
+    // 2. Reject any pubkey not present on the on-chain allowlist. The
+    //    allowlist is a singleton PDA managed by the protocol multisig; this
+    //    constrains the SET of valid adjudicators while leaving the per-call
+    //    authentication on the lifecycle ixs unchanged in this commit.
+    //
+    // Future migration: when the full `sooth_adjudicator` program lands,
+    // this check is replaced by a CPI-driven verification (the adjudicator
+    // program signs into `lock_for_resolution`/`settle` and we verify the
+    // CPI parent program). Until then this allowlist is the minimum viable
+    // defense per Codex's 2nd-pass review.
+    require_keys_neq!(
+        args.adjudicator,
+        Pubkey::default(),
+        SoothMarketError::AdjudicatorIsDefault
+    );
+    require!(
+        ctx.accounts
+            .adjudicator_allowlist
+            .contains(args.adjudicator),
+        SoothMarketError::AdjudicatorNotAllowlisted
     );
 
     // Compute the addresses + bumps for every per-market PDA up front, even

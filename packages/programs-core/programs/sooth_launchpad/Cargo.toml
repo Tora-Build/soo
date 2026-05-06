@@ -1,0 +1,46 @@
+[package]
+name = "sooth_launchpad"
+version = "0.0.0"
+edition = "2021"
+description = "Sooth Protocol launchpad program — market factory, fee router, LP mint (LaunchpadEngine + FeeRouter port)"
+license = "Apache-2.0"
+repository = "https://github.com/Tora-Build/sooth-solana"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "sooth_launchpad"
+
+# ── Toolchain notes ─────────────────────────────────────────────────────────
+# Same Anchor 0.30.1 / solana-program 1.18.x envelope as `sooth_amm` and
+# `sooth_market`. The transitive dep pins documented in
+# `packages/programs-core/README.md` "Toolchain pins" already cover this crate
+# — if `cargo build-sbf` reports edition2024 errors, replay the recipe.
+#
+# `sooth_launchpad` declares `sooth_amm` and `sooth_market` as path deps with
+# `features = ["cpi"]` so the eventual `create_market` ix can CPI into both.
+# Same workspace-build caveat as `sooth_amm → sooth_market`: feature unification
+# at workspace level emits stub `.so` artifacts with no entrypoint. Each
+# program must be built via its own `cargo build-sbf --manifest-path …`.
+# ----------------------------------------------------------------------------
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = { version = "0.30.1" }
+anchor-spl = { version = "0.30.1", features = ["token", "associated_token"] }
+# CPI-only surfaces of the two sibling programs. `create_market` will compose
+# `sooth_market::initialize_market` + `initialize_outcome_mints` +
+# `initialize_market_vaults` + `sooth_amm::initialize_amm_state` into a single
+# higher-level call. The `cpi` feature pulls only the no-entrypoint surface so
+# we don't double-register the program entrypoint in this crate.
+sooth_amm = { path = "../sooth_amm", features = ["cpi"] }
+sooth_market = { path = "../sooth_market", features = ["cpi"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "allow" }

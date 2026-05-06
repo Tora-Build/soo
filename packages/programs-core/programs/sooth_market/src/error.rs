@@ -39,4 +39,22 @@ pub enum SoothMarketError {
 
     #[msg("Deadline must be greater than start_time")]
     InvalidDeadline,
+
+    #[msg("Adjudicator pubkey must not be the default (all-zero) key")]
+    AdjudicatorIsDefault,
+
+    #[msg("Adjudicator pubkey is not present on the on-chain allowlist")]
+    AdjudicatorNotAllowlisted,
+
+    #[msg("Caller is not the registered allowlist authority")]
+    AllowlistAuthorityMismatch,
+
+    #[msg("Adjudicator allowlist is full (capacity exhausted)")]
+    AllowlistFull,
+
+    #[msg("Adjudicator pubkey is already present on the allowlist")]
+    AdjudicatorAlreadyAllowlisted,
+
+    #[msg("Adjudicator pubkey is not present on the allowlist")]
+    AdjudicatorNotPresent,
 }

@@ -42,4 +42,10 @@ pub enum SoothAmmError {
 
     #[msg("Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3")]
     SellNotImplemented,
+
+    #[msg("Lock has not elapsed yet (now < lock_entry.unlock_at)")]
+    LockNotElapsed,
+
+    #[msg("Lock vault account does not match market.lock_vault")]
+    LockVaultMismatch,
 }

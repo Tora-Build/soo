@@ -1,14 +1,35 @@
-//! `trade_positions` — buy or sell YES/NO shares against the LMSR.
+//! `trade_positions` — buy YES/NO shares against the LMSR.
 //!
 //! Architecture references:
 //!   - §4.2 (buyYes call chain, init_if_needed Position pattern)
-//!   - §4.3 (sell with lock-on-sell, separate `claim_unlocked` ix)
+//!   - §4.3 (sell with lock-on-sell — handled by the sibling
+//!     `sell_positions` ix in this same module)
 //!   - §5   (CU budget — ~75-80k projected envelope per spike D4)
 //!   - §8   (fee router 4-way split)
 //!
+//! ## Buy vs sell split
+//!
+//! The architecture sketch in `architecture.md §4.3` describes a unified
+//! `trade_positions` ix that branches on `delta_shares` sign. Anchor's
+//! account-loading pass evaluates `init`/`init_if_needed` constraints
+//! before the handler runs, which makes a unified ix awkward: the
+//! `LockEntry` PDA needed on the sell branch must either be init'd
+//! unconditionally (forcing buyers to pay rent on a useless escrow
+//! account) or use `init_if_needed` with seeds tied to a per-trade nonce
+//! (which means buys and sells contend for the same fresh-PDA slot, and
+//! a buy after a sell would fail the seed-equality check).
+//!
+//! Solana's idiomatic resolution is to split the two ixs. `trade_positions`
+//! handles buys only; sells go through `sell_positions` (sibling module),
+//! which mirrors the buy account list plus the lock-side accounts. Both
+//! ixs mutate the same `AmmState` / `Position`; the SDK's `buildTrade` will
+//! dispatch on `delta_shares` sign in a follow-up commit. The
+//! `SellNotImplemented` error variant is preserved for SDK compatibility
+//! — the surface still rejects sells through this ix.
+//!
 //! ## Status
 //!
-//! Buy path is now end-to-end real:
+//! Buy path is end-to-end real:
 //!   - Outcome decoding & validation
 //!   - LMSR `cost_delta` (real call into the math module)
 //!   - Slippage check vs `max_cost_wad`
@@ -24,8 +45,6 @@
 //!     `cost_wad ≤ max_cost_wad`, which is **looser** than the EVM check.
 //!     Tracked gap until the fee router lands.
 //!   - LP mint on pre-graduation buys (architecture §4.2).
-//!   - Lock-on-sell flow (`LockEntry` init + token transfer to lock vault per
-//!     §4.3) — see comment block above the sell branch.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -138,15 +157,11 @@ pub fn handler(
     );
     require!(delta_shares != 0, SoothAmmError::ZeroDelta);
 
-    // H4 (Codex): hard-error on sell until the lock-on-sell flow lands.
-    //
-    // The `delta_shares < 0` branch below mutates `q_yes/q_no` and `Position`
-    // but does NOT transfer USDC out — see the long comment block at the
-    // sell branch site for the full prerequisite list (LockEntry PDA,
-    // claim_unlocked ix, PDA-signed market_vault → lock_vault transfer).
-    // Reaching that branch with the current code path would let a holder
-    // burn their position with no offsetting USDC outflow. Refuse it on-
-    // chain; the SDK already throws `NotImplemented` on `buildTrade(sell)`.
+    // Buy-only ix: sells route through `sell_positions` (see module
+    // comment "Buy vs sell split"). Returning `SellNotImplemented` here is
+    // the SDK-facing signal that the caller used the wrong ix; the SDK's
+    // `buildTrade` is expected to dispatch on `delta_shares` sign in a
+    // follow-up commit.
     require!(delta_shares > 0, SoothAmmError::SellNotImplemented);
 
     let market = &ctx.accounts.market;
@@ -182,9 +197,9 @@ pub fn handler(
 
     // ── 2. Compute LMSR cost delta (REAL — the load-bearing math) ────────
     //
-    // `delta_shares > 0` = buy that side; `< 0` = sell. The other side is
-    // unaffected by an AMM trade (per binary-outcome LMSR; mint/merge/redeem
-    // is a separate `sooth_market` ix).
+    // Buy-only here (delta_shares > 0); the sell branch lives in
+    // `sell_positions`. The other side is unaffected by an AMM trade per
+    // binary-outcome LMSR; mint/merge/redeem is a separate `sooth_market` ix.
     let (d_yes, d_no) = if outcome == OUTCOME_YES {
         (delta_shares, 0i128)
     } else {
@@ -204,63 +219,33 @@ pub fn handler(
     // lands. The SDK's `max_cost_wad` already reserves headroom.
     let fee_wad: u128 = 0; // todo!("fee router CPI; see architecture §8")
 
-    // ── 4. Slippage check (against the cost-with-fee, signed) ────────────
+    // ── 4. Slippage check ────────────────────────────────────────────────
     //
-    // Sells return negative `cost_wad`; the slippage check applies only to
-    // buys (positive). For sells the SDK passes max_cost_wad = u128::MAX.
-    if cost_wad > 0 {
-        let total_cost_wad: u128 = (cost_wad as u128)
-            .checked_add(fee_wad)
-            .ok_or(error!(SoothAmmError::MathOverflow))?;
-        require!(
-            total_cost_wad <= max_cost_wad,
-            SoothAmmError::SlippageExceeded
-        );
-    }
+    // `cost_wad` is positive on the buy path (we're charged); enforce the
+    // SDK's max-cost ceiling.
+    require!(cost_wad > 0, SoothAmmError::MathOverflow);
+    let total_cost_wad: u128 = (cost_wad as u128)
+        .checked_add(fee_wad)
+        .ok_or(error!(SoothAmmError::MathOverflow))?;
+    require!(
+        total_cost_wad <= max_cost_wad,
+        SoothAmmError::SlippageExceeded
+    );
 
     // ── 5. WAD → USDC ceil (REAL) ────────────────────────────────────────
-    //
-    // For buys this is what the user pays in USDC base units. For sells
-    // it's the absolute proceeds (sign carried separately).
-    let cost_usdc: u64 = wad_to_usdc_ceil(cost_wad.unsigned_abs())
+    let cost_usdc: u64 = wad_to_usdc_ceil(cost_wad as u128)
         .map_err(map_math_err)?;
 
-    // ── 6. Token transfer ────────────────────────────────────────────────
-    if cost_wad > 0 {
-        // BUY (REAL): `spl-token::transfer(user_usdc_ata → market_vault,
-        // cost_usdc)`, signed by the user (the `from` ATA's authority). No
-        // PDA seeds needed on the buy side. Architecture §4.2 step 7.
-        let cpi_ctx = CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            Transfer {
-                from: ctx.accounts.user_usdc_ata.to_account_info(),
-                to: ctx.accounts.market_vault.to_account_info(),
-                authority: ctx.accounts.user.to_account_info(),
-            },
-        );
-        token::transfer(cpi_ctx, cost_usdc)?;
-    }
-    // SELL (cost_wad < 0): UNREACHABLE — the early-return at the top of this
-    // handler hard-errors with `SellNotImplemented` for any `delta_shares < 0`.
-    //
-    // Before this branch can come out of stub status, four things are needed
-    // that this commit deliberately does NOT introduce (architecture §4.3):
-    //
-    //   1. `lock_authority` UncheckedAccount with
-    //      seeds = [b"lock", market_id], bump = market.lock_authority_bump,
-    //      seeds::program = sooth_market::ID.
-    //   2. `lock_vault` Account<TokenAccount> (ATA owned by `lock_authority`,
-    //      cross-checked against `market.lock_vault`).
-    //   3. `LockEntry` PDA `init` with seeds = [b"lock_entry", market_id,
-    //      user, nonce] storing { user, market, amount, unlock_at = now + 24h }.
-    //      Drained by a separate `claim_unlocked` ix.
-    //   4. PDA-signed `spl-token::transfer market_vault → lock_vault`, signed
-    //      by `vault_authority` using `market.market_id` and
-    //      `market.vault_authority_bump`.
-    //
-    // The lock_vault + lock_authority PDAs already exist on `sooth_market`
-    // (see `initialize_market_vaults.rs`); what's missing is the `LockEntry`
-    // PDA layout and the matching `claim_unlocked` ix on `sooth_amm`.
+    // ── 6. Token transfer (BUY): user_usdc_ata → market_vault ────────────
+    let cpi_ctx = CpiContext::new(
+        ctx.accounts.token_program.to_account_info(),
+        Transfer {
+            from: ctx.accounts.user_usdc_ata.to_account_info(),
+            to: ctx.accounts.market_vault.to_account_info(),
+            authority: ctx.accounts.user.to_account_info(),
+        },
+    );
+    token::transfer(cpi_ctx, cost_usdc)?;
 
     // ── 7. State mutation (REAL) ─────────────────────────────────────────
     if outcome == OUTCOME_YES {
@@ -285,7 +270,7 @@ pub fn handler(
     // cost_wad. Post-graduation, no LP mint and the fee split kicks in.
     // Owned by `sooth_launchpad::LpMint` PDA — wire this once the launchpad
     // program exists.
-    if !amm.is_graduated && delta_shares > 0 {
+    if !amm.is_graduated {
         // unimplemented!("LP mint — phase 2; architecture §4.2")
     }
 

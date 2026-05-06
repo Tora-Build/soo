@@ -215,6 +215,56 @@ export async function bootSmoke(
   const marketProgram = new Program(soothMarketIdl as Idl, provider);
   const ammProgram = new Program(soothAmmIdl as Idl, provider);
 
+  // ─── 0. adjudicator allowlist bootstrap ─────────────────────────────────
+  //
+  // Codex C2 minimum-viable mitigation: `initialize_market` now requires the
+  // adjudicator pubkey to (a) not be the default key and (b) be present on a
+  // singleton on-chain allowlist. We seed the allowlist via the real ixs
+  // (`initialize_adjudicator_allowlist` + `add_adjudicator`) rather than
+  // setAccount-ing the bytes — the seed flow is the same one the localnet
+  // demo uses, so smoke tests double as integration coverage of those ixs.
+  // The creator wallet plays both the allowlist authority AND the
+  // adjudicator role for the duration of the smoke run.
+  const [allowlistPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("adjudicator_allowlist")],
+    SOOTH_MARKET_ID,
+  );
+  await sendTx(
+    ctx,
+    [creator],
+    await buildTx(
+      ctx,
+      [
+        await (marketProgram.methods as any)
+          .initializeAdjudicatorAllowlist(creator.publicKey)
+          .accounts({
+            allowlist: allowlistPda,
+            signer: creator.publicKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .instruction(),
+      ],
+      creator.publicKey,
+    ),
+  );
+  await sendTx(
+    ctx,
+    [creator],
+    await buildTx(
+      ctx,
+      [
+        await (marketProgram.methods as any)
+          .addAdjudicator(creator.publicKey)
+          .accounts({
+            allowlist: allowlistPda,
+            authority: creator.publicKey,
+          })
+          .instruction(),
+      ],
+      creator.publicKey,
+    ),
+  );
+
   // ─── 1. initialize_market (Market PDA only) ─────────────────────────────
   const marketId = randomMarketId();
   const [marketPda] = deriveMarketPda(marketId, PROGRAMS);
@@ -240,10 +290,11 @@ export async function bootSmoke(
             questionHash: Array(32).fill(0),
             startTime: new BN(startTime),
             deadline: new BN(deadline),
-            adjudicator: PublicKey.default,
+            adjudicator: creator.publicKey,
           })
           .accounts({
             market: marketPda,
+            adjudicatorAllowlist: allowlistPda,
             creator: creator.publicKey,
             systemProgram: SystemProgram.programId,
           })

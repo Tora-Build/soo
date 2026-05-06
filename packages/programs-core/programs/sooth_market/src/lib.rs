@@ -62,6 +62,33 @@ pub const USDC_MINT_DEVNET: Pubkey = anchor_lang::pubkey!(
 pub mod sooth_market {
     use super::*;
 
+    /// One-shot bootstrap of the singleton adjudicator allowlist PDA.
+    /// Codex C2 minimum-viable mitigation — see
+    /// `state/adjudicator_allowlist.rs`. MUST be called before any
+    /// `initialize_market` ix; market creation now requires the allowlist
+    /// PDA to exist.
+    pub fn initialize_adjudicator_allowlist(
+        ctx: Context<InitializeAdjudicatorAllowlist>,
+        authority: Pubkey,
+    ) -> Result<()> {
+        instructions::initialize_adjudicator_allowlist::handler(ctx, authority)
+    }
+
+    /// Append a pubkey to the adjudicator allowlist (gated on
+    /// `allowlist.authority`). See `instructions/add_adjudicator.rs`.
+    pub fn add_adjudicator(ctx: Context<AddAdjudicator>, adjudicator: Pubkey) -> Result<()> {
+        instructions::add_adjudicator::handler(ctx, adjudicator)
+    }
+
+    /// Remove a pubkey from the adjudicator allowlist (gated on
+    /// `allowlist.authority`). See `instructions/remove_adjudicator.rs`.
+    pub fn remove_adjudicator(
+        ctx: Context<RemoveAdjudicator>,
+        adjudicator: Pubkey,
+    ) -> Result<()> {
+        instructions::remove_adjudicator::handler(ctx, adjudicator)
+    }
+
     /// Create the Market PDA, both outcome SPL mints, and the USDC vault ATA.
     /// Architecture §4.1; mirrors EVM `LaunchpadEngine.createMarket` (which
     /// deployed a TruthMarket clone) — on Solana we collapse the deploy step

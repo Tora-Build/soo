@@ -15,16 +15,7 @@
         "market creator after `sooth_market::initialize_market_vaults`. See",
         "`instructions/initialize_amm_state.rs`."
       ],
-      "discriminator": [
-        107,
-        21,
-        178,
-        73,
-        206,
-        85,
-        154,
-        116
-      ],
+      "discriminator": [107, 21, 178, 73, 206, 85, 154, 116],
       "accounts": [
         {
           "name": "market",
@@ -36,14 +27,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116
-                ]
+                "value": [109, 97, 114, 107, 101, 116]
               },
               {
                 "kind": "account",
@@ -54,38 +38,9 @@
             "program": {
               "kind": "const",
               "value": [
-                6,
-                156,
-                114,
-                93,
-                33,
-                111,
-                83,
-                15,
-                227,
-                211,
-                161,
-                229,
-                74,
-                162,
-                148,
-                36,
-                167,
-                13,
-                25,
-                23,
-                36,
-                108,
-                245,
-                73,
-                242,
-                158,
-                139,
-                168,
-                0,
-                0,
-                0,
-                0
+                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
+                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
+                0, 0, 0, 0
               ]
             }
           }
@@ -101,11 +56,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  97,
-                  109,
-                  109
-                ]
+                "value": [97, 109, 109]
               },
               {
                 "kind": "account",
@@ -150,16 +101,7 @@
         "(signed in WAD) is `C(q + Δ) - C(q)` with `C(q_yes, q_no, b) = b · ln(",
         "exp(q_yes/b) + exp(q_no/b))`. See architecture §4.2 / §4.3."
       ],
-      "discriminator": [
-        14,
-        33,
-        158,
-        91,
-        88,
-        26,
-        89,
-        136
-      ],
+      "discriminator": [14, 33, 158, 91, 88, 26, 89, 136],
       "accounts": [
         {
           "name": "market",
@@ -175,14 +117,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116
-                ]
+                "value": [109, 97, 114, 107, 101, 116]
               },
               {
                 "kind": "account",
@@ -193,57 +128,22 @@
             "program": {
               "kind": "const",
               "value": [
-                6,
-                156,
-                114,
-                93,
-                33,
-                111,
-                83,
-                15,
-                227,
-                211,
-                161,
-                229,
-                74,
-                162,
-                148,
-                36,
-                167,
-                13,
-                25,
-                23,
-                36,
-                108,
-                245,
-                73,
-                242,
-                158,
-                139,
-                168,
-                0,
-                0,
-                0,
-                0
+                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
+                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
+                0, 0, 0, 0
               ]
             }
           }
         },
         {
           "name": "amm_state",
-          "docs": [
-            "Per-market AMM cursor. Seeds match architecture §2.2."
-          ],
+          "docs": ["Per-market AMM cursor. Seeds match architecture §2.2."],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  97,
-                  109,
-                  109
-                ]
+                "value": [97, 109, 109]
               },
               {
                 "kind": "account",
@@ -265,11 +165,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  112,
-                  111,
-                  115
-                ]
+                "value": [112, 111, 115]
               },
               {
                 "kind": "account",
@@ -296,13 +192,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -313,47 +203,16 @@
             "program": {
               "kind": "const",
               "value": [
-                6,
-                156,
-                114,
-                93,
-                33,
-                111,
-                83,
-                15,
-                227,
-                211,
-                161,
-                229,
-                74,
-                162,
-                148,
-                36,
-                167,
-                13,
-                25,
-                23,
-                36,
-                108,
-                245,
-                73,
-                242,
-                158,
-                139,
-                168,
-                0,
-                0,
-                0,
-                0
+                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
+                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
+                0, 0, 0, 0
               ]
             }
           }
         },
         {
           "name": "user_usdc_ata",
-          "docs": [
-            "User's USDC ATA — debited on buy, credited on sell."
-          ],
+          "docs": ["User's USDC ATA — debited on buy, credited on sell."],
           "writable": true
         },
         {
@@ -410,75 +269,377 @@
           "type": "u128"
         }
       ]
+    },
+    {
+      "name": "sell_positions",
+      "docs": [
+        "Sell YES/NO shares against the LMSR. Mirrors `trade_positions` for",
+        "the buy path, but moves proceeds USDC into a per-sell `LockEntry`",
+        "PDA escrow with a 24h cooldown (`LOCK_DURATION_SECS`). The user",
+        "later calls `claim_unlocked` to drain the escrow. Architecture §4.3.",
+        "",
+        "`delta_shares` MUST be negative (sell). `min_proceeds_wad = 0`",
+        "disables the slippage check; otherwise the trade reverts if",
+        "`|cost_wad| < min_proceeds_wad`.",
+        "",
+        "See the \"Buy vs sell split\" comment in `trade_positions.rs` for why",
+        "this is a separate ix from `trade_positions`."
+      ],
+      "discriminator": [3, 151, 9, 138, 95, 252, 50, 39],
+      "accounts": [
+        {
+          "name": "market",
+          "docs": [
+            "Market PDA — owned by `sooth_market`. Mirrors `trade_positions`."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [109, 97, 114, 107, 101, 116]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
+                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
+                0, 0, 0, 0
+              ]
+            }
+          }
+        },
+        {
+          "name": "amm_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [97, 109, 109]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Per-(user, market) Position. Must already exist — you can only",
+            "sell shares you've previously bought."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [112, 111, 115]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority signer-only PDA. The AMM signs with this PDA on",
+            "the SELL path to move USDC out of `market_vault`."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [118, 97, 117, 108, 116]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
+                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
+                0, 0, 0, 0
+              ]
+            }
+          }
+        },
+        {
+          "name": "lock_authority",
+          "docs": [
+            "Lock-authority signer-only PDA owned by `sooth_market`. Constraint",
+            "anchor for `lock_vault`."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [108, 111, 99, 107]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
+                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
+                0, 0, 0, 0
+              ]
+            }
+          }
+        },
+        {
+          "name": "market_vault",
+          "docs": ["Market USDC vault — debited (USDC → lock_vault)."],
+          "writable": true
+        },
+        {
+          "name": "lock_vault",
+          "docs": ["AMM lock-on-sell escrow vault — credited."],
+          "writable": true
+        },
+        {
+          "name": "lock_entry",
+          "docs": [
+            "New `LockEntry` PDA at `[b\"lock_entry\", position.key(), nonce]`."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [108, 111, 99, 107, 95, 101, 110, 116, 114, 121]
+              },
+              {
+                "kind": "account",
+                "path": "position"
+              },
+              {
+                "kind": "account",
+                "path": "position.lock_nonce",
+                "account": "Position"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": "u8"
+        },
+        {
+          "name": "delta_shares",
+          "type": "i128"
+        },
+        {
+          "name": "min_proceeds_wad",
+          "type": "u128"
+        }
+      ]
+    },
+    {
+      "name": "claim_unlocked",
+      "docs": [
+        "Claim USDC proceeds from a `LockEntry` whose 24h lock has elapsed.",
+        "Closes the `LockEntry` account and refunds rent to the user.",
+        "Architecture §4.3; mirrors EVM `AMMEngine.claimUnlocked`."
+      ],
+      "discriminator": [70, 139, 1, 246, 166, 193, 64, 143],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [109, 97, 114, 107, 101, 116]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
+                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
+                0, 0, 0, 0
+              ]
+            }
+          }
+        },
+        {
+          "name": "position",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [112, 111, 115]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [108, 111, 99, 107, 95, 101, 110, 116, 114, 121]
+              },
+              {
+                "kind": "account",
+                "path": "position"
+              },
+              {
+                "kind": "account",
+                "path": "lock_entry.nonce",
+                "account": "LockEntry"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [108, 111, 99, 107]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
+                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
+                0, 0, 0, 0
+              ]
+            }
+          }
+        },
+        {
+          "name": "lock_vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
     {
       "name": "AmmState",
-      "discriminator": [
-        66,
-        127,
-        244,
-        168,
-        102,
-        12,
-        95,
-        2
-      ]
+      "discriminator": [66, 127, 244, 168, 102, 12, 95, 2]
     },
     {
       "name": "Market",
-      "discriminator": [
-        219,
-        190,
-        213,
-        55,
-        0,
-        227,
-        198,
-        154
-      ]
+      "discriminator": [219, 190, 213, 55, 0, 227, 198, 154]
     },
     {
       "name": "Position",
-      "discriminator": [
-        170,
-        188,
-        143,
-        228,
-        122,
-        64,
-        247,
-        208
-      ]
+      "discriminator": [170, 188, 143, 228, 122, 64, 247, 208]
+    },
+    {
+      "name": "LockEntry",
+      "discriminator": [16, 231, 37, 238, 93, 97, 205, 107]
     }
   ],
   "events": [
     {
       "name": "LiquidityProvided",
-      "discriminator": [
-        94,
-        97,
-        39,
-        34,
-        15,
-        96,
-        79,
-        135
-      ]
+      "discriminator": [94, 97, 39, 34, 15, 96, 79, 135]
     },
     {
       "name": "PositionTraded",
-      "discriminator": [
-        47,
-        104,
-        4,
-        110,
-        61,
-        85,
-        215,
-        178
-      ]
+      "discriminator": [47, 104, 4, 110, 61, 85, 215, 178]
+    },
+    {
+      "name": "PositionSold",
+      "discriminator": [117, 122, 235, 232, 80, 15, 94, 179]
+    },
+    {
+      "name": "LockClaimed",
+      "discriminator": [226, 164, 109, 42, 115, 151, 115, 59]
     }
   ],
   "errors": [
@@ -541,6 +702,16 @@
       "code": 6011,
       "name": "SellNotImplemented",
       "msg": "Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3"
+    },
+    {
+      "code": 6012,
+      "name": "LockNotElapsed",
+      "msg": "Lock has not elapsed yet (now < lock_entry.unlock_at)"
+    },
+    {
+      "code": 6013,
+      "name": "LockVaultMismatch",
+      "msg": "Lock vault account does not match market.lock_vault"
     }
   ],
   "types": [
@@ -566,16 +737,12 @@
           },
           {
             "name": "q_no",
-            "docs": [
-              "Outstanding NO shares in WAD."
-            ],
+            "docs": ["Outstanding NO shares in WAD."],
             "type": "i128"
           },
           {
             "name": "b",
-            "docs": [
-              "LMSR liquidity parameter in WAD. > 0 by invariant."
-            ],
+            "docs": ["LMSR liquidity parameter in WAD. > 0 by invariant."],
             "type": "i128"
           },
           {
@@ -682,10 +849,7 @@
               "PDA in the protocol — see module comment."
             ],
             "type": {
-              "array": [
-                "u8",
-                16
-              ]
+              "array": ["u8", 16]
             }
           },
           {
@@ -703,10 +867,7 @@
           {
             "name": "question_hash",
             "type": {
-              "array": [
-                "u8",
-                32
-              ]
+              "array": ["u8", 32]
             }
           },
           {
@@ -757,37 +918,27 @@
           },
           {
             "name": "bump",
-            "docs": [
-              "Bump for the `Market` PDA itself."
-            ],
+            "docs": ["Bump for the `Market` PDA itself."],
             "type": "u8"
           },
           {
             "name": "vault_authority_bump",
-            "docs": [
-              "Bump for the `vault_authority` signer PDA."
-            ],
+            "docs": ["Bump for the `vault_authority` signer PDA."],
             "type": "u8"
           },
           {
             "name": "lock_authority_bump",
-            "docs": [
-              "Bump for the `lock_authority` signer PDA."
-            ],
+            "docs": ["Bump for the `lock_authority` signer PDA."],
             "type": "u8"
           },
           {
             "name": "yes_mint_bump",
-            "docs": [
-              "Bump for `yes_mint` PDA."
-            ],
+            "docs": ["Bump for `yes_mint` PDA."],
             "type": "u8"
           },
           {
             "name": "no_mint_bump",
-            "docs": [
-              "Bump for `no_mint` PDA."
-            ],
+            "docs": ["Bump for `no_mint` PDA."],
             "type": "u8"
           }
         ]
@@ -828,21 +979,138 @@
           },
           {
             "name": "yes_shares",
-            "docs": [
-              "Outstanding YES shares the user holds, WAD. Always ≥ 0."
-            ],
+            "docs": ["Outstanding YES shares the user holds, WAD. Always ≥ 0."],
             "type": "i128"
           },
           {
             "name": "no_shares",
-            "docs": [
-              "Outstanding NO shares the user holds, WAD. Always ≥ 0."
-            ],
+            "docs": ["Outstanding NO shares the user holds, WAD. Always ≥ 0."],
             "type": "i128"
+          },
+          {
+            "name": "lock_nonce",
+            "docs": [
+              "Per-`Position` monotonic counter incremented on every sell. Used as",
+              "part of the `LockEntry` PDA seed so concurrent in-flight sells from",
+              "the same user on the same market produce distinct lock accounts."
+            ],
+            "type": "u64"
           },
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LockEntry",
+      "docs": [
+        "Per-sell USDC escrow record. Created on `sell_positions`, drained",
+        "and closed by `claim_unlocked` once `unlock_at` passes."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc",
+            "docs": [
+              "USDC base units (6 decimals on Solana mainnet) escrowed at sell time."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "unlock_at",
+            "docs": [
+              "Unix timestamp at which `claim_unlocked` becomes callable."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "nonce",
+            "docs": ["Per-`Position` monotonic nonce — part of the seed."],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionSold",
+      "docs": [
+        "Emitted on the sell branch after the proceeds have been moved into",
+        "the per-sell `LockEntry` PDA."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": "u8"
+          },
+          {
+            "name": "shares_sold",
+            "type": "u128"
+          },
+          {
+            "name": "lock_entry",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "unlock_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LockClaimed",
+      "docs": ["Emitted by `claim_unlocked` after a successful payout."],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "lock_entry",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
           }
         ]
       }
@@ -883,9 +1151,7 @@
           },
           {
             "name": "ts",
-            "docs": [
-              "Unix timestamp from `Clock`."
-            ],
+            "docs": ["Unix timestamp from `Clock`."],
             "type": "i64"
           }
         ]

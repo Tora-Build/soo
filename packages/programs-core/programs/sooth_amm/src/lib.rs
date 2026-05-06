@@ -43,6 +43,21 @@ pub const USDC_MINT_DEVNET: Pubkey = anchor_lang::pubkey!(
     "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 );
 
+/// Number of seconds AMM sell proceeds remain locked in the per-market
+/// `lock_vault` before the user can `claim_unlocked`. Architecture §4.3.
+///
+/// EVM precedent: every production deploy config in
+/// `sooth-alpha/packages/contracts-core/config/*.json` sets
+/// `lockDurationSeconds = 86400`. The Solidity AMM (`AMMEngine.sol:48-49`)
+/// bounds `_lockDuration` to `[30 minutes, 36 hours]`; we hard-code 24h here
+/// because the Solana port doesn't expose a per-deploy admin key on the
+/// AMM, and changing the constant requires a program upgrade anyway.
+///
+/// If a future deploy needs a different value, lift this into the
+/// `AmmState` PDA at `initialize_amm_state` time and pin a similar
+/// `[MIN, MAX]` validation range to mirror the EVM.
+pub const LOCK_DURATION_SECS: i64 = 24 * 60 * 60;
+
 #[program]
 pub mod sooth_amm {
     use super::*;
@@ -69,5 +84,32 @@ pub mod sooth_amm {
         max_cost_wad: u128,
     ) -> Result<()> {
         instructions::trade_positions::handler(ctx, outcome, delta_shares, max_cost_wad)
+    }
+
+    /// Sell YES/NO shares against the LMSR. Mirrors `trade_positions` for
+    /// the buy path, but moves proceeds USDC into a per-sell `LockEntry`
+    /// PDA escrow with a 24h cooldown (`LOCK_DURATION_SECS`). The user
+    /// later calls `claim_unlocked` to drain the escrow. Architecture §4.3.
+    ///
+    /// `delta_shares` MUST be negative (sell). `min_proceeds_wad = 0`
+    /// disables the slippage check; otherwise the trade reverts if
+    /// `|cost_wad| < min_proceeds_wad`.
+    ///
+    /// See the "Buy vs sell split" comment in `trade_positions.rs` for why
+    /// this is a separate ix from `trade_positions`.
+    pub fn sell_positions(
+        ctx: Context<SellPositions>,
+        outcome: u8,
+        delta_shares: i128,
+        min_proceeds_wad: u128,
+    ) -> Result<()> {
+        instructions::sell_positions::handler(ctx, outcome, delta_shares, min_proceeds_wad)
+    }
+
+    /// Claim USDC proceeds from a `LockEntry` whose 24h lock has elapsed.
+    /// Closes the `LockEntry` account and refunds rent to the user.
+    /// Architecture §4.3; mirrors EVM `AMMEngine.claimUnlocked`.
+    pub fn claim_unlocked(ctx: Context<ClaimUnlocked>) -> Result<()> {
+        instructions::claim_unlocked::handler(ctx)
     }
 }

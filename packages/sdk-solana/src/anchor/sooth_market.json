@@ -9,6 +9,93 @@
   },
   "instructions": [
     {
+      "name": "add_adjudicator",
+      "docs": [
+        "Append a pubkey to the adjudicator allowlist (gated on",
+        "`allowlist.authority`). See `instructions/add_adjudicator.rs`."
+      ],
+      "discriminator": [51, 32, 206, 227, 183, 109, 135, 158],
+      "accounts": [
+        {
+          "name": "allowlist",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97, 100, 106, 117, 100, 105, 99, 97, 116, 111, 114, 95, 97,
+                  108, 108, 111, 119, 108, 105, 115, 116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "adjudicator",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "initialize_adjudicator_allowlist",
+      "docs": [
+        "One-shot bootstrap of the singleton adjudicator allowlist PDA.",
+        "Codex C2 minimum-viable mitigation — see",
+        "`state/adjudicator_allowlist.rs`. MUST be called before any",
+        "`initialize_market` ix; market creation now requires the allowlist",
+        "PDA to exist."
+      ],
+      "discriminator": [160, 243, 243, 19, 46, 140, 194, 200],
+      "accounts": [
+        {
+          "name": "allowlist",
+          "docs": [
+            "New singleton allowlist PDA. `init` (not `init_if_needed`) — re-init",
+            "must be impossible."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97, 100, 106, 117, 100, 105, 99, 97, 116, 111, 114, 95, 97,
+                  108, 108, 111, 119, 108, 105, 115, 116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "signer",
+          "docs": [
+            "Pays the rent-exempt deposit for the allowlist account. Note: this is",
+            "distinct from the `authority` arg — typically a deployer wallet pays",
+            "rent while the multisig governance key is recorded as the authority."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "initialize_market",
       "docs": [
         "Create the Market PDA, both outcome SPL mints, and the USDC vault ATA.",
@@ -16,16 +103,7 @@
         "deployed a TruthMarket clone) — on Solana we collapse the deploy step",
         "into native PDA initialization."
       ],
-      "discriminator": [
-        35,
-        35,
-        189,
-        193,
-        155,
-        48,
-        170,
-        203
-      ],
+      "discriminator": [35, 35, 189, 193, 155, 48, 170, 203],
       "accounts": [
         {
           "name": "market",
@@ -38,18 +116,32 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116
-                ]
+                "value": [109, 97, 114, 107, 101, 116]
               },
               {
                 "kind": "arg",
                 "path": "args.market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "adjudicator_allowlist",
+          "docs": [
+            "Singleton allowlist of permitted adjudicator pubkeys. Read-only here;",
+            "the handler verifies `args.adjudicator` is present. Codex C2 minimum-",
+            "viable mitigation — see `state/adjudicator_allowlist.rs`.",
+            "Account-resolution will fail if the allowlist PDA has not been",
+            "initialised yet (closed-by-default posture)."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97, 100, 106, 117, 100, 105, 99, 97, 116, 111, 114, 95, 97,
+                  108, 108, 111, 119, 108, 105, 115, 116
+                ]
               }
             ]
           }
@@ -82,16 +174,7 @@
         "lock-vault ATAs, then flips the market lifecycle from `Initializing`",
         "→ `Open`. Split per the rationale in `initialize_market.rs`."
       ],
-      "discriminator": [
-        79,
-        116,
-        4,
-        9,
-        242,
-        212,
-        26,
-        84
-      ],
+      "discriminator": [79, 116, 4, 9, 242, 212, 26, 84],
       "accounts": [
         {
           "name": "market",
@@ -104,14 +187,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116
-                ]
+                "value": [109, 97, 114, 107, 101, 116]
               },
               {
                 "kind": "account",
@@ -131,13 +207,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -157,12 +227,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  108,
-                  111,
-                  99,
-                  107
-                ]
+                "value": [108, 111, 99, 107]
               },
               {
                 "kind": "account",
@@ -201,38 +266,9 @@
               {
                 "kind": "const",
                 "value": [
-                  6,
-                  221,
-                  246,
-                  225,
-                  215,
-                  101,
-                  161,
-                  147,
-                  217,
-                  203,
-                  225,
-                  70,
-                  206,
-                  235,
-                  121,
-                  172,
-                  28,
-                  180,
-                  133,
-                  237,
-                  95,
-                  91,
-                  55,
-                  145,
-                  58,
-                  140,
-                  245,
-                  133,
-                  126,
-                  255,
-                  0,
-                  169
+                  6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206,
+                  235, 121, 172, 28, 180, 133, 237, 95, 91, 55, 145, 58, 140,
+                  245, 133, 126, 255, 0, 169
                 ]
               },
               {
@@ -243,38 +279,9 @@
             "program": {
               "kind": "const",
               "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
               ]
             }
           }
@@ -295,38 +302,9 @@
               {
                 "kind": "const",
                 "value": [
-                  6,
-                  221,
-                  246,
-                  225,
-                  215,
-                  101,
-                  161,
-                  147,
-                  217,
-                  203,
-                  225,
-                  70,
-                  206,
-                  235,
-                  121,
-                  172,
-                  28,
-                  180,
-                  133,
-                  237,
-                  95,
-                  91,
-                  55,
-                  145,
-                  58,
-                  140,
-                  245,
-                  133,
-                  126,
-                  255,
-                  0,
-                  169
+                  6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206,
+                  235, 121, 172, 28, 180, 133, 237, 95, 91, 55, 145, 58, 140,
+                  245, 133, 126, 255, 0, 169
                 ]
               },
               {
@@ -337,38 +315,9 @@
             "program": {
               "kind": "const",
               "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
+                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
+                219, 233, 248, 89
               ]
             }
           }
@@ -377,9 +326,7 @@
           "name": "creator",
           "writable": true,
           "signer": true,
-          "relations": [
-            "market"
-          ]
+          "relations": ["market"]
         },
         {
           "name": "system_program",
@@ -408,16 +355,7 @@
         "so each ix's `try_accounts` codegen stays under the SBF 4 KB stack",
         "frame; see `instructions/initialize_market.rs` module comment."
       ],
-      "discriminator": [
-        223,
-        167,
-        202,
-        135,
-        111,
-        93,
-        151,
-        249
-      ],
+      "discriminator": [223, 167, 202, 135, 111, 93, 151, 249],
       "accounts": [
         {
           "name": "market",
@@ -430,14 +368,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116
-                ]
+                "value": [109, 97, 114, 107, 101, 116]
               },
               {
                 "kind": "account",
@@ -457,13 +388,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -480,12 +405,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  109,
-                  105,
-                  110,
-                  116
-                ]
+                "value": [109, 105, 110, 116]
               },
               {
                 "kind": "account",
@@ -494,9 +414,7 @@
               },
               {
                 "kind": "const",
-                "value": [
-                  121
-                ]
+                "value": [121]
               }
             ]
           }
@@ -508,12 +426,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  109,
-                  105,
-                  110,
-                  116
-                ]
+                "value": [109, 105, 110, 116]
               },
               {
                 "kind": "account",
@@ -522,9 +435,7 @@
               },
               {
                 "kind": "const",
-                "value": [
-                  110
-                ]
+                "value": [110]
               }
             ]
           }
@@ -533,9 +444,7 @@
           "name": "creator",
           "writable": true,
           "signer": true,
-          "relations": [
-            "market"
-          ]
+          "relations": ["market"]
         },
         {
           "name": "system_program",
@@ -558,16 +467,7 @@
         "Lock the market for resolution (LIVE → LOCKED). EVM analogue:",
         "`TruthMarket.resolve` (`TruthMarket.sol:90-106`)."
       ],
-      "discriminator": [
-        218,
-        72,
-        208,
-        132,
-        202,
-        195,
-        86,
-        239
-      ],
+      "discriminator": [218, 72, 208, 132, 202, 195, 86, 239],
       "accounts": [
         {
           "name": "market",
@@ -576,14 +476,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116
-                ]
+                "value": [109, 97, 114, 107, 101, 116]
               },
               {
                 "kind": "account",
@@ -613,16 +506,7 @@
         "`amount` USDC to the user. EVM analogue: `OrderEngine._merge`",
         "(`OrderEngine.sol:696-712`)."
       ],
-      "discriminator": [
-        245,
-        171,
-        74,
-        49,
-        59,
-        192,
-        150,
-        216
-      ],
+      "discriminator": [245, 171, 74, 49, 59, 192, 150, 216],
       "accounts": [
         {
           "name": "market",
@@ -631,14 +515,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116
-                ]
+                "value": [109, 97, 114, 107, 101, 116]
               },
               {
                 "kind": "account",
@@ -654,13 +531,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -690,23 +561,17 @@
         },
         {
           "name": "user_usdc_ata",
-          "docs": [
-            "User's USDC ATA — credited."
-          ],
+          "docs": ["User's USDC ATA — credited."],
           "writable": true
         },
         {
           "name": "user_yes_ata",
-          "docs": [
-            "User's YES outcome-token ATA — burned from."
-          ],
+          "docs": ["User's YES outcome-token ATA — burned from."],
           "writable": true
         },
         {
           "name": "user_no_ata",
-          "docs": [
-            "User's NO outcome-token ATA — burned from."
-          ],
+          "docs": ["User's NO outcome-token ATA — burned from."],
           "writable": true
         },
         {
@@ -732,16 +597,7 @@
         "YES + `amount` NO into the user's outcome ATAs. EVM analogue:",
         "`OrderEngine._mint` (`OrderEngine.sol:680-694`)."
       ],
-      "discriminator": [
-        70,
-        222,
-        130,
-        148,
-        234,
-        103,
-        137,
-        61
-      ],
+      "discriminator": [70, 222, 130, 148, 234, 103, 137, 61],
       "accounts": [
         {
           "name": "market",
@@ -750,14 +606,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116
-                ]
+                "value": [109, 97, 114, 107, 101, 116]
               },
               {
                 "kind": "account",
@@ -769,20 +618,12 @@
         },
         {
           "name": "vault_authority",
-          "docs": [
-            "Vault authority PDA — signs the mint_to CPIs."
-          ],
+          "docs": ["Vault authority PDA — signs the mint_to CPIs."],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -815,23 +656,17 @@
         },
         {
           "name": "user_usdc_ata",
-          "docs": [
-            "User's USDC ATA — debited."
-          ],
+          "docs": ["User's USDC ATA — debited."],
           "writable": true
         },
         {
           "name": "user_yes_ata",
-          "docs": [
-            "User's YES outcome-token ATA — credited."
-          ],
+          "docs": ["User's YES outcome-token ATA — credited."],
           "writable": true
         },
         {
           "name": "user_no_ata",
-          "docs": [
-            "User's NO outcome-token ATA — credited."
-          ],
+          "docs": ["User's NO outcome-token ATA — credited."],
           "writable": true
         },
         {
@@ -857,16 +692,7 @@
         "`OrderEngine.settlePosition` (`OrderEngine.sol:399-431`).",
         "**STUB** — body is `todo!()` until `sooth_adjudicator` is wired."
       ],
-      "discriminator": [
-        184,
-        12,
-        86,
-        149,
-        70,
-        196,
-        97,
-        225
-      ],
+      "discriminator": [184, 12, 86, 149, 70, 196, 97, 225],
       "accounts": [
         {
           "name": "market",
@@ -875,14 +701,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116
-                ]
+                "value": [109, 97, 114, 107, 101, 116]
               },
               {
                 "kind": "account",
@@ -898,13 +717,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -959,22 +772,48 @@
       "args": []
     },
     {
+      "name": "remove_adjudicator",
+      "docs": [
+        "Remove a pubkey from the adjudicator allowlist (gated on",
+        "`allowlist.authority`). See `instructions/remove_adjudicator.rs`."
+      ],
+      "discriminator": [114, 118, 225, 152, 236, 142, 118, 114],
+      "accounts": [
+        {
+          "name": "allowlist",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97, 100, 106, 117, 100, 105, 99, 97, 116, 111, 114, 95, 97,
+                  108, 108, 111, 119, 108, 105, 115, 116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "adjudicator",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "settle",
       "docs": [
         "Settle the market with the adjudicator's winning outcome",
         "(LOCKED → SETTLED). EVM analogue: `TruthMarket.attest` +",
         "`TruthMarket.settle` collapsed (`TruthMarket.sol:112-131`)."
       ],
-      "discriminator": [
-        175,
-        42,
-        185,
-        87,
-        144,
-        131,
-        102,
-        212
-      ],
+      "discriminator": [175, 42, 185, 87, 144, 131, 102, 212],
       "accounts": [
         {
           "name": "market",
@@ -983,14 +822,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116
-                ]
+                "value": [109, 97, 114, 107, 101, 116]
               },
               {
                 "kind": "account",
@@ -1018,84 +850,34 @@
   ],
   "accounts": [
     {
+      "name": "AdjudicatorAllowlist",
+      "discriminator": [178, 60, 175, 87, 231, 65, 116, 122]
+    },
+    {
       "name": "Market",
-      "discriminator": [
-        219,
-        190,
-        213,
-        55,
-        0,
-        227,
-        198,
-        154
-      ]
+      "discriminator": [219, 190, 213, 55, 0, 227, 198, 154]
     }
   ],
   "events": [
     {
       "name": "CompleteSetMerged",
-      "discriminator": [
-        191,
-        93,
-        106,
-        227,
-        82,
-        141,
-        252,
-        156
-      ]
+      "discriminator": [191, 93, 106, 227, 82, 141, 252, 156]
     },
     {
       "name": "CompleteSetMinted",
-      "discriminator": [
-        138,
-        100,
-        135,
-        145,
-        242,
-        178,
-        224,
-        155
-      ]
+      "discriminator": [138, 100, 135, 145, 242, 178, 224, 155]
     },
     {
       "name": "MarketInitialized",
-      "discriminator": [
-        134,
-        160,
-        122,
-        87,
-        50,
-        3,
-        255,
-        81
-      ]
+      "discriminator": [134, 160, 122, 87, 50, 3, 255, 81]
     },
     {
       "name": "MarketLocked",
-      "discriminator": [
-        57,
-        30,
-        242,
-        116,
-        238,
-        156,
-        185,
-        189
-      ]
+      "discriminator": [57, 30, 242, 116, 238, 156, 185, 189]
     },
     {
       "name": "MarketSettled",
-      "discriminator": [
-        237,
-        212,
-        22,
-        175,
-        201,
-        117,
-        215,
-        99
-      ]
+      "discriminator": [237, 212, 22, 175, 201, 117, 215, 99]
     }
   ],
   "errors": [
@@ -1153,14 +935,79 @@
       "code": 6010,
       "name": "InvalidDeadline",
       "msg": "Deadline must be greater than start_time"
+    },
+    {
+      "code": 6011,
+      "name": "AdjudicatorIsDefault",
+      "msg": "Adjudicator pubkey must not be the default (all-zero) key"
+    },
+    {
+      "code": 6012,
+      "name": "AdjudicatorNotAllowlisted",
+      "msg": "Adjudicator pubkey is not present on the on-chain allowlist"
+    },
+    {
+      "code": 6013,
+      "name": "AllowlistAuthorityMismatch",
+      "msg": "Caller is not the registered allowlist authority"
+    },
+    {
+      "code": 6014,
+      "name": "AllowlistFull",
+      "msg": "Adjudicator allowlist is full (capacity exhausted)"
+    },
+    {
+      "code": 6015,
+      "name": "AdjudicatorAlreadyAllowlisted",
+      "msg": "Adjudicator pubkey is already present on the allowlist"
+    },
+    {
+      "code": 6016,
+      "name": "AdjudicatorNotPresent",
+      "msg": "Adjudicator pubkey is not present on the allowlist"
     }
   ],
   "types": [
     {
+      "name": "AdjudicatorAllowlist",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Authority permitted to call `add_adjudicator` / `remove_adjudicator`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "entries",
+            "docs": [
+              "Fixed-size pubkey table. Slots beyond `entry_count` are guaranteed",
+              "zero (we never leave stale data behind on remove)."
+            ],
+            "type": {
+              "array": ["pubkey", 16]
+            }
+          },
+          {
+            "name": "entry_count",
+            "docs": [
+              "Number of populated slots in `entries` (0..=ADJUDICATOR_ALLOWLIST_CAPACITY)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": ["Bump for the singleton PDA."],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "CompleteSetMerged",
-      "docs": [
-        "Mirror of EVM `OrderEngine.Merged` (`OrderEngine.sol:125`)."
-      ],
+      "docs": ["Mirror of EVM `OrderEngine.Merged` (`OrderEngine.sol:125`)."],
       "type": {
         "kind": "struct",
         "fields": [
@@ -1174,9 +1021,7 @@
           },
           {
             "name": "amount_usdc",
-            "docs": [
-              "USDC base units returned to user."
-            ],
+            "docs": ["USDC base units returned to user."],
             "type": "u64"
           },
           {
@@ -1188,9 +1033,7 @@
     },
     {
       "name": "CompleteSetMinted",
-      "docs": [
-        "Mirror of EVM `OrderEngine.Minted` (`OrderEngine.sol:124`)."
-      ],
+      "docs": ["Mirror of EVM `OrderEngine.Minted` (`OrderEngine.sol:124`)."],
       "type": {
         "kind": "struct",
         "fields": [
@@ -1204,9 +1047,7 @@
           },
           {
             "name": "amount_usdc",
-            "docs": [
-              "USDC base units pulled from user."
-            ],
+            "docs": ["USDC base units pulled from user."],
             "type": "u64"
           },
           {
@@ -1228,19 +1069,13 @@
               "|| nonce). Architecture §2.2."
             ],
             "type": {
-              "array": [
-                "u8",
-                16
-              ]
+              "array": ["u8", 16]
             }
           },
           {
             "name": "question_hash",
             "type": {
-              "array": [
-                "u8",
-                32
-              ]
+              "array": ["u8", 32]
             }
           },
           {
@@ -1275,10 +1110,7 @@
               "PDA in the protocol — see module comment."
             ],
             "type": {
-              "array": [
-                "u8",
-                16
-              ]
+              "array": ["u8", 16]
             }
           },
           {
@@ -1296,10 +1128,7 @@
           {
             "name": "question_hash",
             "type": {
-              "array": [
-                "u8",
-                32
-              ]
+              "array": ["u8", 32]
             }
           },
           {
@@ -1350,37 +1179,27 @@
           },
           {
             "name": "bump",
-            "docs": [
-              "Bump for the `Market` PDA itself."
-            ],
+            "docs": ["Bump for the `Market` PDA itself."],
             "type": "u8"
           },
           {
             "name": "vault_authority_bump",
-            "docs": [
-              "Bump for the `vault_authority` signer PDA."
-            ],
+            "docs": ["Bump for the `vault_authority` signer PDA."],
             "type": "u8"
           },
           {
             "name": "lock_authority_bump",
-            "docs": [
-              "Bump for the `lock_authority` signer PDA."
-            ],
+            "docs": ["Bump for the `lock_authority` signer PDA."],
             "type": "u8"
           },
           {
             "name": "yes_mint_bump",
-            "docs": [
-              "Bump for `yes_mint` PDA."
-            ],
+            "docs": ["Bump for `yes_mint` PDA."],
             "type": "u8"
           },
           {
             "name": "no_mint_bump",
-            "docs": [
-              "Bump for `no_mint` PDA."
-            ],
+            "docs": ["Bump for `no_mint` PDA."],
             "type": "u8"
           }
         ]

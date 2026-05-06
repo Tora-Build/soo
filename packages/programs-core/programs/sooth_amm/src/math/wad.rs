@@ -129,6 +129,29 @@ pub fn wad_to_usdc_ceil(wad: u128) -> Result<u64, MathError> {
     q.try_into().map_err(|_| MathError::Overflow)
 }
 
+/// Convert a non-negative WAD amount to USDC base units, rounding **down**.
+///
+/// The mirror of `wad_to_usdc_ceil`, used on outflow paths (sell proceeds,
+/// redemption payouts) per architecture §4.3. Floor — not ceil — because:
+///
+///   1. The vault must never pay out more than its rounded-up intake; if we
+///      ceil'd outflows the AMM would slowly drain by 1 base unit per trade
+///      until the vault dry-ups stranded later sellers (the EVM contract
+///      enforces the same direction via `_wadToBaseToken` in
+///      `AMMEngine.sol:1136-1149` which returns `wad / 1e12`).
+///   2. Floor on outflow paired with ceil on inflow guarantees the vault's
+///      base-token balance is a strict lower bound on its WAD-denominated
+///      liability — i.e. the rounding always favours the protocol.
+///
+/// The dust difference is at most 10⁻¹² USDC = sub-picodollar per trade; any
+/// accumulated floor residue stays in the vault and is reclaimable by future
+/// sellers / redeemers (or written off at market settlement).
+#[inline(always)]
+pub fn wad_to_usdc_floor(wad: u128) -> Result<u64, MathError> {
+    let q = wad / WAD_TO_USDC_SCALAR;
+    q.try_into().map_err(|_| MathError::Overflow)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,6 +170,48 @@ mod tests {
         assert_eq!(wad_to_usdc_ceil(0).unwrap(), 0);
         // exact multiple, no rounding
         assert_eq!(wad_to_usdc_ceil(2 * WAD_TO_USDC_SCALAR).unwrap(), 2);
+    }
+
+    #[test]
+    fn wad_to_usdc_floor_basic() {
+        // 1 USDC = 1e6 base units = 1e18 WAD
+        assert_eq!(wad_to_usdc_floor(WAD_U).unwrap(), 1_000_000);
+        // half a USDC
+        assert_eq!(wad_to_usdc_floor(WAD_U / 2).unwrap(), 500_000);
+        // exact 1 USDC base unit (1e12 WAD)
+        assert_eq!(wad_to_usdc_floor(WAD_TO_USDC_SCALAR).unwrap(), 1);
+        // sub-base-unit: 1 WAD floors to 0 (the inverse of ceil's behavior)
+        assert_eq!(wad_to_usdc_floor(1).unwrap(), 0);
+        // 1 USDC + 1 WAD floors back to 1 (ceil would give 2)
+        assert_eq!(wad_to_usdc_floor(WAD_TO_USDC_SCALAR + 1).unwrap(), 1);
+        // zero
+        assert_eq!(wad_to_usdc_floor(0).unwrap(), 0);
+        // floor and ceil agree on exact multiples
+        assert_eq!(
+            wad_to_usdc_floor(2 * WAD_TO_USDC_SCALAR).unwrap(),
+            wad_to_usdc_ceil(2 * WAD_TO_USDC_SCALAR).unwrap()
+        );
+    }
+
+    #[test]
+    fn wad_to_usdc_floor_le_ceil() {
+        // Invariant: floor(x) ≤ ceil(x) for any x; this is the property that
+        // makes the vault solvent under round-trip trades. Spot-check across
+        // a small grid.
+        for &x in &[
+            0u128,
+            1,
+            42,
+            WAD_TO_USDC_SCALAR - 1,
+            WAD_TO_USDC_SCALAR,
+            WAD_TO_USDC_SCALAR + 1,
+            7 * WAD_TO_USDC_SCALAR,
+            7 * WAD_TO_USDC_SCALAR + 12345,
+        ] {
+            let f = wad_to_usdc_floor(x).unwrap();
+            let c = wad_to_usdc_ceil(x).unwrap();
+            assert!(f <= c, "floor({x})={f} > ceil={c}");
+        }
     }
 
     #[test]
