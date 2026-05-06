@@ -13,6 +13,7 @@ export type { SoothErrorInit, SoothErrorKind } from "./errors.js";
 export {
   deriveAmmStatePda,
   deriveLockAuthorityPda,
+  deriveLockEntryPda,
   deriveLockVaultAta,
   deriveMarketPda,
   deriveMarketVaultAta,

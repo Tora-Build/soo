@@ -35,6 +35,9 @@ import { soothAmmIdl, soothMarketIdl } from "./anchor/index.js";
 import { costDelta, wadToUsdcCeil, yesPriceWad, WAD } from "./math/lmsr.js";
 import {
   deriveAmmStatePda,
+  deriveLockAuthorityPda,
+  deriveLockEntryPda,
+  deriveLockVaultAta,
   deriveMarketPda,
   deriveMarketVaultAta,
   derivePositionPda,
@@ -42,11 +45,7 @@ import {
   deriveVaultAuthorityPda,
   type ProgramIds,
 } from "./pdas.js";
-import {
-  decodePubkeyRef,
-  encodePubkeyRef,
-  encodeSignatureRef,
-} from "./refs.js";
+import { decodePubkeyRef, encodeSignatureRef } from "./refs.js";
 import { SoothError, notImplemented } from "./errors.js";
 import type {
   AddressRef,
@@ -68,6 +67,7 @@ import type {
   SoothCoreSnapshot,
   SoothNode,
   SoothRequest,
+  SubmitOptions,
   SubmitReceipt,
   TradeArgs,
   TradeQuote,
@@ -316,13 +316,14 @@ export class SolanaChainAdapter implements ChainAdapter {
 
   async buildTrade(market: MarketRef, args: TradeArgs): Promise<TradeRequest> {
     if (args.side === "sell") {
-      // The on-chain sell branch in `trade_positions.rs §6` does NOT yet
-      // transfer USDC out (lock_authority/lock_vault/LockEntry plumbing is
-      // stubbed). Building a sell request would mint state diverging from
-      // the EVM contract — refuse it.
+      // Wave 1A landed `sell_positions` as a separate on-chain ix from
+      // `trade_positions`; the SDK split mirrors that. Sell callers must use
+      // `buildSell()` so the EVM-parity wire shape on this method stays
+      // buy-only and the demo's chain-shim router can dispatch on the
+      // operation type rather than `delta_shares` sign.
       throw new SoothError({
         kind: "NotImplemented",
-        method: "buildTrade(sell)",
+        method: "buildTrade(sell) — use buildSell() instead",
       });
     }
 
@@ -396,13 +397,16 @@ export class SolanaChainAdapter implements ChainAdapter {
     // Cost estimate via the same off-chain LMSR port the program runs.
     const cost = await this.readQuote(market, args.outcome, args.deltaShares);
 
-    const accounts: AddressRef[] = [
-      encodePubkeyRef(marketPda),
-      encodePubkeyRef(ammPda),
-      encodePubkeyRef(positionPda),
-      encodePubkeyRef(userUsdcAta),
-      encodePubkeyRef(marketVault),
-    ];
+    // Codex 2nd-pass review: derive `accounts` from the instruction's `keys`
+    // directly rather than a hand-curated subset. Anchor's instruction builder
+    // emits the exact list the on-chain program expects (vault authority,
+    // USDC mint, system/token/rent — everything), so this is the source of
+    // truth for ALT building and inspection. See `types.ts §AccountMeta`.
+    const accounts = ix.keys.map((k) => ({
+      pubkey: k.pubkey.toBase58(),
+      isSigner: k.isSigner,
+      isWritable: k.isWritable,
+    }));
 
     return {
       kind: "trade",
@@ -430,11 +434,256 @@ export class SolanaChainAdapter implements ChainAdapter {
     };
   }
 
+  // ─── Sell path (Wave 1A `sell_positions` ix) ───────────────────────────
+  //
+  // Returns the same `TradeRequest` shape as `buildTrade` so call-sites that
+  // submit through `adapter.submit()` are unchanged. The split at this
+  // surface mirrors the on-chain ix split (separate `sell_positions` from
+  // `trade_positions`) and lets the demo's chain-shim dispatch on operation
+  // type rather than the sign of `delta_shares`.
+  //
+  // Wire shape: `delta_shares < 0` is mandated by the program; the SDK
+  // validates the caller passed a positive bigint and negates at the
+  // boundary. `min_proceeds_wad = 0` disables on-chain slippage checking.
+  //
+  // Account derivation: the `LockEntry` PDA seeds depend on the *current*
+  // `Position::lock_nonce` — we read the Position before deriving so the
+  // address matches what `init` will produce on-chain. The handler bumps
+  // `lock_nonce` after init, so each in-flight sell needs its own snapshot
+  // of the chain state to compute a fresh PDA.
+  async buildSell(
+    market: MarketRef,
+    args: {
+      outcome: 0 | 1;
+      deltaShares: bigint;
+      minProceedsWad?: bigint;
+      user: AddressRef;
+    },
+  ): Promise<TradeRequest> {
+    if (args.outcome !== 0 && args.outcome !== 1) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildSell: outcome must be 0 (NO) or 1 (YES), got ${args.outcome}`,
+      });
+    }
+    if (args.deltaShares <= 0n) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildSell: deltaShares must be > 0 (the sign is applied at the wire boundary), got ${args.deltaShares.toString()}`,
+      });
+    }
+
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const userPk = decodePubkeyRef(args.user);
+
+    const [ammPda] = deriveAmmStatePda(resolved.marketId, this.programIds);
+    const [positionPda] = derivePositionPda(
+      resolved.marketId,
+      userPk,
+      this.programIds,
+    );
+    const [vaultAuthority] = deriveVaultAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const [lockAuthority] = deriveLockAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const marketVault = deriveMarketVaultAta(
+      resolved.marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+    const lockVault = deriveLockVaultAta(
+      resolved.marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+
+    // Read the current Position to grab `lock_nonce`. The LockEntry PDA seed
+    // includes the nonce; without the up-to-date value the `init` would land
+    // at the wrong address and Anchor would reject. Position is required to
+    // exist (you can only sell shares you've previously bought).
+    const positionRaw = await (
+      this.soothAmm.account as any
+    ).position.fetchNullable(positionPda);
+    if (!positionRaw) {
+      throw new SoothError({
+        kind: "AccountNotFound",
+        msg: `buildSell: Position PDA not found at ${positionPda.toBase58()} — buy shares before selling`,
+      });
+    }
+    const lockNonce = bnToBigInt(positionRaw.lockNonce);
+
+    const [lockEntryPda] = deriveLockEntryPda(
+      positionPda,
+      lockNonce,
+      this.programIds,
+    );
+
+    // Sign: ix args. `delta_shares` MUST be negative on-wire. `min_proceeds_wad`
+    // defaults to 0 (skip slippage check) — production callers should pass
+    // a real lower bound derived from the off-chain `readQuote` result.
+    const wireDelta = -args.deltaShares;
+    const minProceedsWad = args.minProceedsWad ?? 0n;
+
+    const ix: TransactionInstruction = await (this.soothAmm.methods as any)
+      .sellPositions(
+        args.outcome,
+        bigIntToBn(wireDelta),
+        bigIntToBn(minProceedsWad),
+      )
+      .accounts({
+        market: marketPda,
+        ammState: ammPda,
+        position: positionPda,
+        vaultAuthority,
+        lockAuthority,
+        marketVault,
+        lockVault,
+        lockEntry: lockEntryPda,
+        usdcMint: this.usdcMint,
+        user: userPk,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        rent: SYSVAR_RENT_PUBKEY,
+      })
+      .instruction();
+
+    // Cost estimate via the same off-chain LMSR port. For sells, `cost` is
+    // negative (proceeds back to the user); we surface |cost| as the
+    // estimate so the field stays unsigned for downstream UI parity with
+    // the buy path.
+    const quote = await this.readQuote(market, args.outcome, wireDelta);
+    const proceedsAbs = quote.cost < 0n ? -quote.cost : quote.cost;
+
+    const accounts = ix.keys.map((k) => ({
+      pubkey: k.pubkey.toBase58(),
+      isSigner: k.isSigner,
+      isWritable: k.isWritable,
+    }));
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      costEstimateWad: proceedsAbs,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        userPk: userPk.toBase58(),
+        ixData: Buffer.from(ix.data).toString("base64"),
+        ixKeys: ix.keys.map((k) => ({
+          pubkey: k.pubkey.toBase58(),
+          isSigner: k.isSigner,
+          isWritable: k.isWritable,
+        })),
+        ixProgramId: ix.programId.toBase58(),
+        operation: "sell",
+        deltaSharesStr: wireDelta.toString(),
+        minProceedsWadStr: minProceedsWad.toString(),
+        outcome: args.outcome,
+        lockEntryPda: lockEntryPda.toBase58(),
+        lockNonceStr: lockNonce.toString(),
+      },
+    };
+  }
+
+  // ─── Claim path (Wave 1A `claim_unlocked` ix) ──────────────────────────
+  //
+  // The integrator-contract spec types `buildClaim(market, args: ClaimArgs)`.
+  // EVM's `claimUnlocked(maxClaims)` walks a per-user storage queue; on
+  // Solana each `LockEntry` is its own account, so we resolve a *single*
+  // entry per ix invocation (one-lock-per-call mirrors the on-chain
+  // handler's design, see `claim_unlocked.rs` "Why one-lock-per-call").
+  //
+  // The `ClaimArgs` shape is shared across chains and doesn't carry a
+  // LockEntry pubkey, so the Solana adapter accepts an extension via the
+  // same `args.user` / `args.lockEntry` meta channel buildTrade uses for
+  // `args.user`. Callers wanting to claim multiple lock entries fan out N
+  // builds + submits at the call site (the demo's chain-shim does this).
   async buildClaim(
-    _market: MarketRef,
-    _args: ClaimArgs,
+    market: MarketRef,
+    args: ClaimArgs & { user?: AddressRef; lockEntry?: AddressRef },
   ): Promise<ClaimRequest> {
-    notImplemented("buildClaim");
+    const user = args.user;
+    if (!user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method:
+          "buildClaim — args.user (Solana-only meta) is required at build time",
+      });
+    }
+    const lockEntryRef = args.lockEntry;
+    if (!lockEntryRef) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method:
+          "buildClaim — args.lockEntry (Solana-only meta; the LockEntry PDA to drain) is required",
+      });
+    }
+
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const userPk = decodePubkeyRef(user);
+    const lockEntryPda = decodePubkeyRef(lockEntryRef);
+
+    const [positionPda] = derivePositionPda(
+      resolved.marketId,
+      userPk,
+      this.programIds,
+    );
+    const [lockAuthority] = deriveLockAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const lockVault = deriveLockVaultAta(
+      resolved.marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+    const userUsdcAta = deriveUserUsdcAta(userPk, this.usdcMint);
+
+    const ix: TransactionInstruction = await (this.soothAmm.methods as any)
+      .claimUnlocked()
+      .accounts({
+        market: marketPda,
+        position: positionPda,
+        lockEntry: lockEntryPda,
+        lockAuthority,
+        lockVault,
+        userUsdcAta,
+        usdcMint: this.usdcMint,
+        user: userPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    const accounts = ix.keys.map((k) => ({
+      pubkey: k.pubkey.toBase58(),
+      isSigner: k.isSigner,
+      isWritable: k.isWritable,
+    }));
+
+    return {
+      kind: "claim",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        userPk: userPk.toBase58(),
+        ixData: Buffer.from(ix.data).toString("base64"),
+        ixKeys: ix.keys.map((k) => ({
+          pubkey: k.pubkey.toBase58(),
+          isSigner: k.isSigner,
+          isWritable: k.isWritable,
+        })),
+        ixProgramId: ix.programId.toBase58(),
+        operation: "claim",
+        lockEntryPda: lockEntryPda.toBase58(),
+      },
+    };
   }
   async buildOrderbookBuy(
     _market: MarketRef,
@@ -460,9 +709,16 @@ export class SolanaChainAdapter implements ChainAdapter {
     notImplemented("buildCreateMarket");
   }
 
-  async submit(req: SoothRequest, signer: SignerRef): Promise<SubmitReceipt> {
+  async submit(
+    req: SoothRequest,
+    signer: SignerRef,
+    options?: SubmitOptions,
+  ): Promise<SubmitReceipt> {
     // Reconstruct the transaction from the meta payload, attach a fresh
-    // blockhash, sign, send, confirm.
+    // blockhash, sign, send, confirm — retrying on transient failures up to
+    // `MAX_SUBMIT_ATTEMPTS` per the integrator-contract spec
+    // (`docs/implementation-guide.md §2`: "EVM always returns 1; Solana may
+    // return 1–5").
     const meta = req.meta as
       | undefined
       | {
@@ -482,8 +738,14 @@ export class SolanaChainAdapter implements ChainAdapter {
       });
     }
 
-    const tx = new Transaction();
-    tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+    if (!signer.signTransaction) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "submit: signer lacks signTransaction",
+      });
+    }
+
+    const userPk = new PublicKey(meta.userPk);
     const ix = new TransactionInstruction({
       programId: new PublicKey(meta.ixProgramId),
       keys: meta.ixKeys.map((k) => ({
@@ -493,66 +755,124 @@ export class SolanaChainAdapter implements ChainAdapter {
       })),
       data: Buffer.from(meta.ixData, "base64"),
     });
-    tx.add(ix);
 
-    const userPk = new PublicKey(meta.userPk);
-    tx.feePayer = userPk;
-
-    // Hot path: the umbrella SDK's `client.submit` resolves on finality. We
-    // mirror the EVM behavior of "block until confirmed".
-    const { blockhash, lastValidBlockHeight } =
-      await this.connection.getLatestBlockhash("confirmed");
-    tx.recentBlockhash = blockhash;
-    tx.lastValidBlockHeight = lastValidBlockHeight;
-
-    if (!signer.signTransaction) {
-      throw new SoothError({
-        kind: "ProgramError",
-        msg: "submit: signer lacks signTransaction",
-      });
-    }
-
-    const serialized = tx.serialize({
-      verifySignatures: false,
-      requireAllSignatures: false,
-    });
-    const signedBytes = await signer.signTransaction(serialized);
-    // `sendRawTransaction` already throws on preflight rejection; that path
-    // surfaces as a thrown SendTransactionError with `transactionLogs` —
-    // wrap it so the caller gets a `SoothError` shape regardless of where
-    // the failure originated. We don't have the signature yet at this
-    // point, so the wrapped error carries `signature: undefined`.
-    let sig: string;
-    try {
-      sig = await this.connection.sendRawTransaction(signedBytes, {
-        skipPreflight: false,
-        preflightCommitment: "confirmed",
-      });
-    } catch (e) {
-      throw decodeSubmitError(e, undefined);
-    }
-    const confirmation = await this.connection.confirmTransaction(
-      { signature: sig, blockhash, lastValidBlockHeight },
-      "confirmed",
+    const requested = options?.maxAttempts ?? MAX_SUBMIT_ATTEMPTS;
+    // Clamp to spec: at least 1, at most MAX_SUBMIT_ATTEMPTS.
+    const maxAttempts = Math.max(
+      1,
+      Math.min(MAX_SUBMIT_ATTEMPTS, Math.floor(requested)),
     );
 
-    // H5 (Codex): inspect confirmation.value.err. `confirmTransaction`
-    // resolves successfully even for transactions whose execution reverted —
-    // the failure surface is the `value.err` field, not a thrown exception.
-    // Without this branch failed trades returned a "success" SubmitReceipt.
-    if (
-      confirmation.value.err !== null &&
-      confirmation.value.err !== undefined
-    ) {
-      throw decodeSubmitError(confirmation.value.err, sig);
+    let lastError: SoothError | undefined;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      // Each attempt re-fetches the blockhash and re-signs — the blockhash
+      // is part of the message, so the previous signature is invalid for
+      // the new send. The signer is invoked once per attempt.
+      const tx = new Transaction();
+      tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+      tx.add(ix);
+      tx.feePayer = userPk;
+
+      let blockhash: string;
+      let lastValidBlockHeight: number;
+      try {
+        const bh = await this.connection.getLatestBlockhash("confirmed");
+        blockhash = bh.blockhash;
+        lastValidBlockHeight = bh.lastValidBlockHeight;
+      } catch (e) {
+        // Fetching a fresh blockhash failed — that's an RPC-side issue. If
+        // we still have attempts left, retry; otherwise surface as
+        // NetworkError.
+        lastError = makeNetworkError(e, attempt, undefined);
+        if (attempt < maxAttempts) {
+          await sleep(backoffMs(attempt));
+          continue;
+        }
+        throw lastError;
+      }
+      tx.recentBlockhash = blockhash;
+      tx.lastValidBlockHeight = lastValidBlockHeight;
+
+      const serialized = tx.serialize({
+        verifySignatures: false,
+        requireAllSignatures: false,
+      });
+      const signedBytes = await signer.signTransaction(serialized);
+
+      let sig: string | undefined;
+      try {
+        sig = await this.connection.sendRawTransaction(signedBytes, {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+        });
+      } catch (e) {
+        const classified = classifySubmitError(e, attempt, undefined);
+        lastError = classified.error;
+        if (classified.retryable && attempt < maxAttempts) {
+          await sleep(backoffMs(attempt));
+          continue;
+        }
+        throw classified.error;
+      }
+
+      let confirmation;
+      try {
+        confirmation = await this.connection.confirmTransaction(
+          { signature: sig, blockhash, lastValidBlockHeight },
+          "confirmed",
+        );
+      } catch (e) {
+        // Confirmation timeout or RPC drop. Treat as retryable: the tx may
+        // have landed, may have expired — the next attempt re-sends with a
+        // new blockhash. The previous signature is harmless even if the tx
+        // did land (Solana rejects duplicate signatures cheaply).
+        lastError = makeNetworkError(e, attempt, sig);
+        if (attempt < maxAttempts) {
+          await sleep(backoffMs(attempt));
+          continue;
+        }
+        throw lastError;
+      }
+
+      // H5 (Codex): inspect confirmation.value.err. `confirmTransaction`
+      // resolves successfully even for transactions whose execution
+      // reverted — the failure surface is the `value.err` field, not a
+      // thrown exception. Without this branch failed trades returned a
+      // "success" SubmitReceipt.
+      if (
+        confirmation.value.err !== null &&
+        confirmation.value.err !== undefined
+      ) {
+        const classified = classifySubmitError(
+          confirmation.value.err,
+          attempt,
+          sig,
+        );
+        lastError = classified.error;
+        if (classified.retryable && attempt < maxAttempts) {
+          await sleep(backoffMs(attempt));
+          continue;
+        }
+        throw classified.error;
+      }
+
+      return {
+        txId: encodeSignatureRef(sig),
+        confirmedAt: BigInt(Date.now()),
+        fills: [], // AMM trades emit `PositionTraded` not orderbook fills.
+        attempts: attempt,
+      };
     }
 
-    return {
-      txId: encodeSignatureRef(sig),
-      confirmedAt: BigInt(Date.now()),
-      fills: [], // AMM trades emit `PositionTraded` not orderbook fills.
-      attempts: 1,
-    };
+    // Loop exited without returning — exhausted all retry attempts.
+    throw (
+      lastError ??
+      new SoothError({
+        kind: "NetworkError",
+        msg: "submit: exhausted retries with no captured error",
+        attempt: maxAttempts,
+      })
+    );
   }
 
   async preflight(_req: SoothRequest): Promise<PreflightResult> {
@@ -627,6 +947,30 @@ export class SolanaChainAdapter implements ChainAdapter {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
+
+// H5 (Codex 2nd-pass): bounded retry/resend in submit().
+//
+// Cap mirrors the integrator-contract spec
+// (`docs/implementation-guide.md §2`: "EVM always returns 1; Solana may
+// return 1–5"). 5 ≈ ~6.2s of accumulated backoff worst case which is in line
+// with Solana's blockhash validity window (~150 slots ≈ 60s) — we'll always
+// see the blockhash expire before we exhaust the cap on a slow RPC.
+const MAX_SUBMIT_ATTEMPTS = 5;
+
+// Exponential backoff schedule between attempts (capped). Index 0 = the
+// delay before the SECOND attempt; index 4 is unused (no 6th attempt).
+const BACKOFF_MS = [200, 400, 800, 1600, 3200] as const;
+
+function backoffMs(attempt: number): number {
+  // attempt is the index of the JUST-FAILED attempt (1-based). The next
+  // attempt waits BACKOFF_MS[attempt - 1].
+  const i = Math.max(0, Math.min(BACKOFF_MS.length - 1, attempt - 1));
+  return BACKOFF_MS[i] ?? BACKOFF_MS[BACKOFF_MS.length - 1]!;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function bnToBigInt(v: BN | number | bigint | { toString(): string }): bigint {
   if (typeof v === "bigint") return v;
@@ -705,6 +1049,14 @@ const SOOTH_AMM_ERROR_TABLE: Record<number, { kind: string; msg: string }> = {
     kind: "SellNotImplemented",
     msg: "Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3",
   },
+  6012: {
+    kind: "LockNotElapsed",
+    msg: "Lock has not elapsed yet (now < lock_entry.unlock_at)",
+  },
+  6013: {
+    kind: "LockVaultMismatch",
+    msg: "Lock vault account does not match market.lock_vault",
+  },
 };
 
 function decodeSubmitError(
@@ -744,6 +1096,130 @@ function decodeSubmitError(
     }
   }
   return new SoothError({ kind: "ProgramError", msg, signature });
+}
+
+// H5 (Codex 2nd-pass): classify a raw submit failure into:
+//   - `retryable: true`  → transient (blockhash expired, node lag, RPC blip,
+//     transaction-not-found after confirm timeout). Caller resends with a
+//     fresh blockhash after backoff.
+//   - `retryable: false` → terminal program error (custom code 6000-6011)
+//     or terminal network error (signature mismatch, insufficient lamports
+//     for rent, malformed message). Caller throws immediately.
+//
+// `decodeSubmitError` (above) preserves the existing per-code mapping for
+// program errors. The classifier wraps it: program errors are always
+// terminal, anything else is bucketed by string-matching `.message`.
+function classifySubmitError(
+  raw: unknown,
+  attempt: number,
+  signature: string | undefined,
+): { retryable: boolean; error: SoothError } {
+  const code = extractCustomCode(raw);
+  if (code !== undefined) {
+    // Program errors are deterministic — retrying with a new blockhash will
+    // produce the exact same failure. Always terminal.
+    const error = decodeSubmitError(raw, signature);
+    // Re-stamp with `attempt` so receipts/logs see which attempt died.
+    return {
+      retryable: false,
+      error: new SoothError({
+        kind: error.kind,
+        code: error.fields.code,
+        msg: error.fields.msg,
+        signature: error.fields.signature,
+        attempt,
+      }),
+    };
+  }
+
+  // No custom program code — must be a network/RPC-level failure. Look at
+  // the error message to decide retryable vs terminal.
+  const text = errorText(raw);
+  if (isRetryableNetworkText(text)) {
+    return {
+      retryable: true,
+      error: new SoothError({
+        kind: "NetworkError",
+        msg: text,
+        signature,
+        attempt,
+      }),
+    };
+  }
+
+  // Terminal network error — signature failure, balance/rent issue, or
+  // some other permanent condition. Surface as NetworkError (not
+  // ProgramError — the program never ran).
+  return {
+    retryable: false,
+    error: new SoothError({
+      kind: "NetworkError",
+      msg: text,
+      signature,
+      attempt,
+    }),
+  };
+}
+
+function makeNetworkError(
+  raw: unknown,
+  attempt: number,
+  signature: string | undefined,
+): SoothError {
+  return new SoothError({
+    kind: "NetworkError",
+    msg: errorText(raw),
+    signature,
+    attempt,
+  });
+}
+
+function errorText(raw: unknown): string {
+  if (raw instanceof Error) return raw.message;
+  if (typeof raw === "string") return raw;
+  try {
+    return JSON.stringify(raw);
+  } catch {
+    return String(raw);
+  }
+}
+
+// Heuristic: which RPC error strings indicate a transient/recoverable
+// condition where re-sending with a fresh blockhash is likely to succeed?
+//
+// Sources:
+//   - `BlockhashNotFound` — Solana validators GC blockhashes after ~150
+//     slots; a slow client misses the window.
+//   - `BlockhashExpired` — same root cause, different RPC wording.
+//   - `Transaction was not confirmed` — confirmTransaction timeout; the tx
+//     might have landed silently or might have expired. Re-sending is safe
+//     because Solana dedupes by signature.
+//   - generic "fetch failed" / "ECONNRESET" / "503" / "timeout" — RPC node
+//     lag.
+//
+// We deliberately do NOT match on "InsufficientFundsForFee" or "signature
+// verification failure" — those are permanent. Anything we don't recognize
+// falls through as terminal.
+function isRetryableNetworkText(text: string): boolean {
+  if (!text) return false;
+  const t = text.toLowerCase();
+  return (
+    t.includes("blockhashnotfound") ||
+    t.includes("blockhash not found") ||
+    t.includes("blockhashexpired") ||
+    t.includes("blockhash expired") ||
+    t.includes("transaction was not confirmed") ||
+    t.includes("transaction not found") ||
+    t.includes("nodebehind") ||
+    t.includes("node is behind") ||
+    t.includes("503") ||
+    t.includes("502") ||
+    t.includes("econnreset") ||
+    t.includes("etimedout") ||
+    t.includes("fetch failed") ||
+    t.includes("network error") ||
+    t.includes("rate limit")
+  );
 }
 
 function extractCustomCode(raw: unknown): number | undefined {

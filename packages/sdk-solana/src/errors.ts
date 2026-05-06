@@ -21,11 +21,14 @@ export type SoothErrorKind =
   | "InsufficientApproval"
   | "BookMoved"
   | "ProgramError"
+  | "NetworkError"
   | "NotImplemented"
   | "AccountNotFound"
   | "TradingNotStarted"
   | "TradingClosed"
-  | "SellNotImplemented";
+  | "SellNotImplemented"
+  | "LockNotElapsed"
+  | "LockVaultMismatch";
 
 export interface SoothErrorInit {
   kind: SoothErrorKind;
@@ -69,6 +72,8 @@ function formatMessage(
       return `SoothError: ${kind} (${fields.method ?? "?"})`;
     case "ProgramError":
       return `SoothError: ${kind} code=${fields.code ?? "?"} msg=${fields.msg ?? ""}${sigSuffix}`;
+    case "NetworkError":
+      return `SoothError: ${kind} attempt=${fields.attempt ?? "?"} msg=${fields.msg ?? ""}${sigSuffix}`;
     case "SlippageExceeded":
       return `SoothError: ${kind} expected=${fields.expected} actual=${fields.actual}${sigSuffix}`;
     case "InsufficientShares":
@@ -78,6 +83,8 @@ function formatMessage(
     case "TradingNotStarted":
     case "TradingClosed":
     case "SellNotImplemented":
+    case "LockNotElapsed":
+    case "LockVaultMismatch":
       return `SoothError: ${kind} ${fields.msg ?? ""}${sigSuffix}`;
     default:
       return `SoothError: ${kind}${sigSuffix}`;

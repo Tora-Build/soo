@@ -117,6 +117,18 @@ export interface TradeArgs {
 
 // ─── Requests ──────────────────────────────────────────────────────────────
 
+// Account participation metadata, mirroring `solana/web3.js`'s `AccountMeta`.
+// Used by `SoothRequest.accounts` so callers building Address Lookup Tables or
+// inspecting trade requests get the full account list with role flags — the
+// same source of truth Anchor's instruction builder produces.
+export interface AccountMeta {
+  // base58-encoded pubkey (chain-prefixed refs are NOT used here — this is a
+  // Solana-only structural field; the EVM adapter never populates `accounts`).
+  pubkey: string;
+  isSigner: boolean;
+  isWritable: boolean;
+}
+
 // Generic request. The Solana adapter populates `serializedTx` with the
 // unsigned transaction bytes; the EVM adapter populates `calldata` instead.
 // Both shapes round-trip through `submit`.
@@ -126,8 +138,11 @@ export interface SoothRequest {
   serializedTx?: Uint8Array;
   // Cost estimate in WAD (display only; not authoritative).
   costEstimateWad?: bigint;
-  // Account list for inspection / ALT building.
-  accounts?: AddressRef[];
+  // Solana-only: account list for inspection / ALT building. Shape is the
+  // exact `AccountMeta[]` derived from the underlying instruction's `keys`,
+  // so consumers see writable/signer flags and can replay the layout into a
+  // versioned tx with an Address Lookup Table.
+  accounts?: AccountMeta[];
   // Diagnostic metadata.
   meta?: Record<string, unknown>;
 }
@@ -156,6 +171,16 @@ export interface SubmitReceipt {
   confirmedAt: bigint; // Unix ms
   fills: Fill[];
   attempts?: number; // Solana-only; absent on EVM
+}
+
+// Solana-only submission options. Capped at 5 attempts per the
+// integrator-contract spec (`docs/implementation-guide.md §2`):
+// "EVM always returns 1; Solana may return 1–5." The EVM adapter ignores
+// this argument; that's why it's optional and absent from the EVM call sites.
+export interface SubmitOptions {
+  // Maximum total attempts (including the first send). Default 5; clamped to
+  // [1, 5] to honor the spec ceiling.
+  maxAttempts?: number;
 }
 
 export interface PreflightResult {
@@ -241,7 +266,11 @@ export interface ChainAdapter {
   buildCreateMarket(args: CreateMarketArgs): Promise<CreateMarketRequest>;
 
   // Submission
-  submit(req: SoothRequest, signer: SignerRef): Promise<SubmitReceipt>;
+  submit(
+    req: SoothRequest,
+    signer: SignerRef,
+    options?: SubmitOptions,
+  ): Promise<SubmitReceipt>;
   preflight(req: SoothRequest): Promise<PreflightResult>;
 
   // Subscriptions

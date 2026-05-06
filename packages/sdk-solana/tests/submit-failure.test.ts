@@ -9,30 +9,39 @@
 // "custom program error: 0x..", so the regex-based decoder runs through
 // the `sendRawTransaction` catch path — equivalent to the live
 // `confirmTransaction.value.err` path on a real cluster.
+//
+// H5 2nd-pass (Codex): bounded retry/resend. The new `submit()` distinguishes
+// retryable failures (BlockhashNotFound, RPC blips) from terminal ones
+// (program errors 6000-6011, signature/balance issues). The retry tests
+// below use a `MockConnection` rather than bankrun because bankrun's
+// in-memory ledger doesn't simulate blockhash expiry.
 
 import { describe, expect, it } from "vitest";
 import {
-  ComputeBudgetProgram,
+  Connection,
   Keypair,
   PublicKey,
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
   Transaction,
   TransactionInstruction,
+  type AccountInfo,
+  type Commitment,
+  type RpcResponseAndContext,
+  type SignatureResult,
 } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { BN } from "@coral-xyz/anchor";
 
 import { SolanaChainAdapter } from "../src/adapter.js";
 import { SoothError } from "../src/errors.js";
-import { encodePubkeyRef, encodeSignatureRef } from "../src/refs.js";
 import {
   deriveAmmStatePda,
-  deriveMarketPda,
   deriveMarketVaultAta,
   derivePositionPda,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
+  type ProgramIds,
 } from "../src/pdas.js";
 import { soothAmmIdl } from "../src/anchor/index.js";
 import { WAD } from "../src/math/lmsr.js";
@@ -174,5 +183,262 @@ describe("submit failure surfacing", () => {
     // SoothError variants; the rest stay as ProgramError with the code).
     expect(err.kind).toBe("ProgramError");
     expect(err.fields.code).toBe(6001);
+    // H5 2nd-pass: program errors are terminal — never retry. The classifier
+    // stamps `attempt: 1` on the SoothError so callers can correlate with
+    // SubmitReceipt.attempts (which is absent here because we threw).
+    expect(err.fields.attempt).toBe(1);
   }, /* timeout */ 60_000);
+});
+
+// ─── Retry policy tests ────────────────────────────────────────────────────
+
+// Minimal `Connection`-shaped mock for retry tests. We control:
+//   - getLatestBlockhash → returns a counter-tagged blockhash so we can
+//     assert the SDK fetches a fresh one each attempt.
+//   - sendRawTransaction → caller-supplied behavior keyed off attempt index.
+//   - confirmTransaction → caller-supplied; defaults to ok.
+class MockConnection extends Connection {
+  attempts = 0;
+  blockhashesIssued: string[] = [];
+
+  constructor(
+    private readonly script: {
+      send?: (
+        attempt: number,
+        bytes: Uint8Array,
+      ) => Promise<string> | string | Error;
+      confirm?: (attempt: number, sig: string) => unknown;
+      getBlockhash?: (attempt: number) => Error | undefined;
+    },
+  ) {
+    super("http://127.0.0.1:8899", "confirmed");
+  }
+
+  override async getLatestBlockhash(_c?: Commitment): Promise<{
+    blockhash: string;
+    lastValidBlockHeight: number;
+  }> {
+    const i = this.blockhashesIssued.length + 1;
+    const hookErr = this.script.getBlockhash?.(i);
+    if (hookErr) throw hookErr;
+    // Real-shaped 32-byte base58 from a deterministic Keypair seed —
+    // `Transaction.serialize()` decodes the blockhash back to bytes, so a
+    // bogus string would throw inside web3.js.
+    const blockhash = Keypair.generate().publicKey.toBase58();
+    this.blockhashesIssued.push(blockhash);
+    return { blockhash, lastValidBlockHeight: 1000 + i };
+  }
+
+  override async sendRawTransaction(
+    rawTransaction: Buffer | Uint8Array | Array<number>,
+  ): Promise<string> {
+    this.attempts += 1;
+    const bytes =
+      rawTransaction instanceof Uint8Array
+        ? rawTransaction
+        : new Uint8Array(rawTransaction as ArrayLike<number>);
+    const result = await this.script.send?.(this.attempts, bytes);
+    if (result instanceof Error) throw result;
+    if (typeof result === "string") return result;
+    // Default — fabricate a signature derived from attempt index.
+    return `sig-attempt-${this.attempts}`;
+  }
+
+  override async confirmTransaction(
+    strategy: any,
+    _commitment?: Commitment,
+  ): Promise<RpcResponseAndContext<SignatureResult>> {
+    const sig: string =
+      typeof strategy === "string" ? strategy : (strategy?.signature ?? "");
+    const result = this.script.confirm?.(this.attempts, sig);
+    if (result instanceof Error) throw result;
+    if (result && typeof result === "object" && "err" in result) {
+      return {
+        context: { slot: 0 },
+        value: result as SignatureResult,
+      };
+    }
+    return { context: { slot: 0 }, value: { err: null } };
+  }
+
+  // The constructor still calls into the base path for getAccountInfo etc.
+  // We don't expect submit to use them; if it does the test will surface a
+  // network error from the real RPC URL — caught by the test wrapper.
+  override async getAccountInfo(
+    _publicKey: PublicKey,
+    _commitment?: Commitment,
+  ): Promise<AccountInfo<Buffer> | null> {
+    return null;
+  }
+}
+
+// Minimal request shape that `submit()` accepts. Fields are bogus but
+// well-formed so the meta path doesn't reject.
+function buildMockRequest(programs: ProgramIds, userPk: PublicKey) {
+  // A trivial system-transfer-like ix data; submit doesn't execute it, the
+  // mock send/confirm callbacks decide success/failure.
+  const ix = new TransactionInstruction({
+    programId: programs.soothAmm,
+    keys: [{ pubkey: userPk, isSigner: true, isWritable: true }],
+    data: Buffer.alloc(8),
+  });
+  return {
+    kind: "trade" as const,
+    serializedTx: undefined,
+    costEstimateWad: 0n,
+    accounts: [],
+    meta: {
+      marketPda: programs.soothAmm.toBase58(),
+      userPk: userPk.toBase58(),
+      ixData: Buffer.from(ix.data).toString("base64"),
+      ixKeys: ix.keys.map((k) => ({
+        pubkey: k.pubkey.toBase58(),
+        isSigner: k.isSigner,
+        isWritable: k.isWritable,
+      })),
+      ixProgramId: ix.programId.toBase58(),
+      deltaSharesStr: "0",
+      maxCostWadStr: "0",
+      outcome: 1,
+    },
+  };
+}
+
+describe("submit retry policy", () => {
+  // The retry tests don't need a live bankrun chain — only a Keypair for the
+  // signer and stable program IDs to construct an adapter. Generating these
+  // locally also avoids the smoke fixture's pre-existing setup dependency
+  // (`adjudicator_allowlist` init), which is orthogonal to retry logic.
+  function makeRetryAdapter(connection: Connection) {
+    const programs: ProgramIds = {
+      soothAmm: new PublicKey(soothAmmIdl.address),
+      soothMarket: new PublicKey(
+        // sooth_market id from IDL; we never call into it, just need a
+        // well-formed pubkey for the adapter constructor.
+        "SoothMkt11111111111111111111111111111111111",
+      ),
+    };
+    const userKp = Keypair.generate();
+    const usdcMint = new PublicKey(
+      "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    );
+    const adapter = new SolanaChainAdapter({
+      node: {
+        id: "retry-test",
+        chainKind: "solana",
+        chainId: "test",
+        rpcUrl: "http://localhost:8899",
+      },
+      programIds: programs,
+      usdcMint,
+      connection,
+    });
+    const signer = {
+      publicKey: userKp.publicKey.toBase58(),
+      signTransaction: async (raw: Uint8Array): Promise<Uint8Array> => {
+        // submit() serialized with verifySignatures:false — we don't actually
+        // need to sign because the MockConnection never decodes the bytes.
+        // Pass-through is correct.
+        return raw;
+      },
+    };
+    const req = buildMockRequest(programs, userKp.publicKey);
+    return { adapter, signer, req, programs, userPk: userKp.publicKey };
+  }
+
+  it("retryable failure then success: attempts === 2", async () => {
+    const conn = new MockConnection({
+      send: (attempt) => {
+        if (attempt === 1) {
+          // Solana-CLI shape — `sendRawTransaction` rejects with the well-
+          // known "Blockhash not found" string before the tx ever gets
+          // simulated. The classifier matches on the lowercased substring.
+          return new Error(
+            "failed to send transaction: Blockhash not found in cache",
+          );
+        }
+        return `sig-attempt-${attempt}`;
+      },
+    });
+    const { adapter, signer, req } = makeRetryAdapter(conn);
+
+    const receipt = await adapter.submit(req as any, signer);
+    expect(receipt.attempts).toBe(2);
+    expect(receipt.txId).toMatch(/^sol:sig-attempt-2/);
+    // Two blockhashes fetched — one per attempt — confirms re-resolve.
+    expect(conn.blockhashesIssued.length).toBe(2);
+  }, 30_000);
+
+  it("terminal program error: throws on attempt 1, no retry", async () => {
+    const conn = new MockConnection({
+      send: () => {
+        // Anchor user-error 6001 = InvalidOutcome → 0x1771 hex.
+        return new Error(
+          "Transaction simulation failed: Error processing Instruction 0: custom program error: 0x1771",
+        );
+      },
+    });
+    const { adapter, signer, req } = makeRetryAdapter(conn);
+
+    let caught: unknown;
+    try {
+      await adapter.submit(req as any, signer);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(SoothError);
+    const err = caught as SoothError;
+    expect(err.kind).toBe("ProgramError");
+    expect(err.fields.code).toBe(6001);
+    expect(err.fields.attempt).toBe(1);
+    // Mock observed exactly one send — no retry on terminal program error.
+    expect(conn.attempts).toBe(1);
+  }, 30_000);
+
+  it("max retries exceeded: throws SoothError matching last failure", async () => {
+    const conn = new MockConnection({
+      send: () => {
+        return new Error(
+          "failed to send transaction: Blockhash not found in cache",
+        );
+      },
+    });
+    const { adapter, signer, req } = makeRetryAdapter(conn);
+
+    // Cap to 3 attempts via SubmitOptions so the test runs fast (200+400ms
+    // backoffs vs 200+400+800+1600ms for the default 5).
+    let caught: unknown;
+    try {
+      await adapter.submit(req as any, signer, { maxAttempts: 3 });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(SoothError);
+    const err = caught as SoothError;
+    expect(err.kind).toBe("NetworkError");
+    // Last failure was attempt 3 (the cap).
+    expect(err.fields.attempt).toBe(3);
+    expect(conn.attempts).toBe(3);
+  }, 30_000);
+
+  it("maxAttempts clamped to spec ceiling (5)", async () => {
+    const conn = new MockConnection({
+      send: () => {
+        return new Error(
+          "failed to send transaction: Blockhash not found in cache",
+        );
+      },
+    });
+    const { adapter, signer, req } = makeRetryAdapter(conn);
+
+    // Caller asks for 100 — spec caps at 5.
+    let caught: unknown;
+    try {
+      await adapter.submit(req as any, signer, { maxAttempts: 100 });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(SoothError);
+    expect(conn.attempts).toBe(5);
+  }, 30_000);
 });

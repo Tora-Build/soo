@@ -30,6 +30,7 @@ const SEED_MARKET = enc.encode("market");
 const SEED_AMM = enc.encode("amm");
 const SEED_VAULT = enc.encode("vault");
 const SEED_LOCK = enc.encode("lock");
+const SEED_LOCK_ENTRY = enc.encode("lock_entry");
 const SEED_POS = enc.encode("pos");
 const SEED_MINT = enc.encode("mint");
 const SEED_Y = enc.encode("y");
@@ -101,6 +102,36 @@ export function derivePositionPda(
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_POS), id, user.toBuffer()],
+    programs.soothAmm,
+  );
+}
+
+// Owned by `sooth_amm`. Seeds: [b"lock_entry", position.key(), nonce_le_u64].
+//
+// The chosen seed scheme is documented in
+// `packages/programs-core/programs/sooth_amm/src/state/lock_entry.rs` (see
+// the "Seed scheme" section). The nonce source is `Position::lock_nonce` at
+// the moment of the sell — callers must read the on-chain `Position` first,
+// derive the LockEntry against the *current* nonce, and only then build the
+// `sell_positions` ix. The handler increments `lock_nonce` after init, so a
+// subsequent sell uses a fresh PDA.
+//
+// `lockNonce` is encoded as 8 little-endian bytes (matching Anchor's
+// `u64::to_le_bytes()` on the program side).
+export function deriveLockEntryPda(
+  positionPda: PublicKey,
+  lockNonce: bigint,
+  programs: ProgramIds,
+): [PublicKey, number] {
+  if (lockNonce < 0n || lockNonce > 0xffffffffffffffffn) {
+    throw new Error(`lockNonce must fit in u64, got ${lockNonce.toString()}`);
+  }
+  const nonceBytes = Buffer.alloc(8);
+  // Buffer doesn't have writeBigUInt64LE on all targets prior to Node 12+;
+  // Node 20 (engines.node) does. Use it directly.
+  nonceBytes.writeBigUInt64LE(lockNonce, 0);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_LOCK_ENTRY), positionPda.toBuffer(), nonceBytes],
     programs.soothAmm,
   );
 }
