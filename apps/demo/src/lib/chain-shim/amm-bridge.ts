@@ -40,6 +40,9 @@ import { getAccount } from "@solana/spl-token";
 import {
   deriveUserUsdcAta,
   yesPriceWad,
+  LN2_WAD,
+  WAD,
+  WAD_TO_USDC_SCALAR,
   type SolanaChainAdapter,
   type SignerRef,
 } from "@sooth/sdk-solana";
@@ -179,7 +182,21 @@ export async function dispatchAmmRead(
         // EVM-typed `0x${string}` slot type-checks. The value is opaque
         // to upstream code; only its non-zero-ness matters.
         const synthCreator = ("0x" + "1".padStart(40, "0")) as `0x${string}`;
-        return [synthCreator, synthCreator, snap.market.b, 0n, 0n] as const;
+        // Synthetic `creatorDeposit` ≈ b · ln(2), expressed in USDC base
+        // units (6 decimals), matching the convention upstream expects
+        // (LaunchpadEngine.markets()'s `creatorDeposit` slot is in USDC
+        // base units, not WAD). MarketStats's `seed` term reads this and
+        // feeds the legacy `gross` calculation; without a non-zero value
+        // the projection rows render as $0.
+        const seedWad = (snap.market.b * LN2_WAD) / WAD;
+        const creatorDeposit = seedWad / WAD_TO_USDC_SCALAR;
+        return [
+          synthCreator,
+          synthCreator,
+          snap.market.b,
+          creatorDeposit,
+          0n,
+        ] as const;
       } catch {
         return [
           "0x0000000000000000000000000000000000000000",
@@ -271,17 +288,35 @@ export interface WriteCallShape {
 }
 
 /**
- * Handles `tradePositions(market, outcome, deltaShares, maxCostWad)`.
- * Returns a synthetic transaction signature (Solana sig encoded as a
- * `0x`-prefixed hex-ish string so it round-trips through EVM-typed Hash
- * slots). Returns NOT_HANDLED for unrecognized writes — caller surfaces
- * `SolanaForkUnsupported`.
+ * Handles `tradePositions(market, outcome, deltaShares, slippageLimit)` and
+ * `claimUnlocked(maxClaims)`. Returns a synthetic transaction signature
+ * (Solana sig encoded as a `0x`-prefixed hex-ish string so it round-trips
+ * through EVM-typed Hash slots). Returns NOT_HANDLED for unrecognized
+ * writes — caller surfaces `SolanaForkUnsupported`.
+ *
+ * Buy/sell dispatch: the EVM contract collapses both into one
+ * `tradePositions` call where the sign of `deltaShares` selects the path
+ * (positive → buy, negative → sell). On Solana the buy path lives on
+ * `trade_positions` and the sell path on `sell_positions` (Wave 1A); the
+ * bridge picks the SDK builder by sign here.
  */
 export async function dispatchAmmWrite(
   call: WriteCallShape,
   ctx: AmmBridgeCtx,
 ): Promise<string | typeof NOT_HANDLED> {
-  if (call.functionName !== "tradePositions") return NOT_HANDLED;
+  if (call.functionName === "tradePositions") {
+    return dispatchTrade(call, ctx);
+  }
+  if (call.functionName === "claimUnlocked") {
+    return dispatchClaim(call, ctx);
+  }
+  return NOT_HANDLED;
+}
+
+async function dispatchTrade(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
   if (!ctx.signer) {
     throw new Error(
       "tradePositions: no Solana signer available — connect a wallet first",
@@ -300,23 +335,109 @@ export async function dispatchAmmWrite(
   const outcome = (Number(args[1]) === 1 ? 1 : 0) as 0 | 1;
   const deltaShares =
     typeof args[2] === "bigint" ? args[2] : BigInt((args[2] as any) ?? 0);
-  const maxCostWad =
+  const limitCost =
     typeof args[3] === "bigint" ? args[3] : BigInt((args[3] as any) ?? 0);
 
-  // The Solana adapter's buildTrade requires `user` via meta channel.
+  const userRef = `sol:${ctx.userBase58}`;
+  const isSell = deltaShares < 0n;
+  const absDelta = isSell ? -deltaShares : deltaShares;
+
+  if (isSell) {
+    // SELL: route to `buildSell` → `sell_positions` ix. EVM's slippage
+    // anchor is `quote.cost * 95%` (a *minimum* proceeds value); pass it
+    // through as `minProceedsWad`. The adapter applies the wire-side sign
+    // flip — pass the absolute share count.
+    const req = await ctx.adapter.buildSell(marketRef, {
+      outcome,
+      deltaShares: absDelta,
+      minProceedsWad: limitCost > 0n ? limitCost : 0n,
+      user: userRef,
+    });
+    const receipt = await ctx.adapter.submit(req, ctx.signer);
+    const sig = receipt.txId.replace(/^sol:/, "");
+    return synthHashFromSignature(sig);
+  }
+
+  // BUY: existing path through `buildTrade` → `trade_positions` ix.
   const req = await ctx.adapter.buildTrade(marketRef, {
-    side: deltaShares >= 0n ? "buy" : "sell",
+    side: "buy",
     outcome,
-    deltaShares: deltaShares < 0n ? -deltaShares : deltaShares,
-    maxCostWad,
+    deltaShares: absDelta,
+    maxCostWad: limitCost,
     // @ts-expect-error — Solana-only meta channel; see adapter.ts.
-    user: `sol:${ctx.userBase58}`,
+    user: userRef,
   });
 
   const receipt = await ctx.adapter.submit(req, ctx.signer);
   // `txId` is `sol:<base58 signature>`. Encode into a synthetic hex hash
   // so wagmi-shaped Hash slots accept it. The signature is opaque to
   // upstream's UI — only the toast text reads it.
+  const sig = receipt.txId.replace(/^sol:/, "");
+  return synthHashFromSignature(sig);
+}
+
+async function dispatchClaim(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  // Upstream's `useClaimUnlocked` calls `writeContract({ address: ammEngine,
+  // functionName: "claimUnlocked", args: [maxClaims] })`. EVM walks the
+  // user's storage queue server-side; on Solana each LockEntry is its own
+  // PDA so we drain one per ix invocation. The bridge resolves the *first*
+  // matured LockEntry on the active market and submits a single claim. If
+  // none exists, throw a non-fatal error the upstream form can surface.
+  if (!ctx.signer) {
+    throw new Error(
+      "claimUnlocked: no Solana signer available — connect a wallet first",
+    );
+  }
+  if (!ctx.userBase58) {
+    throw new Error(
+      "claimUnlocked: no Solana wallet pubkey — connect a wallet first",
+    );
+  }
+
+  // The EVM `claimUnlocked(maxClaims)` ABI passes the user's queue limit;
+  // the Solana shim doesn't need it (we drain one per call). Allow a
+  // shim-side hook to override the active market via a conventional
+  // shim-only first arg (`{ market, lockEntry }` object). If neither is
+  // provided, fail loudly — the bridge can't infer market context.
+  const args = call.args ?? [];
+  const explicit =
+    typeof args[0] === "object" && args[0] !== null
+      ? (args[0] as { market?: unknown; lockEntry?: unknown })
+      : null;
+
+  let marketRef: string | undefined;
+  let lockEntryRef: string | undefined;
+  if (explicit) {
+    marketRef = toMarketRef(explicit.market);
+    lockEntryRef =
+      typeof explicit.lockEntry === "string"
+        ? explicit.lockEntry.startsWith("sol:")
+          ? explicit.lockEntry
+          : `sol:${explicit.lockEntry}`
+        : undefined;
+  }
+
+  if (!marketRef) {
+    throw new Error(
+      "claimUnlocked: market reference unavailable — pass via args[0].market",
+    );
+  }
+  if (!lockEntryRef) {
+    throw new Error(
+      "claimUnlocked: lock entry reference unavailable — pass via args[0].lockEntry",
+    );
+  }
+
+  const req = await ctx.adapter.buildClaim(marketRef, {
+    outcome: 0, // ClaimArgs.outcome is unused on the Solana path; placeholder.
+    user: `sol:${ctx.userBase58}`,
+    lockEntry: lockEntryRef,
+  } as never);
+
+  const receipt = await ctx.adapter.submit(req, ctx.signer);
   const sig = receipt.txId.replace(/^sol:/, "");
   return synthHashFromSignature(sig);
 }

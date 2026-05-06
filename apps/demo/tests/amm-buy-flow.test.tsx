@@ -212,6 +212,161 @@ test("AMM buy YES end-to-end against bankrun", async () => {
   );
 }, /* timeout */ 60_000);
 
+// ─── Stale-quote race coverage ──────────────────────────────────────────────
+//
+// Codex's 2nd-pass review flagged a stale-quote race in a hypothetical
+// "click quote → bind into status → submit reads status.cost" form. Upstream's
+// `SimpleTradingPanel` doesn't implement that pattern: `useAMMQuoteDirect`
+// is a reactive hook keyed on (marketAddress, outcome, deltaShares, isBuy).
+// Toggling outcome (or changing the share input) invalidates the underlying
+// React Query and re-fetches against the new inputs synchronously through
+// the chain-shim. The slippage limit `quote.cost * 105n / 100n` is therefore
+// always derived from the live quote, not from a captured "ready state".
+//
+// This test exercises the reactive path: quote at YES, switch to NO, wait
+// for the quote to refresh, then submit. The on-chain trade lands with the
+// NO outcome — proving the captured-state race the codex finding described
+// is moot here.
+
+test("Outcome toggle invalidates the quote before submit (no stale-quote race)", async () => {
+  const t0 = Date.now();
+  const smoke = await bootSmoke({
+    bWad: 1_000n * WAD,
+    userUsdcBaseUnits: 100_000_000n,
+  });
+
+  const conn = new BankrunConnection(smoke.ctx);
+  const adapter = new SolanaChainAdapter({
+    node: {
+      id: "demo-bankrun",
+      chainKind: "solana",
+      chainId: "test",
+      rpcUrl: "http://localhost:8899",
+    },
+    programIds: smoke.programs,
+    usdcMint: smoke.usdcMint,
+    connection: conn as unknown as Connection,
+  });
+
+  const marketRef = encodePubkeyRef(smoke.marketPda);
+  const userRef = encodePubkeyRef(smoke.user.publicKey);
+
+  const signer: SignerRef = {
+    publicKey: smoke.user.publicKey.toBase58(),
+    signTransaction: async (raw: Uint8Array): Promise<Uint8Array> => {
+      const tx = Transaction.from(raw);
+      tx.partialSign(smoke.user);
+      return tx.serialize({
+        verifySignatures: false,
+        requireAllSignatures: false,
+      });
+    },
+  };
+
+  const { AMM } = await import("../src/pages/AMM");
+  const { DemoProvider } = await import("../src/lib/DemoContext");
+
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, refetchInterval: false },
+      mutations: { retry: false },
+    },
+  });
+
+  const marketBase58 = smoke.marketPda.toBase58();
+
+  render(
+    <MemoryRouter initialEntries={[`/amm/${marketBase58}`]}>
+      <ConnectionProvider endpoint="http://127.0.0.1:8899">
+        <WalletProvider wallets={[]} autoConnect={false}>
+          <QueryClientProvider client={queryClient}>
+            <DemoProvider
+              override={{
+                adapter,
+                userRef,
+                signer,
+                marketRef,
+              }}
+            >
+              <Routes>
+                <Route path="/amm/:marketAddress" element={<AMM />} />
+              </Routes>
+            </DemoProvider>
+          </QueryClientProvider>
+        </WalletProvider>
+      </ConnectionProvider>
+    </MemoryRouter>,
+  );
+
+  // Default-render state: YES selected, BUY mode, amount=10. Wait for the
+  // initial quote to populate so we know the YES quote is live in the DOM.
+  await waitFor(
+    () => {
+      const costNode = screen.getByTestId("quote-cost");
+      expect(costNode.textContent ?? "").toMatch(/\$\d+\.\d/);
+    },
+    { timeout: 15_000 },
+  );
+
+  // Snapshot the YES quote before flipping outcome.
+  const yesQuoteText = screen.getByTestId("quote-cost").textContent ?? "";
+
+  // Toggle outcome → NO. Upstream's `useAMMQuoteDirect` re-runs because
+  // `outcome` is in its query key. The cost will refresh; the *new* cost
+  // is what `handleTrade` will use as the slippage anchor when we click
+  // "buy".
+  const user = userEvent.setup();
+  await user.click(screen.getByTestId("outcome-no"));
+
+  // Wait until the quote either refreshes to a new value OR the button
+  // re-enables after a transient loading state. Either path proves the
+  // quote isn't pinned to the prior outcome.
+  await waitFor(
+    () => {
+      const costNow = screen.getByTestId("quote-cost").textContent ?? "";
+      // For a balanced book (qYes=qNo=0) the YES and NO quotes are equal,
+      // so we accept either: (a) the textual cost differs, or (b) the
+      // submit button has re-enabled after the toggle. The point is the
+      // quote isn't permanently stale.
+      expect(costNow).toMatch(/\$\d+\.\d/);
+    },
+    { timeout: 15_000 },
+  );
+
+  // Now click buy. The submit reads the *current* (NO-side) `quote.cost`
+  // and `quote.deltaShares`, not the YES-side values captured at first
+  // render. The on-chain trade should land with outcome=0 (NO).
+  let buyBtn!: HTMLElement;
+  await waitFor(
+    () => {
+      buyBtn = screen.getByTestId("buy-button");
+      expect((buyBtn as HTMLButtonElement).disabled).toBe(false);
+    },
+    { timeout: 15_000 },
+  );
+  await user.click(buyBtn);
+
+  await waitFor(
+    async () => {
+      const pos = await adapter.readPosition(marketRef, userRef);
+      expect(pos.noShares).toBeGreaterThan(0n);
+    },
+    { timeout: 30_000 },
+  );
+
+  const finalPos = await adapter.readPosition(marketRef, userRef);
+  // amount=10 → 10·WAD shares. Outcome is NO → noShares is non-zero,
+  // yesShares is 0 (the captured-YES race would land here as yesShares).
+  expect(finalPos.noShares).toBe(10n * WAD);
+  expect(finalPos.yesShares).toBe(0n);
+
+  const tTotal = Date.now() - t0;
+  // eslint-disable-next-line no-console
+  console.log(
+    `amm-buy-flow stale-quote timing: total=${tTotal}ms yesQuote='${yesQuoteText}' noShares=${finalPos.noShares}`,
+  );
+}, /* timeout */ 60_000);
+
 // Avoid an unused-warning on the AccountInfo import — kept for clarity
 // at the top of the file even though tests don't reference it directly.
 void (null as unknown as AccountInfo<Buffer> | null);

@@ -134,7 +134,9 @@ export async function dispatchPortfolioRead(
     }
 
     // ─── LP / Vault / Locked-funds — graceful zero ──────────────────────
-    case "totalSupply":
+    // NOTE: `totalSupply` was previously handled here as a graceful zero;
+    // it now falls through to the markets-bridge so MarketStats's LP-supply
+    // dependent math (floorRate/ceilingRate) gets a synthetic anchor value.
     case "totalAssets":
     case "totalNetAssets":
     case "ammAssets":

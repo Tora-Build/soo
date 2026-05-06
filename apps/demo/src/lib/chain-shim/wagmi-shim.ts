@@ -28,6 +28,11 @@ import {
   PORTFOLIO_NOT_HANDLED,
   type PortfolioBridgeCtx,
 } from "./portfolio-bridge";
+import {
+  dispatchMarketsRead,
+  MARKETS_NOT_HANDLED,
+  type MarketsBridgeCtx,
+} from "./markets-bridge";
 import { DemoContextObj } from "../DemoContext";
 
 // ─── Read dispatch order ────────────────────────────────────────────────────
@@ -36,23 +41,31 @@ import { DemoContextObj } from "../DemoContext";
 //
 //   1. portfolio-bridge — claims `getMarkets`, market-PDA-derived reads
 //      (`isSettled`, `winningOutcome`, `price`, `questionHash`, …) plus the
-//      LP/locked-funds graceful-zero set.
-//   2. amm-bridge — claims AMM-shaped reads (`getMarketState`, `getPosition`,
+//      remaining graceful-zero LP/locked-funds set.
+//   2. markets-bridge — claims `getGraduationProgress` + `totalSupply`,
+//      synthesized from `AmmState.{q_yes,q_no,b}`. Runs *before* the
+//      amm-bridge so its `getGraduationProgress` synthesis wins, and
+//      *after* portfolio-bridge so the latter's market-PDA-typed reads
+//      keep their existing semantics.
+//   3. amm-bridge — claims AMM-shaped reads (`getMarketState`, `getPosition`,
 //      `getPositionQuote`, `getLiquidity`, `markets`, `balanceOf`,
 //      `allowance`, `decimals`, …).
-//   3. Sentinel fallback — `undefined` (publicClient) or `data: undefined`
+//   4. Sentinel fallback — `undefined` (publicClient) or `data: undefined`
 //      (hook-shape).
 //
-// Function-name uniqueness: when both bridges define a name, the portfolio
-// bridge wins. Today the only collision is none — `getPosition` is amm-only
-// and `isSettled` / `price` are portfolio-only.
+// Function-name uniqueness: when multiple bridges define a name, the
+// earlier one wins. Today's collisions: `totalSupply` (was portfolio-bridge,
+// now markets-bridge) intentionally moved to surface a non-zero LP anchor.
 async function dispatchRead(
   call: ReadCallShape,
   amm: AmmBridgeCtx,
   portfolio: PortfolioBridgeCtx,
+  markets: MarketsBridgeCtx,
 ): Promise<unknown | typeof NOT_HANDLED> {
   const portfolioOut = await dispatchPortfolioRead(call, portfolio);
   if (portfolioOut !== PORTFOLIO_NOT_HANDLED) return portfolioOut;
+  const marketsOut = await dispatchMarketsRead(call, markets);
+  if (marketsOut !== MARKETS_NOT_HANDLED) return marketsOut;
   return dispatchAmmRead(call, amm);
 }
 
@@ -184,6 +197,7 @@ function makeShimPublicClient(
   connection: unknown,
   bridge: AmmBridgeCtx | null,
   portfolio: PortfolioBridgeCtx | null,
+  markets: MarketsBridgeCtx | null,
 ): ShimPublicClient {
   // Methods are loosely typed because upstream destructures result fields
   // freely (event-log shape, multicall tuple shape, etc.). Most return
@@ -193,8 +207,8 @@ function makeShimPublicClient(
   const getLogs = async <_E = unknown>(_args?: any): Promise<any[]> => [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const readContract = async (args?: any): Promise<any> => {
-    if (!bridge || !portfolio || !args) return undefined;
-    const out = await dispatchRead(args, bridge, portfolio);
+    if (!bridge || !portfolio || !markets || !args) return undefined;
+    const out = await dispatchRead(args, bridge, portfolio, markets);
     return out === NOT_HANDLED ? undefined : out;
   };
   // Multicall fan-out: walk each `{address, functionName, args}` tuple and
@@ -204,12 +218,12 @@ function makeShimPublicClient(
   // (useReadContracts.data[i].result) keep their per-leg fallbacks.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const multicallFanout = async (mcArgs?: any): Promise<any[]> => {
-    if (!bridge || !portfolio || !mcArgs) return [];
+    if (!bridge || !portfolio || !markets || !mcArgs) return [];
     const contracts = (mcArgs.contracts ?? []) as ReadCallShape[];
     return Promise.all(
       contracts.map(async (call) => {
         try {
-          const out = await dispatchRead(call, bridge, portfolio);
+          const out = await dispatchRead(call, bridge, portfolio, markets);
           if (out === NOT_HANDLED) {
             return { status: "success", result: undefined };
           }
@@ -276,7 +290,13 @@ export function usePublicClient(_args?: unknown): ShimPublicClient {
         knownMarkets: demo.marketRef ? [demo.marketRef] : [],
       }
     : null;
-  return makeShimPublicClient(effectiveConnection, bridge, portfolio);
+  const markets: MarketsBridgeCtx | null = demo
+    ? {
+        adapter: demo.adapter,
+        knownMarkets: demo.marketRef ? [demo.marketRef] : [],
+      }
+    : null;
+  return makeShimPublicClient(effectiveConnection, bridge, portfolio, markets);
 }
 
 export function useWalletClient(_args?: unknown) {
@@ -406,9 +426,13 @@ export function useReadContract<T = any>(
       adapter: demo.adapter,
       knownMarkets: demo.marketRef ? [demo.marketRef] : [],
     };
+    const markets: MarketsBridgeCtx = {
+      adapter: demo.adapter,
+      knownMarkets: demo.marketRef ? [demo.marketRef] : [],
+    };
     void (async () => {
       try {
-        const out = await dispatchRead(call, bridge, portfolio);
+        const out = await dispatchRead(call, bridge, portfolio, markets);
         if (cancelled) return;
         if (out === NOT_HANDLED) {
           setState({ data: undefined, error: null });
@@ -506,11 +530,15 @@ export function useReadContracts<
       adapter: demo.adapter,
       knownMarkets: demo.marketRef ? [demo.marketRef] : [],
     };
+    const markets: MarketsBridgeCtx = {
+      adapter: demo.adapter,
+      knownMarkets: demo.marketRef ? [demo.marketRef] : [],
+    };
     void (async () => {
       const results: ReadContractsItem[] = await Promise.all(
         contracts.map(async (c) => {
           try {
-            const out = await dispatchRead(c, bridge, portfolio);
+            const out = await dispatchRead(c, bridge, portfolio, markets);
             if (out === NOT_HANDLED) {
               return { status: "success", result: undefined };
             }
