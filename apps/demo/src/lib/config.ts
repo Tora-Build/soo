@@ -2,13 +2,22 @@
 // `scripts/sync-deployments.js` (per-deployment .env wiring) is intentionally
 // dropped. When pointing the demo at a real cluster, override
 // `VITE_SOLANA_RPC_URL` and `VITE_USDC_MINT`.
+//
+// `pnpm dev` (no flag) targets devnet by default, so the program IDs below
+// are the canonical devnet program IDs (mirrored from the Anchor IDLs which
+// in turn mirror `sooth_protocol_types::ids`). `pnpm dev:localnet` opts into
+// a local validator + the localnet seed flow which writes its own
+// `.env.local` overrides on top.
 
-import type { SoothNode } from "@sooth/sdk-solana";
+import { type SoothNode, soothAmmIdl, soothMarketIdl } from "@sooth/sdk-solana";
 
-const DEFAULT_LOCALNET_RPC = "http://127.0.0.1:8899";
+const DEFAULT_DEVNET_RPC = "https://api.devnet.solana.com";
 const USDC_MINT_DEVNET = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
-const SOOTH_AMM_ID = "SoothAMM11111111111111111111111111111111111";
-const SOOTH_MARKET_ID = "SoothMkt11111111111111111111111111111111111";
+// Sourced from the IDL `address` fields, which in turn mirror each program's
+// `declare_id!`. Keeps the config in lockstep with deploy keypair rotations
+// without a second hand-pinned constant.
+const SOOTH_AMM_ID = soothAmmIdl.address;
+const SOOTH_MARKET_ID = soothMarketIdl.address;
 
 export interface DemoConfig {
   node: SoothNode;
@@ -21,11 +30,11 @@ const env = ((
 
 export const demoConfig: DemoConfig = {
   node: {
-    id: "solana-localnet",
+    id: "solana-devnet",
     chainKind: "solana",
-    chainId: "solana:localnet",
+    chainId: "solana:devnet",
     cluster: "devnet",
-    rpcUrl: env?.VITE_SOLANA_RPC_URL ?? DEFAULT_LOCALNET_RPC,
+    rpcUrl: env?.VITE_SOLANA_RPC_URL ?? DEFAULT_DEVNET_RPC,
     programs: {
       soothAmm: env?.VITE_SOOTH_AMM_ID ?? SOOTH_AMM_ID,
       soothMarket: env?.VITE_SOOTH_MARKET_ID ?? SOOTH_MARKET_ID,

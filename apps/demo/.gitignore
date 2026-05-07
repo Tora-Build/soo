@@ -3,6 +3,9 @@
 .localnet/
 .localnet.pid
 
+# Devnet deploy payer keypair (per-machine secret).
+.deploy-payer.json
+
 # Vite env files (also covered by repo root, repeated here for clarity).
 .env
 .env.local
