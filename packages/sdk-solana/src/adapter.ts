@@ -386,6 +386,90 @@ export class SolanaChainAdapter implements ChainAdapter {
   }
 
   /**
+   * Enumerate the user's pending sell-lock entries on a given market.
+   *
+   * Sells route USDC proceeds into a per-LockEntry PDA with a 24h cooldown
+   * (`sooth_amm::sell_positions` → `LockEntry::unlock_at = now + 86400`).
+   * `claim_unlocked` drains one matured LockEntry per call back to the
+   * user's USDC ATA and closes the LockEntry account (rent → user).
+   *
+   * The PDA seed is `[b"lock_entry", positionPda, nonce_le_u64]` where
+   * `nonce` ranges 0..Position.lock_nonce. We iterate the range and read
+   * each candidate; surviving accounts (=unclaimed) come back with their
+   * `amount_usdc` and `unlock_at`. Closed (=claimed) accounts are absent
+   * and silently skipped.
+   *
+   * O(lock_nonce) RPC calls. Acceptable while users have <50 sells; for
+   * heavier usage migrate to `getProgramAccounts` with an owner memcmp
+   * filter at the LockEntry `user` offset.
+   */
+  async readPendingUnlocks(
+    market: MarketRef,
+    user: AddressRef,
+  ): Promise<
+    Array<{
+      lockEntry: AddressRef;
+      amountUsdc: bigint;
+      unlockAt: bigint;
+      nonce: bigint;
+    }>
+  > {
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const userPk = decodePubkeyRef(user);
+    const [posPda] = derivePositionPda(
+      resolved.marketId,
+      userPk,
+      this.programIds,
+    );
+    const positionRaw = await (
+      this.soothAmm.account as any
+    ).position.fetchNullable(posPda);
+    if (!positionRaw) return [];
+    const lockNonce = bnToBigInt(positionRaw.lockNonce);
+    if (lockNonce === 0n) return [];
+
+    // Derive every candidate PDA, then batch-fetch in groups of 100 (Solana
+    // RPC's getMultipleAccounts cap). Existing accounts decode; absent ones
+    // (=already claimed) skipped.
+    const candidates: Array<{ pda: PublicKey; nonce: bigint }> = [];
+    for (let n = 0n; n < lockNonce; n++) {
+      const [pda] = deriveLockEntryPda(posPda, n, this.programIds);
+      candidates.push({ pda, nonce: n });
+    }
+
+    const out: Array<{
+      lockEntry: AddressRef;
+      amountUsdc: bigint;
+      unlockAt: bigint;
+      nonce: bigint;
+    }> = [];
+    const CHUNK = 100;
+    for (let i = 0; i < candidates.length; i += CHUNK) {
+      const slice = candidates.slice(i, i + CHUNK);
+      const infos = await this.connection.getMultipleAccountsInfo(
+        slice.map((c) => c.pda),
+      );
+      for (let j = 0; j < slice.length; j++) {
+        const info = infos[j];
+        if (!info) continue;
+        const data = Buffer.from(info.data);
+        // 8 disc + 32 user + 32 market = 72 → amount_usdc (u64 LE)
+        const amountUsdc = data.readBigUInt64LE(72);
+        // 80 → unlock_at (i64 LE)
+        const unlockAt = data.readBigInt64LE(80);
+        out.push({
+          lockEntry: `sol:${slice[j].pda.toBase58()}`,
+          amountUsdc,
+          unlockAt,
+          nonce: slice[j].nonce,
+        });
+      }
+    }
+    return out;
+  }
+
+  /**
    * Fetch the singleton `ProtocolConfig` and return its `fee_bps`.
    *
    * Reads via the launchpad Anchor account decoder so changes to

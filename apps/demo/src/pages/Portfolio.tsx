@@ -8,6 +8,7 @@ import { useActivePositions, useLPPositions } from "../hooks";
 import { TradingAccountCard } from "../components/features/portfolio/TradingAccountCard";
 import { ActiveOrdersCard } from "../components/features/portfolio/ActiveOrdersCard";
 import { CompleteSetPanel } from "../components/features/portfolio/CompleteSetPanel";
+import { ClaimUnlockedPanel } from "../components/features/portfolio/ClaimUnlockedPanel";
 import { formatCurrencyCompact } from "../lib/utils";
 import { useTranslation } from "react-i18next";
 
@@ -100,6 +101,8 @@ export const Portfolio = () => {
       <TradingAccountCard />
 
       <CompleteSetPanel />
+
+      <ClaimUnlockedPanel />
 
       <Card className="bg-raised border border-rule p-6">
         <div className="flex items-center justify-between mb-4">
