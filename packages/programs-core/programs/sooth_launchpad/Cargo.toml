@@ -41,6 +41,13 @@ anchor-spl = { version = "0.30.1", features = ["token", "associated_token"] }
 # we don't double-register the program entrypoint in this crate.
 sooth_amm = { path = "../sooth_amm", features = ["cpi"] }
 sooth_market = { path = "../sooth_market", features = ["cpi"] }
+# Shared byte-offset constants for `ProtocolConfig` account-data layout.
+# `sooth_amm`'s `trade_positions` parses `ProtocolConfig` raw because the
+# cyclic-dep direction (sooth_amm → sooth_launchpad) is forbidden — this
+# crate is the source of truth for the offsets it uses. The compile-time
+# assertion in `state/protocol_config.rs` cross-checks the constants
+# against the live struct's `SPACE` figure so any drift trips the build.
+sooth-account-offsets = { path = "../../crates/sooth-account-offsets" }
 
 [lints.rust]
 unexpected_cfgs = { level = "allow" }

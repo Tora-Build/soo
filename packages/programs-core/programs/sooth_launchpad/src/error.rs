@@ -30,4 +30,7 @@ pub enum SoothLaunchpadError {
 
     #[msg("Protocol config already initialized")]
     AlreadyInitialized,
+
+    #[msg("Fee pool is empty — nothing to distribute")]
+    NothingToDistribute,
 }

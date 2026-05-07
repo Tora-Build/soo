@@ -7,25 +7,33 @@
 //!
 //! ## Authority gating
 //!
-//! EVM: `require(msg.sender == adjudicator())`. Solana equivalent is a CPI
-//! auth check — the adjudicator program is the caller, and we verify
-//! `program_id == market.adjudicator`. **Not implemented in this scaffold**:
-//! that requires `sooth_adjudicator` to exist with a known CPI shape, per
-//! architecture §4.4. The state mutation below is real; the auth check is
-//! `todo!()` so any reviewer running this on devnet sees an immediate panic
-//! and knows the gate is unenforced.
+//! EVM: `require(msg.sender == adjudicator())`. Solana equivalent — now
+//! wired — is parent-ix introspection: the calling top-level ix must be
+//! `sooth_adjudicator::request_lock` (matched by program-id + Anchor
+//! discriminator). This replaces the prior loose signer-key check that
+//! accepted any signer whose pubkey equaled `market.adjudicator`. The Wave
+//! A pattern (`instruction_introspection.rs`) is reused.
 //!
-//! Once `sooth_adjudicator` lands, this becomes:
-//!   - `sysvar::instructions` introspection to grab the parent ix's
-//!     program_id, OR
-//!   - a signer PDA derived from the adjudicator program with seeds
-//!     `[b"adj_signer", market_id]`.
-//! The architecture doc doesn't pin the choice — defer.
+//! ## Defense-in-depth (per architecture §4.4)
+//!
+//!   1. `sooth_market::AdjudicatorAllowlist` (commit abfcf15) constrains the
+//!      *set* of pubkeys ever named as `Market.adjudicator`.
+//!   2. `sooth_adjudicator::Adjudicator` PDA records the per-market authority
+//!      (post-create registration).
+//!   3. THIS gate — parent-ix introspection — pins the actual call to the
+//!      adjudicator program, closing the deferred half of Codex's C2.
+//!
+//! All three layers stay in place. Removing any one widens the attack
+//! surface in a documented, traceable way.
 
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::sysvar;
 
 use crate::error::SoothMarketError;
 use crate::events::MarketLocked;
+use crate::instruction_introspection::{
+    require_adjudicator_parent_ix, REQUEST_LOCK_DISCRIMINATOR,
+};
 use crate::state::{Market, MarketLifecycle};
 
 #[derive(Accounts)]
@@ -37,31 +45,38 @@ pub struct LockForResolution<'info> {
     )]
     pub market: Account<'info, Market>,
 
-    /// Stubbed adjudicator authority signer. In v1 this is the literal
-    /// `market.adjudicator` pubkey (signer-style for the manual adjudicator).
-    /// In v2 with `sooth_adjudicator` running its own program this becomes
-    /// either an instruction-introspection check or a program-derived signer.
-    /// CHECK: see module-level note; the auth check is `todo!()`.
-    pub adjudicator: Signer<'info>,
+    /// `sooth_adjudicator::Adjudicator` PDA — read-only here. Forwarded by
+    /// the CPI from `sooth_adjudicator::request_lock`. Pinned to the
+    /// matching adjudicator-program seed via the `owner` constraint so a
+    /// caller cannot substitute a forged Adjudicator account from another
+    /// program. CHECK: ownership-pinned; the contents are not parsed here
+    /// (the introspection check is the load-bearing auth gate; this account
+    /// is along for the ride to keep the CPI account-list shape parallel
+    /// to `settle` and to give indexers a stable reference).
+    #[account(
+        owner = crate::SOOTH_ADJUDICATOR_PROGRAM_ID @ SoothMarketError::NotAdjudicator,
+    )]
+    pub adjudicator_pda: UncheckedAccount<'info>,
+
+    /// Instructions sysvar — read by the parent-ix introspection check.
+    /// Pinned to the canonical sysvar pubkey via the `address` constraint
+    /// so a malicious caller cannot substitute a forged sysvar account.
+    /// CHECK: address-pinned.
+    #[account(address = sysvar::instructions::ID)]
+    pub instruction_sysvar: UncheckedAccount<'info>,
 }
 
 pub fn handler(ctx: Context<LockForResolution>) -> Result<()> {
-    // ── Auth — STUB ──────────────────────────────────────────────────────
+    // ── Auth — parent-ix introspection ───────────────────────────────────
     //
-    // TODO(architecture §4.4): replace with the adjudicator-CPI auth check
-    // once `sooth_adjudicator` is wired. Until then, accept any signer whose
-    // pubkey matches `market.adjudicator` — this is a minimal real-but-loose
-    // gate; the production version verifies the CPI parent program. Panic
-    // with `todo!()` if the field is unset (defense-in-depth so a
-    // misconfigured market can't be locked by anyone).
-    if ctx.accounts.market.adjudicator == Pubkey::default() {
-        todo!("adjudicator-CPI auth check not yet wired; see architecture §4.4");
-    }
-    require_keys_eq!(
-        ctx.accounts.adjudicator.key(),
-        ctx.accounts.market.adjudicator,
-        SoothMarketError::NotAdjudicator
-    );
+    // The calling top-level ix MUST be `sooth_adjudicator::request_lock`.
+    // The introspection scans the tx's ix list and matches program-id +
+    // Anchor discriminator. See `instruction_introspection.rs` for the
+    // mechanism. This closes the deferred half of Codex's C2 finding.
+    require_adjudicator_parent_ix(
+        &ctx.accounts.instruction_sysvar,
+        &REQUEST_LOCK_DISCRIMINATOR,
+    )?;
 
     let market = &mut ctx.accounts.market;
     require!(

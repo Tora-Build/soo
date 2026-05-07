@@ -9,11 +9,13 @@ skip-lint = false
 sooth_amm = "SoothAMM11111111111111111111111111111111111"
 sooth_market = "SoothMkt11111111111111111111111111111111111"
 sooth_launchpad = "SoothLP111111111111111111111111111111111111"
+sooth_adjudicator = "SoothAdj11111111111111111111111111111111111"
 
 [programs.devnet]
 sooth_amm = "SoothAMM11111111111111111111111111111111111"
 sooth_market = "SoothMkt11111111111111111111111111111111111"
 sooth_launchpad = "SoothLP111111111111111111111111111111111111"
+sooth_adjudicator = "SoothAdj11111111111111111111111111111111111"
 
 [registry]
 url = "https://api.apr.dev"
@@ -27,4 +29,4 @@ test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
 
 # Workspace-relative paths so `anchor build` finds the programs from this dir.
 [workspace]
-members = ["programs/sooth_amm", "programs/sooth_market", "programs/sooth_launchpad"]
+members = ["programs/sooth_amm", "programs/sooth_market", "programs/sooth_launchpad", "programs/sooth_adjudicator"]

@@ -8,14 +8,21 @@
 //!
 //! ## Authority gating
 //!
-//! Same `todo!()` shape as `lock_for_resolution`. The state mutation is real;
-//! the adjudicator-CPI auth check is left for `sooth_adjudicator` (architecture
-//! §4.4).
+//! Parent-ix introspection — same shape as `lock_for_resolution`. The
+//! calling top-level ix MUST be `sooth_adjudicator::attest_outcome` (matched
+//! by program-id + Anchor discriminator). This is the call-time auth gate
+//! that closes the deferred half of Codex's C2 finding; the abfcf15
+//! `AdjudicatorAllowlist` mitigation remains in place as create-time
+//! defense-in-depth.
 
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::sysvar;
 
 use crate::error::SoothMarketError;
 use crate::events::MarketSettled;
+use crate::instruction_introspection::{
+    require_adjudicator_parent_ix, ATTEST_OUTCOME_DISCRIMINATOR,
+};
 use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
 use crate::state::{Market, MarketLifecycle};
 
@@ -28,9 +35,19 @@ pub struct Settle<'info> {
     )]
     pub market: Account<'info, Market>,
 
-    /// CHECK: see `lock_for_resolution::handler` notes — same `todo!()`
-    /// shape; the auth check is unimplemented pending `sooth_adjudicator`.
-    pub adjudicator: Signer<'info>,
+    /// `sooth_adjudicator::Adjudicator` PDA — read-only here. Forwarded by
+    /// the CPI from `sooth_adjudicator::attest_outcome`. Pinned via owner
+    /// constraint (same rationale as `lock_for_resolution`). CHECK:
+    /// ownership-pinned; introspection is the load-bearing auth gate.
+    #[account(
+        owner = crate::SOOTH_ADJUDICATOR_PROGRAM_ID @ SoothMarketError::NotAdjudicator,
+    )]
+    pub adjudicator_pda: UncheckedAccount<'info>,
+
+    /// Instructions sysvar for parent-ix introspection. Address-pinned.
+    /// CHECK: address-pinned.
+    #[account(address = sysvar::instructions::ID)]
+    pub instruction_sysvar: UncheckedAccount<'info>,
 }
 
 pub fn handler(ctx: Context<Settle>, winning_outcome: u8) -> Result<()> {
@@ -41,18 +58,15 @@ pub fn handler(ctx: Context<Settle>, winning_outcome: u8) -> Result<()> {
         SoothMarketError::InvalidOutcome
     );
 
-    // ── Auth — STUB ──────────────────────────────────────────────────────
+    // ── Auth — parent-ix introspection ───────────────────────────────────
     //
-    // TODO(architecture §4.4): replace with the adjudicator-CPI auth check
-    // once `sooth_adjudicator` is wired.
-    if ctx.accounts.market.adjudicator == Pubkey::default() {
-        todo!("adjudicator-CPI auth check not yet wired; see architecture §4.4");
-    }
-    require_keys_eq!(
-        ctx.accounts.adjudicator.key(),
-        ctx.accounts.market.adjudicator,
-        SoothMarketError::NotAdjudicator
-    );
+    // Caller MUST be `sooth_adjudicator::attest_outcome`. See
+    // `instruction_introspection.rs` for the mechanism and
+    // `lock_for_resolution.rs` for the layered-defense rationale.
+    require_adjudicator_parent_ix(
+        &ctx.accounts.instruction_sysvar,
+        &ATTEST_OUTCOME_DISCRIMINATOR,
+    )?;
 
     let market = &mut ctx.accounts.market;
     require!(

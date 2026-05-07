@@ -60,6 +60,17 @@ pub const SOOTH_AMM_PROGRAM_ID: Pubkey = anchor_lang::pubkey!(
     "SoothAMM11111111111111111111111111111111111"
 );
 
+/// Hard-coded `sooth_adjudicator` program ID. Used by `lock_for_resolution`
+/// and `settle` to verify the calling top-level ix originates from the
+/// adjudicator program (parent-ix introspection — same Wave A pattern as
+/// the AMM helper transfer ixs above). Bump in lock-step with the matching
+/// `declare_id!` in `programs/sooth_adjudicator/src/lib.rs`. Mirrors the
+/// `SOOTH_AMM_PROGRAM_ID` duplication strategy above; the long-term home
+/// for both is a workspace-shared `sooth-protocol-types` crate.
+pub const SOOTH_ADJUDICATOR_PROGRAM_ID: Pubkey = anchor_lang::pubkey!(
+    "SoothAdj11111111111111111111111111111111111"
+);
+
 /// Canonical devnet USDC mint. Must match `sooth_amm::USDC_MINT_DEVNET` —
 /// a workspace-shared crate (`sooth-protocol-types`) is the right long-term
 /// home for this constant, but until that crate exists this is duplicated

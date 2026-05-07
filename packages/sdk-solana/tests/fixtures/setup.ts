@@ -47,14 +47,21 @@ import {
 } from "@solana/web3.js";
 import { Clock, start, type ProgramTestContext } from "solana-bankrun";
 
-import { soothAmmIdl, soothMarketIdl } from "../../src/anchor/index.js";
+import {
+  soothAmmIdl,
+  soothLaunchpadIdl,
+  soothMarketIdl,
+} from "../../src/anchor/index.js";
 import {
   deriveAmmStatePda,
+  deriveFeePoolAuthorityPda,
+  deriveFeePoolVaultAta,
   deriveLockAuthorityPda,
   deriveLockVaultAta,
   deriveMarketPda,
   deriveMarketVaultAta,
   deriveNoMintPda,
+  deriveProtocolConfigPda,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
   deriveYesMintPda,
@@ -71,10 +78,12 @@ export const REPO_ROOT = resolve(__dirname, "..", "..", "..", "..");
 // Placeholder program IDs (from `declare_id!` in the on-chain programs).
 export const SOOTH_AMM_ID = new PublicKey(soothAmmIdl.address);
 export const SOOTH_MARKET_ID = new PublicKey(soothMarketIdl.address);
+export const SOOTH_LAUNCHPAD_ID = new PublicKey(soothLaunchpadIdl.address);
 
 export const PROGRAMS: ProgramIds = {
   soothAmm: SOOTH_AMM_ID,
   soothMarket: SOOTH_MARKET_ID,
+  soothLaunchpad: SOOTH_LAUNCHPAD_ID,
 };
 
 export interface SmokeContext {
@@ -117,7 +126,11 @@ export async function bootSmoke(
   process.env.BPF_OUT_DIR = soDir;
   // Sanity-check that the .so files exist; fail fast with a clear message
   // if they don't (means `cargo build-sbf` hasn't been run for this commit).
-  for (const so of ["sooth_amm.so", "sooth_market.so"]) {
+  // sooth_launchpad is loaded too — Wave 5A's `trade_positions` /
+  // `sell_positions` validate the singleton `protocol_config` PDA and
+  // global `fee_pool_vault` ATA, both owned by the launchpad. The bootstrap
+  // sequence below initialises both before any AMM trade can land.
+  for (const so of ["sooth_amm.so", "sooth_market.so", "sooth_launchpad.so"]) {
     try {
       readFileSync(resolve(soDir, so));
     } catch {
@@ -131,6 +144,7 @@ export async function bootSmoke(
     [
       { name: "sooth_amm", programId: SOOTH_AMM_ID },
       { name: "sooth_market", programId: SOOTH_MARKET_ID },
+      { name: "sooth_launchpad", programId: SOOTH_LAUNCHPAD_ID },
     ],
     [],
     /* computeMaxUnits */ 1_400_000n,
@@ -214,6 +228,7 @@ export async function bootSmoke(
   });
   const marketProgram = new Program(soothMarketIdl as Idl, provider);
   const ammProgram = new Program(soothAmmIdl as Idl, provider);
+  const launchpadProgram = new Program(soothLaunchpadIdl as Idl, provider);
 
   // ─── 0. adjudicator allowlist bootstrap ─────────────────────────────────
   //
@@ -258,6 +273,74 @@ export async function bootSmoke(
           .accounts({
             allowlist: allowlistPda,
             authority: creator.publicKey,
+          })
+          .instruction(),
+      ],
+      creator.publicKey,
+    ),
+  );
+
+  // ─── 0b. launchpad bootstrap: ProtocolConfig + global fee_pool_vault ────
+  //
+  // Wave 5A made `sooth_amm::trade_positions` and `sell_positions` read the
+  // singleton `protocol_config` PDA + global `fee_pool_vault` USDC ATA on
+  // every buy/sell. Both live under `sooth_launchpad`. The two ixs below
+  // are single-shot per cluster — calling them twice trips
+  // `account already in use` from the runtime — but each `bootSmoke()` call
+  // boots a fresh bankrun ctx so the singletons are always fresh here.
+  const [protocolConfigPda] = deriveProtocolConfigPda({
+    soothLaunchpad: SOOTH_LAUNCHPAD_ID,
+  });
+  await sendTx(
+    ctx,
+    [creator],
+    await buildTx(
+      ctx,
+      [
+        await (launchpadProgram.methods as any)
+          .initializeProtocol({
+            feeBps: 100, // 1%
+            treasury: creator.publicKey, // demo: creator doubles as treasury
+            bBaseShareBps: 5_000,
+            lpYieldShareBps: 3_000,
+            adjudicatorShareBps: 1_000,
+            protocolShareBps: 1_000,
+            defaultTrialPeriod: new BN(7 * 24 * 60 * 60),
+          })
+          .accounts({
+            config: protocolConfigPda,
+            authority: creator.publicKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .instruction(),
+      ],
+      creator.publicKey,
+    ),
+  );
+
+  const [feePoolAuthorityPda] = deriveFeePoolAuthorityPda({
+    soothLaunchpad: SOOTH_LAUNCHPAD_ID,
+  });
+  const feePoolVault = deriveFeePoolVaultAta(USDC_MINT_DEVNET, {
+    soothLaunchpad: SOOTH_LAUNCHPAD_ID,
+  });
+  await sendTx(
+    ctx,
+    [creator],
+    await buildTx(
+      ctx,
+      [
+        await (launchpadProgram.methods as any)
+          .initializeFeePool()
+          .accounts({
+            feePoolAuthority: feePoolAuthorityPda,
+            usdcMint: USDC_MINT_DEVNET,
+            feePoolVault,
+            signer: creator.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+            rent: SYSVAR_RENT_PUBKEY,
           })
           .instruction(),
       ],

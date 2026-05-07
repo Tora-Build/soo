@@ -1,55 +1,47 @@
-//! `create_market` — STUB. The user-facing one-shot market creation flow.
+//! `create_market` — user-facing one-shot market creation flow.
 //!
 //! Architecture §4.1. EVM analogue: `LaunchpadEngine.createMarket`
-//! (`LaunchpadEngine.sol:204-339`). On Solana this is the higher-level wrapper
-//! around four sequential CPIs into `sooth_market` and `sooth_amm` — see the
-//! enumerated list in the handler body.
+//! (`LaunchpadEngine.sol:204-339`). On Solana this is a single ix that
+//! composes four sequential CPIs into `sooth_market` and `sooth_amm`,
+//! collapsing the 4-tx seed flow (initializeMarket → initializeOutcomeMints →
+//! initializeMarketVaults → initializeAmmState) into one transaction:
 //!
-//! ## Status
-//!
-//! Body is `todo!()`. The Accounts struct is real and committed so the IDL
-//! shape is stable for the SDK.
-//!
-//! ## Why a stub now
-//!
-//! - **CPI plumbing is non-trivial**: each leg needs the union of *its own*
-//!   accounts plus the right `signer_seeds` for the `vault_authority` /
-//!   `lock_authority` PDAs that `sooth_market` derives. The launchpad PDA
-//!   (`protocol_config`) is *not* a signer for those — they're per-market
-//!   PDAs owned by `sooth_market`. The CPI handlers expect the original
-//!   creator to sign, which means `create_market` re-passes the user's
-//!   signer through to each leg.
-//! - **Stack frame headroom**: composing four CPIs in one ix means the
-//!   `try_accounts` codegen here ends up holding the union of every leg's
-//!   account list (~20+ accounts boxed). Anchor 0.30.1 SBF codegen runs hot
-//!   on this and we want to land it after we've measured a baseline frame.
-//! - **Account ordering**: Solana's runtime imposes a strict 4-deep CPI cap
-//!   and a flat account-index space; getting the order right needs a
-//!   live-validator round-trip to verify.
-//!
-//! All three are scoped for a follow-up commit. The TODO inside the handler
-//! has the exact CPI list.
+//! 1. `sooth_market::initialize_market`         (lifecycle = Initializing)
+//! 2. `sooth_market::initialize_outcome_mints`  (lifecycle = Initializing)
+//! 3. `sooth_market::initialize_market_vaults`  (lifecycle → Open)
+//! 4. `sooth_amm::initialize_amm_state`         (Open + AmmState ready)
 //!
 //! ## BPF stack-frame discipline
 //!
-//! Every payload-bearing account is `Box<Account<…>>`. Even with a `todo!()`
-//! body, Anchor still emits the full `try_accounts` codegen on build, which
-//! is the path that overflows the 4 KB SBF stack frame. Mirror the
-//! `sooth_market::initialize_market` rationale: box everything that holds
-//! >32 bytes of data.
+//! Anchor 0.30.1 emits the full `try_accounts` codegen for this Accounts
+//! struct on build, including for `Box<Account<…>>` fields whose payload is
+//! heap-allocated. Every payload-bearing account here is `Box<…>` to keep
+//! the union of the four inner CPIs' account lists under the SBF 4 KB
+//! frame; `UncheckedAccount` fields don't deserialise so they cost only the
+//! 32-byte pubkey. The 4 KB ceiling applies per program invocation, and
+//! each inner CPI gets its own fresh frame, so the only risk is this outer
+//! `try_accounts`. See the matching rationale in
+//! `sooth_market::initialize_market.rs`.
+//!
+//! ## Account ordering
+//!
+//! Ordering follows the four CPI legs so the runtime's flat account-index
+//! space is minimally re-sliced per CPI. **Do not reorder** without
+//! re-validating the per-leg `cpi::accounts::*` struct shapes.
 
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::{Mint, Token};
 
+use sooth_market::state::{AdjudicatorAllowlist, ADJUDICATOR_ALLOWLIST_SEED};
+
+use crate::events::MarketCreated;
 use crate::state::ProtocolConfig;
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct CreateMarketArgs {
     /// Deterministic 16-byte id (truncated keccak256 of question || creator
-    /// || nonce). Architecture §2.2. Same field as
-    /// `sooth_market::InitializeMarketArgs::market_id` — passed through to
-    /// leg 1.
+    /// || nonce). Architecture §2.2. Forwarded to leg 1.
     pub market_id: [u8; 16],
     pub question_hash: [u8; 32],
     pub start_time: i64,
@@ -58,7 +50,7 @@ pub struct CreateMarketArgs {
     /// (`sooth_market::initialize_market`).
     pub adjudicator: Pubkey,
     /// Initial LMSR liquidity `b` in WAD. Forwarded to leg 4
-    /// (`sooth_amm::initialize_amm_state`).
+    /// (`sooth_amm::initialize_amm_state`). Must be > 0 and ≤ i128::MAX.
     pub initial_b: u128,
 }
 
@@ -69,10 +61,10 @@ pub struct CreateMarketArgs {
 #[derive(Accounts)]
 #[instruction(args: CreateMarketArgs)]
 pub struct CreateMarket<'info> {
-    /// Global protocol config. Read-only here — used to (a) enforce
-    /// `creator == config.authority` if the cluster is in "permissioned"
-    /// mode, and (b) source the `default_trial_period` when leg 4 computes
-    /// `trial_end_at`. Architecture §9.
+    /// Global protocol config. Read-only here — used to (a) source the
+    /// `default_trial_period` for the `trial_end_at` computation passed to
+    /// leg 4, and (b) anchor the IDL surface for any future "permissioned"
+    /// mode. Architecture §9.
     #[account(
         seeds = [b"protocol_config"],
         bump = config.bump,
@@ -90,6 +82,18 @@ pub struct CreateMarket<'info> {
         seeds::program = sooth_market::ID,
     )]
     pub market: UncheckedAccount<'info>,
+
+    /// Singleton allowlist of permitted adjudicator pubkeys. Read-only here;
+    /// the inner `initialize_market` handler verifies `args.adjudicator` is
+    /// present (Codex C2 minimum-viable mitigation). The PDA must already
+    /// have been bootstrapped via `sooth_market::initialize_adjudicator_allowlist`
+    /// before any `create_market` call lands.
+    #[account(
+        seeds = [ADJUDICATOR_ALLOWLIST_SEED],
+        bump = adjudicator_allowlist.bump,
+        seeds::program = sooth_market::ID,
+    )]
+    pub adjudicator_allowlist: Box<Account<'info, AdjudicatorAllowlist>>,
 
     // ── Leg 2: sooth_market::initialize_outcome_mints ───────────────────
     /// CHECK: signer-only PDA derived via seeds; mint authority for the
@@ -128,9 +132,11 @@ pub struct CreateMarket<'info> {
     )]
     pub lock_authority: UncheckedAccount<'info>,
 
-    /// USDC mint. Pinned at `address = sooth_market::USDC_MINT_DEVNET` once
-    /// the CPI body lands; left as a `Mint` account here so the IDL shape
-    /// is committed.
+    /// USDC mint. Pinned at `address = sooth_market::USDC_MINT_DEVNET` so
+    /// the canonical-USDC chain is unforgeable from the IDL surface alone
+    /// (mirrors the H1 fix on `initialize_market_vaults`). The inner CPI
+    /// re-asserts the same constraint.
+    #[account(address = sooth_market::USDC_MINT_DEVNET)]
     pub usdc_mint: Box<Account<'info, Mint>>,
 
     /// CHECK: USDC ATA owned by `vault_authority`. Init'd by leg 3 CPI.
@@ -171,25 +177,203 @@ pub struct CreateMarket<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-#[allow(unused_variables)]
 pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()> {
-    // The CPI body composes the four-leg init flow from architecture §4.1.
-    // Each leg's CPI signature, accounts, and arg shape is already known —
-    // see the per-leg comment block above. Spec for the body when it lands:
+    // ── Leg 1: sooth_market::initialize_market ──────────────────────────
     //
-    //   1. `sooth_market::initialize_market`         (Initializing)
-    //         args: { market_id, question_hash, start_time, deadline, adjudicator }
-    //   2. `sooth_market::initialize_outcome_mints`  (Initializing)
-    //         no args; pulls mints from the cached `Market` PDA.
-    //   3. `sooth_market::initialize_market_vaults`  (Initializing → Open)
-    //         no args; pins `usdc_mint` to `USDC_MINT_DEVNET` inside the
-    //         called handler (H1 in security review).
-    //   4. `sooth_amm::initialize_amm_state`         (Open + AmmState ready)
-    //         args: { initial_b, trial_end_at }
-    //         where `trial_end_at` = compute from `config.default_trial_period`
-    //         and (deadline - now) per architecture §9 formula:
-    //             min(0.3 × (deadline - now), default_trial_period)
+    // Creates the Market PDA, validates the adjudicator against the
+    // singleton allowlist, and stores the per-market PDA bumps. The inner
+    // handler asserts `args.deadline > args.start_time` so we don't pre-
+    // validate here.
+    {
+        let cpi_accounts = sooth_market::cpi::accounts::InitializeMarket {
+            market: ctx.accounts.market.to_account_info(),
+            adjudicator_allowlist: ctx.accounts.adjudicator_allowlist.to_account_info(),
+            creator: ctx.accounts.creator.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.sooth_market_program.to_account_info(),
+            cpi_accounts,
+        );
+        sooth_market::cpi::initialize_market(
+            cpi_ctx,
+            sooth_market::instructions::InitializeMarketArgs {
+                market_id: args.market_id,
+                question_hash: args.question_hash,
+                start_time: args.start_time,
+                deadline: args.deadline,
+                adjudicator: args.adjudicator,
+            },
+        )?;
+    }
+
+    // ── Leg 2: sooth_market::initialize_outcome_mints ───────────────────
     //
-    // Then emit `MarketCreated` once all four legs land.
-    todo!("compose sooth_market::initialize_market + initialize_outcome_mints + initialize_market_vaults + sooth_amm::initialize_amm_state via CPI; see architecture §4.1")
+    // Creates `yes_mint` and `no_mint` SPL mints with `vault_authority` as
+    // mint authority. The inner handler re-derives the mint addresses
+    // from the now-populated `Market` PDA's stored bumps.
+    {
+        let cpi_accounts = sooth_market::cpi::accounts::InitializeOutcomeMints {
+            market: ctx.accounts.market.to_account_info(),
+            vault_authority: ctx.accounts.vault_authority.to_account_info(),
+            yes_mint: ctx.accounts.yes_mint.to_account_info(),
+            no_mint: ctx.accounts.no_mint.to_account_info(),
+            creator: ctx.accounts.creator.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
+            token_program: ctx.accounts.token_program.to_account_info(),
+            rent: ctx.accounts.rent.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.sooth_market_program.to_account_info(),
+            cpi_accounts,
+        );
+        sooth_market::cpi::initialize_outcome_mints(cpi_ctx)?;
+    }
+
+    // ── Leg 3: sooth_market::initialize_market_vaults ───────────────────
+    //
+    // Creates the USDC vault + lock-vault ATAs and flips lifecycle
+    // Initializing → Open. The inner handler pins `usdc_mint` to
+    // `USDC_MINT_DEVNET` (H1) — we re-pin on the outer Accounts struct so
+    // the IDL surface advertises the same constraint.
+    {
+        let cpi_accounts = sooth_market::cpi::accounts::InitializeMarketVaults {
+            market: ctx.accounts.market.to_account_info(),
+            vault_authority: ctx.accounts.vault_authority.to_account_info(),
+            lock_authority: ctx.accounts.lock_authority.to_account_info(),
+            usdc_mint: ctx.accounts.usdc_mint.to_account_info(),
+            vault: ctx.accounts.vault.to_account_info(),
+            lock_vault: ctx.accounts.lock_vault.to_account_info(),
+            creator: ctx.accounts.creator.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
+            token_program: ctx.accounts.token_program.to_account_info(),
+            associated_token_program: ctx.accounts.associated_token_program.to_account_info(),
+            rent: ctx.accounts.rent.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.sooth_market_program.to_account_info(),
+            cpi_accounts,
+        );
+        sooth_market::cpi::initialize_market_vaults(cpi_ctx)?;
+    }
+
+    // ── Leg 4: sooth_amm::initialize_amm_state ──────────────────────────
+    //
+    // Initializes the per-market AMM cursor with `initial_b` and the
+    // computed `trial_end_at`. Architecture §9 formula:
+    //
+    //   trial_duration = min(0.3 × (deadline - now), default_trial_period)
+    //   trial_end_at   = now + trial_duration
+    //
+    // Saturating arithmetic guards against pathological deadlines (in the
+    // past, or so far future the multiply would overflow `i64`). The inner
+    // handler re-asserts `initial_b > 0` and `initial_b ≤ i128::MAX`
+    // (M1 in security review), so we don't pre-validate here.
+    let now = Clock::get()?.unix_timestamp;
+    let trial_end_at = compute_trial_end_at(
+        now,
+        args.deadline,
+        ctx.accounts.config.default_trial_period,
+    );
+    {
+        let cpi_accounts = sooth_amm::cpi::accounts::InitializeAmmState {
+            market: ctx.accounts.market.to_account_info(),
+            amm_state: ctx.accounts.amm_state.to_account_info(),
+            creator: ctx.accounts.creator.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.sooth_amm_program.to_account_info(),
+            cpi_accounts,
+        );
+        sooth_amm::cpi::initialize_amm_state(
+            cpi_ctx,
+            sooth_amm::instructions::InitializeAmmStateArgs {
+                initial_b: args.initial_b,
+                trial_end_at,
+            },
+        )?;
+    }
+
+    // ── Emit MarketCreated ──────────────────────────────────────────────
+    //
+    // Mirrors EVM `LaunchpadEngine.MarketCreated`. Indexers can pin the
+    // resulting market PDA + companion mints/vault without re-deriving.
+    emit!(MarketCreated {
+        market: ctx.accounts.market.key(),
+        creator: ctx.accounts.creator.key(),
+        adjudicator: args.adjudicator,
+        yes_mint: ctx.accounts.yes_mint.key(),
+        no_mint: ctx.accounts.no_mint.key(),
+        vault: ctx.accounts.vault.key(),
+        initial_b: args.initial_b,
+        start_time: args.start_time,
+        deadline: args.deadline,
+        ts: now,
+    });
+
+    Ok(())
+}
+
+/// Compute `trial_end_at` per architecture §9:
+///
+///   trial_duration = min(0.3 × (deadline - now), default_trial_period)
+///   trial_end_at   = now + trial_duration
+///
+/// `0.3` is encoded as the integer ratio `3 / 10`. All arithmetic is
+/// saturating so a deadline in the past, a deadline so far in the future
+/// the multiply would overflow `i64`, or a negative `default_trial_period`
+/// (impossible per `initialize_protocol` invariants but defended in depth)
+/// each collapse to `now`. The downstream
+/// `sooth_amm::initialize_amm_state` accepts any `i64`, so we don't need
+/// to bound the result further.
+fn compute_trial_end_at(now: i64, deadline: i64, default_trial_period: i64) -> i64 {
+    let until_deadline = deadline.saturating_sub(now);
+    if until_deadline <= 0 {
+        return now;
+    }
+    let scaled = until_deadline.saturating_mul(3) / 10;
+    let trial = scaled.min(default_trial_period.max(0));
+    now.saturating_add(trial)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trial_end_uses_thirty_percent_of_window_when_smaller_than_default() {
+        // 1000s window, 1_000_000s default → 30% × 1000 = 300s.
+        assert_eq!(compute_trial_end_at(0, 1_000, 1_000_000), 300);
+    }
+
+    #[test]
+    fn trial_end_clamped_to_default_when_window_is_huge() {
+        // 1_000_000s window, 100s default → 30% × 1_000_000 = 300_000, clamped to 100.
+        assert_eq!(compute_trial_end_at(0, 1_000_000, 100), 100);
+    }
+
+    #[test]
+    fn trial_end_zero_when_deadline_is_in_the_past() {
+        assert_eq!(compute_trial_end_at(1_000, 500, 1_000_000), 1_000);
+    }
+
+    #[test]
+    fn trial_end_zero_when_deadline_equals_now() {
+        assert_eq!(compute_trial_end_at(1_000, 1_000, 1_000_000), 1_000);
+    }
+
+    #[test]
+    fn trial_end_handles_negative_default_trial_period_defensively() {
+        // `initialize_protocol` rejects this, but defense-in-depth.
+        assert_eq!(compute_trial_end_at(0, 1_000, -1), 0);
+    }
+
+    #[test]
+    fn trial_end_saturating_on_huge_deadline() {
+        // deadline = i64::MAX, now = 0 → saturating multiply by 3 saturates,
+        // then div by 10 → still huge but capped by default_trial_period.
+        let trial = compute_trial_end_at(0, i64::MAX, 100);
+        assert_eq!(trial, 100);
+    }
 }

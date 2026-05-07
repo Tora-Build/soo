@@ -37,8 +37,10 @@ import { SolanaChainAdapter } from "../src/adapter.js";
 import { SoothError } from "../src/errors.js";
 import {
   deriveAmmStatePda,
+  deriveFeePoolVaultAta,
   deriveMarketVaultAta,
   derivePositionPda,
+  deriveProtocolConfigPda,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
   type ProgramIds,
@@ -128,6 +130,15 @@ describe("submit failure surfacing", () => {
         userUsdcAta,
         marketVault,
         usdcMint: smoke.usdcMint,
+        // Wave 5A: trade_positions now reads the singleton ProtocolConfig
+        // PDA + global fee_pool_vault ATA (both owned by sooth_launchpad).
+        // bootSmoke initialises both before this test fires the bad ix.
+        protocolConfig: deriveProtocolConfigPda({
+          soothLaunchpad: smoke.programs.soothLaunchpad!,
+        })[0],
+        feePoolVault: deriveFeePoolVaultAta(smoke.usdcMint, {
+          soothLaunchpad: smoke.programs.soothLaunchpad!,
+        }),
         user: smoke.user.publicKey,
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,

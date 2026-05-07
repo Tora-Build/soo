@@ -110,13 +110,73 @@ pub const LOCK_ENTRY_BUMP_OFFSET: usize = LOCK_ENTRY_NONCE_OFFSET + LOCK_ENTRY_N
 /// Must equal `sooth_amm::state::LockEntry::SPACE`. Asserted in `sooth_amm`.
 pub const LOCK_ENTRY_TOTAL_LEN: usize = LOCK_ENTRY_BUMP_OFFSET + LOCK_ENTRY_BUMP_LEN;
 
+// ── ProtocolConfig layout ────────────────────────────────────────────────
+//
+// Mirror of `sooth_launchpad::state::ProtocolConfig`:
+//   #[account]
+//   pub struct ProtocolConfig {
+//       pub authority: Pubkey,                 // 32
+//       pub treasury: Pubkey,                  // 32
+//       pub fee_bps: u16,                      // 2
+//       pub b_base_share_bps: u16,             // 2
+//       pub lp_yield_share_bps: u16,           // 2
+//       pub adjudicator_share_bps: u16,        // 2
+//       pub protocol_share_bps: u16,           // 2
+//       pub default_trial_period: i64,         // 8
+//       pub bump: u8,                          // 1
+//   }
+// Total payload = 83 bytes; with the 8-byte discriminator that's 91.
+//
+// Read by `sooth_amm::trade_positions` to compute `fee_wad`. Writing the
+// dep the other way (sooth_amm path-dep on sooth_launchpad) would close
+// the cycle since sooth_launchpad already depends on sooth_amm via the
+// `cpi` feature for `create_market`'s composition; we use the same
+// raw-byte parsing pattern we already employ for `Position`/`LockEntry`.
+
+pub const PROTOCOL_CONFIG_DISCRIMINATOR_LEN: usize = 8;
+
+pub const PROTOCOL_CONFIG_AUTHORITY_LEN: usize = 32;
+pub const PROTOCOL_CONFIG_TREASURY_LEN: usize = 32;
+pub const PROTOCOL_CONFIG_FEE_BPS_LEN: usize = 2;
+pub const PROTOCOL_CONFIG_B_BASE_SHARE_BPS_LEN: usize = 2;
+pub const PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_LEN: usize = 2;
+pub const PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_LEN: usize = 2;
+pub const PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_LEN: usize = 2;
+pub const PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_LEN: usize = 8;
+pub const PROTOCOL_CONFIG_BUMP_LEN: usize = 1;
+
+pub const PROTOCOL_CONFIG_AUTHORITY_OFFSET: usize = PROTOCOL_CONFIG_DISCRIMINATOR_LEN;
+pub const PROTOCOL_CONFIG_TREASURY_OFFSET: usize =
+    PROTOCOL_CONFIG_AUTHORITY_OFFSET + PROTOCOL_CONFIG_AUTHORITY_LEN;
+pub const PROTOCOL_CONFIG_FEE_BPS_OFFSET: usize =
+    PROTOCOL_CONFIG_TREASURY_OFFSET + PROTOCOL_CONFIG_TREASURY_LEN;
+pub const PROTOCOL_CONFIG_B_BASE_SHARE_BPS_OFFSET: usize =
+    PROTOCOL_CONFIG_FEE_BPS_OFFSET + PROTOCOL_CONFIG_FEE_BPS_LEN;
+pub const PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_OFFSET: usize =
+    PROTOCOL_CONFIG_B_BASE_SHARE_BPS_OFFSET + PROTOCOL_CONFIG_B_BASE_SHARE_BPS_LEN;
+pub const PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_OFFSET: usize =
+    PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_OFFSET + PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_LEN;
+pub const PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_OFFSET: usize =
+    PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_OFFSET + PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_LEN;
+pub const PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_OFFSET: usize =
+    PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_OFFSET + PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_LEN;
+pub const PROTOCOL_CONFIG_BUMP_OFFSET: usize =
+    PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_OFFSET + PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_LEN;
+
+/// Total on-chain size of a `ProtocolConfig` account (discriminator + payload).
+/// Must equal `sooth_launchpad::state::ProtocolConfig::SPACE`. Asserted in
+/// `sooth_launchpad/src/state/protocol_config.rs`.
+pub const PROTOCOL_CONFIG_TOTAL_LEN: usize =
+    PROTOCOL_CONFIG_BUMP_OFFSET + PROTOCOL_CONFIG_BUMP_LEN;
+
 // ── Internal sanity checks ───────────────────────────────────────────────
 //
-// These don't verify against the actual Position/LockEntry structs (this
-// crate is no_std and intentionally pulls no anchor/borsh dep). They just
-// pin the numerical values so a typo in one of the sums above can't
-// silently change an offset. The cross-crate match against the Anchor
-// SPACE constant lives in `sooth_amm/src/state/{position,lock_entry}.rs`.
+// These don't verify against the actual Position/LockEntry/ProtocolConfig
+// structs (this crate is no_std and intentionally pulls no anchor/borsh
+// dep). They just pin the numerical values so a typo in one of the sums
+// above can't silently change an offset. The cross-crate match against
+// the Anchor SPACE constant lives in `sooth_amm/src/state/{position,lock_entry}.rs`
+// and `sooth_launchpad/src/state/protocol_config.rs`.
 
 const _: () = assert!(POSITION_USER_OFFSET == 8);
 const _: () = assert!(POSITION_MARKET_OFFSET == 40);
@@ -133,3 +193,14 @@ const _: () = assert!(LOCK_ENTRY_UNLOCK_AT_OFFSET == 80);
 const _: () = assert!(LOCK_ENTRY_NONCE_OFFSET == 88);
 const _: () = assert!(LOCK_ENTRY_BUMP_OFFSET == 96);
 const _: () = assert!(LOCK_ENTRY_TOTAL_LEN == 97);
+
+const _: () = assert!(PROTOCOL_CONFIG_AUTHORITY_OFFSET == 8);
+const _: () = assert!(PROTOCOL_CONFIG_TREASURY_OFFSET == 40);
+const _: () = assert!(PROTOCOL_CONFIG_FEE_BPS_OFFSET == 72);
+const _: () = assert!(PROTOCOL_CONFIG_B_BASE_SHARE_BPS_OFFSET == 74);
+const _: () = assert!(PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_OFFSET == 76);
+const _: () = assert!(PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_OFFSET == 78);
+const _: () = assert!(PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_OFFSET == 80);
+const _: () = assert!(PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_OFFSET == 82);
+const _: () = assert!(PROTOCOL_CONFIG_BUMP_OFFSET == 90);
+const _: () = assert!(PROTOCOL_CONFIG_TOTAL_LEN == 91);

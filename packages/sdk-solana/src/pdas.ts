@@ -23,6 +23,12 @@ export type MarketId = Uint8Array;
 export interface ProgramIds {
   soothAmm: PublicKey;
   soothMarket: PublicKey;
+  // Optional — only required by `buildCreateMarket` (the launchpad-program ix).
+  // Read paths and trade/sell/claim builders don't touch the launchpad, so
+  // leaving this undefined is fine in those contexts. The adapter falls back
+  // to the IDL placeholder (`SoothLP111…`) when `soothLaunchpad` is omitted
+  // — same convention as `soothAmm` / `soothMarket`.
+  soothLaunchpad?: PublicKey;
 }
 
 const enc = new TextEncoder();
@@ -35,6 +41,9 @@ const SEED_POS = enc.encode("pos");
 const SEED_MINT = enc.encode("mint");
 const SEED_Y = enc.encode("y");
 const SEED_N = enc.encode("n");
+const SEED_PROTOCOL_CONFIG = enc.encode("protocol_config");
+const SEED_FEE_POOL_AUTHORITY = enc.encode("fee_pool_authority");
+const SEED_ADJUDICATOR_ALLOWLIST = enc.encode("adjudicator_allowlist");
 
 function assertMarketId(marketId: MarketId): Buffer {
   if (marketId.length !== 16) {
@@ -198,4 +207,67 @@ export function deriveUserUsdcAta(
   usdcMint: PublicKey,
 ): PublicKey {
   return getAssociatedTokenAddressSync(usdcMint, user, true);
+}
+
+// Owned by `sooth_launchpad`. Seeds: [b"protocol_config"]. Singleton — there
+// is exactly one of these per cluster deploy.
+export function deriveProtocolConfigPda(
+  programs: Pick<ProgramIds, "soothLaunchpad"> & {
+    soothLaunchpad: PublicKey;
+  },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_PROTOCOL_CONFIG)],
+    programs.soothLaunchpad,
+  );
+}
+
+// Owned by `sooth_launchpad`. Seeds: [b"fee_pool_authority"]. Singleton —
+// there is exactly one of these per cluster deploy. Used as the authority
+// (token::authority) on the global `fee_pool_vault` USDC ATA. Both
+// `trade_positions` (credits the vault) and `distribute_fees` (drains
+// it via PDA-signed CPIs) reference this PDA. See
+// `programs/sooth_launchpad/src/instructions/distribute_fees.rs`'s
+// "pool-then-distribute" rationale.
+export function deriveFeePoolAuthorityPda(
+  programs: Pick<ProgramIds, "soothLaunchpad"> & {
+    soothLaunchpad: PublicKey;
+  },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_FEE_POOL_AUTHORITY)],
+    programs.soothLaunchpad,
+  );
+}
+
+// Global fee-pool USDC ATA. Owner = `fee_pool_authority` PDA. The
+// associated-token-address derivation; not a PDA in the seed sense.
+// Off-curve permitted because the owner is a PDA.
+export function deriveFeePoolVaultAta(
+  usdcMint: PublicKey,
+  programs: Pick<ProgramIds, "soothLaunchpad"> & {
+    soothLaunchpad: PublicKey;
+  },
+): PublicKey {
+  const [authority] = deriveFeePoolAuthorityPda(programs);
+  return getAssociatedTokenAddressSync(
+    usdcMint,
+    authority,
+    /* allowOwnerOffCurve */ true,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+  );
+}
+
+// Owned by `sooth_market`. Seeds: [b"adjudicator_allowlist"]. Singleton —
+// there is exactly one of these per cluster deploy. Bootstrapped by
+// `sooth_market::initialize_adjudicator_allowlist` and consumed by both
+// `initialize_market` and `create_market`.
+export function deriveAdjudicatorAllowlistPda(
+  programs: ProgramIds,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_ADJUDICATOR_ALLOWLIST)],
+    programs.soothMarket,
+  );
 }

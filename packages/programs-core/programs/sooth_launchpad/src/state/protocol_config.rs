@@ -71,3 +71,26 @@ impl ProtocolConfig {
 
 /// Sentinel — fee bps must not exceed 100% (10_000 bps).
 pub const MAX_FEE_BPS: u16 = 10_000;
+
+// ── Cross-crate layout sync ──────────────────────────────────────────────
+//
+// `sooth_amm::trade_positions` parses `ProtocolConfig` raw from account
+// data via the byte offsets in `sooth-account-offsets`. The constants
+// there are duplicated against the field layout above because Cargo's
+// cyclic-dep ban (sooth_amm path-dep on sooth_launchpad) prevents a
+// cleaner solution: `sooth_launchpad` already declares `sooth_amm` as a
+// `cpi`-feature path dep for `create_market`'s composition, so the reverse
+// edge would close a cycle. This assertion ties the two ends together:
+// any future change to `ProtocolConfig` field list that alters the byte
+// layout must update `sooth-account-offsets` too, or the build fails.
+//
+// `ProtocolConfig` is `#[account]` — Borsh serialised, no `#[repr(C)]` —
+// so `core::mem::offset_of!` returns Rust's in-memory offsets, not the
+// on-chain byte offsets. Same convention used for `Position` /
+// `LockEntry` (see their state files).
+const _: () = assert!(
+    ProtocolConfig::SPACE == sooth_account_offsets::PROTOCOL_CONFIG_TOTAL_LEN,
+    "ProtocolConfig::SPACE drifted from \
+     sooth-account-offsets::PROTOCOL_CONFIG_TOTAL_LEN — update both, including \
+     the per-field offsets in sooth-account-offsets/src/lib.rs"
+);

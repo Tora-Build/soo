@@ -39,20 +39,53 @@
 //!   - `spl-token::transfer` user_usdc_ata → market_vault, signed by user
 //!   - `PositionTraded` event emission
 //!
+//! Wave 1C-fee landed:
+//!   - Reads `ProtocolConfig.fee_bps` raw from account data (the cyclic
+//!     path-dep `sooth_amm → sooth_launchpad` is forbidden — see
+//!     `lib.rs::SOOTH_LAUNCHPAD_PROGRAM_ID` rationale).
+//!   - Computes `fee_wad = cost_wad * fee_bps / 10_000` (floor, mirrors
+//!     EVM `_quoteFee` line 421).
+//!   - Slippage check now uses `cost_wad + fee_wad ≤ max_cost_wad`
+//!     (matches the EVM contract's `actualCost = baseCost + fee`).
+//!   - Two SPL transfers: `cost_usdc → market_vault` (collateral) and
+//!     `fee_usdc → fee_pool_vault` (drained later by
+//!     `sooth_launchpad::distribute_fees`). See that ix's docstring for
+//!     the pool-then-distribute rationale.
+//!   - Pre/post-graduation use the SAME `fee_bps` — architecture §8
+//!     collapses `preGradFeeBps`/`postGradFeeBps` into one field; the
+//!     pre/post difference lives in the **destination** split, which is
+//!     applied at `distribute_fees` time, not here.
+//!
 //! Still stubbed (deliberately scoped out of this commit):
-//!   - Fee router CPI / split (architecture §8) — `fee_wad = 0`. The slippage
-//!     check `cost_wad + fee_wad ≤ max_cost_wad` therefore degenerates to
-//!     `cost_wad ≤ max_cost_wad`, which is **looser** than the EVM check.
-//!     Tracked gap until the fee router lands.
-//!   - LP mint on pre-graduation buys (architecture §4.2).
+//!   - LP mint on pre-graduation buys (architecture §4.2) — landing in
+//!     `sooth_launchpad::seed_lp`.
+//!
+//! ## Sells & fees
+//!
+//! Per the EVM `FeeRouter._quoteFee` (`FeeRouter.sol:415-423`), sells DO
+//! pay fees: `netAmount = baseCost - fee` on sell. The Solana port's
+//! `sell_positions` ix is intentionally NOT updated in this commit (the
+//! Wave 1C scope explicitly excludes the sell path from fee wiring). The
+//! gap is tracked: `sell_positions` produces 0 fee revenue today, which
+//! makes the protocol slightly under-collected on round-trip trades.
+//! See the "Pre-/post-graduation tier handling" note in the ix-level
+//! handover — wiring `sell_positions` to debit `fee_pool_vault` mirrors
+//! this exact path with `Transfer { from: market_vault, to: fee_pool_vault, … }`
+//! signed by `vault_authority` (which means the helper must live in
+//! `sooth_market`, since only it can sign for `vault_authority`).
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+
+use sooth_account_offsets::{
+    PROTOCOL_CONFIG_FEE_BPS_OFFSET, PROTOCOL_CONFIG_TOTAL_LEN as PROTOCOL_CONFIG_MIN_LEN,
+};
 
 use crate::error::SoothAmmError;
 use crate::events::PositionTraded;
 use crate::math::{cost_delta, wad_to_usdc_ceil, MathError};
 use crate::state::{AmmState, Market, Position};
+use crate::SOOTH_LAUNCHPAD_PROGRAM_ID;
 
 /// Protocol-wide OUTCOME encoding. Mirrors `glossary.md`.
 const OUTCOME_NO: u8 = 0;
@@ -136,6 +169,51 @@ pub struct TradePositions<'info> {
     #[account(address = crate::USDC_MINT_DEVNET)]
     pub usdc_mint: Box<Account<'info, Mint>>,
 
+    /// `ProtocolConfig` PDA — singleton owned by `sooth_launchpad`. Source
+    /// of `fee_bps` (the only fee field — pre/post-graduation collapse to
+    /// one bps per architecture §8) and the four destination split bps
+    /// used downstream by `distribute_fees`.
+    ///
+    /// Typed as `UncheckedAccount` (not `Account<'info, sooth_launchpad::ProtocolConfig>`)
+    /// because a path dep `sooth_amm → sooth_launchpad` would close the
+    /// existing `sooth_launchpad → sooth_amm` cycle (the launchpad needs
+    /// `sooth_amm` for `create_market`'s composition CPI). Same workaround
+    /// pattern used by `sooth_market`'s `Position` raw-byte parsing — the
+    /// `sooth-account-offsets` crate is the single source of truth for
+    /// the byte layout.
+    ///
+    /// Two layered binding gates:
+    ///   1. `seeds = [b"protocol_config"]` + `seeds::program =
+    ///      SOOTH_LAUNCHPAD_PROGRAM_ID` — pins the address to the canonical
+    ///      singleton.
+    ///   2. `owner = SOOTH_LAUNCHPAD_PROGRAM_ID` — guards against a forged
+    ///      account at the same address with malicious bytes (defense in
+    ///      depth; the seeds check would also catch this for a real PDA).
+    ///
+    /// CHECK: address-pinned via PDA seeds + owner constraint.
+    #[account(
+        seeds = [b"protocol_config"],
+        bump,
+        seeds::program = SOOTH_LAUNCHPAD_PROGRAM_ID,
+        owner = SOOTH_LAUNCHPAD_PROGRAM_ID,
+    )]
+    pub protocol_config: UncheckedAccount<'info>,
+
+    /// Global fee-pool USDC ATA. Credited with the per-trade `fee_usdc`
+    /// slice on every buy; drained later by `sooth_launchpad::distribute_fees`.
+    /// Owner = `fee_pool_authority` PDA (signer-only PDA owned by
+    /// `sooth_launchpad`, seeds `[b"fee_pool_authority"]`). This authority
+    /// is opaque to `sooth_amm` — we just push USDC into the ATA, the
+    /// launchpad signs the drain.
+    ///
+    /// The single global pool (vs per-market pools) is documented in
+    /// `sooth_launchpad::distribute_fees`'s module comment.
+    #[account(
+        mut,
+        token::mint = usdc_mint,
+    )]
+    pub fee_pool_vault: Box<Account<'info, TokenAccount>>,
+
     #[account(mut)]
     pub user: Signer<'info>,
 
@@ -209,21 +287,52 @@ pub fn handler(
     let cost_wad: i128 = cost_delta(amm.q_yes, amm.q_no, amm.b, d_yes, d_no)
         .map_err(map_math_err)?;
 
-    // ── 3. Fee split — STUB ──────────────────────────────────────────────
+    // ── 3. Fee — read fee_bps from ProtocolConfig and compute fee_wad ────
     //
-    // TODO(architecture §8): CPI into `sooth_launchpad::fee_router::split`
-    // (4-way: 50% bBase / 30% LP / 10% adjudicator / 10% protocol). Until
-    // that program exists we treat fee_wad as 0 and only check `cost_wad`
-    // against `max_cost_wad`. NOTE: this makes the check **looser** than the
-    // EVM contract's `cost + fee ≤ max` — known gap until the fee router
-    // lands. The SDK's `max_cost_wad` already reserves headroom.
-    let fee_wad: u128 = 0; // todo!("fee router CPI; see architecture §8")
+    // EVM analogue: `FeeRouter._quoteFee` (`FeeRouter.sol:415-423`):
+    //   fee = (baseCost * bps) / BPS_DENOMINATOR
+    //
+    // Floor division. Pre/post-graduation collapse to a single `fee_bps`
+    // field on `ProtocolConfig` (architecture §8). The pre/post difference
+    // lives in the **destinations** split, applied downstream in
+    // `sooth_launchpad::distribute_fees`. So this site doesn't branch on
+    // `amm.is_graduated`.
+    //
+    // ProtocolConfig is parsed raw from account data via the offsets in
+    // `sooth-account-offsets`. The Anchor account constraints above
+    // (seeds = [b"protocol_config"] + owner = SOOTH_LAUNCHPAD_PROGRAM_ID)
+    // already pin this to the canonical singleton; the raw-byte read here
+    // is just deserialising the `fee_bps: u16` field.
+    let fee_bps: u16 = {
+        let pc_ai = ctx.accounts.protocol_config.to_account_info();
+        let data = pc_ai.try_borrow_data()?;
+        require!(
+            data.len() >= PROTOCOL_CONFIG_MIN_LEN,
+            SoothAmmError::MathOverflow
+        );
+        u16::from_le_bytes(
+            data[PROTOCOL_CONFIG_FEE_BPS_OFFSET..PROTOCOL_CONFIG_FEE_BPS_OFFSET + 2]
+                .try_into()
+                .map_err(|_| error!(SoothAmmError::MathOverflow))?,
+        )
+    };
+
+    // `cost_wad` is positive on the buy path (we're charged); the check
+    // below pins it before the cast to u128.
+    require!(cost_wad > 0, SoothAmmError::MathOverflow);
+    let fee_wad: u128 = (cost_wad as u128)
+        .checked_mul(fee_bps as u128)
+        .map(|v| v / 10_000)
+        .ok_or(error!(SoothAmmError::MathOverflow))?;
 
     // ── 4. Slippage check ────────────────────────────────────────────────
     //
-    // `cost_wad` is positive on the buy path (we're charged); enforce the
-    // SDK's max-cost ceiling.
-    require!(cost_wad > 0, SoothAmmError::MathOverflow);
+    // EVM analogue: `AMMEngine.tradePositions` line 305-306:
+    //   actualCost = baseCost + fee;
+    //   require(actualCost <= maxCostOrMinProceeds, CostTooHigh());
+    //
+    // The Solana check is now byte-for-byte equivalent (the Wave 1C-pre
+    // looser `cost_wad ≤ max_cost_wad` is gone now that fee_wad is real).
     let total_cost_wad: u128 = (cost_wad as u128)
         .checked_add(fee_wad)
         .ok_or(error!(SoothAmmError::MathOverflow))?;
@@ -232,12 +341,39 @@ pub fn handler(
         SoothAmmError::SlippageExceeded
     );
 
-    // ── 5. WAD → USDC ceil (REAL) ────────────────────────────────────────
+    // ── 5. WAD → USDC ceil for both legs (REAL) ──────────────────────────
+    //
+    // Inflow rounding rule: ceil. EVM `_wadToBaseToken` rounds via `(wad +
+    // 1e12 - 1) / 1e12` on inflow paths (cost) — see the rationale in
+    // `wad.rs::wad_to_usdc_ceil`. Apply the same rule to the fee leg so
+    // dust accrues to the protocol, not the trader. The fee USDC is a
+    // separate transfer to the global `fee_pool_vault`; the
+    // `sooth_launchpad::distribute_fees` crank does the 4-way split later.
     let cost_usdc: u64 = wad_to_usdc_ceil(cost_wad as u128)
         .map_err(map_math_err)?;
+    let fee_usdc: u64 = wad_to_usdc_ceil(fee_wad)
+        .map_err(map_math_err)?;
 
-    // ── 6. Token transfer (BUY): user_usdc_ata → market_vault ────────────
-    let cpi_ctx = CpiContext::new(
+    // ── 6. Token transfers ───────────────────────────────────────────────
+    //
+    // Two transfers, both user-signed:
+    //   1. `cost_usdc` → `market_vault` (collateral; backs YES/NO redemption)
+    //   2. `fee_usdc`  → `fee_pool_vault` (drained by `distribute_fees`)
+    //
+    // Why two transfers (not one combined `cost+fee` to market_vault):
+    //   - `market_vault` is the redemption-side vault; co-mingling fees
+    //     with collateral would inflate the redeemable per-share value
+    //     and require subtracting the fee balance at redemption time.
+    //   - The `fee_pool_vault` authority is a `sooth_launchpad` PDA, and
+    //     `sooth_launchpad::distribute_fees` signs against it directly
+    //     without a second-program CPI hop — see the pool-then-distribute
+    //     rationale in `distribute_fees.rs`'s docstring.
+    //
+    // Two `spl-token::transfer` CPIs cost ~10k CU together; the previous
+    // ~68k CU envelope (architecture §5) gains ~5k from the new transfer
+    // and ~1k from the ProtocolConfig parse. Fits comfortably under the
+    // 200k default per-instruction limit.
+    let cost_cpi = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         Transfer {
             from: ctx.accounts.user_usdc_ata.to_account_info(),
@@ -245,7 +381,19 @@ pub fn handler(
             authority: ctx.accounts.user.to_account_info(),
         },
     );
-    token::transfer(cpi_ctx, cost_usdc)?;
+    token::transfer(cost_cpi, cost_usdc)?;
+
+    if fee_usdc > 0 {
+        let fee_cpi = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.user_usdc_ata.to_account_info(),
+                to: ctx.accounts.fee_pool_vault.to_account_info(),
+                authority: ctx.accounts.user.to_account_info(),
+            },
+        );
+        token::transfer(fee_cpi, fee_usdc)?;
+    }
 
     // ── 7. State mutation (REAL) ─────────────────────────────────────────
     if outcome == OUTCOME_YES {

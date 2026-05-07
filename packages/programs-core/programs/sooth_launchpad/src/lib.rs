@@ -93,6 +93,17 @@ pub mod sooth_launchpad {
         instructions::initialize_protocol::handler(ctx, args)
     }
 
+    /// Bootstrap the singleton global `fee_pool_vault` USDC ATA. **Single-
+    /// shot**: must be called exactly once per cluster deploy. The ATA is
+    /// owned by the `fee_pool_authority` PDA (seeds `[b"fee_pool_authority"]`)
+    /// and consumed by `sooth_amm::trade_positions` /
+    /// `sooth_amm::sell_positions` (push side) and
+    /// `sooth_launchpad::distribute_fees` (drain side). Rent paid by `signer`;
+    /// no authority gate — same convention as the other one-shot bootstraps.
+    pub fn initialize_fee_pool(ctx: Context<InitializeFeePool>) -> Result<()> {
+        instructions::initialize_fee_pool::handler(ctx)
+    }
+
     /// Create a tradeable market in one transaction by composing the four
     /// init legs from `sooth_market` + `sooth_amm` via CPI. STUB — body is
     /// `todo!()` until the CPI plumbing lands. Architecture §4.1 has the

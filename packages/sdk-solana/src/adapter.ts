@@ -30,20 +30,33 @@ import {
   SYSVAR_INSTRUCTIONS_PUBKEY,
   ComputeBudgetProgram,
 } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID, getAccount } from "@solana/spl-token";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  getAccount,
+} from "@solana/spl-token";
 
-import { soothAmmIdl, soothMarketIdl } from "./anchor/index.js";
+import {
+  soothAmmIdl,
+  soothLaunchpadIdl,
+  soothMarketIdl,
+} from "./anchor/index.js";
 import { costDelta, wadToUsdcCeil, yesPriceWad, WAD } from "./math/lmsr.js";
 import {
+  deriveAdjudicatorAllowlistPda,
   deriveAmmStatePda,
+  deriveFeePoolVaultAta,
   deriveLockAuthorityPda,
   deriveLockEntryPda,
   deriveLockVaultAta,
   deriveMarketPda,
   deriveMarketVaultAta,
+  deriveNoMintPda,
   derivePositionPda,
+  deriveProtocolConfigPda,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
+  deriveYesMintPda,
   type ProgramIds,
 } from "./pdas.js";
 import { decodePubkeyRef, encodeSignatureRef } from "./refs.js";
@@ -117,6 +130,7 @@ export class SolanaChainAdapter implements ChainAdapter {
   // Anchor `Program` wrappers; built lazily because Anchor needs a Provider.
   private readonly soothAmm: AnyProgram;
   private readonly soothMarket: AnyProgram;
+  private readonly soothLaunchpad: AnyProgram;
 
   constructor(opts: SolanaAdapterOptions) {
     this.node = opts.node;
@@ -125,13 +139,24 @@ export class SolanaChainAdapter implements ChainAdapter {
     // node descriptor; otherwise fall back to the IDL `address` field
     // (placeholder IDs from the on-chain `declare_id!` macros).
     if (opts.programIds) {
-      this.programIds = opts.programIds;
+      this.programIds = {
+        ...opts.programIds,
+        // `soothLaunchpad` is optional on the public surface but the adapter
+        // needs it for `buildCreateMarket`. Fall back to the IDL placeholder.
+        soothLaunchpad:
+          opts.programIds.soothLaunchpad ??
+          new PublicKey(soothLaunchpadIdl.address),
+      };
     } else {
       const ammStr = opts.node.programs?.soothAmm ?? soothAmmIdl.address;
       const mktStr = opts.node.programs?.soothMarket ?? soothMarketIdl.address;
+      const lpStr =
+        (opts.node.programs as { soothLaunchpad?: string } | undefined)
+          ?.soothLaunchpad ?? soothLaunchpadIdl.address;
       this.programIds = {
         soothAmm: new PublicKey(ammStr),
         soothMarket: new PublicKey(mktStr),
+        soothLaunchpad: new PublicKey(lpStr),
       };
     }
 
@@ -179,8 +204,16 @@ export class SolanaChainAdapter implements ChainAdapter {
       ...soothMarketIdl,
       address: this.programIds.soothMarket.toBase58(),
     };
+    const launchpadIdl = {
+      ...soothLaunchpadIdl,
+      address: (
+        this.programIds.soothLaunchpad ??
+        new PublicKey(soothLaunchpadIdl.address)
+      ).toBase58(),
+    };
     this.soothAmm = new Program(ammIdl as Idl, provider);
     this.soothMarket = new Program(marketIdl as Idl, provider);
+    this.soothLaunchpad = new Program(launchpadIdl as Idl, provider);
   }
 
   // ─── Reads ───────────────────────────────────────────────────────────────
@@ -268,7 +301,15 @@ export class SolanaChainAdapter implements ChainAdapter {
     const dYes = outcome === 1 ? deltaShares : 0n;
     const dNo = outcome === 0 ? deltaShares : 0n;
     const cost = costDelta(qYes, qNo, b, dYes, dNo);
-    const fee = 0n; // Fee router is stubbed on-chain — see `trade_positions.rs §3`.
+    // Fee router live (Wave 1C-fee). Read `fee_bps` from `ProtocolConfig`
+    // and mirror the on-chain floor formula:
+    //   fee_wad = cost_wad * fee_bps / 10_000
+    // The on-chain handler uses `cost_wad as u128 * fee_bps / 10_000`;
+    // we operate on bigint here for parity. EVM analogue:
+    // `FeeRouter._quoteFee:421`. Pre/post-graduation collapse to one bps
+    // (architecture §8) so no graduation branch on this side either.
+    const feeBps = await this.readProtocolFeeBps();
+    const fee = cost > 0n ? (cost * BigInt(feeBps)) / 10_000n : 0n;
     const netCost = cost + fee;
     const oldPrice = yesPriceWad(qYes, qNo, b);
     const newPrice = yesPriceWad(qYes + dYes, qNo + dNo, b);
@@ -311,6 +352,37 @@ export class SolanaChainAdapter implements ChainAdapter {
 
   async readPortfolio(_user: AddressRef): Promise<Portfolio> {
     notImplemented("readPortfolio");
+  }
+
+  /**
+   * Fetch the singleton `ProtocolConfig` and return its `fee_bps`.
+   *
+   * Reads via the launchpad Anchor account decoder so changes to
+   * `ProtocolConfig`'s field list trip a decode error rather than a
+   * silently-misaligned offset (the on-chain side guards the same way
+   * via the `sooth-account-offsets` cross-crate assertion).
+   *
+   * Returns 0 if the config PDA hasn't been initialized — the on-chain
+   * `trade_positions` will then reject the build because the same PDA
+   * is in the account list with `seeds=[b"protocol_config"]`. The
+   * graceful 0 here means `readQuote` previews zero fee on a fresh
+   * cluster instead of throwing during the read path.
+   */
+  private async readProtocolFeeBps(): Promise<number> {
+    const [cfgPda] = deriveProtocolConfigPda(
+      this.programIds as {
+        soothLaunchpad: PublicKey;
+      },
+    );
+    const raw = await (
+      this.soothLaunchpad.account as any
+    ).protocolConfig.fetchNullable(cfgPda);
+    if (!raw) {
+      return 0;
+    }
+    // `fee_bps` is `u16` on-chain; Anchor's coder returns it as a JS
+    // number directly (not BN, not bigint) — keep that type through.
+    return Number(raw.feeBps ?? raw.fee_bps ?? 0);
   }
 
   // ─── Writes ──────────────────────────────────────────────────────────────
@@ -362,6 +434,24 @@ export class SolanaChainAdapter implements ChainAdapter {
       this.usdcMint,
       this.programIds,
     );
+    // Wave 1C-fee: ProtocolConfig + global fee_pool_vault are now in the
+    // account list. Both are derived deterministically — `protocolConfig`
+    // is the singleton at `[b"protocol_config"]` under the launchpad
+    // program, and `feePoolVault` is the ATA of the singleton
+    // `fee_pool_authority` PDA (also under the launchpad program). The
+    // ATA may not be initialized on a fresh cluster — see
+    // `programs/sooth_launchpad/docs` for the bootstrap sequence.
+    const [protocolConfig] = deriveProtocolConfigPda(
+      this.programIds as {
+        soothLaunchpad: PublicKey;
+      },
+    );
+    const feePoolVault = deriveFeePoolVaultAta(
+      this.usdcMint,
+      this.programIds as {
+        soothLaunchpad: PublicKey;
+      },
+    );
 
     // Build the `trade_positions` instruction. Anchor's coder takes `BN`
     // for `i128` / `u128` args; we widen at the boundary.
@@ -379,6 +469,8 @@ export class SolanaChainAdapter implements ChainAdapter {
         userUsdcAta,
         marketVault,
         usdcMint: this.usdcMint,
+        protocolConfig,
+        feePoolVault,
         user: userPk,
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -726,9 +818,151 @@ export class SolanaChainAdapter implements ChainAdapter {
     notImplemented("buildOrderbookCancel");
   }
   async buildCreateMarket(
-    _args: CreateMarketArgs,
+    args: CreateMarketArgs,
   ): Promise<CreateMarketRequest> {
-    notImplemented("buildCreateMarket");
+    // The on-chain `sooth_launchpad::create_market` ix composes the four-leg
+    // init flow from `sooth_market` + `sooth_amm` into a single tx. See
+    // `programs/sooth_launchpad/src/instructions/create_market.rs` for the
+    // CPI body and architecture §4.1 for the call chain.
+    //
+    // Solana-only meta channel: the user pubkey (creator + payer for every
+    // CPI leg) is required at build time — we need it to sign the tx and to
+    // populate `creator` on the ix. Same pattern as `buildTrade.user`.
+    const userStr = args.user;
+    if (!userStr) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method:
+          "buildCreateMarket — CreateMarketArgs.user (Solana-only meta) is required at build time",
+      });
+    }
+    const userPk = decodePubkeyRef(userStr);
+
+    // ── Argument defaults ──────────────────────────────────────────────
+    //
+    // The umbrella SDK's CreateMarketArgs is intentionally narrow; we fill
+    // in Solana-specific fields with safe defaults when omitted. See the
+    // type definition in `types.ts` for the full per-field contract.
+    const marketId = args.marketId ?? randomMarketId();
+    if (marketId.length !== 16) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildCreateMarket: marketId must be 16 bytes, got ${marketId.length}`,
+      });
+    }
+    const questionHash = args.questionHash ?? (await sha256(args.question));
+    if (questionHash.length !== 32) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildCreateMarket: questionHash must be 32 bytes, got ${questionHash.length}`,
+      });
+    }
+    const startTime = args.startTime ?? BigInt(Math.floor(Date.now() / 1000));
+    const adjudicator = args.adjudicator
+      ? decodePubkeyRef(args.adjudicator)
+      : userPk;
+    const initialB = args.initialB ?? 1000n * WAD;
+
+    // ── PDA derivations ───────────────────────────────────────────────
+    const [marketPda] = deriveMarketPda(marketId, this.programIds);
+    const [allowlistPda] = deriveAdjudicatorAllowlistPda(this.programIds);
+    const [vaultAuthority] = deriveVaultAuthorityPda(marketId, this.programIds);
+    const [yesMint] = deriveYesMintPda(marketId, this.programIds);
+    const [noMint] = deriveNoMintPda(marketId, this.programIds);
+    const [lockAuthority] = deriveLockAuthorityPda(marketId, this.programIds);
+    const vault = deriveMarketVaultAta(
+      marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+    const lockVault = deriveLockVaultAta(
+      marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+    const [ammStatePda] = deriveAmmStatePda(marketId, this.programIds);
+    if (!this.programIds.soothLaunchpad) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildCreateMarket: programIds.soothLaunchpad is missing",
+      });
+    }
+    const [configPda] = deriveProtocolConfigPda({
+      soothLaunchpad: this.programIds.soothLaunchpad,
+    });
+
+    // ── Build the ix via Anchor's coder ────────────────────────────────
+    //
+    // `CreateMarketArgs` on-chain (from the IDL) has fields:
+    //   market_id: [u8;16], question_hash: [u8;32], start_time: i64,
+    //   deadline: i64, adjudicator: pubkey, initial_b: u128
+    // Order matters for borsh — we pass the object Anchor's coder expects.
+    const ix: TransactionInstruction = await (
+      this.soothLaunchpad.methods as any
+    )
+      .createMarket({
+        marketId: Array.from(marketId),
+        questionHash: Array.from(questionHash),
+        startTime: bigIntToBn(startTime),
+        deadline: bigIntToBn(args.deadline),
+        adjudicator,
+        initialB: bigIntToBn(initialB),
+      })
+      .accounts({
+        config: configPda,
+        market: marketPda,
+        adjudicatorAllowlist: allowlistPda,
+        vaultAuthority,
+        yesMint,
+        noMint,
+        lockAuthority,
+        usdcMint: this.usdcMint,
+        vault,
+        lockVault,
+        ammState: ammStatePda,
+        creator: userPk,
+        soothMarketProgram: this.programIds.soothMarket,
+        soothAmmProgram: this.programIds.soothAmm,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: SYSVAR_RENT_PUBKEY,
+      })
+      .instruction();
+
+    // The four CPIs each consume their own ~10–20k CU; the outer ix's
+    // overhead is small. Empirically the full create_market envelope sits
+    // around 80–100k CU on litesvm — well under the 200k default — but
+    // bumping the limit gives headroom for IDL-init overhead on the first
+    // call after a redeploy. Same pattern as `buildTrade`.
+    const accounts = ix.keys.map((k) => ({
+      pubkey: k.pubkey.toBase58(),
+      isSigner: k.isSigner,
+      isWritable: k.isWritable,
+    }));
+
+    return {
+      kind: "createMarket",
+      serializedTx: undefined,
+      costEstimateWad: 0n,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        marketIdHex: Buffer.from(marketId).toString("hex"),
+        userPk: userPk.toBase58(),
+        ixData: Buffer.from(ix.data).toString("base64"),
+        ixKeys: ix.keys.map((k) => ({
+          pubkey: k.pubkey.toBase58(),
+          isSigner: k.isSigner,
+          isWritable: k.isWritable,
+        })),
+        ixProgramId: ix.programId.toBase58(),
+        adjudicator: adjudicator.toBase58(),
+        startTimeStr: startTime.toString(),
+        deadlineStr: args.deadline.toString(),
+        initialBStr: initialB.toString(),
+      },
+    };
   }
 
   async submit(
@@ -1006,6 +1240,31 @@ function bigIntToBn(v: bigint): BN {
   // Anchor's BN type accepts a decimal/hex string. bigint's stringification
   // is guaranteed decimal.
   return new BN(v.toString());
+}
+
+// Generate a 16-byte random market id. Architecture §2.2 specifies this as
+// the truncated keccak256 of `question || creator || nonce`; the SDK
+// surfaces a permissive default (random bytes) so callers without a
+// canonical question/nonce pair can still create markets. Production
+// deployments are encouraged to override `marketId` with the canonical
+// derivation.
+function randomMarketId(): Uint8Array {
+  const bytes = new Uint8Array(16);
+  // `globalThis.crypto.getRandomValues` is available in Node 20+ (engines
+  // requirement of this package) and every modern browser.
+  globalThis.crypto.getRandomValues(bytes);
+  return bytes;
+}
+
+// SHA-256 of the input string (UTF-8 encoded). 32-byte output. Used as a
+// default `questionHash` when the caller doesn't provide one. EVM uses
+// keccak256 for the same role; Solana's `solana-program` exposes both
+// SHA-256 and keccak — we pick SHA-256 here because `crypto.subtle` ships
+// it natively whereas keccak would require a userland dep.
+async function sha256(input: string): Promise<Uint8Array> {
+  const data = new TextEncoder().encode(input);
+  const buf = await globalThis.crypto.subtle.digest("SHA-256", data);
+  return new Uint8Array(buf);
 }
 
 function lifecycleName(v: unknown): ResolvedMarket["lifecycle"] {

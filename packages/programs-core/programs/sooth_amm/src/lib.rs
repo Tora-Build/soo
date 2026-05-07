@@ -43,6 +43,21 @@ pub const USDC_MINT_DEVNET: Pubkey = anchor_lang::pubkey!(
     "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 );
 
+/// `sooth_launchpad` program ID, mirrored as a const here to avoid a cyclic
+/// path-dep. `sooth_launchpad` already declares `sooth_amm` as a path dep
+/// (with `features = ["cpi"]`) for `create_market`'s composition; the
+/// reverse edge would close the cycle. The same pattern is used by
+/// `sooth_market::SOOTH_AMM_PROGRAM_ID`. Keep this in lock-step with
+/// `sooth_launchpad::declare_id!` — Anchor will emit
+/// `ConstraintAddress` at runtime if it drifts.
+///
+/// Used by `trade_positions` to bind the `protocol_config` account's owner
+/// to the launchpad program; the PDA seeds + `seeds::program` constraint
+/// then pins the derivation to the canonical singleton.
+pub const SOOTH_LAUNCHPAD_PROGRAM_ID: Pubkey = anchor_lang::pubkey!(
+    "SoothLP111111111111111111111111111111111111"
+);
+
 /// Number of seconds AMM sell proceeds remain locked in the per-market
 /// `lock_vault` before the user can `claim_unlocked`. Architecture §4.3.
 ///

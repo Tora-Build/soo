@@ -465,7 +465,10 @@
       "name": "lock_for_resolution",
       "docs": [
         "Lock the market for resolution (LIVE → LOCKED). EVM analogue:",
-        "`TruthMarket.resolve` (`TruthMarket.sol:90-106`)."
+        "`TruthMarket.resolve` (`TruthMarket.sol:90-106`).",
+        "Auth: parent-ix introspection requires the calling top-level ix to be",
+        "`sooth_adjudicator::request_lock`. Closes the deferred half of Codex's",
+        "C2 finding."
       ],
       "discriminator": [218, 72, 208, 132, 202, 195, 86, 239],
       "accounts": [
@@ -487,14 +490,23 @@
           }
         },
         {
-          "name": "adjudicator",
+          "name": "adjudicator_pda",
           "docs": [
-            "Stubbed adjudicator authority signer. In v1 this is the literal",
-            "`market.adjudicator` pubkey (signer-style for the manual adjudicator).",
-            "In v2 with `sooth_adjudicator` running its own program this becomes",
-            "either an instruction-introspection check or a program-derived signer."
+            "`sooth_adjudicator::Adjudicator` PDA. Read-only here; pinned to the",
+            "adjudicator program via the owner constraint. The introspection",
+            "check is the load-bearing auth gate; this account is forwarded",
+            "from `sooth_adjudicator::request_lock` for indexer parity with",
+            "`settle`."
+          ]
+        },
+        {
+          "name": "instruction_sysvar",
+          "docs": [
+            "Instructions sysvar — read by the parent-ix introspection check.",
+            "Pinned to the canonical sysvar pubkey so a malicious caller cannot",
+            "substitute a forged sysvar account with a fabricated instruction list."
           ],
-          "signer": true
+          "address": "Sysvar1nstructions1111111111111111111111111"
         }
       ],
       "args": []
@@ -811,7 +823,10 @@
       "docs": [
         "Settle the market with the adjudicator's winning outcome",
         "(LOCKED → SETTLED). EVM analogue: `TruthMarket.attest` +",
-        "`TruthMarket.settle` collapsed (`TruthMarket.sol:112-131`)."
+        "`TruthMarket.settle` collapsed (`TruthMarket.sol:112-131`).",
+        "Auth: parent-ix introspection requires the calling top-level ix to be",
+        "`sooth_adjudicator::attest_outcome`. Closes the deferred half of",
+        "Codex's C2 finding."
       ],
       "discriminator": [175, 42, 185, 87, 144, 131, 102, 212],
       "accounts": [
@@ -833,11 +848,21 @@
           }
         },
         {
-          "name": "adjudicator",
+          "name": "adjudicator_pda",
           "docs": [
-            "shape; the auth check is unimplemented pending `sooth_adjudicator`."
+            "`sooth_adjudicator::Adjudicator` PDA. Read-only here; pinned to the",
+            "adjudicator program via the owner constraint. The introspection",
+            "check is the load-bearing auth gate."
+          ]
+        },
+        {
+          "name": "instruction_sysvar",
+          "docs": [
+            "Instructions sysvar — read by the parent-ix introspection check.",
+            "Pinned to the canonical sysvar pubkey so a malicious caller cannot",
+            "substitute a forged sysvar account with a fabricated instruction list."
           ],
-          "signer": true
+          "address": "Sysvar1nstructions1111111111111111111111111"
         }
       ],
       "args": [

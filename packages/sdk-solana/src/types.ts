@@ -222,7 +222,23 @@ export interface SellArgs extends BuyArgs {}
 export interface CreateMarketArgs {
   question: string;
   deadline: bigint;
-  // ... shape will firm up alongside the launchpad program
+  // ── Solana-specific extensions ──────────────────────────────────────────
+  // The umbrella SDK's `CreateMarketArgs` is intentionally narrow — `question`
+  // + `deadline` are the load-bearing inputs. Solana additionally needs a
+  // deterministic `marketId` (PDA seed), `startTime`, `adjudicator`, and
+  // `initialB` for the LMSR. These are optional on the surface so the
+  // umbrella type stays portable; the Solana adapter falls back to safe
+  // defaults (random `marketId`, `now()` for `startTime`, the calling
+  // creator pubkey for `adjudicator`, and `1000 * WAD` for `initialB`).
+  marketId?: Uint8Array; // 16 bytes; default = random
+  questionHash?: Uint8Array; // 32 bytes; default = sha256(question)
+  startTime?: bigint; // unix seconds; default = current chain time
+  adjudicator?: string; // base58; default = creator
+  initialB?: bigint; // WAD; default = 1000 * 10^18
+  // Solana-only meta channel: the user's pubkey (creator + payer for every
+  // CPI leg). Same convention as `buildTrade.user` — the umbrella SDK plumbs
+  // this in via the wallet adapter at request-build time.
+  user?: string;
 }
 
 // ─── The interface ────────────────────────────────────────────────────────

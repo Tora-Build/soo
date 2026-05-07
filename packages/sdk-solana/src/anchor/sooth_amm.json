@@ -238,6 +238,43 @@
           "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
         },
         {
+          "name": "protocol_config",
+          "docs": [
+            "Singleton ProtocolConfig PDA owned by sooth_launchpad. Source of",
+            "fee_bps used by trade_positions to compute fee_wad. See architecture §8."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112, 114, 111, 116, 111, 99, 111, 108, 95, 99, 111, 110, 102,
+                  105, 103
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                6, 156, 114, 93, 31, 32, 77, 169, 227, 195, 204, 215, 210, 122,
+                162, 174, 55, 22, 50, 83, 39, 70, 154, 164, 120, 50, 9, 192, 0,
+                0, 0, 0
+              ]
+            }
+          }
+        },
+        {
+          "name": "fee_pool_vault",
+          "docs": [
+            "Global fee-pool USDC ATA. Owner = fee_pool_authority PDA owned",
+            "by sooth_launchpad. trade_positions credits this on every buy;",
+            "sooth_launchpad::distribute_fees drains it via PDA-signed CPIs.",
+            "See programs/sooth_launchpad/src/instructions/distribute_fees.rs",
+            "for the pool-then-distribute rationale."
+          ],
+          "writable": true
+        },
+        {
           "name": "user",
           "writable": true,
           "signer": true
