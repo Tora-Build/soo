@@ -50,9 +50,11 @@ import {
   LN2_WAD,
   WAD,
   WAD_TO_USDC_SCALAR,
+  soothMarketIdl,
   type SolanaChainAdapter,
   type SignerRef,
 } from "@sooth/sdk-solana";
+import { AnchorProvider, Program, type Idl } from "@coral-xyz/anchor";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -322,6 +324,9 @@ export async function dispatchAmmWrite(
   }
   if (call.functionName === "createMarket") {
     return dispatchCreateMarket(call, ctx);
+  }
+  if (call.functionName === "addAdjudicator") {
+    return dispatchAddAdjudicator(call, ctx);
   }
   return NOT_HANDLED;
 }
@@ -615,6 +620,107 @@ async function dispatchCreateMarket(
   const receipt = await ctx.adapter.submit(req, ctx.signer);
   const sig = receipt.txId.replace(/^sol:/, "");
   return synthHashFromSignature(sig);
+}
+
+/**
+ * Auto-register the connected wallet as an adjudicator. Localnet-only:
+ * `sooth_market::add_adjudicator(adjudicator)` is signed by the on-chain
+ * allowlist authority, which on localnet is the creator keypair shipped via
+ * `VITE_TEST_AUTHORITY_BYTES` (see `apps/demo/scripts/seed-localnet.mjs`).
+ *
+ * The dapp calls this exactly once per fresh wallet pubkey on connect,
+ * before any UI flow that needs the wallet to be allow-listed (createMarket,
+ * operator settle/attest). If the wallet is already registered the on-chain
+ * `AdjudicatorAlreadyAllowlisted` error is treated as success — the
+ * pre-condition is satisfied either way.
+ *
+ * Args:
+ *   args[0]: optional Solana base58 pubkey to register. When omitted,
+ *            registers `ctx.userBase58` (the connected wallet).
+ */
+async function dispatchAddAdjudicator(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  if (!ctx.userBase58) {
+    throw new Error(
+      "addAdjudicator: no Solana wallet pubkey — connect a wallet first",
+    );
+  }
+  const args = call.args ?? [];
+  const explicit = typeof args[0] === "string" ? args[0] : undefined;
+  const adjudicatorPk = new PublicKey(explicit ?? ctx.userBase58);
+
+  const rawBytes = (
+    import.meta as unknown as { env: Record<string, string | undefined> }
+  ).env?.VITE_TEST_AUTHORITY_BYTES;
+  if (!rawBytes) {
+    throw new Error(
+      "VITE_TEST_AUTHORITY_BYTES required to auto-register adjudicators on localnet (regenerate .env.local via pnpm dev:localnet)",
+    );
+  }
+  let authority: Keypair;
+  try {
+    authority = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(rawBytes)));
+  } catch (e) {
+    throw new Error(
+      `VITE_TEST_AUTHORITY_BYTES is not a valid JSON byte array: ${(e as Error).message}`,
+    );
+  }
+
+  const marketProgramId = ctx.adapter.programIds.soothMarket;
+  const [allowlistPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("adjudicator_allowlist")],
+    marketProgramId,
+  );
+
+  // Build a one-shot Anchor program with the authority wallet so we can
+  // sign the ix directly. The adapter's own `soothMarket` program uses a
+  // stub wallet — fine for builds, useless for real signs.
+  // @coral-xyz/anchor's `Wallet` class is CJS-only; reproduce the minimal
+  // wallet shape inline to keep the ESM path clean.
+  const wallet = {
+    publicKey: authority.publicKey,
+    payer: authority,
+    signTransaction: async <T>(tx: T): Promise<T> => {
+      (tx as { partialSign(...kp: Keypair[]): void }).partialSign(authority);
+      return tx;
+    },
+    signAllTransactions: async <T>(txs: T[]): Promise<T[]> => {
+      for (const tx of txs)
+        (tx as { partialSign(...kp: Keypair[]): void }).partialSign(authority);
+      return txs;
+    },
+  };
+  const provider = new AnchorProvider(ctx.adapter.connection, wallet as never, {
+    commitment: "confirmed",
+    preflightCommitment: "confirmed",
+  });
+  const programIdl = {
+    ...soothMarketIdl,
+    address: marketProgramId.toBase58(),
+  };
+  const program = new Program(programIdl as Idl, provider);
+
+  try {
+    const sig = await (program.methods as any)
+      .addAdjudicator(adjudicatorPk)
+      .accounts({
+        allowlist: allowlistPda,
+        authority: authority.publicKey,
+      })
+      .signers([authority])
+      .rpc();
+    return synthHashFromSignature(sig as string);
+  } catch (e) {
+    const msg = (e as Error).message ?? String(e);
+    if (msg.includes("AdjudicatorAlreadyAllowlisted")) {
+      // Idempotent — the precondition is satisfied. Return a synthetic
+      // sig so the upstream `writeContract` Hash slot stays well-typed.
+      return synthHashFromSignature("1".repeat(64));
+    }
+    throw e;
+  }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

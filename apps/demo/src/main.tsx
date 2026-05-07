@@ -38,6 +38,12 @@ import "./lib/i18n";
 import { DemoProvider } from "./lib/DemoContext";
 import { demoConfig } from "./lib/config";
 import { LocalKeypairAdapter, TestWalletBridge } from "./lib/testWalletAdapter";
+import { useAutoRegisterAdjudicator } from "./lib/useAutoRegisterAdjudicator";
+
+function AdjudicatorAutoRegister() {
+  useAutoRegisterAdjudicator();
+  return null;
+}
 
 // Test mode swaps the Phantom/Solflare adapters for a single LocalKeypair
 // adapter that signs with VITE_TEST_KEYPAIR_BYTES. The bridge exposes
@@ -88,6 +94,7 @@ function Root() {
           {IS_TEST_MODE && <TestWalletBridge />}
           <QueryClientProvider client={queryClient}>
             <DemoProvider>
+              <AdjudicatorAutoRegister />
               <BrowserRouter>
                 <QuickTradeProvider>
                   <React.StrictMode>

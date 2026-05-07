@@ -1,6 +1,28 @@
 {
   "version": "0.2.1",
   "networks": {
+    "solanaLocalnet": {
+      "chainId": 902,
+      "nodeId": "solana-localnet",
+      "coreVersion": "0.2.1",
+      "contracts": {
+        "MockUSDC": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "baseTokenDecimals": 6
+      },
+      "markets": [],
+      "startBlock": 0
+    },
+    "solanaDevnet": {
+      "chainId": 901,
+      "nodeId": "solana-devnet",
+      "coreVersion": "0.2.1",
+      "contracts": {
+        "MockUSDC": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "baseTokenDecimals": 6
+      },
+      "markets": [],
+      "startBlock": 0
+    },
     "baseSepolia": {
       "chainId": 84532,
       "nodeId": "8d69658b",
