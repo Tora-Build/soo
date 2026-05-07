@@ -97,37 +97,47 @@ export const megaethFrontier = defineChain({
   testnet: false, // It's "Mainnet" but Frontier phase
 });
 
-// Canonical list of allowed chains with metadata
+// Canonical list of allowed chains with metadata.
+//
+// Solana fork: the EVM entries (Eth Sepolia, MegaETH, etc.) from upstream
+// are removed since this fork only ships against Solana. Numeric IDs use
+// the "Solana namespace" convention from `docs/decision-log.md` P3
+// (900-series) so the EVM-typed `id: number` slot in `AllowedChain` keeps
+// round-tripping through wagmi-shaped hooks without adding string-typing.
+//   900 = Solana Mainnet, 901 = Solana Devnet, 902 = Solana Localnet
 export const allowedChains: AllowedChain[] = [
   {
-    id: 11155111,
-    type: "evm",
-    name: "Ethereum Sepolia",
-    displayName: "Eth Sepolia",
-    shortName: "Sepolia",
-    rpcUrl: "https://rpc.sooth.market/eth-sepolia",
-    explorerUrl: "https://sepolia.etherscan.io",
-    icon: "◇",
-    nativeCurrency: {
-      name: "Ether",
-      symbol: "ETH",
-      decimals: 18,
-    },
+    id: 902,
+    type: "solana",
+    name: "Solana Localnet",
+    displayName: "Localnet",
+    shortName: "Local",
+    rpcUrl: "http://127.0.0.1:8899",
+    explorerUrl: "https://explorer.solana.com",
+    icon: "◎",
+    nativeCurrency: { name: "SOL", symbol: "SOL", decimals: 9 },
   },
   {
-    id: 6343,
-    type: "evm",
-    name: "MegaETH Testnet",
-    displayName: "MegaETH",
-    shortName: "Mega",
-    rpcUrl: "https://rpc.sooth.market/megaeth-testnet",
-    explorerUrl: "https://www.megaexplorer.xyz",
-    icon: "⚡",
-    nativeCurrency: {
-      name: "Ether",
-      symbol: "ETH",
-      decimals: 18,
-    },
+    id: 901,
+    type: "solana",
+    name: "Solana Devnet",
+    displayName: "Devnet",
+    shortName: "Devnet",
+    rpcUrl: "https://api.devnet.solana.com",
+    explorerUrl: "https://explorer.solana.com?cluster=devnet",
+    icon: "◎",
+    nativeCurrency: { name: "SOL", symbol: "SOL", decimals: 9 },
+  },
+  {
+    id: 900,
+    type: "solana",
+    name: "Solana Mainnet",
+    displayName: "Mainnet",
+    shortName: "Solana",
+    rpcUrl: "https://api.mainnet-beta.solana.com",
+    explorerUrl: "https://explorer.solana.com",
+    icon: "◎",
+    nativeCurrency: { name: "SOL", symbol: "SOL", decimals: 9 },
   },
   // BNB Testnet - HIDDEN
   /*
@@ -332,10 +342,7 @@ export const hyperevmTestnet = defineChain({
 export const evmChains = allowedChains.filter((c) => c.type === "evm");
 
 // Export wagmi chains array
-export const wagmiChains: Chain[] = [
-  ethSepolia,
-  megaethTestnet,
-];
+export const wagmiChains: Chain[] = [ethSepolia, megaethTestnet];
 
 // Helper to get chain by ID
 export function getChainById(
@@ -353,14 +360,25 @@ export function isSolanaChain(chain: AllowedChain): boolean {
   return chain.type === "solana";
 }
 
-// Default chain (MegaETH Testnet) — switched 2026-04-27 after seeding
-// 70 markets on ME. Fresh users land on ME first; chain selector lets
-// them switch to Eth Sepolia when needed.
-export const DEFAULT_CHAIN_ID = 6343;
+// Default chain. Resolved at runtime from `demoConfig.node.cluster` so the
+// header shows the cluster the dapp is actually pointing at.
+//   localnet → 902, devnet → 901, mainnet → 900
+function defaultChainIdFromConfig(): number {
+  const env = (
+    import.meta as unknown as { env?: Record<string, string | undefined> }
+  ).env;
+  const rpc = env?.VITE_SOLANA_RPC_URL ?? "";
+  if (rpc.startsWith("http://127.0.0.1") || rpc.startsWith("http://localhost"))
+    return 902;
+  if (rpc.includes("devnet")) return 901;
+  return 900;
+}
+
+export const DEFAULT_CHAIN_ID = defaultChainIdFromConfig();
 
 export function getExplorerUrl(chainId: number): string {
   const chain = getChainById(chainId);
-  return chain?.explorerUrl || "https://sepolia.etherscan.io";
+  return chain?.explorerUrl || "https://explorer.solana.com";
 }
 
 export function getAddressExplorerUrl(

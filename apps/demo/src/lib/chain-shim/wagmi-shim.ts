@@ -119,7 +119,18 @@ export function useAccount(): UseAccountReturn {
 }
 
 export function useChainId(): number {
-  return 1;
+  // Mirror DEFAULT_CHAIN_ID. The chain-shim doesn't expose multi-chain
+  // switching on the Solana fork (Phantom's Custom RPC is user-side), so
+  // the wallet "chain" matches whatever cluster the dapp is configured
+  // for: 902 localnet, 901 devnet, 900 mainnet.
+  const env = (
+    import.meta as unknown as { env?: Record<string, string | undefined> }
+  ).env;
+  const rpc = env?.VITE_SOLANA_RPC_URL ?? "";
+  if (rpc.startsWith("http://127.0.0.1") || rpc.startsWith("http://localhost"))
+    return 902;
+  if (rpc.includes("devnet")) return 901;
+  return 900;
 }
 
 export function useDisconnect() {

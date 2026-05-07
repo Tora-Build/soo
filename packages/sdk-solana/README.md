@@ -2,7 +2,7 @@
 
 > Solana adapter for `@sooth/sdk` — workspace member of the `sooth-solana` monorepo.
 > Published to npm as `@sooth/sdk-solana`. Loaded dynamically by `@sooth/sdk` (in `sooth-alpha`) when the active node is a Solana node.
-> Status: AMM buy / sell / claim and `create_market` wired end-to-end. 29-spec vitest suite green on `litesvm`. Orderbook, redeem, and portfolio paths still throw `NotImplemented`.
+> Status: AMM buy / sell / claim, `create_market`, and `preflight` (simulate-before-sign) wired end-to-end. 40-spec vitest suite green on `litesvm` (smoke / sell / claim / create-market / submit-failure / preflight / per-program error-classifier). Orderbook, redeem, and full portfolio paths still throw `NotImplemented`.
 
 ## What this is
 
@@ -27,7 +27,7 @@ The integrator contract is **canonical** — it freezes the public API. The impl
 
 ## Status
 
-**AMM vertical landed.** The package exports a real `SolanaChainAdapter` class with the AMM buy / sell / claim paths and `create_market` wired end-to-end (read state, build tx, sign+submit, read back). A 29-spec vitest suite covering smoke / sell / claim / create-market / submit-failure plus the LMSR port runs against `litesvm` in <5s.
+**AMM vertical landed.** The package exports a real `SolanaChainAdapter` class with the AMM buy / sell / claim paths, `create_market`, and `preflight` (simulate-before-sign) wired end-to-end (read state, build tx, sign+submit, read back). A 40-spec vitest suite covering smoke / sell / claim / create-market / submit-failure / preflight / per-program error-classifier plus the LMSR port runs against `litesvm` in <5s.
 
 What's real today:
 

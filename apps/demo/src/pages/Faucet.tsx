@@ -5,12 +5,11 @@ import {
   useReadContract,
   useWriteContract,
   usePublicClient,
-  useChainId,
 } from "@/lib/chain-shim";
 import { parseUnits, formatUnits, parseAbi } from "@/lib/chain-shim";
-import { useDeployments } from "../hooks/useDeployments";
+import { demoConfig } from "../lib/config";
 import { useBaseTokenDecimals } from "../hooks/useBaseTokenDecimals";
-import { Coins, Droplets, ExternalLink, Info, Wallet } from "lucide-react";
+import { Coins, ExternalLink, Info, Wallet } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
@@ -25,9 +24,13 @@ const MOCK_ERC20_ABI = parseAbi([
 export const Faucet = () => {
   const { t } = useTranslation();
   const { address, isConnected } = useAccount();
-  const chainId = useChainId();
-  const { config } = useDeployments();
-  const deployments = config.contracts;
+  // Solana fork: use the configured USDC mint from demoConfig instead of
+  // the upstream EVM deployments.json lookup (which carries an EVM hex
+  // address that's meaningless on Solana). The mint address is the same
+  // SPL mint that all on-chain trades use.
+  const usdcMintAddress = demoConfig.node.programs?.usdcMint as
+    | string
+    | undefined;
 
   const [isMinting, setIsMinting] = useState(false);
   const { writeContractAsync } = useWriteContract();
@@ -36,11 +39,11 @@ export const Faucet = () => {
 
   // Read current USDC balance
   const { data: balance, refetch: refetchBalance } = useReadContract({
-    address: deployments.MockUSDC as `0x${string}`,
+    address: usdcMintAddress as `0x${string}` | undefined,
     abi: MOCK_ERC20_ABI,
     functionName: "balanceOf",
     args: [address || "0x0"],
-    query: { enabled: !!address && !!deployments.MockUSDC },
+    query: { enabled: !!address && !!usdcMintAddress },
   });
 
   const handleMint = async () => {
@@ -48,9 +51,8 @@ export const Faucet = () => {
       toast.error("Please connect your wallet first");
       return;
     }
-
-    if (!deployments.MockUSDC) {
-      toast.error("MockUSDC not deployed on this network");
+    if (!usdcMintAddress) {
+      toast.error("USDC mint not configured for this cluster");
       return;
     }
 
@@ -61,7 +63,7 @@ export const Faucet = () => {
       const amount = parseUnits("100000", decimals);
 
       const hash = await writeContractAsync({
-        address: deployments.MockUSDC as `0x${string}`,
+        address: usdcMintAddress as `0x${string}`,
         abi: MOCK_ERC20_ABI,
         functionName: "mint",
         args: [address, amount],
@@ -85,8 +87,6 @@ export const Faucet = () => {
       setIsMinting(false);
     }
   };
-
-  const isMegaETH = chainId === 4326;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 py-8">
@@ -118,7 +118,7 @@ export const Faucet = () => {
               </span>
             </div>
             <div className="text-xs text-faint font-mono truncate">
-              {deployments.MockUSDC || "Not deployed"}
+              {usdcMintAddress || "Not configured"}
             </div>
           </div>
 
@@ -133,52 +133,44 @@ export const Faucet = () => {
           </Button>
         </div>
 
-        {/* Native ETH Info */}
+        {/* Native SOL Info */}
         <div className="panel p-6">
           <h3 className="text-xl font-bold text-ink mb-4 flex items-center gap-2">
             <Wallet className="text-muted w-5 h-5" />
-            Native ETH
+            Native SOL
           </h3>
 
           <p className="text-muted text-sm mb-6">
-            Gas fees on {isMegaETH ? "MegaETH Frontier" : "this network"} must
-            be paid in native ETH.
+            Transaction fees on Solana are paid in native SOL. Localnet airdrops
+            are unlimited; devnet/mainnet require a real-faucet flow.
           </p>
 
           <div className="space-y-3">
-            {isMegaETH ? (
-              <>
-                <div className="flex items-start gap-3 p-3 bg-accent-muted border border-accent/20 text-xs text-ink">
-                  <Info className="text-muted w-4 h-4 shrink-0 mt-0.5" />
-                  <p>
-                    Frontier Net is a restricted phase. Please reach out to the
-                    MegaETH team or use the official bridge if you have access.
-                  </p>
-                </div>
-                <a
-                  href="https://docs.megaeth.com/frontier"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-between p-4 bg-inset border border-rule hover:border-accent/50 transition-colors group/link"
-                >
-                  <span className="text-sm font-medium text-ink">
-                    MegaETH Frontier Docs
-                  </span>
-                  <ExternalLink
-                    size={14}
-                    className="text-muted group-hover/link:text-accent"
-                  />
-                </a>
-              </>
-            ) : (
-              <div className="flex items-start gap-3 p-3 bg-raised border border-rule text-xs text-ink">
-                <Info className="text-muted w-4 h-4 shrink-0 mt-0.5" />
-                <p>
-                  Please use the official faucet for this testnet to obtain ETH
-                  for gas.
-                </p>
-              </div>
-            )}
+            <div className="flex items-start gap-3 p-3 bg-raised border border-rule text-xs text-ink">
+              <Info className="text-muted w-4 h-4 shrink-0 mt-0.5" />
+              <p>
+                Localnet:{" "}
+                <code className="bg-inset px-1">
+                  solana airdrop 10 &lt;your-pubkey&gt; --url
+                  http://127.0.0.1:8899
+                </code>
+                . Devnet: use the official Solana faucet.
+              </p>
+            </div>
+            <a
+              href="https://faucet.solana.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between p-4 bg-inset border border-rule hover:border-accent/50 transition-colors group/link"
+            >
+              <span className="text-sm font-medium text-ink">
+                Solana Devnet Faucet
+              </span>
+              <ExternalLink
+                size={14}
+                className="text-muted group-hover/link:text-accent"
+              />
+            </a>
           </div>
         </div>
       </div>
@@ -192,8 +184,8 @@ export const Faucet = () => {
             testing only.
           </p>
           <p>
-            If you are experiencing issues with transactions, ensure you have
-            enough native ETH for gas fees.
+            If transactions fail, ensure you have enough native SOL on the
+            connected wallet to pay tx fees.
           </p>
         </div>
       </div>
