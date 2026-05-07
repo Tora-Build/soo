@@ -1,5 +1,5 @@
 {
-  "address": "SoothAMM11111111111111111111111111111111111",
+  "address": "67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k",
   "metadata": {
     "name": "sooth_amm",
     "version": "0.0.0",
@@ -368,7 +368,7 @@
             "on the pre-graduation buy path. Address-pinned to the canonical",
             "launchpad ID."
           ],
-          "address": "SoothLP111111111111111111111111111111111111"
+          "address": "HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3"
         },
         {
           "name": "instruction_sysvar",
@@ -598,7 +598,7 @@
             "`sooth_market` program — CPI'd into for the PDA-signed",
             "`vault → lock_vault` transfer. Mandatory after the Wave 1B fix."
           ],
-          "address": "SoothMkt11111111111111111111111111111111111"
+          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
         },
         {
           "name": "instruction_sysvar",
@@ -751,7 +751,7 @@
             "`lock_vault → user_usdc_ata` transfer. Mandatory after the Wave",
             "1B fix (the `lock_authority` PDA is owned by `sooth_market`)."
           ],
-          "address": "SoothMkt11111111111111111111111111111111111"
+          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
         },
         {
           "name": "instruction_sysvar",

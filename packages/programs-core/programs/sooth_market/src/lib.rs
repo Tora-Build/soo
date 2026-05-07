@@ -46,7 +46,7 @@ pub use instructions::*;
 //   `solana-keygen new --no-bip39-passphrase -o target/deploy/sooth_market-keypair.json`
 // then update this and the matching entry in `Anchor.toml`. Mirrors the
 // placeholder pattern in `sooth_amm::lib.rs`.
-declare_id!("SoothMkt11111111111111111111111111111111111");
+declare_id!("ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n");
 
 // `SOOTH_AMM_PROGRAM_ID`, `SOOTH_ADJUDICATOR_PROGRAM_ID`, and
 // `USDC_MINT_DEVNET` previously lived as hand-pinned literals here. They

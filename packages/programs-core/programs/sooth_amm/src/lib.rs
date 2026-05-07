@@ -31,7 +31,7 @@ pub use instructions::*;
 //   `solana-keygen new --no-bip39-passphrase -o target/deploy/sooth_amm-keypair.json`
 // then update this and the matching entry in `Anchor.toml`. The 32-byte
 // base58 below decodes to a valid (non-curve) pubkey usable as a placeholder.
-declare_id!("SoothAMM11111111111111111111111111111111111");
+declare_id!("67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k");
 
 // `USDC_MINT_DEVNET` and `SOOTH_LAUNCHPAD_PROGRAM_ID` previously lived as
 // hand-pinned literals here. They now live in the workspace-shared

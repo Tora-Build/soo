@@ -1,5 +1,5 @@
 {
-  "address": "SoothLP111111111111111111111111111111111111",
+  "address": "HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3",
   "metadata": {
     "name": "sooth_launchpad",
     "version": "0.0.0",
@@ -253,11 +253,11 @@
         },
         {
           "name": "sooth_market_program",
-          "address": "SoothMkt11111111111111111111111111111111111"
+          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
         },
         {
           "name": "sooth_amm_program",
-          "address": "SoothAMM11111111111111111111111111111111111"
+          "address": "67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k"
         },
         {
           "name": "token_program",

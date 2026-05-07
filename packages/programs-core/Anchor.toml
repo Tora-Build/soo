@@ -6,22 +6,22 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-sooth_amm = "SoothAMM11111111111111111111111111111111111"
-sooth_market = "SoothMkt11111111111111111111111111111111111"
-sooth_launchpad = "SoothLP111111111111111111111111111111111111"
-sooth_adjudicator = "SoothAdj11111111111111111111111111111111111"
+sooth_amm = "67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k"
+sooth_market = "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+sooth_launchpad = "HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3"
+sooth_adjudicator = "4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8"
 
 [programs.devnet]
-sooth_amm = "SoothAMM11111111111111111111111111111111111"
-sooth_market = "SoothMkt11111111111111111111111111111111111"
-sooth_launchpad = "SoothLP111111111111111111111111111111111111"
-sooth_adjudicator = "SoothAdj11111111111111111111111111111111111"
+sooth_amm = "67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k"
+sooth_market = "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+sooth_launchpad = "HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3"
+sooth_adjudicator = "4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

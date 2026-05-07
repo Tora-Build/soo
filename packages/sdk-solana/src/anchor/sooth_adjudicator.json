@@ -1,5 +1,5 @@
 {
-  "address": "SoothAdj11111111111111111111111111111111111",
+  "address": "4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8",
   "metadata": {
     "name": "sooth_adjudicator",
     "version": "0.0.0",
@@ -64,7 +64,7 @@
         },
         {
           "name": "sooth_market_program",
-          "address": "SoothMkt11111111111111111111111111111111111"
+          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
         },
         {
           "name": "instruction_sysvar",
@@ -141,7 +141,7 @@
         },
         {
           "name": "sooth_market_program",
-          "address": "SoothMkt11111111111111111111111111111111111"
+          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
         },
         {
           "name": "instruction_sysvar",
@@ -288,7 +288,7 @@
         },
         {
           "name": "sooth_market_program",
-          "address": "SoothMkt11111111111111111111111111111111111"
+          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
         },
         {
           "name": "instruction_sysvar",

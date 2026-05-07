@@ -67,7 +67,7 @@ pub use instructions::*;
 // been generated at `target/deploy/sooth_launchpad-keypair.json` (gitignored)
 // for the eventual deploy; the placeholder ID stays in `declare_id!` until
 // then so the IDL-shape is stable across the workspace.
-declare_id!("SoothLP111111111111111111111111111111111111");
+declare_id!("HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3");
 
 // `USDC_MINT_DEVNET` was previously re-exported from `sooth_market` to
 // avoid triplicating the constant. It now lives in the workspace-shared
