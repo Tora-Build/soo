@@ -48,39 +48,29 @@ pub use instructions::*;
 // placeholder pattern in `sooth_amm::lib.rs`.
 declare_id!("SoothMkt11111111111111111111111111111111111");
 
-/// Hard-coded `sooth_amm` program ID. Used by the `transfer_to_lock` /
-/// `transfer_from_lock_vault` helpers to verify the `Position` / `LockEntry`
-/// accounts they receive are owned by the legitimate AMM program (and not
-/// forged Borsh blobs the caller stitched together). Mirrors the `declare_id!`
-/// in `programs/sooth_amm/src/lib.rs` — bump both in lock-step on devnet
-/// deploy. A workspace-shared `sooth-protocol-types` crate would be the
-/// long-term home; until then, the duplication is intentional with a sync
-/// comment in both directions.
-pub const SOOTH_AMM_PROGRAM_ID: Pubkey = anchor_lang::pubkey!(
-    "SoothAMM11111111111111111111111111111111111"
-);
+// `SOOTH_AMM_PROGRAM_ID`, `SOOTH_ADJUDICATOR_PROGRAM_ID`, and
+// `USDC_MINT_DEVNET` previously lived as hand-pinned literals here. They
+// now live in the workspace-shared `sooth_protocol_types` crate (sister to
+// `sooth-account-offsets`); we re-export them at this path so existing
+// call sites that reach for `crate::SOOTH_AMM_PROGRAM_ID` etc. keep
+// resolving without a churn-pass on every `#[account(address = ...)]`
+// or `owner = ...` constraint, and so external test crates that import
+// `sooth_market::SOOTH_AMM_PROGRAM_ID` keep compiling.
+//
+// The compile-time assert below ties `crate::ID_CONST` (Anchor's
+// address-of-truth from `declare_id!`) back to the shared constant so any
+// drift between the two trips the build.
+pub use sooth_protocol_types::{
+    SOOTH_ADJUDICATOR_PROGRAM_ID, SOOTH_AMM_PROGRAM_ID, USDC_MINT_DEVNET,
+};
 
-/// Hard-coded `sooth_adjudicator` program ID. Used by `lock_for_resolution`
-/// and `settle` to verify the calling top-level ix originates from the
-/// adjudicator program (parent-ix introspection — same Wave A pattern as
-/// the AMM helper transfer ixs above). Bump in lock-step with the matching
-/// `declare_id!` in `programs/sooth_adjudicator/src/lib.rs`. Mirrors the
-/// `SOOTH_AMM_PROGRAM_ID` duplication strategy above; the long-term home
-/// for both is a workspace-shared `sooth-protocol-types` crate.
-pub const SOOTH_ADJUDICATOR_PROGRAM_ID: Pubkey = anchor_lang::pubkey!(
-    "SoothAdj11111111111111111111111111111111111"
-);
-
-/// Canonical devnet USDC mint. Must match `sooth_amm::USDC_MINT_DEVNET` —
-/// a workspace-shared crate (`sooth-protocol-types`) is the right long-term
-/// home for this constant, but until that crate exists this is duplicated
-/// here intentionally with a sync comment. Used by `initialize_market_vaults`,
-/// `mint_complete_set`, `merge_complete_set`, and `redeem` to pin the
-/// `usdc_mint` account against a forged/malicious mint passed by the caller.
-/// Mainnet uses `EPjFW...`; the SDK swaps the constant per cluster at deploy.
-pub const USDC_MINT_DEVNET: Pubkey = anchor_lang::pubkey!(
-    "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
-);
+/// Compile-time assert that `declare_id!` matches
+/// `sooth_protocol_types::SOOTH_MARKET_PROGRAM_ID`. See the matching
+/// assertion in `sooth_amm/src/lib.rs` for the full rationale.
+const _: () = assert!(sooth_protocol_types::pubkey_eq(
+    crate::ID_CONST,
+    sooth_protocol_types::SOOTH_MARKET_PROGRAM_ID,
+));
 
 #[program]
 pub mod sooth_market {

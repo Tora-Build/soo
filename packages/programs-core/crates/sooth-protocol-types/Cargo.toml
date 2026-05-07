@@ -1,0 +1,53 @@
+[package]
+name = "sooth-protocol-types"
+version = "0.0.0"
+edition = "2021"
+description = "Shared cross-program constants (program IDs, USDC mint, instruction discriminators) for the Sooth Solana programs"
+license = "Apache-2.0"
+repository = "https://github.com/Tora-Build/sooth-solana"
+
+[lib]
+name = "sooth_protocol_types"
+
+# Pure constants crate. Sister to `sooth-account-offsets`.
+#
+# ── Why this crate exists ───────────────────────────────────────────────────
+# Multiple programs need the same `Pubkey` constants:
+#   - The canonical devnet USDC mint (pinned on `usdc_mint` Accounts entries
+#     across `sooth_amm`, `sooth_market`, `sooth_launchpad`).
+#   - Cross-program IDs (`SOOTH_AMM_PROGRAM_ID`, `SOOTH_MARKET_PROGRAM_ID`,
+#     `SOOTH_LAUNCHPAD_PROGRAM_ID`, `SOOTH_ADJUDICATOR_PROGRAM_ID`) used by
+#     parent-ix introspection and by `seeds::program = ...` / `owner = ...`
+#     constraints whenever a program needs to bind a foreign-owned PDA
+#     without taking a path-dep on the foreign program (which would
+#     cycle — every cross-program edge in the graph has at most one
+#     direction, the other side mirrors the constant here).
+#   - Anchor instruction discriminators (`sha256("global:<name>")[..8]`) for
+#     parent-ix introspection. Hardcoded today because anchor-syn's
+#     `Discriminator` derive isn't reliable to evaluate at compile time on
+#     the `cargo build-sbf` toolchain.
+#
+# Each program still calls `declare_id!(...)` in its own `lib.rs` (Anchor's
+# source of truth — drives `crate::ID`, the IDL `address` field, and the
+# init-ix codegen). The constants here mirror those values; each program
+# carries a `const _: () = assert!(...)` that the two stay in lock-step.
+# Drift trips the build, not on-chain behaviour.
+#
+# Sister to `sooth-account-offsets` (which centralises the byte-offset
+# constants for `Position` / `LockEntry` / `ProtocolConfig` raw parses).
+# ----------------------------------------------------------------------------
+
+[dependencies]
+# Used purely for `Pubkey` + the `pubkey!` literal macro. Anchor re-exports
+# these from `solana_program::pubkey`; we depend on `anchor-lang` directly so
+# the `pubkey!` invocation matches the established pattern in the program
+# crates (`anchor_lang::pubkey!("…")`) and so consumers can `use
+# sooth_protocol_types::*;` without an extra `solana-program` import.
+#
+# No features pulled. The transitive `solana-program` pin (1.18.x via Anchor
+# 0.30.1) matches the program crates — see `sooth_amm/Cargo.toml` toolchain
+# notes.
+anchor-lang = { version = "0.30.1" }
+
+[lints.rust]
+unexpected_cfgs = { level = "allow" }

@@ -45,6 +45,14 @@ sooth_market = { path = "../sooth_market", features = ["cpi"] }
 # assertions in `state/{position,lock_entry}.rs` cross-check the constants
 # against the live struct's `SPACE` figures so any drift trips the build.
 sooth-account-offsets = { path = "../../crates/sooth-account-offsets" }
+# Shared cross-program constants (program IDs, USDC mint, ix discriminators).
+# Owns the address-of-truth for `SOOTH_LAUNCHPAD_PROGRAM_ID` (used by
+# `trade_positions` to bind the `protocol_config` PDA's owner + derivation
+# without taking a path-dep on `sooth_launchpad`) and `USDC_MINT_DEVNET`
+# (pinned on every `usdc_mint` Accounts entry). The compile-time assert in
+# `lib.rs` ties this crate's `SOOTH_AMM_PROGRAM_ID` back to `crate::ID_CONST`
+# so any drift between `declare_id!` and the shared constant trips the build.
+sooth-protocol-types = { path = "../../crates/sooth-protocol-types" }
 
 [dev-dependencies]
 # Host-side math unit tests — no SBF, no anchor framework. The tests in

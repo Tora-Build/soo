@@ -61,6 +61,19 @@ pub use state::AdjudicatorKind;
 // — same convention as `sooth_amm`, `sooth_market`, and `sooth_launchpad`.
 declare_id!("SoothAdj11111111111111111111111111111111111");
 
+/// Compile-time assert that `declare_id!` matches
+/// `sooth_protocol_types::SOOTH_ADJUDICATOR_PROGRAM_ID`. The shared
+/// constant is what `sooth_market::lock_for_resolution` / `settle` pin in
+/// their parent-ix introspection check; drift between the two sides would
+/// fail closed (every adjudicator-CPI would be rejected as
+/// `InvalidParentInstruction`), but the assert here surfaces the bug at
+/// build time instead. See the matching assertion in `sooth_amm/src/lib.rs`
+/// for the full rationale.
+const _: () = assert!(sooth_protocol_types::pubkey_eq(
+    crate::ID_CONST,
+    sooth_protocol_types::SOOTH_ADJUDICATOR_PROGRAM_ID,
+));
+
 #[program]
 pub mod sooth_adjudicator {
     use super::*;

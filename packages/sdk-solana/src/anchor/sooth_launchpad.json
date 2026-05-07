@@ -654,6 +654,32 @@
           }
         },
         {
+          "name": "lp_mint_authority",
+          "docs": [
+            "Per-market signer-only PDA. The mint authority on `lp_mint`.",
+            "Seeds `[b\"lp_mint_authority\", market_id]` keep the authority",
+            "isolated per market \u2014 same pattern as `sooth_market::vault_authority`",
+            "/ `lock_authority`. CHECK: derived via seeds; signs the `mint_to`",
+            "CPI in the handler body."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108, 112, 95, 109, 105, 110, 116, 95, 97, 117, 116, 104, 111,
+                  114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
           "name": "creator_lp_ata",
           "docs": [
             "Creator's LP-token ATA \u2014 destination of the `mint_to` CPI. CHECK:",
@@ -727,6 +753,10 @@
     {
       "name": "AmmState",
       "discriminator": [66, 127, 244, 168, 102, 12, 95, 2]
+    },
+    {
+      "name": "LpPosition",
+      "discriminator": [105, 241, 37, 200, 224, 2, 252, 90]
     },
     {
       "name": "Market",
@@ -944,6 +974,122 @@
               "`LaunchpadEngine`. The concrete `trial_end_at` per-market is computed",
               "in `create_market` (architecture \u00a79)."
             ],
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LpPosition",
+      "docs": [
+        "Per-(creator, market) LP claim record. Created by `seed_lp` via",
+        "manual `system_instruction::create_account` + Borsh serialise",
+        "(no Anchor `init` codegen \u2014 see seed_lp module comment for the",
+        "BPF stack-frame rationale). Mirrors the `MarketState` struct in",
+        "EVM `LaunchpadEngine`; the LP token itself is a separate SPL Mint",
+        "at `[b\"lp\", market_id]` with mint authority = `lp_mint_authority`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": ["Backlink to the market PDA."],
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "docs": ["Pubkey of the creator. Equal to `market.creator`."],
+            "type": "pubkey"
+          },
+          {
+            "name": "lp_mint",
+            "docs": ["LP-token mint at `[b\"lp\", market_id]`."],
+            "type": "pubkey"
+          },
+          {
+            "name": "seed_deposit_wad",
+            "docs": [
+              "Creator's seed deposit in WAD, bookkeeping only. Equals",
+              "`b_base * ln(2)` per EVM `LaunchpadEngine.MIN_DEPOSIT_WAD`."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "graduated_at",
+            "docs": [
+              "Unix seconds at which the market graduated. 0 = not graduated."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Bump for this PDA. Seeds `[b\"lp_position\", market_id, creator]`."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LpSeeded",
+      "docs": [
+        "Emitted by `seed_lp` after the per-market `LpMint` + creator",
+        "`LpPosition` PDA + creator's LP ATA are bootstrapped and seeded",
+        "with the initial `lp_amount` allocation. Mirror of EVM",
+        "`LaunchpadEngine.LPTokenCreated` (`LaunchpadEngine.sol:446`)",
+        "plus the implicit `LaunchpadLPToken.Transfer(0, creator, depositWad)`",
+        "event from the OZ ERC20 base — collapsed into a single Solana log."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": ["Market PDA the LP mint is scoped to."],
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "Creator who bootstrapped the LP position. Equal to `market.creator`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "lp_mint",
+            "docs": [
+              "New SPL Mint at `[b\"lp\", market_id]` — owned by the SPL token",
+              "program with mint authority = `lp_mint_authority` PDA."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_lp_ata",
+            "docs": [
+              "Creator's freshly-init'd LP-token ATA — destination of the seed",
+              "`mint_to`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "lp_amount",
+            "docs": [
+              "LP base units minted to `creator_lp_ata` — equals `args.lp_amount`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "seed_deposit_wad",
+            "docs": [
+              "Creator's seed deposit in WAD recorded on the new `LpPosition`",
+              "PDA. Used by the dismiss/refund flow (architecture §9)."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "ts",
             "type": "i64"
           }
         ]

@@ -25,11 +25,12 @@
 //! ## Discriminators
 //!
 //! Discriminators are hardcoded as 8-byte arrays. They are
-//! `sha256("global:<ix_name>")[..8]`, copied from
-//! `packages/sdk-solana/src/anchor/sooth_amm.json` (which is hand-edited
-//! from the on-chain Anchor codegen). The session brief permits hardcoding
-//! because anchor-syn's `Discriminator` trait isn't reliable to derive at
-//! compile time on this toolchain (Anchor 0.30.1 + cargo build-sbf).
+//! `sha256("global:<ix_name>")[..8]`. The canonical bytes now live in the
+//! workspace-shared `sooth_protocol_types::discriminators` module (sister
+//! to the byte-offset constants in `sooth-account-offsets`); we re-export
+//! the four consumed by this module's gates at the same names so existing
+//! call sites in `instructions/{settle,lock_for_resolution,transfer_*}`
+//! and the test crates keep resolving without a churn-pass.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::sysvar::instructions as ix_sysvar;
@@ -37,37 +38,15 @@ use anchor_lang::solana_program::sysvar::instructions as ix_sysvar;
 use crate::error::SoothMarketError;
 use crate::{SOOTH_ADJUDICATOR_PROGRAM_ID, SOOTH_AMM_PROGRAM_ID};
 
-/// Anchor discriminator for `sooth_amm::sell_positions`.
-///   `sha256(b"global:sell_positions")[..8]`
-/// Verified against `packages/sdk-solana/src/anchor/sooth_amm.json`'s
-/// `instructions[].discriminator` for `sell_positions`.
-pub const SELL_POSITIONS_DISCRIMINATOR: [u8; 8] = [3, 151, 9, 138, 95, 252, 50, 39];
-
-/// Anchor discriminator for `sooth_amm::claim_unlocked`.
-///   `sha256(b"global:claim_unlocked")[..8]`
-/// Verified against `packages/sdk-solana/src/anchor/sooth_amm.json`'s
-/// `instructions[].discriminator` for `claim_unlocked`.
-pub const CLAIM_UNLOCKED_DISCRIMINATOR: [u8; 8] = [70, 139, 1, 246, 166, 193, 64, 143];
-
-/// Anchor discriminator for `sooth_adjudicator::request_lock`.
-///   `sha256(b"global:request_lock")[..8]`
-/// Used by `sooth_market::lock_for_resolution` to verify the calling top-
-/// level ix is the legitimate adjudicator-side trigger. Closes the deferred
-/// half of Codex's C2 finding; the abfcf15 allowlist mitigation narrows
-/// the *set* of valid adjudicator pubkeys; this introspection check makes
-/// the call-time auth path proper. Verified against
-/// `packages/sdk-solana/src/anchor/sooth_adjudicator.json`'s
-/// `instructions[].discriminator` for `request_lock`.
-pub const REQUEST_LOCK_DISCRIMINATOR: [u8; 8] = [184, 126, 124, 46, 186, 78, 238, 67];
-
-/// Anchor discriminator for `sooth_adjudicator::attest_outcome`.
-///   `sha256(b"global:attest_outcome")[..8]`
-/// Used by `sooth_market::settle` to verify the calling top-level ix is
-/// the legitimate adjudicator-side trigger. Companion to
-/// `REQUEST_LOCK_DISCRIMINATOR`. Verified against
-/// `packages/sdk-solana/src/anchor/sooth_adjudicator.json`'s
-/// `instructions[].discriminator` for `attest_outcome`.
-pub const ATTEST_OUTCOME_DISCRIMINATOR: [u8; 8] = [115, 210, 81, 230, 222, 14, 85, 209];
+// The four discriminators consumed by the gates below. See
+// `sooth_protocol_types::discriminators` for the canonical definitions and
+// the host-side test in `tests/{transfer_helpers,adjudicator_introspection}.rs`
+// for the `sha256("global:<ix>")[..8]` re-derivation that pins these values
+// against any drift in the on-chain Anchor codegen.
+pub use sooth_protocol_types::{
+    ATTEST_OUTCOME_DISCRIMINATOR, CLAIM_UNLOCKED_DISCRIMINATOR, REQUEST_LOCK_DISCRIMINATOR,
+    SELL_POSITIONS_DISCRIMINATOR,
+};
 
 /// On-chain wrapper. Borrows the sysvar account, scans the top-level ix
 /// list up to and including the current index, and accepts iff one of those

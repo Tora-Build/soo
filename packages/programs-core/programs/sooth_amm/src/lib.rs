@@ -33,30 +33,26 @@ pub use instructions::*;
 // base58 below decodes to a valid (non-curve) pubkey usable as a placeholder.
 declare_id!("SoothAMM11111111111111111111111111111111111");
 
-/// Canonical devnet USDC mint, used to pin the `usdc_mint` account on every
-/// instruction that touches the market vault. Mainnet uses `EPjFW...`; the
-/// SDK swaps the constant per cluster at deploy time.
-///
-/// TODO: replace with a workspace-shared constant once a `sooth-protocol-types`
-/// crate exists. Both `sooth_amm` and `sooth_market` will pin the same value.
-pub const USDC_MINT_DEVNET: Pubkey = anchor_lang::pubkey!(
-    "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
-);
+// `USDC_MINT_DEVNET` and `SOOTH_LAUNCHPAD_PROGRAM_ID` previously lived as
+// hand-pinned literals here. They now live in the workspace-shared
+// `sooth_protocol_types` crate (sister to `sooth-account-offsets`); we
+// re-export them at this path so existing call sites that reach for
+// `crate::USDC_MINT_DEVNET` / `crate::SOOTH_LAUNCHPAD_PROGRAM_ID` keep
+// resolving without a churn-pass on every `#[account(address = ...)]`
+// constraint. The compile-time assert below ties `crate::ID_CONST`
+// (Anchor's address-of-truth from `declare_id!`) back to the shared
+// constant so any drift between the two trips the build.
+pub use sooth_protocol_types::{SOOTH_LAUNCHPAD_PROGRAM_ID, USDC_MINT_DEVNET};
 
-/// `sooth_launchpad` program ID, mirrored as a const here to avoid a cyclic
-/// path-dep. `sooth_launchpad` already declares `sooth_amm` as a path dep
-/// (with `features = ["cpi"]`) for `create_market`'s composition; the
-/// reverse edge would close the cycle. The same pattern is used by
-/// `sooth_market::SOOTH_AMM_PROGRAM_ID`. Keep this in lock-step with
-/// `sooth_launchpad::declare_id!` — Anchor will emit
-/// `ConstraintAddress` at runtime if it drifts.
-///
-/// Used by `trade_positions` to bind the `protocol_config` account's owner
-/// to the launchpad program; the PDA seeds + `seeds::program` constraint
-/// then pins the derivation to the canonical singleton.
-pub const SOOTH_LAUNCHPAD_PROGRAM_ID: Pubkey = anchor_lang::pubkey!(
-    "SoothLP111111111111111111111111111111111111"
-);
+/// Compile-time assert that `declare_id!` (Anchor's source of truth for
+/// program ID, IDL emission, and dispatch) matches the value mirrored in
+/// `sooth_protocol_types::SOOTH_AMM_PROGRAM_ID` (the constant other
+/// programs pin in their `address = ...` / `owner = ...` / parent-ix
+/// introspection paths). Drift trips the build.
+const _: () = assert!(sooth_protocol_types::pubkey_eq(
+    crate::ID_CONST,
+    sooth_protocol_types::SOOTH_AMM_PROGRAM_ID,
+));
 
 /// Number of seconds AMM sell proceeds remain locked in the per-market
 /// `lock_vault` before the user can `claim_unlocked`. Architecture §4.3.

@@ -20,9 +20,12 @@
 //! - `ProtocolConfig` PDA — singleton — `[b"protocol_config"]`. Fee bps,
 //!   treasury pubkey, default trial period. Architecture §2.1.
 //! - `LpPosition` PDA per (creator, market) — pre-graduation LP token claim.
-//!   Architecture §1 row 7. Account stub-sized for the v1 surface.
-//! - `LpMint` SPL Mint per market — mint authority = `protocol_config` PDA.
-//!   Created by `seed_lp` in a future commit.
+//!   Architecture §1 row 7. Created by `seed_lp` (Wave 5C) alongside the
+//!   per-market `LpMint`; bookkeeping for the dismiss/refund flow.
+//! - `LpMint` SPL Mint per market — mint authority = `lp_mint_authority`
+//!   PDA (per-market, seeds `[b"lp_mint_authority", market_id]`).
+//!   Bootstrap-seeded by `seed_lp`; pre-graduation LP-mint-on-buy is a
+//!   separate `sooth_amm::trade_positions` follow-up (architecture §4.2).
 //!
 //! ## What this program **wraps** via CPI
 //!
@@ -66,12 +69,22 @@ pub use instructions::*;
 // then so the IDL-shape is stable across the workspace.
 declare_id!("SoothLP111111111111111111111111111111111111");
 
-/// Re-export of the canonical devnet USDC mint from `sooth_market`. We pull
-/// the constant transitively rather than triplicating it — see the long-term
-/// plan in `sooth_market::USDC_MINT_DEVNET`'s doc-comment for the
-/// `sooth-protocol-types` crate that will eventually own this. Used by
-/// `seed_lp` (when wired) to pin USDC-side ATAs in the LP-mint flow.
-pub use sooth_market::USDC_MINT_DEVNET;
+// `USDC_MINT_DEVNET` was previously re-exported from `sooth_market` to
+// avoid triplicating the constant. It now lives in the workspace-shared
+// `sooth_protocol_types` crate; we re-export it at this path so existing
+// `crate::USDC_MINT_DEVNET` call sites (and `sooth_market::USDC_MINT_DEVNET`
+// references in this crate's instructions module) keep resolving without
+// a churn-pass. Used by `seed_lp` / `distribute_fees` / `create_market`
+// to pin USDC-side ATAs.
+pub use sooth_protocol_types::USDC_MINT_DEVNET;
+
+/// Compile-time assert that `declare_id!` matches
+/// `sooth_protocol_types::SOOTH_LAUNCHPAD_PROGRAM_ID`. See the matching
+/// assertion in `sooth_amm/src/lib.rs` for the full rationale.
+const _: () = assert!(sooth_protocol_types::pubkey_eq(
+    crate::ID_CONST,
+    sooth_protocol_types::SOOTH_LAUNCHPAD_PROGRAM_ID,
+));
 
 #[program]
 pub mod sooth_launchpad {
@@ -122,13 +135,17 @@ pub mod sooth_launchpad {
         instructions::distribute_fees::handler(ctx)
     }
 
-    /// Mint LP tokens for a creator's seed deposit on a pre-graduation market.
-    /// EVM analogue: `LaunchpadEngine._mintLPTokens` (private, called from
-    /// `createMarket`). On Solana the LP-mint step is hoisted to its own ix
-    /// because the `LpMint` PDA needs `init` codegen which would push
-    /// `create_market`'s `try_accounts` frame past the SBF 4 KB ceiling (same
-    /// constraint that fragmented `sooth_market::initialize_market`). STUB —
-    /// body is `todo!()`.
+    /// Mint LP tokens for a creator's seed deposit on a pre-graduation
+    /// market. EVM analogue: `LaunchpadEngine._mintLPTokens` (private,
+    /// called from `createMarket`). On Solana the LP-mint step is hoisted
+    /// to its own ix because the `LpMint` PDA needs `init` codegen which
+    /// would push `create_market`'s `try_accounts` frame past the SBF
+    /// 4 KB ceiling (same constraint that fragmented
+    /// `sooth_market::initialize_market`). REAL handler (Wave 5C) — see
+    /// `instructions/seed_lp.rs` module comment for the hand-rolled
+    /// `system_instruction::create_account` + `token::initialize_mint`
+    /// + ATA-create + PDA-signed `mint_to` flow. Pre-graduation
+    /// LP-mint-on-buy (architecture §4.2) is a separate follow-up.
     pub fn seed_lp(ctx: Context<SeedLp>, args: SeedLpArgs) -> Result<()> {
         instructions::seed_lp::handler(ctx, args)
     }

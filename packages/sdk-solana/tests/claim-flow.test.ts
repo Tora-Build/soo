@@ -115,7 +115,6 @@ describe("AMM claim_unlocked flow", () => {
     // ─── 3. Attempt to claim BEFORE unlock_at — should fail (LockNotElapsed) ──
     const claimReqEarly = await adapter.buildClaim(marketRef, {
       outcome: 0,
-      // @ts-expect-error — meta channel.
       user: userRef,
       lockEntry: lockEntryRef,
     });
@@ -160,7 +159,6 @@ describe("AMM claim_unlocked flow", () => {
     // ─── 5. Claim — should succeed ──────────────────────────────────────
     const claimReq = await adapter.buildClaim(marketRef, {
       outcome: 0,
-      // @ts-expect-error — meta channel.
       user: userRef,
       lockEntry: lockEntryRef,
     });
