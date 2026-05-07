@@ -1,49 +1,92 @@
-// trading-window-e2e — SKIPPED.
+// trading-window-e2e — post-deadline guard, gated on Surfpool.
 //
-// Why skipped:
-//   The trading-window guard (Wave 6 / Codex C1 finding) lives at
-//   `packages/programs-core/programs/sooth_amm/src/instructions/
-//   trade_positions.rs` and asserts:
-//     require!(now >= market.start_time, MarketNotStarted);
-//     require!(now < market.deadline,    MarketDeadlinePassed);
-//   Validating BOTH branches against a live ix requires the Clock sysvar
-//   to be moved past `deadline` between two trades — exactly the same
-//   surface that `08-claim-unlocked` needs to skip on test-validator.
-//   There is no `setClock` RPC on solana-test-validator, so we cannot
-//   demonstrate the post-deadline rejection without either:
-//     - swapping the validator for surfpool (which exposes
-//       `surfpool_setClock`), or
-//     - shipping a test build with a tiny window via cargo feature flag,
-//       which diverges from the canonical .so we deploy in this suite.
-//   Demonstrating the open-window branch alone (now < deadline) is
-//   already covered by every other UI-driven spec in this suite — those
-//   succeed precisely because the seeded market sits well inside its
-//   trading window — so a happy-path-only spec here would be redundant.
+// Sequencing:
+//   1. Read Market.deadline from the seeded market PDA.
+//   2. Time-travel past `deadline + 1`.
+//   3. Try to buy via the adapter — assert the ix fails with the
+//      `TradingClosed` error from sooth_amm/src/error.rs:40
+//      ("Trading window has closed (now >= deadline)").
 //
-// Coverage already in place:
-//   - Cargo unit tests at `packages/programs-core/programs/sooth_amm/
-//     src/instructions/trade_positions.rs` + the LiteSVM/Mollusk-style
-//     fuzz at `packages/programs-core/tests/trading_window.rs` (Wave 6)
-//     cover both halves of the guard with synthetic Clock sysvars.
-//   - The C1 introspection check (deadline pre-empt in the UI) is
-//     exercised by the demo's own `src/components/features/
-//     SimpleTradingPanel.tsx` deadline-guard logic — the
-//     `04-wallet-not-connected` spec confirms the panel renders without
-//     a live ix when state is invalid; the same pattern shows
-//     "Deadline Passed" once `truth?.deadline` is in the past.
-//
-// What would unblock this on the demo's e2e harness:
-//   surfpool's setClock JSON-RPC. Switching the validator binary the
-//   e2e relies on would let us drive: connect wallet → confirm trade
-//   succeeds inside window → fast-forward Clock past `deadline` → click
-//   BUY → assert tx fails with `MarketDeadlinePassed` (custom error
-//   code 0x...) AND that the UI surfaces "Deadline Passed" at the
-//   button label. Until that switch happens, this spec stays skipped.
+// On stock test-validator the `isSurfpool()` probe returns false and the
+// describe block self-skips. The cargo unit tests at
+// `packages/programs-core/programs/sooth_amm/src/instructions/
+// trade_positions.rs` cover both halves of the C1 guard with synthetic
+// Clock sysvars; this spec adds the runtime-against-canonical-.so layer.
 
-import { test } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { PublicKey } from "@solana/web3.js";
+import { makeConnection } from "../helpers/onchain";
+import { loadFixture, marketIdBytes } from "../helpers/fixture";
+import {
+  buyViaAdapter,
+  loadTestKeypair,
+  fetchMarket,
+} from "../helpers/sdk-helpers";
+import { isSurfpool, timeTravel } from "../helpers/surfpool";
 
-test.describe("AMM trading-window guard (UI-driven)", () => {
-  test.skip("skipped: solana-test-validator has no setClock RPC; cannot warp past Market.deadline to trip the C1 guard at runtime. Cargo tests at programs-core/programs/sooth_amm cover both halves of the guard.", async () => {
-    // Intentionally empty — see file header for the unblock plan.
+const ONE_SHARE_WAD = 10n ** 18n;
+
+test.describe("AMM trading-window guard (Surfpool-gated)", () => {
+  test.beforeAll(async () => {
+    test.skip(
+      !(await isSurfpool()),
+      "requires Surfpool (surfnet_timeTravel cheatcode). Boot via `pnpm -F @sooth/demo dev:surfpool` and re-run, or trust the cargo coverage at programs-core/programs/sooth_amm/src/instructions/trade_positions.rs.",
+    );
+  });
+
+  test("buy past Market.deadline rejects with TradingClosed", async () => {
+    test.setTimeout(120_000);
+
+    const fixture = loadFixture();
+    const conn = makeConnection();
+    const signer = loadTestKeypair();
+    const idBytes = marketIdBytes(fixture);
+    const marketPda = new PublicKey(fixture.marketPda);
+    const usdcMint = new PublicKey(fixture.usdcMint);
+
+    const market = await fetchMarket(conn, marketPda);
+    if (!market) throw new Error("Market PDA missing in fixture");
+
+    // Compute the absolute target as seconds since epoch and warp via
+    // surfnet_timeTravel directly (the helper computes a delta from
+    // wall-clock now; for an absolute we'd want to swap to a slot-based
+    // call but the timestamp form is sufficient when we're warping into
+    // the future).
+    const nowSec = Math.floor(Date.now() / 1000);
+    const targetSec = Number(market.deadline) + 1;
+    const delta = targetSec - nowSec;
+    if (delta <= 0) {
+      // Seeded market is already expired (test-validator clock drift, or
+      // a rerun after a previous timeTravel). Push a small forward step
+      // to force the post-deadline branch.
+      await timeTravel(60);
+    } else {
+      await timeTravel(delta);
+    }
+
+    let failed = false;
+    let errMsg = "";
+    try {
+      await buyViaAdapter({
+        conn,
+        signer,
+        marketPda,
+        marketId: idBytes,
+        usdcMint,
+        outcome: 0,
+        deltaShares: ONE_SHARE_WAD,
+      });
+    } catch (e) {
+      failed = true;
+      errMsg = (e as Error).message ?? String(e);
+    }
+    expect(failed).toBe(true);
+    // sooth_amm error.rs `TradingClosed` is the variant; Anchor surfaces
+    // it in the program log as "Trading window has closed" plus the
+    // numeric error code. Either substring is sufficient signal.
+    expect(
+      errMsg.includes("TradingClosed") ||
+        errMsg.includes("Trading window has closed"),
+    ).toBe(true);
   });
 });

@@ -1,51 +1,129 @@
-// claim-unlocked-e2e — SKIPPED.
+// claim-unlocked-e2e — adapter-direct round-trip, gated on Surfpool.
 //
-// Why skipped:
-//   The on-chain LOCK_DURATION_SECS (sooth_amm) is 86_400 (24 hours). To
-//   exercise the claim path the validator's clock must advance past
-//   `LockEntry.unlock_at`. solana-test-validator does NOT expose any
-//   programmatic clock-warping RPC — there is no `setClock` /
-//   `warpToSlot` / `setSysvar(Clock)` hook on the bundled validator. The
-//   only ways to satisfy the gate against test-validator are:
-//     1. wait 24h of real wall-clock time, or
-//     2. patch the program's LOCK_DURATION_SECS to a tiny value via a
-//        feature-flagged build, redeploy, and rerun. Neither is appropriate
-//        for an automated UI e2e against the canonical .so binary.
+// Sequencing:
+//   1. Buy 10 YES via the adapter (puts YES shares on the user's Position).
+//   2. Sell 5 YES via the adapter (decrements yes_shares, allocates a fresh
+//      LockEntry PDA carrying the proceeds + unlock_at = now + 86_400).
+//   3. Surfpool `surfnet_timeTravel(+86_401s)` — bridges the lock window the
+//      bundled solana-test-validator can't, since it has no setClock RPC.
+//   4. Claim via the adapter against the LockEntry: assert user_usdc_ata
+//      grew by LockEntry.amount_usdc, lock_vault drained, LockEntry account
+//      closed (lamports → 0).
 //
-// What would unblock this on the demo's e2e harness:
-//   - surfpool / Test-validator-with-rpc-extensions: surfpool ships a
-//     `surfpool_setClock` JSON-RPC method (see
-//     https://github.com/txtx/surfpool#sysvar-overrides) that mutates the
-//     active Clock sysvar. Switching the e2e validator to surfpool would
-//     enable: airdrop SOL → buy → sell → fast-forward Clock to
-//     `unlock_at + 1` → claim → assert the funds moved out of lock_vault.
-//   - cargo-build-sbf with a feature flag (e.g. `--features e2e_short_lock`
-//     overriding LOCK_DURATION_SECS = 5) and a separate "e2e" target/
-//     deploy step. Adds CI complexity and divergence risk vs. the prod .so.
-//
-// Coverage already in place:
-//   The claim-flow round-trip (sell → wait → claim, including unlock_at
-//   gating, double-claim rejection, and zeroed LockEntry close) is
-//   exercised in `packages/sdk-solana/tests/claim-flow.test.ts` against
-//   solana-bankrun, which DOES expose a `Clock` sysvar override via
-//   `BanksClient.warpToSlot` and direct `setAccount` on the Clock sysvar.
-//   The test asserts:
-//     - claim before unlock_at → InstructionError (CustomError: NotYetUnlocked)
-//     - claim after unlock_at → user_usdc_ata += LockEntry.amount_usdc,
-//       lock_vault -= same, LockEntry account closed (lamports → 0).
-//   That spec covers the program-level invariants; the only thing this
-//   e2e adds would be the UI dispatcher path (chain-shim
-//   `dispatchClaim` → `adapter.buildClaim` → `sooth_amm::claim_unlocked`),
-//   which the SDK adapter unit tests at
-//   `packages/sdk-solana/tests/adapter-claim.test.ts` already cover by
-//   matching the exact ix shape against the IDL.
+// On stock test-validator the `isSurfpool()` probe returns false and the
+// describe block self-skips with a pointer to `pnpm dev:surfpool`. The
+// program-level invariants (claim before unlock_at → NotYetUnlocked,
+// double-claim rejection) are still covered by
+// `packages/sdk-solana/tests/claim-flow.test.ts` against bankrun.
 
-import { test } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { PublicKey } from "@solana/web3.js";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { makeConnection, getAccountData } from "../helpers/onchain";
+import { loadFixture, marketIdBytes } from "../helpers/fixture";
+import {
+  buyViaAdapter,
+  sellViaAdapter,
+  claimUnlockedViaAdapter,
+  loadTestKeypair,
+  derivePositionPda,
+  deriveLockAuthorityPda,
+  fetchPosition,
+  fetchLockEntry,
+} from "../helpers/sdk-helpers";
+import { isSurfpool, timeTravel } from "../helpers/surfpool";
 
-test.describe("AMM claim_unlocked (UI-driven)", () => {
-  test.skip("skipped: solana-test-validator has no setClock RPC; LOCK_DURATION_SECS=86_400 prevents real-time validation. Coverage lives at packages/sdk-solana/tests/claim-flow.test.ts (bankrun warpToSlot).", async () => {
-    // Intentionally empty — see the file header for the long-form
-    // rationale and the unblock plan (surfpool setClock OR
-    // feature-flagged short-lock build).
+const TEN_SHARES_WAD = 10n * 10n ** 18n;
+const FIVE_SHARES_WAD = 5n * 10n ** 18n;
+const LOCK_DURATION_SECS = 86_400;
+
+test.describe("AMM claim_unlocked (adapter-direct, Surfpool-gated)", () => {
+  test.beforeAll(async () => {
+    test.skip(
+      !(await isSurfpool()),
+      "requires Surfpool (surfnet_timeTravel cheatcode). Boot via `pnpm -F @sooth/demo dev:surfpool` and re-run, or trust the bankrun coverage at packages/sdk-solana/tests/claim-flow.test.ts.",
+    );
+  });
+
+  test("buy → sell → time-travel 24h+1s → claim drains LockEntry", async () => {
+    test.setTimeout(180_000);
+
+    const fixture = loadFixture();
+    const conn = makeConnection();
+    const signer = loadTestKeypair();
+    const idBytes = marketIdBytes(fixture);
+    const marketPda = new PublicKey(fixture.marketPda);
+    const usdcMint = new PublicKey(fixture.usdcMint);
+    const positionPda = derivePositionPda(idBytes, signer.publicKey);
+    const lockAuthority = deriveLockAuthorityPda(idBytes);
+    const lockVault = getAssociatedTokenAddressSync(
+      usdcMint,
+      lockAuthority,
+      true,
+    );
+    const userUsdcAta = getAssociatedTokenAddressSync(
+      usdcMint,
+      signer.publicKey,
+    );
+
+    // 1) Buy 10 YES so the user has a position to sell.
+    await buyViaAdapter({
+      conn,
+      signer,
+      marketPda,
+      marketId: idBytes,
+      usdcMint,
+      outcome: 0,
+      deltaShares: TEN_SHARES_WAD,
+    });
+
+    // 2) Sell 5 YES — emits a LockEntry at the pre-sell lock_nonce.
+    const { lockEntryPda } = await sellViaAdapter({
+      conn,
+      signer,
+      marketPda,
+      marketId: idBytes,
+      usdcMint,
+      outcome: 0,
+      deltaShares: FIVE_SHARES_WAD,
+    });
+
+    const lockEntryBefore = await fetchLockEntry(conn, lockEntryPda);
+    if (!lockEntryBefore) throw new Error("LockEntry missing post-sell");
+    const lockedAmount = lockEntryBefore.amountUsdc;
+    expect(lockedAmount).toBeGreaterThan(0n);
+
+    const readBalance = (ata: PublicKey) =>
+      conn.getTokenAccountBalance(ata).then((r) => BigInt(r.value.amount));
+    const userUsdcBefore = await readBalance(userUsdcAta);
+    const lockVaultBefore = await readBalance(lockVault);
+    expect(lockVaultBefore).toBeGreaterThanOrEqual(lockedAmount);
+
+    // 3) Fast-forward past unlock_at. +1s margin so the program-side
+    //    `now >= unlock_at` check is unambiguously true.
+    await timeTravel(LOCK_DURATION_SECS + 1);
+
+    // 4) Claim via the adapter — closes LockEntry, moves USDC.
+    await claimUnlockedViaAdapter({
+      conn,
+      signer,
+      marketPda,
+      marketId: idBytes,
+      usdcMint,
+      lockEntryPda,
+    });
+
+    const lockEntryAfter = await getAccountData(conn, lockEntryPda);
+    expect(lockEntryAfter).toBeNull(); // account closed (lamports → 0)
+
+    const userUsdcAfter = await readBalance(userUsdcAta);
+    const lockVaultAfter = await readBalance(lockVault);
+    expect(userUsdcAfter - userUsdcBefore).toBe(lockedAmount);
+    expect(lockVaultBefore - lockVaultAfter).toBe(lockedAmount);
+
+    // Sanity: Position survives — only LockEntry was closed.
+    const posAfter = await fetchPosition(conn, positionPda);
+    if (!posAfter) throw new Error("Position closed unexpectedly");
+    expect(posAfter.yesShares).toBe(TEN_SHARES_WAD - FIVE_SHARES_WAD);
   });
 });
