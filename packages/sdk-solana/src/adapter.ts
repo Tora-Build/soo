@@ -50,6 +50,7 @@ import {
   deriveAmmStatePda,
   deriveFeePoolVaultAta,
   deriveLockAuthorityPda,
+  deriveAdjudicatorPda,
   deriveLockEntryPda,
   deriveLockVaultAta,
   deriveLpMintPda,
@@ -138,6 +139,7 @@ export class SolanaChainAdapter implements ChainAdapter {
   private readonly soothAmm: AnyProgram;
   private readonly soothMarket: AnyProgram;
   private readonly soothLaunchpad: AnyProgram;
+  private readonly soothAdjudicator: AnyProgram;
 
   // Failing-program-ID → error code table. Populated at construction from the
   // resolved program IDs. Decoders use this to disambiguate Anchor codes
@@ -159,6 +161,11 @@ export class SolanaChainAdapter implements ChainAdapter {
         soothLaunchpad:
           opts.programIds.soothLaunchpad ??
           new PublicKey(soothLaunchpadIdl.address),
+        // Same fallback story for sooth_adjudicator: required by
+        // buildRequestLock / buildAttestOutcome (operator path).
+        soothAdjudicator:
+          opts.programIds.soothAdjudicator ??
+          new PublicKey(soothAdjudicatorIdl.address),
       };
     } else {
       const ammStr = opts.node.programs?.soothAmm ?? soothAmmIdl.address;
@@ -166,10 +173,14 @@ export class SolanaChainAdapter implements ChainAdapter {
       const lpStr =
         (opts.node.programs as { soothLaunchpad?: string } | undefined)
           ?.soothLaunchpad ?? soothLaunchpadIdl.address;
+      const adjStr =
+        (opts.node.programs as { soothAdjudicator?: string } | undefined)
+          ?.soothAdjudicator ?? soothAdjudicatorIdl.address;
       this.programIds = {
         soothAmm: new PublicKey(ammStr),
         soothMarket: new PublicKey(mktStr),
         soothLaunchpad: new PublicKey(lpStr),
+        soothAdjudicator: new PublicKey(adjStr),
       };
     }
 
@@ -224,9 +235,17 @@ export class SolanaChainAdapter implements ChainAdapter {
         new PublicKey(soothLaunchpadIdl.address)
       ).toBase58(),
     };
+    const adjudicatorIdl = {
+      ...soothAdjudicatorIdl,
+      address: (
+        this.programIds.soothAdjudicator ??
+        new PublicKey(soothAdjudicatorIdl.address)
+      ).toBase58(),
+    };
     this.soothAmm = new Program(ammIdl as Idl, provider);
     this.soothMarket = new Program(marketIdl as Idl, provider);
     this.soothLaunchpad = new Program(launchpadIdl as Idl, provider);
+    this.soothAdjudicator = new Program(adjudicatorIdl as Idl, provider);
 
     // Build the program-ID → error-table lookup. sooth_adjudicator isn't
     // exposed as a separate `programIds` field today (the SDK doesn't build
@@ -383,6 +402,41 @@ export class SolanaChainAdapter implements ChainAdapter {
 
   async readPortfolio(_user: AddressRef): Promise<Portfolio> {
     notImplemented("readPortfolio");
+  }
+
+  /**
+   * Fetch the per-market `Adjudicator` PDA. Operator UI calls this to
+   * check whether the connected wallet is the registered authority for a
+   * given market (and to surface the attested outcome / dispute state).
+   *
+   * Returns null when the PDA hasn't been initialized yet (the
+   * register_adjudicator ix runs as part of create_market, so this should
+   * only be null for malformed deployments).
+   */
+  async readAdjudicator(market: MarketRef): Promise<{
+    market: string;
+    authority: string;
+    attestedOutcome: number | null;
+    disputed: boolean;
+  } | null> {
+    const marketPda = decodePubkeyRef(market);
+    if (!this.programIds.soothAdjudicator) return null;
+    const [adjudicatorPda] = deriveAdjudicatorPda(marketPda, {
+      ...this.programIds,
+      soothAdjudicator: this.programIds.soothAdjudicator,
+    });
+    const raw = await (
+      this.soothAdjudicator.account as any
+    ).adjudicator.fetchNullable(adjudicatorPda);
+    if (!raw) return null;
+    const attested = raw.attestedOutcome;
+    return {
+      market: (raw.market as PublicKey).toBase58(),
+      authority: (raw.authority as PublicKey).toBase58(),
+      attestedOutcome:
+        attested === null || attested === undefined ? null : Number(attested),
+      disputed: !!raw.disputed,
+    };
   }
 
   /**
@@ -1193,6 +1247,140 @@ export class SolanaChainAdapter implements ChainAdapter {
         operation: kind === "mint" ? "mintCompleteSet" : "mergeCompleteSet",
         amountStr: args.amount.toString(),
         preIxs,
+      },
+    };
+  }
+
+  // ─── Operator path (request_lock / attest_outcome) ─────────────────────
+  //
+  // Both ixs live on `sooth_adjudicator` and CPI into `sooth_market`:
+  //   request_lock      → sooth_market::lock_for_resolution
+  //                       (Market.lifecycle: Open → Locked)
+  //   attest_outcome(o) → sooth_market::settle(winning_outcome=o)
+  //                       (Market.lifecycle: Locked → Settled, sets
+  //                        Market.winning_outcome)
+  //
+  // The signer must be `Adjudicator.authority` (set at register_adjudicator
+  // time). v1 Manual variant — future ZkTLS / agent variants would
+  // replace the auth check with verifier-program logic.
+
+  async buildRequestLock(
+    market: MarketRef,
+    args: { user: AddressRef },
+  ): Promise<TradeRequest> {
+    if (!args.user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method:
+          "buildRequestLock — args.user (Solana-only meta) is required at build time",
+      });
+    }
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    if (!this.programIds.soothAdjudicator) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildRequestLock: programIds.soothAdjudicator is missing",
+      });
+    }
+    const [adjudicatorPda] = deriveAdjudicatorPda(marketPda, {
+      ...this.programIds,
+      soothAdjudicator: this.programIds.soothAdjudicator,
+    });
+
+    const ix: TransactionInstruction = await (
+      this.soothAdjudicator.methods as any
+    )
+      .requestLock()
+      .accounts({
+        adjudicator: adjudicatorPda,
+        market: marketPda,
+        authority: userPk,
+        soothMarketProgram: this.programIds.soothMarket,
+        instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+      })
+      .instruction();
+
+    const accounts = ix.keys.map((k) => ({
+      pubkey: k.pubkey.toBase58(),
+      isSigner: k.isSigner,
+      isWritable: k.isWritable,
+    }));
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        userPk: userPk.toBase58(),
+        ixData: Buffer.from(ix.data).toString("base64"),
+        ixKeys: accounts,
+        ixProgramId: ix.programId.toBase58(),
+        operation: "requestLock",
+      },
+    };
+  }
+
+  async buildAttestOutcome(
+    market: MarketRef,
+    args: { user: AddressRef; winningOutcome: 0 | 1 | 2 },
+  ): Promise<TradeRequest> {
+    if (!args.user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method:
+          "buildAttestOutcome — args.user (Solana-only meta) is required at build time",
+      });
+    }
+    if (![0, 1, 2].includes(args.winningOutcome)) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildAttestOutcome: winningOutcome must be 0/1/2, got ${args.winningOutcome}`,
+      });
+    }
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    if (!this.programIds.soothAdjudicator) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildAttestOutcome: programIds.soothAdjudicator is missing",
+      });
+    }
+    const [adjudicatorPda] = deriveAdjudicatorPda(marketPda, {
+      ...this.programIds,
+      soothAdjudicator: this.programIds.soothAdjudicator,
+    });
+
+    const ix: TransactionInstruction = await (
+      this.soothAdjudicator.methods as any
+    )
+      .attestOutcome(args.winningOutcome)
+      .accounts({
+        adjudicator: adjudicatorPda,
+        market: marketPda,
+        authority: userPk,
+        soothMarketProgram: this.programIds.soothMarket,
+        instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+      })
+      .instruction();
+
+    const accounts = ix.keys.map((k) => ({
+      pubkey: k.pubkey.toBase58(),
+      isSigner: k.isSigner,
+      isWritable: k.isWritable,
+    }));
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        userPk: userPk.toBase58(),
+        ixData: Buffer.from(ix.data).toString("base64"),
+        ixKeys: accounts,
+        ixProgramId: ix.programId.toBase58(),
+        operation: "attestOutcome",
+        winningOutcome: args.winningOutcome,
       },
     };
   }

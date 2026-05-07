@@ -339,6 +339,12 @@ export async function dispatchAmmWrite(
   if (call.functionName === "redeem") {
     return dispatchRedeem(call, ctx);
   }
+  if (call.functionName === "requestLock") {
+    return dispatchRequestLock(call, ctx);
+  }
+  if (call.functionName === "attestOutcome") {
+    return dispatchAttestOutcome(call, ctx);
+  }
   return NOT_HANDLED;
 }
 
@@ -836,6 +842,83 @@ async function dispatchRedeem(
   const receipt = await ctx.adapter.submit(req, ctx.signer);
   const sig = receipt.txId.replace(/^sol:/, "");
   return synthHashFromSignature(sig);
+}
+
+/**
+ * Operator: request_lock — adjudicator authority drives Market.lifecycle
+ * Open → Locked. CPI'd into sooth_market::lock_for_resolution. Caller
+ * must be Adjudicator.authority for the target market (set at
+ * register_adjudicator time).
+ *
+ * Args:
+ *   args[0]: market reference — `0x<base58>` or `sol:<base58>`
+ */
+async function dispatchRequestLock(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  if (!ctx.signer) {
+    throw new Error(
+      "requestLock: no Solana signer available — connect a wallet first",
+    );
+  }
+  if (!ctx.userBase58) {
+    throw new Error(
+      "requestLock: no Solana wallet pubkey — connect a wallet first",
+    );
+  }
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) {
+    throw new Error("requestLock: invalid market reference");
+  }
+  const req = await ctx.adapter.buildRequestLock(marketRef, {
+    user: `sol:${ctx.userBase58}`,
+  });
+  const receipt = await ctx.adapter.submit(req, ctx.signer);
+  return synthHashFromSignature(receipt.txId.replace(/^sol:/, ""));
+}
+
+/**
+ * Operator: attest_outcome — adjudicator authority drives
+ * Market.lifecycle Locked → Settled with the chosen winning_outcome.
+ * CPI'd into sooth_market::settle.
+ *
+ * Args:
+ *   args[0]: market reference — `0x<base58>` or `sol:<base58>`
+ *   args[1]: winning outcome — 0 (NO), 1 (YES), 2 (INVALID)
+ */
+async function dispatchAttestOutcome(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  if (!ctx.signer) {
+    throw new Error(
+      "attestOutcome: no Solana signer available — connect a wallet first",
+    );
+  }
+  if (!ctx.userBase58) {
+    throw new Error(
+      "attestOutcome: no Solana wallet pubkey — connect a wallet first",
+    );
+  }
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) {
+    throw new Error("attestOutcome: invalid market reference");
+  }
+  const outcome = Number(args[1] ?? -1);
+  if (![0, 1, 2].includes(outcome)) {
+    throw new Error(
+      `attestOutcome: winningOutcome must be 0/1/2, got ${args[1]}`,
+    );
+  }
+  const req = await ctx.adapter.buildAttestOutcome(marketRef, {
+    user: `sol:${ctx.userBase58}`,
+    winningOutcome: outcome as 0 | 1 | 2,
+  });
+  const receipt = await ctx.adapter.submit(req, ctx.signer);
+  return synthHashFromSignature(receipt.txId.replace(/^sol:/, ""));
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

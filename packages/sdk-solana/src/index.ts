@@ -11,6 +11,7 @@ export type { SoothErrorInit, SoothErrorKind } from "./errors.js";
 // derive accounts independently of the adapter (e.g. an indexer mirroring
 // the seed conventions).
 export {
+  deriveAdjudicatorPda,
   deriveAmmStatePda,
   deriveLockAuthorityPda,
   deriveLockEntryPda,

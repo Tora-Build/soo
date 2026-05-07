@@ -29,6 +29,9 @@ export interface ProgramIds {
   // to the IDL placeholder (`SoothLP111…`) when `soothLaunchpad` is omitted
   // — same convention as `soothAmm` / `soothMarket`.
   soothLaunchpad?: PublicKey;
+  // Optional — only required by `buildRequestLock` / `buildAttestOutcome`
+  // (operator settle path). Same fallback convention.
+  soothAdjudicator?: PublicKey;
 }
 
 const enc = new TextEncoder();
@@ -115,6 +118,20 @@ export function derivePositionPda(
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_POS), id, user.toBuffer()],
     programs.soothAmm,
+  );
+}
+
+// Owned by `sooth_adjudicator`. Seeds: [b"adjudicator", market_pda]. The
+// `Adjudicator` PDA holds the per-market authority + kind + attested-outcome
+// state. Required by `request_lock` / `attest_outcome` / `dispute` ix
+// account lists.
+export function deriveAdjudicatorPda(
+  marketPda: PublicKey,
+  programs: ProgramIds & { soothAdjudicator: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("adjudicator"), marketPda.toBuffer()],
+    programs.soothAdjudicator,
   );
 }
 

@@ -48,6 +48,7 @@ import {
 import { Clock, start, type ProgramTestContext } from "solana-bankrun";
 
 import {
+  soothAdjudicatorIdl,
   soothAmmIdl,
   soothLaunchpadIdl,
   soothMarketIdl,
@@ -83,11 +84,13 @@ export const REPO_ROOT = resolve(__dirname, "..", "..", "..", "..");
 export const SOOTH_AMM_ID = new PublicKey(soothAmmIdl.address);
 export const SOOTH_MARKET_ID = new PublicKey(soothMarketIdl.address);
 export const SOOTH_LAUNCHPAD_ID = new PublicKey(soothLaunchpadIdl.address);
+export const SOOTH_ADJUDICATOR_ID = new PublicKey(soothAdjudicatorIdl.address);
 
 export const PROGRAMS: ProgramIds = {
   soothAmm: SOOTH_AMM_ID,
   soothMarket: SOOTH_MARKET_ID,
   soothLaunchpad: SOOTH_LAUNCHPAD_ID,
+  soothAdjudicator: SOOTH_ADJUDICATOR_ID,
 };
 
 export interface SmokeContext {
