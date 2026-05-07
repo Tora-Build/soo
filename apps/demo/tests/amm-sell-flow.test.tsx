@@ -11,14 +11,10 @@
 // QuickTradeProvider already present elsewhere — the AMM page itself
 // doesn't depend on it).
 //
-// `.skip` rationale: the on-chain `sell_positions` ix from Wave 1A has a
-// PDA-signer bug — `vault_authority` is owned by `sooth_market` but the
-// AMM CPIs `invoke_signed` with seeds derived against `sooth_amm::ID`,
-// which produces a different PDA. The SPL-Token transfer fails with
-// "Cross-program invocation with unauthorized signer or writable account".
-// See `packages/sdk-solana/tests/sell-flow.test.ts` for the same skip on
-// the SDK side. The test stays in tree so it goes green automatically the
-// moment the program is re-rolled with the correct authority placement.
+// Wave 1B fix landed — `sell_positions` now CPIs into
+// `sooth_market::transfer_to_lock` so the PDA-signed transfer happens from
+// the program that owns the `vault_authority` PDA. See
+// `packages/sdk-solana/tests/sell-flow.test.ts` for the matching note.
 
 import { afterEach, beforeAll, expect, test } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -71,7 +67,7 @@ afterEach(() => {
   cleanup();
 });
 
-test.skip("AMM sell YES end-to-end against bankrun", async () => {
+test("AMM sell YES end-to-end against bankrun", async () => {
   const t0 = Date.now();
   const smoke = await bootSmoke({
     bWad: 1_000n * WAD,
@@ -162,12 +158,13 @@ test.skip("AMM sell YES end-to-end against bankrun", async () => {
     { timeout: 10_000 },
   );
 
-  // Switch to SELL mode. Upstream's panel exposes a mode toggle; the
-  // sell-button has data-testid="sell-button" once SELL is active.
-  // The mode toggle is a button group; we click the SELL tab via its
-  // visible label.
+  // Switch to SELL mode. Upstream's panel exposes a button group with two
+  // toggles (`data-testid="trade-mode-buy"` and `trade-mode-sell`); the
+  // visible label routes through `t("common.sell")` which jsdom may render
+  // as the bare i18n key ("common.sell") in tests where the i18n provider
+  // isn't fully wired. Targeting the testid keeps the assertion robust.
   const user = userEvent.setup();
-  const sellTab = await screen.findByRole("button", { name: /^sell$/i });
+  const sellTab = await screen.findByTestId("trade-mode-sell");
   await user.click(sellTab);
 
   // Wait for the panel to re-render in sell mode and the quote to populate.

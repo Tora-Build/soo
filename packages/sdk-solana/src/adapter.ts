@@ -549,6 +549,11 @@ export class SolanaChainAdapter implements ChainAdapter {
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
         rent: SYSVAR_RENT_PUBKEY,
+        // Wave 1B: `sell_positions` now CPIs into `sooth_market::transfer_to_lock`
+        // for the PDA-signed `vault → lock_vault` transfer. The `vault_authority`
+        // PDA is owned by `sooth_market`, so the AMM cannot `invoke_signed`
+        // against it directly — see the matching commit on the on-chain side.
+        soothMarketProgram: this.programIds.soothMarket,
       })
       .instruction();
 
@@ -657,6 +662,10 @@ export class SolanaChainAdapter implements ChainAdapter {
         usdcMint: this.usdcMint,
         user: userPk,
         tokenProgram: TOKEN_PROGRAM_ID,
+        // Wave 1B: `claim_unlocked` now CPIs into
+        // `sooth_market::transfer_from_lock_vault` for the PDA-signed
+        // `lock_vault → user_usdc_ata` transfer.
+        soothMarketProgram: this.programIds.soothMarket,
       })
       .instruction();
 

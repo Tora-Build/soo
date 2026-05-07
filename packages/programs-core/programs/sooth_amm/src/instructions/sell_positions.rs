@@ -32,7 +32,10 @@
 //! `_executeSell(..., minProceeds, ...)`.
 
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+use anchor_spl::token::{Mint, Token, TokenAccount};
+
+use sooth_market::cpi::accounts::TransferToLock;
+use sooth_market::program::SoothMarket;
 
 use crate::error::SoothAmmError;
 use crate::events::PositionSold;
@@ -75,8 +78,12 @@ pub struct SellPositions<'info> {
     )]
     pub position: Box<Account<'info, Position>>,
 
-    /// Vault authority signer-only PDA. The AMM signs with this PDA on the
-    /// SELL path to move USDC out of `market_vault`. CHECK: derived via seeds.
+    /// Vault authority signer-only PDA. NOT signed-by here anymore — the
+    /// PDA is owned by `sooth_market`, so the actual `invoke_signed` happens
+    /// inside the `sooth_market::transfer_to_lock` CPI (Wave 1B fix). We
+    /// still declare it as an account so we can forward it to the CPI and
+    /// so the `market_vault.token::authority` constraint has an anchor.
+    /// CHECK: derived via seeds.
     #[account(
         seeds = [b"vault", market.market_id.as_ref()],
         bump = market.vault_authority_bump,
@@ -85,7 +92,8 @@ pub struct SellPositions<'info> {
     pub vault_authority: UncheckedAccount<'info>,
 
     /// Lock-authority signer-only PDA. Constraint anchor for `lock_vault`;
-    /// the AMM doesn't sign with it on this ix (only on `claim_unlocked`).
+    /// owned by `sooth_market`, signed-with by the
+    /// `sooth_market::transfer_to_lock` CPI (not directly here).
     /// CHECK: derived via seeds.
     #[account(
         seeds = [b"lock", market.market_id.as_ref()],
@@ -142,6 +150,10 @@ pub struct SellPositions<'info> {
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,
+
+    /// `sooth_market` program — CPI'd into for the PDA-signed
+    /// `vault → lock_vault` transfer. Mandatory after the Wave 1B fix.
+    pub sooth_market_program: Program<'info, SoothMarket>,
 }
 
 pub fn handler(
@@ -157,21 +169,32 @@ pub fn handler(
     );
     require!(delta_shares < 0, SoothAmmError::ZeroDelta);
 
-    let market = &ctx.accounts.market;
-    require!(market.is_open(), SoothAmmError::MarketNotOpen);
+    require!(ctx.accounts.market.is_open(), SoothAmmError::MarketNotOpen);
 
     // Trading window guard — same as buy path. C1 (Codex) note in
     // `trade_positions.rs` covers the rationale (post-deadline / pre-start
     // sells must be rejected on-chain).
     let now = Clock::get()?.unix_timestamp;
-    require!(now >= market.start_time, SoothAmmError::TradingNotStarted);
-    require!(now < market.deadline, SoothAmmError::TradingClosed);
+    require!(
+        now >= ctx.accounts.market.start_time,
+        SoothAmmError::TradingNotStarted
+    );
+    require!(
+        now < ctx.accounts.market.deadline,
+        SoothAmmError::TradingClosed
+    );
 
-    let amm = &mut ctx.accounts.amm_state;
-    require!(!amm.is_dismissed, SoothAmmError::MarketDismissed);
-    require!(amm.b > 0, SoothAmmError::InvalidLiquidity);
+    // Snapshot fields off `market` we'll need after the CPI (the CPI takes
+    // `ctx.accounts.market.to_account_info()`, which is fine, but we want
+    // to capture pubkey-by-value to use in the LockEntry / event emission
+    // without re-borrowing across the CPI).
+    let market_key = ctx.accounts.market.key();
 
-    let position = &mut ctx.accounts.position;
+    require!(
+        !ctx.accounts.amm_state.is_dismissed,
+        SoothAmmError::MarketDismissed
+    );
+    require!(ctx.accounts.amm_state.b > 0, SoothAmmError::InvalidLiquidity);
 
     // ── 2. Compute LMSR cost delta ───────────────────────────────────────
     let (d_yes, d_no) = if outcome == OUTCOME_YES {
@@ -180,8 +203,14 @@ pub fn handler(
         (0i128, delta_shares)
     };
 
-    let cost_wad: i128 = cost_delta(amm.q_yes, amm.q_no, amm.b, d_yes, d_no)
-        .map_err(map_math_err)?;
+    let cost_wad: i128 = cost_delta(
+        ctx.accounts.amm_state.q_yes,
+        ctx.accounts.amm_state.q_no,
+        ctx.accounts.amm_state.b,
+        d_yes,
+        d_no,
+    )
+    .map_err(map_math_err)?;
 
     // For a sell `cost_wad` should be ≤ 0 (proceeds back to user). A
     // non-negative value means LMSR returned cost — the args are wrong.
@@ -205,79 +234,88 @@ pub fn handler(
     // for the solvency rationale.
     let proceeds_usdc: u64 = wad_to_usdc_floor(proceeds_wad).map_err(map_math_err)?;
 
-    // ── 5. State mutation ────────────────────────────────────────────────
-    if outcome == OUTCOME_YES {
-        amm.q_yes = amm
-            .q_yes
-            .checked_add(delta_shares)
-            .ok_or(error!(SoothAmmError::MathOverflow))?;
-        position.yes_shares = position
-            .yes_shares
-            .checked_add(delta_shares)
-            .ok_or(error!(SoothAmmError::MathOverflow))?;
-        require!(position.yes_shares >= 0, SoothAmmError::InsufficientShares);
-    } else {
-        amm.q_no = amm
-            .q_no
-            .checked_add(delta_shares)
-            .ok_or(error!(SoothAmmError::MathOverflow))?;
-        position.no_shares = position
-            .no_shares
-            .checked_add(delta_shares)
-            .ok_or(error!(SoothAmmError::MathOverflow))?;
-        require!(position.no_shares >= 0, SoothAmmError::InsufficientShares);
+    // ── 5. State mutation (scoped — must drop borrows before the CPI) ────
+    {
+        let amm = &mut ctx.accounts.amm_state;
+        let position = &mut ctx.accounts.position;
+        if outcome == OUTCOME_YES {
+            amm.q_yes = amm
+                .q_yes
+                .checked_add(delta_shares)
+                .ok_or(error!(SoothAmmError::MathOverflow))?;
+            position.yes_shares = position
+                .yes_shares
+                .checked_add(delta_shares)
+                .ok_or(error!(SoothAmmError::MathOverflow))?;
+            require!(position.yes_shares >= 0, SoothAmmError::InsufficientShares);
+        } else {
+            amm.q_no = amm
+                .q_no
+                .checked_add(delta_shares)
+                .ok_or(error!(SoothAmmError::MathOverflow))?;
+            position.no_shares = position
+                .no_shares
+                .checked_add(delta_shares)
+                .ok_or(error!(SoothAmmError::MathOverflow))?;
+            require!(position.no_shares >= 0, SoothAmmError::InsufficientShares);
+        }
     }
 
-    // ── 6. PDA-signed CPI: market_vault → lock_vault ─────────────────────
-    let market_id = market.market_id;
-    let vault_authority_bump = market.vault_authority_bump;
-    let signer_seeds: &[&[&[u8]]] = &[&[
-        b"vault",
-        market_id.as_ref(),
-        &[vault_authority_bump],
-    ]];
-
+    // ── 6. CPI into sooth_market::transfer_to_lock ───────────────────────
+    //
+    // The `vault_authority` PDA is owned by `sooth_market`, so the AMM can't
+    // `invoke_signed` against it directly. We delegate the actual transfer
+    // (and the PDA signing) to the `transfer_to_lock` helper. See
+    // `sooth_market::instructions::transfer_to_lock` for the auth model.
     if proceeds_usdc > 0 {
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.market_vault.to_account_info(),
-                    to: ctx.accounts.lock_vault.to_account_info(),
-                    authority: ctx.accounts.vault_authority.to_account_info(),
-                },
-                signer_seeds,
-            ),
-            proceeds_usdc,
-        )?;
+        let cpi_accounts = TransferToLock {
+            market: ctx.accounts.market.to_account_info(),
+            vault_authority: ctx.accounts.vault_authority.to_account_info(),
+            vault: ctx.accounts.market_vault.to_account_info(),
+            lock_vault: ctx.accounts.lock_vault.to_account_info(),
+            position: ctx.accounts.position.to_account_info(),
+            usdc_mint: ctx.accounts.usdc_mint.to_account_info(),
+            user: ctx.accounts.user.to_account_info(),
+            token_program: ctx.accounts.token_program.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.sooth_market_program.to_account_info(),
+            cpi_accounts,
+        );
+        sooth_market::cpi::transfer_to_lock(cpi_ctx, proceeds_usdc)?;
     }
 
     // ── 7. Populate the freshly-init'd LockEntry ─────────────────────────
     let unlock_at = now
         .checked_add(LOCK_DURATION_SECS)
         .ok_or(error!(SoothAmmError::MathOverflow))?;
-    let nonce_at_init = position.lock_nonce;
-    let lock_entry = &mut ctx.accounts.lock_entry;
-    lock_entry.user = ctx.accounts.user.key();
-    lock_entry.market = market.key();
-    lock_entry.amount_usdc = proceeds_usdc;
-    lock_entry.unlock_at = unlock_at;
-    lock_entry.nonce = nonce_at_init;
-    lock_entry.bump = ctx.bumps.lock_entry;
+    let nonce_at_init = ctx.accounts.position.lock_nonce;
+    let lock_entry_bump = ctx.bumps.lock_entry;
+    let user_key = ctx.accounts.user.key();
+    {
+        let lock_entry = &mut ctx.accounts.lock_entry;
+        lock_entry.user = user_key;
+        lock_entry.market = market_key;
+        lock_entry.amount_usdc = proceeds_usdc;
+        lock_entry.unlock_at = unlock_at;
+        lock_entry.nonce = nonce_at_init;
+        lock_entry.bump = lock_entry_bump;
+    }
 
     // ── 8. Bump the per-Position lock-nonce counter ──────────────────────
-    position.lock_nonce = position
-        .lock_nonce
+    let new_nonce = nonce_at_init
         .checked_add(1)
         .ok_or(error!(SoothAmmError::MathOverflow))?;
+    ctx.accounts.position.lock_nonce = new_nonce;
 
     // ── 9. Emit ─────────────────────────────────────────────────────────
+    let lock_entry_key = ctx.accounts.lock_entry.key();
     emit!(PositionSold {
-        market: market.key(),
-        user: ctx.accounts.user.key(),
+        market: market_key,
+        user: user_key,
         outcome,
         shares_sold: delta_shares.unsigned_abs(),
-        lock_entry: lock_entry.key(),
+        lock_entry: lock_entry_key,
         amount_usdc: proceeds_usdc,
         unlock_at,
     });

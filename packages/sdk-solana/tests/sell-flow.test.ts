@@ -29,23 +29,13 @@ import {
 import { bootSmoke } from "./fixtures/setup.js";
 import { BankrunConnection } from "./fixtures/bankrun-connection.js";
 
-// NOTE on `.skip` — the on-chain `sell_positions` ix from Wave 1A has a
-// PDA-signer bug: the `vault_authority` (and `lock_authority`) PDAs are
-// owned by `sooth_market` (`seeds::program = sooth_market::ID` is pinned
-// across the AMM ixs), but `sell_positions.rs` performs `invoke_signed`
-// from `sooth_amm` with seeds `[b"vault", market_id, bump]` — those seeds
-// derive a *different* PDA under `sooth_amm::ID`, so the signature check
-// at the SPL-Token CPI fails with "Cross-program invocation with
-// unauthorized signer or writable account". Same root cause for
-// `claim_unlocked` (signs for `lock_authority`).
-//
-// The fix lives on the program side (either move vault/lock authorities
-// under `sooth_amm::ID`, or add a `sooth_market` ix that the AMM CPIs to
-// for the transfer). Per Wave 1B's task constraints we must not touch
-// programs, so the assertions below are wired but the tests stay skipped
-// until the program is re-rolled. Keep them in tree so the SDK side gets
-// exercised the moment the program fix lands.
-describe.skip("AMM sell flow", () => {
+// Wave 1B fix landed: `sell_positions` (and `claim_unlocked`) now CPI into
+// `sooth_market::transfer_to_lock` / `::transfer_from_lock_vault` for the
+// PDA-signed transfers. The `vault_authority` and `lock_authority` PDAs
+// are owned by `sooth_market`, so only that program can `invoke_signed`
+// against them. See `programs/sooth_market/src/instructions/transfer_*.rs`
+// for the helpers and the auth model.
+describe("AMM sell flow", () => {
   it("buy 10 → sell 5 → Position.yes_shares decreases, LockEntry created", async () => {
     const t0 = Date.now();
     const smoke = await bootSmoke({

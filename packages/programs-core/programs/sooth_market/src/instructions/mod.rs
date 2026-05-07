@@ -21,6 +21,8 @@ pub mod mint_complete_set;
 pub mod redeem;
 pub mod remove_adjudicator;
 pub mod settle;
+pub mod transfer_from_lock_vault;
+pub mod transfer_to_lock;
 
 pub use add_adjudicator::*;
 pub use initialize_adjudicator_allowlist::*;
@@ -33,3 +35,5 @@ pub use mint_complete_set::*;
 pub use redeem::*;
 pub use remove_adjudicator::*;
 pub use settle::*;
+pub use transfer_from_lock_vault::*;
+pub use transfer_to_lock::*;

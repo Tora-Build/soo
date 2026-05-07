@@ -466,6 +466,14 @@
         {
           "name": "rent",
           "address": "SysvarRent111111111111111111111111111111111"
+        },
+        {
+          "name": "sooth_market_program",
+          "docs": [
+            "`sooth_market` program — CPI'd into for the PDA-signed",
+            "`vault → lock_vault` transfer. Mandatory after the Wave 1B fix."
+          ],
+          "address": "SoothMkt11111111111111111111111111111111111"
         }
       ],
       "args": [
@@ -601,6 +609,15 @@
         {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "sooth_market_program",
+          "docs": [
+            "`sooth_market` program — CPI'd into for the PDA-signed",
+            "`lock_vault → user_usdc_ata` transfer. Mandatory after the Wave",
+            "1B fix (the `lock_authority` PDA is owned by `sooth_market`)."
+          ],
+          "address": "SoothMkt11111111111111111111111111111111111"
         }
       ],
       "args": []

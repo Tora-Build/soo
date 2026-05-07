@@ -47,6 +47,18 @@ pub use instructions::*;
 // placeholder pattern in `sooth_amm::lib.rs`.
 declare_id!("SoothMkt11111111111111111111111111111111111");
 
+/// Hard-coded `sooth_amm` program ID. Used by the `transfer_to_lock` /
+/// `transfer_from_lock_vault` helpers to verify the `Position` / `LockEntry`
+/// accounts they receive are owned by the legitimate AMM program (and not
+/// forged Borsh blobs the caller stitched together). Mirrors the `declare_id!`
+/// in `programs/sooth_amm/src/lib.rs` — bump both in lock-step on devnet
+/// deploy. A workspace-shared `sooth-protocol-types` crate would be the
+/// long-term home; until then, the duplication is intentional with a sync
+/// comment in both directions.
+pub const SOOTH_AMM_PROGRAM_ID: Pubkey = anchor_lang::pubkey!(
+    "SoothAMM11111111111111111111111111111111111"
+);
+
 /// Canonical devnet USDC mint. Must match `sooth_amm::USDC_MINT_DEVNET` —
 /// a workspace-shared crate (`sooth-protocol-types`) is the right long-term
 /// home for this constant, but until that crate exists this is duplicated
@@ -147,5 +159,23 @@ pub mod sooth_market {
     /// **STUB** — body is `todo!()` until `sooth_adjudicator` is wired.
     pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
         instructions::redeem::handler(ctx)
+    }
+
+    /// PDA-signed transfer `vault → lock_vault`. Helper for
+    /// `sooth_amm::sell_positions` — the AMM CPIs into this so the signing
+    /// PDA (`vault_authority`) is owned by the correct program. See
+    /// `instructions/transfer_to_lock.rs` for the auth model.
+    pub fn transfer_to_lock(ctx: Context<TransferToLock>, amount: u64) -> Result<()> {
+        instructions::transfer_to_lock::handler(ctx, amount)
+    }
+
+    /// PDA-signed transfer `lock_vault → recipient`. Helper for
+    /// `sooth_amm::claim_unlocked` — same rationale as `transfer_to_lock`.
+    /// See `instructions/transfer_from_lock_vault.rs` for the auth model.
+    pub fn transfer_from_lock_vault(
+        ctx: Context<TransferFromLockVault>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::transfer_from_lock_vault::handler(ctx, amount)
     }
 }

@@ -23,14 +23,10 @@ import {
 import { bootSmoke } from "./fixtures/setup.js";
 import { BankrunConnection } from "./fixtures/bankrun-connection.js";
 
-// NOTE on `.skip` — see the matching note at the top of `sell-flow.test.ts`.
-// Both `sell_positions` and `claim_unlocked` PDA-sign for authorities owned
-// by `sooth_market` from inside `sooth_amm` — those signatures don't
-// authorize because the seeds derive a different PDA under sooth_amm's ID.
-// The fix lives on the program side (Wave 1A on-chain regression); the SDK
-// + assertions stay wired so the test goes green once the program is
-// re-rolled.
-describe.skip("AMM claim_unlocked flow", () => {
+// Wave 1B fix landed — see the matching note at the top of
+// `sell-flow.test.ts`. Both `sell_positions` and `claim_unlocked` now CPI
+// into `sooth_market` helpers for the PDA-signed transfers.
+describe("AMM claim_unlocked flow", () => {
   it("buy → sell → warp clock → claim drains lock_vault → user ATA", async () => {
     const t0 = Date.now();
     const smoke = await bootSmoke({

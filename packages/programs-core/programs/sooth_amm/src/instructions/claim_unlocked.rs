@@ -31,7 +31,10 @@
 //! a single landed transaction.
 
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+use anchor_spl::token::{Mint, Token, TokenAccount};
+
+use sooth_market::cpi::accounts::TransferFromLockVault;
+use sooth_market::program::SoothMarket;
 
 use crate::error::SoothAmmError;
 use crate::events::LockClaimed;
@@ -120,6 +123,11 @@ pub struct ClaimUnlocked<'info> {
     pub user: Signer<'info>,
 
     pub token_program: Program<'info, Token>,
+
+    /// `sooth_market` program — CPI'd into for the PDA-signed
+    /// `lock_vault → user_usdc_ata` transfer. Mandatory after the Wave 1B
+    /// fix (the `lock_authority` PDA is owned by `sooth_market`, not the AMM).
+    pub sooth_market_program: Program<'info, SoothMarket>,
 }
 
 pub fn handler(ctx: Context<ClaimUnlocked>) -> Result<()> {
@@ -135,28 +143,28 @@ pub fn handler(ctx: Context<ClaimUnlocked>) -> Result<()> {
     let lock_entry_pubkey = ctx.accounts.lock_entry.key();
     let user_pubkey = ctx.accounts.user.key();
 
-    // ── 2. PDA-signed CPI: lock_vault → user_usdc_ata ────────────────────
-    let market_id = ctx.accounts.market.market_id;
-    let lock_authority_bump = ctx.accounts.market.lock_authority_bump;
-    let signer_seeds: &[&[&[u8]]] = &[&[
-        b"lock",
-        market_id.as_ref(),
-        &[lock_authority_bump],
-    ]];
-
+    // ── 2. CPI into sooth_market::transfer_from_lock_vault ────────────────
+    //
+    // The `lock_authority` PDA is owned by `sooth_market`. We delegate the
+    // PDA signing to the `transfer_from_lock_vault` helper. See
+    // `sooth_market::instructions::transfer_from_lock_vault` for the auth
+    // model.
     if amount > 0 {
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.lock_vault.to_account_info(),
-                    to: ctx.accounts.user_usdc_ata.to_account_info(),
-                    authority: ctx.accounts.lock_authority.to_account_info(),
-                },
-                signer_seeds,
-            ),
-            amount,
-        )?;
+        let cpi_accounts = TransferFromLockVault {
+            market: ctx.accounts.market.to_account_info(),
+            lock_authority: ctx.accounts.lock_authority.to_account_info(),
+            lock_vault: ctx.accounts.lock_vault.to_account_info(),
+            recipient: ctx.accounts.user_usdc_ata.to_account_info(),
+            lock_entry: ctx.accounts.lock_entry.to_account_info(),
+            usdc_mint: ctx.accounts.usdc_mint.to_account_info(),
+            user: ctx.accounts.user.to_account_info(),
+            token_program: ctx.accounts.token_program.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.sooth_market_program.to_account_info(),
+            cpi_accounts,
+        );
+        sooth_market::cpi::transfer_from_lock_vault(cpi_ctx, amount)?;
     }
 
     // ── 3. Emit ──────────────────────────────────────────────────────────

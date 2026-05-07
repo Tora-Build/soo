@@ -24,13 +24,13 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full mapping.
 
 ### Programs
 
-| Program             | Status                                                                                                                                                                                                                                                                                                                                                                      |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sooth_amm`         | **Scaffolded.** LMSR math wired in (D4 ported from `_spikes/lmsr-cu/`); state mutation real; buy + sell + `claim_unlocked` end-to-end (CPIs, PDA-signed transfers, LockEntry init/close); fee router / LP mint stubbed with `todo!()`. See `programs/sooth_amm/src/instructions/trade_positions.rs` for the TODO list.                                                      |
-| `sooth_market`      | **Scaffolded.** Market PDA + lifecycle state machine real; `initialize_market` / `mint_complete_set` / `merge_complete_set` real (USDC ↔ outcome-mint CPIs wired); `lock_for_resolution` / `settle` real state mutation but adjudicator-CPI auth check is `todo!()` (architecture §4.4); `redeem` is a `todo!()` stub gated on `sooth_adjudicator`.                         |
-| `sooth_launchpad`   | **Scaffolded — stubs only.** `ProtocolConfig` PDA + `initialize_protocol` real (singleton fee bps + treasury + 4-way split bps); `create_market` (composes 4 CPIs from `sooth_market` + `sooth_amm` per architecture §4.1), `distribute_fees` (fee router §8), and `seed_lp` (pre-graduation LP mint) all `todo!()` with full Accounts structs committed for IDL stability. |
-| `sooth_book`        | Spec only. Gated on P1 (Monaco fork vs custom build).                                                                                                                                                                                                                                                                                                                       |
-| `sooth_adjudicator` | Spec only. Manual variant first; ZkTLS later.                                                                                                                                                                                                                                                                                                                               |
+| Program             | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sooth_amm`         | **Scaffolded.** LMSR math wired in (D4 ported from `_spikes/lmsr-cu/`); state mutation real; buy + sell + `claim_unlocked` end-to-end (CPIs, PDA-signed transfers, LockEntry init/close); fee router / LP mint stubbed with `todo!()`. See `programs/sooth_amm/src/instructions/trade_positions.rs` for the TODO list.                                                                                                                                                                         |
+| `sooth_market`      | **Scaffolded.** Market PDA + lifecycle state machine real; `initialize_market` / `mint_complete_set` / `merge_complete_set` real (USDC ↔ outcome-mint CPIs wired); `transfer_to_lock` / `transfer_from_lock_vault` (Wave 1B helpers — PDA-signed `vault ↔ lock_vault` transfers CPI'd into from `sooth_amm`); `lock_for_resolution` / `settle` real state mutation but adjudicator-CPI auth check is `todo!()` (architecture §4.4); `redeem` is a `todo!()` stub gated on `sooth_adjudicator`. |
+| `sooth_launchpad`   | **Scaffolded — stubs only.** `ProtocolConfig` PDA + `initialize_protocol` real (singleton fee bps + treasury + 4-way split bps); `create_market` (composes 4 CPIs from `sooth_market` + `sooth_amm` per architecture §4.1), `distribute_fees` (fee router §8), and `seed_lp` (pre-graduation LP mint) all `todo!()` with full Accounts structs committed for IDL stability.                                                                                                                    |
+| `sooth_book`        | Spec only. Gated on P1 (Monaco fork vs custom build).                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `sooth_adjudicator` | Spec only. Manual variant first; ZkTLS later.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 ### Toolchain
 
@@ -51,7 +51,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full mapping.
 ```bash
 cargo check --workspace                                                                  # green
 cargo test -p sooth_amm                                                                  # 33 tests (17 inline + 9 lmsr_unit + 7 lock_flow)
-cargo test -p sooth_market                                                               # 6 unit tests (1 inline + 5 lifecycle integration)
+cargo test -p sooth_market                                                               # 22 tests (1 inline + 5 lifecycle + 16 adjudicator_allowlist)
 cargo test -p sooth_launchpad                                                            # 5 tests (1 inline + 4 protocol_config)
 cargo build-sbf --manifest-path packages/programs-core/programs/sooth_amm/Cargo.toml         # → target/deploy/sooth_amm.so
 cargo build-sbf --manifest-path packages/programs-core/programs/sooth_market/Cargo.toml      # → target/deploy/sooth_market.so
@@ -85,8 +85,29 @@ port splits the two ixs:
   any caller that passes `delta_shares < 0`).
 - `sell_positions` — sell with lock-on-sell. Mirrors the buy account
   list plus `lock_authority`, `lock_vault`, and a fresh `lock_entry` PDA.
+  CPIs into `sooth_market::transfer_to_lock` for the PDA-signed
+  `vault → lock_vault` transfer (Wave 1B fix).
 - `claim_unlocked` — drain a `LockEntry` after the lock elapses; closes
-  the account and refunds rent to the user.
+  the account and refunds rent to the user. CPIs into
+  `sooth_market::transfer_from_lock_vault` for the PDA-signed
+  `lock_vault → user_usdc_ata` transfer (Wave 1B fix).
+
+**Cross-program PDA signing.** The `vault_authority` and `lock_authority`
+PDAs are both owned by `sooth_market` (seeds `[b"vault", market_id]` /
+`[b"lock", market_id]` derived under `sooth_market::ID`), so only that
+program can `invoke_signed` against them. The original Wave 1A
+`sell_positions` / `claim_unlocked` ixs tried to sign for those PDAs
+from `sooth_amm`, which Solana rejects with "Cross-program invocation
+with unauthorized signer or writable account" — seeds derive a
+_different_ PDA under each program's ID. The Wave 1B fix moves the
+SPL-Token transfers behind two thin helper ixs on `sooth_market`
+(`transfer_to_lock` + `transfer_from_lock_vault`) that the AMM CPIs
+into; the helpers verify the caller's `Position` / `LockEntry`
+(`owner == sooth_amm::ID`, plus `user`/`market` field checks at fixed
+byte offsets) and trust the user's outer signature as the auth gate. A
+future commit can add an `Instructions` sysvar introspection check to
+also enforce the parent program is `sooth_amm` — see the TODO in
+`programs/sooth_market/src/instructions/transfer_to_lock.rs`.
 
 **`LockEntry` seed scheme**: `[b"lock_entry", position.key(), nonce]`,
 where `nonce = position.lock_nonce` at sell time. The `Position` PDA
