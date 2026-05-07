@@ -39,6 +39,7 @@ import {
 } from "@solana/spl-token";
 
 import {
+  soothAdjudicatorIdl,
   soothAmmIdl,
   soothLaunchpadIdl,
   soothMarketIdl,
@@ -137,6 +138,12 @@ export class SolanaChainAdapter implements ChainAdapter {
   private readonly soothMarket: AnyProgram;
   private readonly soothLaunchpad: AnyProgram;
 
+  // Failing-program-ID → error code table. Populated at construction from the
+  // resolved program IDs. Decoders use this to disambiguate Anchor codes
+  // (e.g. 6012 means LockNotElapsed in sooth_amm but
+  // AdjudicatorNotAllowlisted in sooth_market).
+  private readonly programErrorLookup: ProgramErrorLookup;
+
   constructor(opts: SolanaAdapterOptions) {
     this.node = opts.node;
 
@@ -219,6 +226,24 @@ export class SolanaChainAdapter implements ChainAdapter {
     this.soothAmm = new Program(ammIdl as Idl, provider);
     this.soothMarket = new Program(marketIdl as Idl, provider);
     this.soothLaunchpad = new Program(launchpadIdl as Idl, provider);
+
+    // Build the program-ID → error-table lookup. sooth_adjudicator isn't
+    // exposed as a separate `programIds` field today (the SDK doesn't build
+    // adjudicator ixs directly), but its errors can still surface via CPI
+    // from sooth_market/sooth_launchpad — pull its base58 ID off the IDL
+    // so those decode cleanly too.
+    this.programErrorLookup = new Map([
+      [this.programIds.soothAmm.toBase58(), SOOTH_AMM_ERROR_TABLE],
+      [this.programIds.soothMarket.toBase58(), SOOTH_MARKET_ERROR_TABLE],
+      [
+        (
+          this.programIds.soothLaunchpad ??
+          new PublicKey(soothLaunchpadIdl.address)
+        ).toBase58(),
+        SOOTH_LAUNCHPAD_ERROR_TABLE,
+      ],
+      [soothAdjudicatorIdl.address, SOOTH_ADJUDICATOR_ERROR_TABLE],
+    ]);
   }
 
   // ─── Reads ───────────────────────────────────────────────────────────────
@@ -1236,7 +1261,12 @@ export class SolanaChainAdapter implements ChainAdapter {
           preflightCommitment: "confirmed",
         });
       } catch (e) {
-        const classified = classifySubmitError(e, attempt, undefined);
+        const classified = classifySubmitError(
+          e,
+          attempt,
+          undefined,
+          this.programErrorLookup,
+        );
         lastError = classified.error;
         if (classified.retryable && attempt < maxAttempts) {
           await sleep(backoffMs(attempt));
@@ -1277,6 +1307,7 @@ export class SolanaChainAdapter implements ChainAdapter {
           confirmation.value.err,
           attempt,
           sig,
+          this.programErrorLookup,
         );
         lastError = classified.error;
         if (classified.retryable && attempt < maxAttempts) {
@@ -1566,17 +1597,20 @@ function lifecycleName(v: unknown): ResolvedMarket["lifecycle"] {
   return "Initializing";
 }
 
-// H5 (Codex): map a Solana RPC error (thrown by sendRawTransaction or
-// surfaced via confirmation.value.err) to a SoothError. Anchor returns
-// program errors as `{ InstructionError: [ixIndex, { Custom: code }] }`.
-// We match that exact shape and look up the code against the sooth_amm
-// error table inlined here (the IDL ships these but importing for the
-// lookup would tie the helper to a specific program — keep it cheap and
-// local).
+// Map a Solana RPC error (thrown by sendRawTransaction or surfaced via
+// confirmation.value.err) to a SoothError. Anchor returns program errors as
+// `{ InstructionError: [ixIndex, { Custom: code }] }`.
 //
-// Codes mirror `programs/sooth_amm/src/error.rs`. Anchor numbers user
-// errors starting at 6000 in declaration order; reorder the enum and these
-// have to be updated.
+// Anchor numbers each program's user errors starting at 6000 in the order
+// they appear in `error.rs`. The same numeric code (e.g. 6012) can mean
+// completely different things across programs — `sooth_amm::LockNotElapsed`
+// vs `sooth_market::AdjudicatorNotAllowlisted`. Without disambiguation by
+// failing-program-ID the decoder picks the wrong message and the caller
+// chases the wrong root cause.
+//
+// All four tables mirror `programs/<name>/src/error.rs`. Reorder an enum
+// and the corresponding table needs the same change.
+
 const SOOTH_AMM_ERROR_TABLE: Record<number, { kind: string; msg: string }> = {
   6000: {
     kind: "SlippageExceeded",
@@ -1618,13 +1652,180 @@ const SOOTH_AMM_ERROR_TABLE: Record<number, { kind: string; msg: string }> = {
   },
 };
 
+const SOOTH_MARKET_ERROR_TABLE: Record<number, { kind: string; msg: string }> =
+  {
+    6000: {
+      kind: "MarketNotActive",
+      msg: "Market is not in the Open lifecycle state",
+    },
+    6001: {
+      kind: "ProgramError",
+      msg: "Market is not in the Locked lifecycle state",
+    },
+    6002: { kind: "ProgramError", msg: "Market is not Settled" },
+    6003: {
+      kind: "ProgramError",
+      msg: "Lifecycle transition not permitted from current state",
+    },
+    6004: {
+      kind: "ProgramError",
+      msg: "Caller is not the registered adjudicator for this market",
+    },
+    6005: {
+      kind: "ProgramError",
+      msg: "Invalid outcome (must be NO=0, YES=1, or INVALID=2)",
+    },
+    6006: { kind: "ProgramError", msg: "Amount must be non-zero" },
+    6007: {
+      kind: "InsufficientShares",
+      msg: "Insufficient outcome-token balance",
+    },
+    6008: { kind: "ProgramError", msg: "Math overflow" },
+    6009: { kind: "ProgramError", msg: "Vault / mint authority mismatch" },
+    6010: {
+      kind: "ProgramError",
+      msg: "Deadline must be greater than start_time",
+    },
+    6011: {
+      kind: "ProgramError",
+      msg: "Adjudicator pubkey must not be the default (all-zero) key",
+    },
+    6012: {
+      kind: "ProgramError",
+      msg: "Adjudicator pubkey is not present on the on-chain allowlist",
+    },
+    6013: {
+      kind: "ProgramError",
+      msg: "Caller is not the registered allowlist authority",
+    },
+    6014: {
+      kind: "ProgramError",
+      msg: "Adjudicator allowlist is full (capacity exhausted)",
+    },
+    6015: {
+      kind: "ProgramError",
+      msg: "Adjudicator pubkey is already present on the allowlist",
+    },
+    6016: {
+      kind: "ProgramError",
+      msg: "Adjudicator pubkey is not present on the allowlist",
+    },
+    6017: {
+      kind: "ProgramError",
+      msg: "Helper ixs must be CPI'd from sooth_amm; direct calls are rejected.",
+    },
+  };
+
+const SOOTH_LAUNCHPAD_ERROR_TABLE: Record<
+  number,
+  { kind: string; msg: string }
+> = {
+  6000: {
+    kind: "ProgramError",
+    msg: "Caller is not the registered protocol authority",
+  },
+  6001: {
+    kind: "ProgramError",
+    msg: "Fee bps must not exceed 10000 (100%)",
+  },
+  6002: { kind: "ProgramError", msg: "Fee split bps do not sum to 10000" },
+  6003: { kind: "ProgramError", msg: "Treasury pubkey must be non-default" },
+  6004: { kind: "ProgramError", msg: "Default trial period must be > 0" },
+  6005: {
+    kind: "ProgramError",
+    msg: "Market is already graduated; LP-mint flow disabled",
+  },
+  6006: { kind: "ProgramError", msg: "Math overflow" },
+  6007: {
+    kind: "ProgramError",
+    msg: "Protocol config already initialized",
+  },
+  6008: {
+    kind: "ProgramError",
+    msg: "Fee pool is empty — nothing to distribute",
+  },
+};
+
+const SOOTH_ADJUDICATOR_ERROR_TABLE: Record<
+  number,
+  { kind: string; msg: string }
+> = {
+  6000: {
+    kind: "ProgramError",
+    msg: "Caller is not the registered authority for this adjudicator",
+  },
+  6001: {
+    kind: "ProgramError",
+    msg: "Adjudicator kind does not support this operation",
+  },
+  6002: {
+    kind: "ProgramError",
+    msg: "Adjudicator has already attested an outcome; re-attestation is not permitted",
+  },
+  6003: {
+    kind: "ProgramError",
+    msg: "Adjudicator has not yet attested an outcome",
+  },
+  6004: {
+    kind: "ProgramError",
+    msg: "Invalid outcome (must be NO=0, YES=1, or INVALID=2)",
+  },
+  6005: {
+    kind: "ProgramError",
+    msg: "Adjudicator account does not match the supplied market",
+  },
+  6006: {
+    kind: "ProgramError",
+    msg: "Authority pubkey must not be the default (all-zero) key",
+  },
+  6007: {
+    kind: "NotImplemented",
+    msg: "Dispute path is not implemented in v1; see architecture §4.4",
+  },
+  6008: {
+    kind: "ProgramError",
+    msg: "Caller is not the registered dispute authority for this adjudicator",
+  },
+  6009: {
+    kind: "ProgramError",
+    msg: "Adjudicator has already been disputed; dispute is one-shot per market",
+  },
+  6010: {
+    kind: "ProgramError",
+    msg: "Market is already settled; dispute can no longer override the outcome",
+  },
+};
+
+// Lookup of failing-program-ID base58 → which error table to consult. Built
+// per-adapter at construction time so the decoder doesn't need to know the
+// concrete deployment IDs (those rotate across localnet/devnet/mainnet).
+type ProgramErrorLookup = Map<
+  string,
+  Record<number, { kind: string; msg: string }>
+>;
+
+// Exported for tests so they can assert per-program code disambiguation
+// without round-tripping through the full submit() retry loop.
+export const __testing = {
+  decodeSubmitError: (...args: Parameters<typeof decodeSubmitError>) =>
+    decodeSubmitError(...args),
+  extractFailingProgramId,
+  SOOTH_AMM_ERROR_TABLE,
+  SOOTH_MARKET_ERROR_TABLE,
+  SOOTH_LAUNCHPAD_ERROR_TABLE,
+  SOOTH_ADJUDICATOR_ERROR_TABLE,
+};
+
 function decodeSubmitError(
   raw: unknown,
   signature: string | undefined,
+  programLookup?: ProgramErrorLookup,
 ): SoothError {
   const code = extractCustomCode(raw);
   if (code !== undefined) {
-    const entry = SOOTH_AMM_ERROR_TABLE[code];
+    const failingId = extractFailingProgramId(raw);
+    const table = failingId ? programLookup?.get(failingId) : undefined;
+    const entry = table?.[code];
     if (entry) {
       return new SoothError({
         kind: entry.kind as SoothError["kind"],
@@ -1633,10 +1834,16 @@ function decodeSubmitError(
         signature,
       });
     }
+    // No program-ID match (or unknown code) — surface the bare code with
+    // the failing program ID if we recovered one. Don't guess at
+    // semantics; that's how the LockNotElapsed/AdjudicatorNotAllowlisted
+    // confusion got into the wild.
     return new SoothError({
       kind: "ProgramError",
       code,
-      msg: `Unknown program error code ${code}`,
+      msg: failingId
+        ? `Unknown program error code ${code} from ${failingId}`
+        : `Unknown program error code ${code}`,
       signature,
     });
   }
@@ -1672,12 +1879,13 @@ function classifySubmitError(
   raw: unknown,
   attempt: number,
   signature: string | undefined,
+  programLookup?: ProgramErrorLookup,
 ): { retryable: boolean; error: SoothError } {
   const code = extractCustomCode(raw);
   if (code !== undefined) {
     // Program errors are deterministic — retrying with a new blockhash will
     // produce the exact same failure. Always terminal.
-    const error = decodeSubmitError(raw, signature);
+    const error = decodeSubmitError(raw, signature, programLookup);
     // Re-stamp with `attempt` so receipts/logs see which attempt died.
     return {
       retryable: false,
@@ -1779,6 +1987,41 @@ function isRetryableNetworkText(text: string): boolean {
     t.includes("network error") ||
     t.includes("rate limit")
   );
+}
+
+// Pull the failing program's base58 ID out of the error context. Solana
+// runtime emits `Program <ID> failed: custom program error: 0x...` in the
+// transaction logs immediately before the failing instruction unwinds. The
+// `SendTransactionError` thrown by web3.js exposes those logs on `.logs`;
+// stringified `confirmation.value.err` payloads embed the same line in
+// `.message`. We try the structured shape first, then fall back to a regex
+// over the message.
+//
+// Why we need this: Anchor numbers user errors per-program starting at
+// 6000. The same numeric code (e.g. 6012) means
+// `sooth_amm::LockNotElapsed` in one program and
+// `sooth_market::AdjudicatorNotAllowlisted` in another. Without the
+// failing-program-ID the decoder either guesses wrong or refuses to decode.
+function extractFailingProgramId(raw: unknown): string | undefined {
+  const PROGRAM_FAILED_RE = /Program ([1-9A-HJ-NP-Za-km-z]{32,44}) failed:/;
+  const logs = (raw as { logs?: unknown })?.logs;
+  if (Array.isArray(logs)) {
+    // Walk newest → oldest; the failing program emits its `failed:` line
+    // last before the runtime unwinds.
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const line = logs[i];
+      if (typeof line !== "string") continue;
+      const m = PROGRAM_FAILED_RE.exec(line);
+      if (m && m[1]) return m[1];
+    }
+  }
+  const text =
+    raw instanceof Error ? raw.message : typeof raw === "string" ? raw : "";
+  if (text) {
+    const m = PROGRAM_FAILED_RE.exec(text);
+    if (m && m[1]) return m[1];
+  }
+  return undefined;
 }
 
 function extractCustomCode(raw: unknown): number | undefined {

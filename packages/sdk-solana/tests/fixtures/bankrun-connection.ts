@@ -120,9 +120,21 @@ export class BankrunConnection extends Connection {
     // Bankrun doesn't expose a "send raw bytes" — only typed transactions.
     // Decode it back to a `Transaction` (legacy) for processing.
     const tx = Transaction.from(bytes);
-    // `processTransaction` waits for completion; throw on failure to mirror
-    // `Connection.sendRawTransaction` failing-then-confirm behavior.
-    await this._banks.processTransaction(tx);
+    // Use `tryProcessTransaction` instead of `processTransaction` so we can
+    // attach `meta.logMessages` to the thrown error on failure. Real RPC's
+    // `SendTransactionError` carries those logs on `.logs`; the SDK's
+    // failing-program-ID extractor scans them for `Program <ID> failed:`
+    // lines to disambiguate Anchor error codes across programs (e.g. 6012
+    // means LockNotElapsed in sooth_amm but AdjudicatorNotAllowlisted in
+    // sooth_market). Matching that shape here keeps the test rig honest.
+    const resWithMeta = await this._banks.tryProcessTransaction(tx);
+    if (resWithMeta.result !== null) {
+      const logs = resWithMeta.meta?.logMessages ?? [];
+      const baseMsg = String(resWithMeta.result);
+      const err = new Error(baseMsg) as Error & { logs?: string[] };
+      err.logs = logs;
+      throw err;
+    }
     return bs58Signature(tx);
   }
 
