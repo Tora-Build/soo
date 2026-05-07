@@ -65,3 +65,17 @@ impl LockEntry {
         + 8                      // nonce
         + 1;                     // bump
 }
+
+// ── Cross-crate layout sync ──────────────────────────────────────────────
+//
+// `sooth_market`'s `transfer_from_lock_vault` helper parses `LockEntry` raw
+// from account data via the byte offsets in `sooth-account-offsets`. See
+// the matching assertion in `state/position.rs` for the rationale (the
+// short version: cyclic-dep ban prevents typing the account directly from
+// `sooth_market`, so layout sync is enforced via this static assertion
+// rather than the type system).
+const _: () = assert!(
+    LockEntry::SPACE == sooth_account_offsets::LOCK_ENTRY_TOTAL_LEN,
+    "LockEntry::SPACE drifted from sooth-account-offsets::LOCK_ENTRY_TOTAL_LEN — \
+     update both, including the per-field offsets in sooth-account-offsets/src/lib.rs"
+);

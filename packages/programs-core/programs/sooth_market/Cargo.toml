@@ -28,6 +28,13 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 [dependencies]
 anchor-lang = { version = "0.30.1" }
 anchor-spl = { version = "0.30.1", features = ["token", "associated_token"] }
+# Shared byte-offset constants for the `Position` / `LockEntry` accounts that
+# `transfer_to_lock` / `transfer_from_lock_vault` parse raw. The cyclic-dep
+# direction (sooth_market → sooth_amm) is forbidden, so the offsets live in
+# this dependency-free crate; `sooth_amm` carries `const _: () = assert!(...)`
+# checks tying these constants back to its own `Position::SPACE` /
+# `LockEntry::SPACE` so layout drift trips the build.
+sooth-account-offsets = { path = "../../crates/sooth-account-offsets" }
 
 [lints.rust]
 unexpected_cfgs = { level = "allow" }

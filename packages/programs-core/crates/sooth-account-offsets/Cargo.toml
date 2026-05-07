@@ -1,0 +1,35 @@
+[package]
+name = "sooth-account-offsets"
+version = "0.0.0"
+edition = "2021"
+description = "Shared byte-offset constants for sooth_amm-owned accounts (Position, LockEntry) consumed by sooth_market helpers"
+license = "Apache-2.0"
+repository = "https://github.com/Tora-Build/sooth-solana"
+
+# Pure constants crate. No runtime dependencies.
+#
+# ── Why this crate exists ───────────────────────────────────────────────────
+# `sooth_amm` depends on `sooth_market` (via the `cpi` feature) for the
+# `vault → lock_vault` PDA-signed transfer helpers. The reverse — typing
+# `Account<'info, sooth_amm::Position>` from inside `sooth_market` — would
+# create a cyclic dep. Today the `transfer_to_lock` / `transfer_from_lock_vault`
+# helpers therefore parse `Position` / `LockEntry` raw bytes by hand-validated
+# offsets, duplicated in two files with no compiler enforcement that they
+# stay in sync with the actual struct layout in `sooth_amm::state::*`.
+#
+# This crate centralises those byte offsets. Both `sooth_amm` and
+# `sooth_market` depend on it via a path entry. `sooth_amm` additionally
+# carries a compile-time assertion (in `state/{position,lock_entry}.rs`) that
+# the constants here match the live struct's `SPACE` constant, so any future
+# field add/remove/resize that drifts from the constants here trips the build
+# rather than producing silent on-chain corruption.
+#
+# Long-term home is the `sooth-protocol-types` workspace crate that the
+# `USDC_MINT_DEVNET` / `SOOTH_AMM_PROGRAM_ID` constants will eventually move
+# into. Until then, this crate is the byte-offset half of that future split.
+# ----------------------------------------------------------------------------
+
+[lib]
+name = "sooth_account_offsets"
+
+[dependencies]

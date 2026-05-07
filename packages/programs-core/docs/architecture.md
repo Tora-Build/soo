@@ -1,9 +1,15 @@
 # Sooth on Solana — Architecture Mapping
 
 > Reference doc for porting Sooth Protocol (v0.1.2 / v0.2.0 sooth-core) to Solana.
-> Status: design exploration. No code committed. Updated 2026-05-05.
+> Status: implementation in progress — three Anchor programs scaffolded
+> (`sooth_amm`, `sooth_market`, `sooth_launchpad`). Updated 2026-05-07.
 
 This document maps every EVM concept in `packages/contracts-core` onto a Solana-native equivalent (Anchor program + PDA layout) and flags the technical risks that need a prototype before committing.
+
+The "implementation status" annotations in §4-§8 below refer to the actual
+state of `packages/programs-core/programs/*` as of the date above. See
+`packages/programs-core/README.md` "Programs" table for the per-program
+summary; that table and this doc are kept in lock-step.
 
 ---
 
@@ -164,7 +170,7 @@ Notes:
   SDK's `buildCreateMarket` — but split-tx submission is also valid as
   long as ix4 lands before any `trade_positions` call.
 
-### 4.2 AMM Trade (buyYes)
+### 4.2 AMM Trade (buy only)
 
 **EVM**:
 
@@ -181,22 +187,49 @@ AMMEngine.tradePositions(market, 1, +Δ, maxCost)
 
 ```
 ix: sooth_amm::trade_positions
-  accounts: [market, amm_state, position PDA (init_if_needed), user_usdc_ata, market_vault, lp_mint, user_lp_ata (init_if_needed), fee_destinations, user, token]
+  accounts: [market, amm_state, position PDA (init_if_needed),
+             vault_authority, user_usdc_ata, market_vault, usdc_mint,
+             user, system, token, rent]
   args: { outcome: u8, delta_shares: i128, max_cost_wad: u128 }
   body:
     - require market.is_open()
-    - require market.start_time ≤ now < market.deadline   (C1 in security review)
-    - require delta_shares > 0                            (H4: sell hard-error)
-    - cost_wad = LMSR.cost(amm_state, outcome, delta) // ⚠ CU hotspot
-    - fee_wad = fee_router::split(cost_wad, amm_state.is_graduated)
-    - require cost_wad + fee_wad ≤ max_cost_wad
-    - cost_usdc = wad_to_usdc_ceil(cost_wad + fee_wad)
-    - CPI token::transfer(user_ata → vault, cost_usdc)
-    - position.yes_shares += delta
-    - amm_state.q_yes += delta
-    - if !is_graduated: CPI mint_to(lp_mint → user_lp_ata, lp_amount)
-    - emit!(PositionTraded { ... })
+    - require market.start_time ≤ now < market.deadline   (C1 fix; commit 68b663b)
+    - require delta_shares > 0                            (buys only — sells route
+                                                           through sell_positions;
+                                                           returns SellNotImplemented
+                                                           on negative delta)
+    - cost_wad = LMSR.cost_delta(amm_state, outcome, delta) // ✓ wired (D4)
+    - fee_wad = 0                                          // STUB (see §8)
+    - require cost_wad + fee_wad ≤ max_cost_wad           // looser than EVM by fee_wad
+    - cost_usdc = wad_to_usdc_ceil(cost_wad)              // ✓ real
+    - CPI token::transfer(user_ata → market_vault, cost_usdc) // user-signed
+    - amm_state.q_yes/q_no += delta                       // ✓ real
+    - position.yes_shares/no_shares += delta              // ✓ real
+    - if !is_graduated: STUB — LP mint deferred to sooth_launchpad::seed_lp
+    - emit!(PositionTraded { ... })                       // ✓ real
 ```
+
+**Status**: end-to-end real for the buy path (see
+`programs/sooth_amm/src/instructions/trade_positions.rs`). Fee-router CPI
+and pre-graduation LP mint are `todo!()` — the slippage check
+`cost_wad + fee_wad ≤ max_cost_wad` therefore degenerates to
+`cost_wad ≤ max_cost_wad`, which is **looser than the EVM check by exactly
+the fee_wad delta**. Tracked gap until the fee router lands in
+`sooth_launchpad::distribute_fees` (currently a `todo!()` stub).
+
+**Sells**: `trade_positions` is buy-only by design. `delta_shares > 0` is
+required — negative deltas return `SellNotImplemented` to make the SDK's
+dispatch error explicit. Sells go through `sooth_amm::sell_positions` (a
+sibling ix), which mirrors this account list plus the lock-side accounts.
+The split exists because Anchor 0.30.1 evaluates `init` constraints
+before the handler runs, so a unified ix would force buyers to pay rent
+on a useless `LockEntry` PDA. See §4.3 for the sell flow.
+
+**USDC mint pinning** (H1 fix; commit 68b663b): `usdc_mint` is pinned to
+`USDC_MINT_DEVNET` (a `pub const Pubkey` in `sooth_amm::lib.rs`) via an
+`address` constraint. The `user_usdc_ata` and `market_vault` ATAs are
+then `token::mint = usdc_mint` constrained, so the canonical-USDC chain
+is unforgeable from the IDL surface alone.
 
 **Prerequisite**: `initialize_amm_state` (§4.1 ix4) must have run for this
 market before any `trade_positions` call. Until that ix runs, the AmmState
@@ -204,98 +237,281 @@ PDA does not exist and the trade fails at account-load time
 (`AccountNotInitialized`). The market must additionally be in `Open`
 lifecycle (ix3 of §4.1 sets this).
 
-**Compute budget**: target ≤ 200k CU per trade. If LMSR alone eats 150k+, we'll need `ComputeBudgetInstruction::set_compute_unit_limit(400_000)` on every trade — workable but raises priority fee cost.
+**Compute budget** (measured): production `trade_positions` consumes
+**~68k–71k CU** per buy on `litesvm` (smoke-test logs in
+`packages/sdk-solana/tests/`). This matches the spike's projection
+(~75–80k envelope) within rounding and sits well under the 200k default
+per-instruction limit — no `ComputeBudgetInstruction::set_compute_unit_limit`
+is required on the production trade path. See §5 for the full breakdown.
 
 ### 4.3 Sell with Lock-on-Sell
 
-EVM stores locks inline on the position. On Solana, a per-sell `LockEntry` account is cleaner:
+EVM stores locks inline on the position. On Solana, a per-sell `LockEntry`
+account is cleaner. The original sketch in this section unified the sell
+into `trade_positions`; the implementation splits it into **two**
+instructions on `sooth_amm` plus **two** PDA-signing helper ixs on
+`sooth_market` (commits abfcf15 + b53715b — the Wave 1A → 1B refactor).
+
+**Why the split:** the `vault_authority` and `lock_authority` PDAs are
+both derived under `sooth_market::ID` (set up by
+`initialize_market_vaults`), so only `sooth_market` can `invoke_signed`
+against them. The original Wave 1A `sell_positions` tried to sign for
+`vault_authority` from inside `sooth_amm` and was rejected by the runtime
+("Cross-program invocation with unauthorized signer or writable account").
+Wave 1B moves the actual transfer into `sooth_market` helpers that
+`sooth_amm` CPIs into.
 
 ```
-ix: sooth_amm::trade_positions (delta < 0)
-  → proceeds_wad = LMSR.proceeds(...)
-  → CPI token::transfer(vault → lock_vault PDA, proceeds_usdc)
-  → init LockEntry PDA { user, market, amount, unlock_at = now + 24h }
+ix: sooth_amm::sell_positions
+  args: { outcome: u8, delta_shares: i128 (must be < 0), min_proceeds_wad: u128 }
+  body:
+    - require market.is_open() and start_time ≤ now < deadline
+    - require delta_shares < 0
+    - cost_wad = LMSR.cost_delta(...)                     // ≤ 0 for sells
+    - proceeds_wad = |cost_wad|
+    - if min_proceeds_wad > 0: require proceeds_wad ≥ min_proceeds_wad
+    - proceeds_usdc = wad_to_usdc_floor(proceeds_wad)     // floor for solvency
+    - amm_state.q_yes/q_no += delta                       // ✓
+    - position.yes_shares/no_shares += delta              // ✓
+    - if proceeds_usdc > 0:
+        CPI sooth_market::transfer_to_lock(market_vault → lock_vault, proceeds_usdc)
+                                                          // PDA-signed inside sooth_market
+    - init LockEntry PDA at [b"lock_entry", position.key(), nonce_le_u64]
+        where nonce = position.lock_nonce (pre-increment)
+    - position.lock_nonce += 1                            // monotonic counter
+    - emit!(PositionSold { ... })
 
 ix: sooth_amm::claim_unlocked
-  accounts: [lock_entry, user_usdc_ata, lock_vault]
-  → require now ≥ unlock_at
-  → CPI token::transfer(lock_vault → user_ata)
-  → close lock_entry (rent refunded to user)
+  accounts: [market, position, lock_entry, lock_authority, lock_vault,
+             user_usdc_ata, usdc_mint, user (signer), token, sooth_market_program]
+  body:
+    - require now ≥ lock_entry.unlock_at                 // 24h after sell
+    - if amount > 0:
+        CPI sooth_market::transfer_from_lock_vault(lock_vault → user_ata, amount)
+                                                          // PDA-signed inside sooth_market
+    - emit!(LockClaimed { ... })
+    - close lock_entry (close = user; rent refund to user)
 ```
 
-Tradeoff: more accounts, but rent is recoverable on `claim`. Alternative: keep a fixed-size ring buffer in `Position` — fewer accounts but bounded queue depth.
+**LockEntry PDA seed scheme** (`programs/sooth_amm/src/state/lock_entry.rs`):
+`[b"lock_entry", position.key(), nonce_le_u64]`. The `nonce` is the
+per-`Position` monotonic counter `Position::lock_nonce` at sell time;
+`sell_positions` increments it post-init so the next sell uses fresh seeds.
+The previously-considered `[b"lock", market_id, user, nonce]` was rejected
+because `b"lock"` is already used for the `lock_authority` PDA — same
+prefix would muddy the seed namespace and make audit grep fragile.
+`[b"lock_entry", market_id, user, nonce]` was rejected because it requires
+the user to track an out-of-band per-(user, market) counter; reusing the
+existing per-(user, market) `Position` PDA's address is shorter and binds
+the lock lifecycle to the position lifecycle for free.
+
+**Lock duration**: `LOCK_DURATION_SECS = 86_400` (24h) is hard-coded in
+`sooth_amm::lib.rs`. Mirrors every production deploy config in
+`packages/contracts-core/config/*.json` on the EVM side. The Solidity AMM
+bounds `_lockDuration` to `[30 minutes, 36 hours]`; the Solana port hard-
+codes the production value because the AMM doesn't expose a per-deploy
+admin key (changing the constant requires a program upgrade anyway). Lift
+to `AmmState` if a future deploy needs a different value.
+
+**Auth model on the helpers** (`transfer_to_lock` /
+`transfer_from_lock_vault`): three layered gates:
+
+1. **User signature** flows down from the outer `sell_positions` /
+   `claim_unlocked` via CPI (`user: Signer` on the helper).
+2. **Position/LockEntry shape validation** — the helpers can't type these
+   accounts as `Account<'info, Position>` without a circular Cargo dep
+   (`sooth_market` → `sooth_amm`), so they parse `owner`, `user`, and
+   `market` from raw bytes via offsets shared in the `sooth-account-offsets`
+   workspace crate. A compile-time assertion in `sooth_amm` ties those
+   offsets back to the live struct's `SPACE` so layout drift trips the
+   build (see `packages/programs-core/crates/sooth-account-offsets/`).
+3. **Parent-ix introspection** — the `Instructions` sysvar is walked to
+   confirm one of the preceding top-level ixs is a `sooth_amm` dispatch
+   with the expected discriminator (`sell_positions` or `claim_unlocked`).
+   Closes the solvency hole where a direct call to the helper could move
+   USDC `vault → lock_vault` without minting a matching `LockEntry` (or
+   drain `lock_vault` without closing one). See
+   `programs/sooth_market/src/instruction_introspection.rs` for the
+   mechanism.
+
+Tradeoff: more accounts (sell now needs the `sooth_market` program +
+`Instructions` sysvar in the account list), but rent is recoverable on
+`claim`. The alternative — keeping a fixed-size ring buffer in `Position`
+— would avoid the per-sell PDA but bounds queue depth and changes the
+on-wire `Position` shape, which would re-trigger the offset-sync work
+above for any reader of `Position`.
 
 ### 4.4 Settlement (Multi-phase Adjudicator)
 
-EVM lifecycle: `configureMarket → resolve → attest → settle` with `dispute` veto branch.
+EVM lifecycle: `configureMarket → resolve → attest → settle` with
+`dispute` veto branch.
 
-Solana — same lifecycle, each step is a CPI from `sooth_market` ↔ adjudicator program:
+Solana — same lifecycle, but the v1 implementation collapses RESOLVING +
+ATTESTED into a single `Locked` state on the `Market` PDA (see
+`programs/sooth_market/src/state/lifecycle.rs`). The veto window is
+folded into `sooth_adjudicator`'s responsibility (program not yet
+implemented; the dispute path can be re-introduced as a separate ix later
+without bloating the v1 state machine).
 
 ```
-ix: adjudicator::resolve(market, outcome, data_hash, t_star)
-  → guarded by adjudicator's resolver pubkey (set in config)
-  → CPI sooth_market::set_state(Resolved)
+ix: sooth_market::lock_for_resolution
+  accounts: [market, adjudicator (signer)]
+  body:
+    - require lifecycle == Open
+    - LOOSE auth check: signer.key == market.adjudicator    // STUB
+    - lifecycle = Locked
+    - emit!(MarketLocked { ... })
 
-ix: adjudicator::attest(market, proof)
-  → verify proof (zkTLS — see §7)
-  → CPI sooth_market::set_state(Attested)
-
-ix: anyone::settle(market)
-  → require Market.state == Attested
-  → require now ≥ attested_at + veto_window
-  → CPI sooth_market::set_state(Settled)
-
-ix: guardian::dispute(market)
-  → only during veto_window
-  → CPI sooth_market::set_state(Live)  // resets
+ix: sooth_market::settle(winning_outcome: u8)
+  body:
+    - require lifecycle == Locked
+    - require winning_outcome ∈ {NO, YES, INVALID}
+    - LOOSE auth check: signer.key == market.adjudicator    // STUB
+    - lifecycle = Settled, market.winning_outcome = winning_outcome
+    - emit!(MarketSettled { ... })
 ```
 
-Cross-program invocation depth on Solana is capped at 4. Our chain (user → market → adjudicator → market) is depth 3 — fine.
+**Status**: state mutation real; the adjudicator-CPI auth check is left
+as `todo!()` until `sooth_adjudicator` lands. The current implementation
+gates on signer-key equality with `market.adjudicator` plus a defense-in-
+depth panic if `market.adjudicator == Pubkey::default()`. The production
+gate will be either an `Instructions` sysvar introspection check (the
+parent ix's `program_id` must equal `market.adjudicator`) or a program-
+derived signer with seeds `[b"adj_signer", market_id]` — the choice is
+deferred to the `sooth_adjudicator` design.
+
+**Adjudicator allowlist** (commit abfcf15 — Codex C2 mitigation):
+`AdjudicatorAllowlist` is a singleton PDA on `sooth_market` (seeds
+`[b"adjudicator_allowlist"]`) that gates which pubkeys can be passed as
+the `adjudicator` field on `initialize_market`. Capacity 16 entries
+(rationale in `state/adjudicator_allowlist.rs`); `add_adjudicator` /
+`remove_adjudicator` are gated on `allowlist.authority` (the protocol
+multisig). This shrinks the attack surface from "anyone with a keypair"
+to "the curated set" pending the full `sooth_adjudicator` program. The
+lifecycle ixs (`lock_for_resolution`, `settle`) themselves are unchanged
+by the allowlist — it only constrains the **set** of valid adjudicators
+at market-creation.
+
+**EVM `invalidate()` fallback**: `TruthMarket.sol:177-189` exposes a
+permissionless `invalidate()` callable by anyone after
+`deadline + invalidationBuffer` to force the market to SETTLED with
+`outcome = INVALID`. The Solana port has not implemented this fallback
+(noted as future work in `state/lifecycle.rs`). Cross-link to the
+matching gap in §12.
+
+Cross-program invocation depth on Solana is capped at 4. Our chain
+(user → market → adjudicator → market) is depth 3 — fine.
 
 ### 4.5 Redemption
 
+**Status: STUB.** `sooth_market::redeem` is declared with the full
+account list and IDL signature so the SDK can pin its shape early, but
+the body is `todo!()`. The Accounts struct is finalized — see
+`programs/sooth_market/src/instructions/redeem.rs`.
+
+Spec (mirrors EVM `OrderEngine.settlePosition` / `TruthMarket.getRedemptionValue`):
+
 ```
 ix: sooth_market::redeem
-  accounts: [market, position, vault, user_usdc_ata, yes_mint OR no_mint]
+  accounts: [market, vault_authority, yes_mint, no_mint, vault,
+             user_usdc_ata, user_yes_ata, user_no_ata, user (signer), token]
   body:
-    - require market.state == Settled
-    - winning_shares = if outcome == YES { position.yes_shares } else { position.no_shares }
-    - payout_usdc = wad_to_usdc_floor(winning_shares)
-    - CPI token::transfer(vault → user_ata, payout_usdc)
-    - zero out the redeemed side of position
+    - require market.lifecycle == Settled
+    - read market.winning_outcome
+    - per TruthMarket.getRedemptionValue (TruthMarket.sol:220-231):
+        if winning == YES: payout_per_share = WAD if side == YES else 0
+        if winning == NO:  payout_per_share = WAD if side == NO  else 0
+        if winning == INVALID: payout_per_share = WAD/2 for both sides   // 50:50 split
+    - payout_usdc = wad_to_usdc_floor(payout_per_share × shares)
+    - burn the redeemed side's outcome tokens from user
+    - CPI token::transfer(vault → user_ata, payout_usdc),
+      signed by vault_authority PDA
+    - emit redemption event
 ```
 
-LP redemption (`redeemLP`) follows the same pattern against `LpMint` supply share.
+Wired-out reasons documented in `redeem.rs`'s module comment: the
+redemption flow is gated on `sooth_adjudicator` (so that
+`Settled + winning_outcome` are trustworthy) and on `sooth_book`'s
+position-credit representation (so that escrow-locked positions
+participate identically to AMM-acquired shares). The H1 USDC-mint
+constraint will be added at unstub time (see the inline note in
+`redeem.rs:58-64`).
+
+LP redemption (`redeemLP`) will follow the same pattern against the
+`LpMint` supply share once `sooth_launchpad::seed_lp` lands.
 
 ---
 
 ## 5. AMM Engine — CU Budget Deep Dive
 
-This is the riskiest piece. Numbers below are estimates; actual prototype required.
+**Resolved by D4 (`docs/decision-log.md`) via the LMSR CU spike at
+`_spikes/lmsr-cu/`.** The Taylor-exact variant (variant A) is fast
+enough that the LUT approximation (variant B) was dropped, and no crank
+pattern is needed. Numbers below are measured, not estimated.
 
-| Op                             | Estimated CU | Notes                                                |
-| ------------------------------ | ------------ | ---------------------------------------------------- |
-| `exp(x)` Taylor + range red.   | 30k–80k      | Depends on precision (WAD = 18 decimals → ~10 terms) |
-| `ln(x)` similar                | 30k–80k      |                                                      |
-| One full `cost(q+Δ) - cost(q)` | 80k–200k     | 2× exp + 1× ln + adds                                |
-| Anchor account loads (5–8)     | 5k–10k       |                                                      |
-| 2× SPL `token::transfer` CPI   | 10k–14k      | (token program is ~5–7k each)                        |
-| Fee router math (no exp/ln)    | <5k          |                                                      |
-| **Trade total (worst case)**   | **~250k**    | Above default 200k — set CU limit explicitly         |
+### Spike (`_spikes/lmsr-cu`) — LMSR math in isolation
 
-Mitigations if we blow budget:
+`compute_units_consumed` from BanksClient transaction meta, bare
+`solana-program` (no Anchor), `cargo test-sbf`:
 
-1. **Approximation tables**: pre-computed `exp`/`ln` lookup with linear interp. ~5x faster, ~1e-6 precision (acceptable since our cost rounds to USDC anyway).
-2. **Crank pattern**: split cost calc into two TXs (compute in tx1, settle in tx2). Hurts UX.
-3. **Drop to pure constant-product (xy=k)** for AMM, keep LMSR only conceptually. Major design change.
+| case                           | LMSR-only CU |
+| ------------------------------ | ------------ |
+| cold-start (q=0, buy 1% of b)  | 42,898       |
+| small (Δ = 1% of b)            | 44,468       |
+| medium (Δ = 10% of b)          | 46,823       |
+| large (Δ = 50% of b)           | 48,847       |
+| **imbalanced (10× q_no, +1%)** | **55,467**   |
+| tail (100× q_no, +1%)          | 32,768       |
+| sell (Δ = -10% of b)           | 46,771       |
+| two-sided (+5% YES, -5% NO)    | 46,752       |
 
-**Action item**: Week-1 prototype = `LMSRMath` Rust port + Anvil-equivalent benchmark on `solana-test-validator`.
+Peak math cost: **~55k CU** in the imbalanced 10× case; the 100× tail is
+cheaper because the smaller side's `exp` argument falls below
+`EXP_MAX_INPUT_WAD` and short-circuits to 0.
+
+### Production `sooth_amm::trade_positions` — measured on litesvm
+
+Real ix with Anchor account validation, LMSR `cost_delta`, `spl-token`
+transfer CPI, and state mutation. Captured from
+`packages/sdk-solana/tests/smoke.test.ts`'s buy ~1% of b transaction:
+
+| ix                         | measured CU |
+| -------------------------- | ----------- |
+| `initialize_amm_state`     | ~10,013     |
+| `trade_positions` (buy 1%) | **~68,300** |
+| `sell_positions`           | ~98,500     |
+| `claim_unlocked`           | ~24,236     |
+
+Buy envelope ~68k CU is well inside the spike's projection (~75–80k)
+and **leaves ~130k CU of headroom under the 200k default per-instruction
+limit**. No `ComputeBudgetInstruction::set_compute_unit_limit` is needed
+on the production trade path.
+
+### Mitigation tree (kept as documented escape hatches)
+
+Variant A (Taylor exact) is sufficient. The mitigation tree below is
+preserved as documentation in case a future Anchor port or new CPI hop
+narrows the headroom:
+
+1. **Approximation tables (variant B)** — pre-computed `exp`/`ln` LUTs
+   with linear interp. Sketch in `_spikes/lmsr-cu/src/math.rs`.
+   Expected ~5x reduction at ~1e-6 relative error (well below USDC
+   dust). **Not built; documented escape hatch only.**
+2. **Crank pattern** — split cost calc into two TXs. Hurts UX (two
+   signatures), uncaps CU per ix. **Not needed.**
+3. **Drop LMSR for constant-product (xy=k)** — major economic redesign.
+   Last resort. **Not relevant given current measurements.**
 
 ---
 
 ## 6. CLOB — Build vs Integrate
 
-We have three options for `SoothBook` on Solana:
+**Status (P1 investigation complete)**: Monaco fork investigation
+finished — see `docs/research/monaco-investigation-week-01.md`.
+Recommendation is to **fork Monaco**: ~5 hard-rewrite + 4 soft-rewrite
+sites confined to a single state file plus two call sites. Founder
+approval still pending; the original three options below are kept as
+historical context.
 
 ### Option A — Port SoothBook to Anchor (`sooth_book` program)
 
@@ -320,9 +536,19 @@ We have three options for `SoothBook` on Solana:
 - **Pro**: composability with broader Solana DeFi
 - **Con**: same as Phoenix re: invariants
 
-**Recommendation**: ship v1 with **Option A (port SoothBook)** for design coherence, but design `BookState` so that future markets can be flagged "external book" pointing at a Phoenix market id. Hybrid path.
+### Option D — Fork Monaco (recommended; pending founder approval)
 
-Option 1 (port SoothBook with client-driven matching) is the only path that preserves the SDK's `escrow=true` atomicity. See `../../sdk-solana/docs/implementation-guide.md §6` for the SDK-level reasoning.
+- Monaco Protocol is an Apache-2.0 sports-betting CLOB at
+  `github.com/MonacoProtocol/protocol` (v0.15.5 investigated).
+- Hard cap is `MarketLiquidities::LIQUIDITIES_VEC_LENGTH = 30` (per side,
+  60 total) — would need to be lifted to ~1000 for Sooth's prediction-
+  market tick grid. Lift is genuinely orthogonal to the matching loop
+  because matching is bounded by a separate `MATCH_CAPACITY = 10`
+  constant.
+- Per-order CU cost remains bounded after the lift; a CU benchmark on a
+  populated 1000-cap account is the remaining open item before commit.
+- See `docs/research/monaco-investigation-week-01.md` and
+  `docs/monaco-fork-analysis.md` for the source-reading detail.
 
 ---
 
@@ -349,15 +575,40 @@ EVM uses `IAdjudicator` interface + `ZkTLSAdjudicator` backed by Primus's on-cha
 
 EVM: 4-way split `bBase 50% / LP 30% / adjudicator 10% / protocol 10%`.
 
-Solana implementation:
+**Status (architecture vs implementation reconciliation)**: the fee
+router lives in `sooth_launchpad`, **not inlined inside
+`sooth_amm::trade_positions`** as the original sketch implied. See the
+program ownership table in `packages/programs-core/README.md` ("Programs"
+table). Rationale: `sooth_launchpad` already owns `ProtocolConfig` (the
+bps splits + treasury pubkey) and the LP-mint authority — colocating the
+distributor with the source-of-truth config keeps the CPI surface
+narrower than threading `ProtocolConfig` through every `trade_positions`
+call. CPI overhead is negligible at ~5–7k CU per hop.
 
-- Inline as a function inside `sooth_amm::trade_positions` (no CPI overhead)
-- Destinations are 4 ATAs passed by client:
-  - `amm_state.b_base` accumulator (incremented in-place on `AmmState`)
-  - `lp_yield_vault` ATA
-  - `adjudicator_fee_vault` ATA (read from `Market.adjudicator_fee_dest`)
-  - `protocol_treasury_vault` ATA
-- LP minting on pre-graduation trades is part of the same instruction — no separate CPI needed since we own `LpMint`'s authority.
+`sooth_launchpad::distribute_fees` is currently a **`todo!()` stub**
+with the Accounts struct committed for IDL stability. Until it lands:
+
+- `sooth_amm::trade_positions` treats `fee_wad = 0` (see §4.2).
+- The slippage check `cost_wad + fee_wad ≤ max_cost_wad` therefore
+  degenerates to `cost_wad ≤ max_cost_wad`, which is **looser than the
+  EVM check by exactly the fee_wad delta**. The SDK's `max_cost_wad`
+  already reserves headroom; the gap is on-chain enforcement, not
+  client-side intent.
+- The 4-way bps split is drained from the fee accumulator on `AmmState`
+  by the future `distribute_fees` ix; per-trade emission is unchanged.
+
+Once wired, destinations:
+
+- `amm_state.b_base` accumulator (incremented in-place on `AmmState`)
+- `lp_yield_vault` ATA
+- `adjudicator_fee_vault` ATA (read from `Market.adjudicator_fee_dest`)
+- `protocol_treasury_vault` ATA
+
+LP minting on pre-graduation trades is hoisted to its own
+`sooth_launchpad::seed_lp` ix (also `todo!()`), not inlined into
+`trade_positions`, because the `LpMint` PDA needs `init` codegen that
+would push `trade_positions::try_accounts` past the SBF 4 KB stack ceiling
+(same constraint that fragmented `sooth_market::initialize_market`).
 
 ---
 
@@ -392,68 +643,107 @@ Solana: identical formula, stored on `AmmState.trial_end_at: i64`. `dismiss_mark
 | Indexer (Ponder, Postgres)             | Helius webhooks → Postgres, or Triton, or our own Geyser    |
 | `registry/nodes.json` (chain manifest) | Same idea: `{ cluster: "devnet"                             | "mainnet-beta", program_ids: {...} }` |
 
-The `@sooth/sdk` package would gain a `solana/` subpath:
+**Implemented**: the SDK lives in its own package at
+`packages/sdk-solana/` (`@sooth/sdk-solana`) rather than as a subpath
+inside the EVM `@sooth/sdk`. Rationale: the dependency surface (Anchor,
+`@solana/web3.js`, `@solana/spl-token`) is too large to colocate with the
+EVM SDK without forcing every consumer to pull the union. The two SDKs
+share formulas through copy-then-adapt, not through a shared workspace
+crate — the LMSR closed form is small and the WAD scalars are identical.
 
-```
-packages/sdk/
-  src/
-    evm/         # current code, untouched
-    solana/      # new
-      programs/  # generated from Anchor IDLs
-      hooks/     # React hooks mirroring EVM API surface
-      math/      # WAD math (shared with evm via core/)
-    core/        # shared formulas (LMSR closed-form, fee splits)
-```
-
-Demo app (`apps/demo`) wraps a chain selector that swaps the active SDK adapter — same UI, two backends. Telegram app (`apps/telegram`) gets Phantom Mobile deeplink support alongside MetaMask.
+Demo app (`apps/demo`) is forked Solana-only from the EVM `apps/demo`
+with a `chain-shim` bridge that lets the same UI render against the
+`SolanaChainAdapter`. See `packages/sdk-solana/README.md` for the SDK
+surface and `apps/demo/src/integrations/chain-shim/` for the bridge.
 
 ---
 
-## 11. Repo Layout (proposed)
+## 11. Repo Layout (actual — sooth-solana repo)
+
+This document lives in `sooth-solana` (the Solana monorepo), peer to
+`sooth-alpha` (the EVM monorepo) rather than nested inside it. Layout
+as of 2026-05:
 
 ```
-sooth-alpha/
+sooth-solana/
+├── Cargo.toml                  # workspace root (3 programs + 1 shared crate)
 ├── packages/
-│   ├── contracts-core/         # EVM (existing)
-│   └── programs-core/          # NEW: Solana programs
-│       ├── Anchor.toml
-│       ├── Cargo.toml          # workspace
-│       ├── programs/
-│       │   ├── sooth_launchpad/
-│       │   ├── sooth_amm/
-│       │   ├── sooth_market/
-│       │   ├── sooth_book/
-│       │   └── sooth_manual_adjudicator/
-│       ├── tests/              # mocha + Anchor (TS)
-│       └── target/idl/         # IDLs for SDK
-└── solana/
-    ├── architecture.md           # this doc
-    ├── prototypes/              # CU benchmarks, LMSR math experiments
-    └── deployments.json         # cluster → program IDs (mirrors registry/nodes.json)
+│   ├── programs-core/          # Anchor programs + their docs
+│   │   ├── Anchor.toml
+│   │   ├── programs/
+│   │   │   ├── sooth_amm/      # LMSR + position state + sell/claim ✓ scaffolded
+│   │   │   ├── sooth_market/   # Market lifecycle + custody ✓ scaffolded
+│   │   │   └── sooth_launchpad/# Factory + fee router (stubs) ✓ scaffolded
+│   │   ├── crates/
+│   │   │   └── sooth-account-offsets/   # shared Position/LockEntry byte offsets
+│   │   ├── docs/
+│   │   │   ├── architecture.md          # this doc
+│   │   │   └── research/                # CLOB / Monaco investigation
+│   │   └── README.md           # programs status table
+│   └── sdk-solana/             # @sooth/sdk-solana (TS) — chain adapter
+├── apps/
+│   └── demo/                   # forked Solana-only demo (chain-shim bridge)
+├── docs/
+│   ├── decision-log.md         # P-numbers / D-numbers
+│   ├── monaco-fork-analysis.md
+│   └── research/
+│       └── monaco-investigation-week-01.md
+├── _spikes/
+│   └── lmsr-cu/                # D4 prototype (excluded from workspace)
+└── HANDOVER.md                 # contributor briefing
 ```
+
+Programs not yet implemented: `sooth_book` (gated on the Monaco fork
+decision per §6) and `sooth_adjudicator` (Manual variant first, ZkTLS
+later per §7). Workspace `[members]` reserves the `crates/` sibling for
+future shared no-Anchor crates (e.g. `sooth-book-matcher`); the
+`sooth-account-offsets` crate is the first inhabitant.
 
 ---
 
 ## 12. Open Questions
 
-1. **Compute budget for LMSR**: prototype required before any further design. Single most important unknown.
+1. ~~**Compute budget for LMSR**~~ — **resolved by D4**. Production
+   `trade_positions` measures ~68k CU (see §5).
 2. **Account rent model**: who pays for `Position` PDAs? Subsidize from treasury, or charge users (~$0.30 SOL at $150/SOL)?
-3. **CLOB**: Option A (port) vs Option B/C (Phoenix/OpenBook) — depends on whether we want Jupiter routing.
+3. ~~**CLOB**: Option A (port) vs Option B/C (Phoenix/OpenBook)~~ —
+   superseded by Monaco fork investigation (§6, P1). Founder approval
+   pending.
 4. **zkTLS**: ship v1 with ManualAdjudicator and revisit when Primus adds Solana, or commit to Reclaim now?
 5. **Indexer**: Helius webhook → existing Ponder Postgres, or run Geyser ourselves?
-6. **Multi-chain UX**: does the demo app surface "Solana node" as a peer to "Base Sepolia node" in the existing node-picker, or is Solana a separate app?
+6. **Multi-chain UX**: not applicable to this repo — `apps/demo` is a
+   forked Solana-only build; the EVM `apps/demo` lives in `sooth-alpha`.
 7. **LP token transferability**: SPL by default. Do we want it that way (better composability) or do we want to gate transfers like ERC20 with hooks? Token-2022 transfer hooks could enforce this.
 8. **Token-2022 vs classic SPL**: Token-2022 supports useful extensions (transfer hooks, confidential transfers, metadata pointer) but has CPI overhead and ecosystem gaps (some wallets/DEXes still flaky).
+9. **Adjudicator-CPI auth check**: §4.4 — `lock_for_resolution` /
+   `settle` use loose signer-key equality with `market.adjudicator`.
+   Production gate (sysvar introspection vs program-derived signer) is
+   deferred to the `sooth_adjudicator` design.
+10. **`invalidate()` fallback** (§4.4): permissionless force-INVALID
+    after `deadline + invalidationBuffer` is on the EVM `TruthMarket`
+    but not yet ported.
 
 ---
 
-## 13. Recommended Next Steps
+## 13. Status Snapshot
 
-1. **Spike (1 week)**: `programs-core/programs/sooth_amm` skeleton + `LMSRMath` Rust port. Benchmark `trade_positions` on `solana-test-validator`. Decision gate: ≤300k CU per trade or we redesign.
-2. **Spike (3 days)**: stand up Phoenix devnet market for a YES/USDC pair. Measure end-to-end UX cost vs option A.
-3. **Spec (1 week)**: write `solana/v1-spec.md` with frozen account layouts, instruction signatures, and security invariants — analogous to our EVM contracts spec.
-4. **Decision**: based on (1) and (2), commit to either "full port" or "hybrid (Phoenix-backed CLOB)".
+This section used to enumerate "next steps" — those have either landed
+(LMSR spike, SDK adapter, Monaco investigation) or moved into the
+canonical roadmap surfaces (`docs/decision-log.md` + commit history +
+`packages/programs-core/README.md` "Programs" status table). Refer to
+those instead of duplicating here.
+
+Resolved decision points referenced by other sections:
+
+- **D4** (`docs/decision-log.md`): LMSR Taylor-exact variant proceeds to
+  production; LUT and crank patterns dropped. Backs §5.
+- **D5**: AMM-on-Solana atomic escrow is structural — see SDK
+  implementation guide §6. Backs §6 Option A's escrow argument.
+- **P1** (Monaco fork): investigation complete (recommend fork);
+  founder approval pending. Backs §6.
+- **P2 → D4**: subsumed by D4.
+- **P4 → D5**: subsumed by D5.
 
 ---
 
-_Last updated: 2026-05-05. Source-of-truth EVM contracts: `packages/contracts-core/src/` (sooth-core v0.1.2 / v0.2.0)._
+_Last updated: 2026-05-07. Source-of-truth EVM contracts: `packages/contracts-core/src/` (sooth-core v0.1.2 / v0.2.0)._

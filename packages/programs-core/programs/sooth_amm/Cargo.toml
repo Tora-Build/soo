@@ -38,6 +38,13 @@ anchor-spl = { version = "0.30.1", features = ["token"] }
 # layout + seeds). The `cpi` feature pulls only the no-entrypoint surface so
 # we don't double-register the program entrypoint in this crate.
 sooth_market = { path = "../sooth_market", features = ["cpi"] }
+# Shared byte-offset constants for `Position` / `LockEntry` account-data
+# layout. `sooth_market`'s transfer helpers parse these accounts raw because
+# the cyclic-dep direction (sooth_market → sooth_amm) is forbidden; this crate
+# is the single source of truth for the offsets they use. The compile-time
+# assertions in `state/{position,lock_entry}.rs` cross-check the constants
+# against the live struct's `SPACE` figures so any drift trips the build.
+sooth-account-offsets = { path = "../../crates/sooth-account-offsets" }
 
 [dev-dependencies]
 # Host-side math unit tests — no SBF, no anchor framework. The tests in
