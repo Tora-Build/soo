@@ -36,6 +36,10 @@ anchor-spl = { version = "0.30.1" }
 # CPI-only surface of `sooth_market` so `attest_outcome` can drive
 # `settle` via CPI (the new auth path closing Codex's deferred half of C2).
 sooth_market = { path = "../sooth_market", features = ["cpi"] }
+# Shared cross-program constants. The compile-time assert in `lib.rs` ties
+# `SOOTH_ADJUDICATOR_PROGRAM_ID` back to `crate::ID_CONST`, mirroring the
+# pattern in the other production programs.
+sooth-protocol-types = { path = "../../crates/sooth-protocol-types" }
 
 [lints.rust]
 unexpected_cfgs = { level = "allow" }

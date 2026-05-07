@@ -48,6 +48,21 @@ sooth_market = { path = "../sooth_market", features = ["cpi"] }
 # assertion in `state/protocol_config.rs` cross-checks the constants
 # against the live struct's `SPACE` figure so any drift trips the build.
 sooth-account-offsets = { path = "../../crates/sooth-account-offsets" }
+# Shared cross-program constants — `USDC_MINT_DEVNET` for the `seed_lp` /
+# `distribute_fees` / `create_market` Accounts pins. Compile-time assert in
+# `lib.rs` ties `SOOTH_LAUNCHPAD_PROGRAM_ID` back to `crate::ID_CONST`.
+sooth-protocol-types = { path = "../../crates/sooth-protocol-types" }
+
+[dev-dependencies]
+# Runtime CPI integration tests in `tests/cpi_create_market.rs` boot a
+# LiteSVM harness (drop-in for `solana-program-test` BanksClient that
+# doesn't pull a runtime server) with all four `.so` binaries pre-loaded
+# and dispatch the outer `create_market` ix as a real on-chain call. See
+# `sooth_market/Cargo.toml` for the LiteSVM 0.2.x version pin rationale.
+litesvm = "=0.2.1"
+solana-sdk = "=1.18.26"
+spl-token = "=4.0.0"
+spl-associated-token-account = "=2.3.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "allow" }
