@@ -336,6 +336,9 @@ export async function dispatchAmmWrite(
   if (call.functionName === "mergeCompleteSet") {
     return dispatchCompleteSet(call, ctx, "merge");
   }
+  if (call.functionName === "redeem") {
+    return dispatchRedeem(call, ctx);
+  }
   return NOT_HANDLED;
 }
 
@@ -785,6 +788,51 @@ async function dispatchCompleteSet(
           user: userRef,
           amount,
         });
+  const receipt = await ctx.adapter.submit(req, ctx.signer);
+  const sig = receipt.txId.replace(/^sol:/, "");
+  return synthHashFromSignature(sig);
+}
+
+/**
+ * Post-settlement redemption — `sooth_market::redeem`.
+ *
+ * Per the EVM `TruthMarket.getRedemptionValue` payout table:
+ *   YES wins:  burn user's YES, pay 1 USDC per share
+ *   NO  wins:  burn user's NO,  pay 1 USDC per share
+ *   INVALID:   burn both,        pay 0.5 USDC per share, summed
+ *
+ * The on-chain handler (sooth_market/src/instructions/redeem.rs) reads the
+ * user's outcome ATA balances and resolves the math directly — no per-call
+ * arg beyond the market reference. Builds via the SDK's existing
+ * `buildClaim({kind: "redeem"})` branch and submits through the same
+ * pipeline trade/claim use.
+ *
+ * Args:
+ *   args[0]: market reference — `0x<base58>` or `sol:<base58>`
+ */
+async function dispatchRedeem(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  if (!ctx.signer) {
+    throw new Error(
+      "redeem: no Solana signer available — connect a wallet first",
+    );
+  }
+  if (!ctx.userBase58) {
+    throw new Error("redeem: no Solana wallet pubkey — connect a wallet first");
+  }
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) {
+    throw new Error("redeem: invalid market reference");
+  }
+
+  const req = await ctx.adapter.buildClaim(marketRef, {
+    outcome: 0, // unused on Solana redeem path; placeholder for ClaimArgs shape
+    user: `sol:${ctx.userBase58}`,
+    kind: "redeem",
+  });
   const receipt = await ctx.adapter.submit(req, ctx.signer);
   const sig = receipt.txId.replace(/^sol:/, "");
   return synthHashFromSignature(sig);
