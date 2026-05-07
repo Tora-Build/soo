@@ -32,6 +32,7 @@
 //! `_executeSell(..., minProceeds, ...)`.
 
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::sysvar;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
 use sooth_market::cpi::accounts::TransferToLock;
@@ -154,6 +155,14 @@ pub struct SellPositions<'info> {
     /// `sooth_market` program — CPI'd into for the PDA-signed
     /// `vault → lock_vault` transfer. Mandatory after the Wave 1B fix.
     pub sooth_market_program: Program<'info, SoothMarket>,
+
+    /// Instructions sysvar — forwarded to `sooth_market::transfer_to_lock`
+    /// where it gates against direct (non-CPI) calls via parent-ix
+    /// introspection. The AMM doesn't read this account itself; we declare
+    /// it solely so Anchor places it on the CPI account list. Pinned to the
+    /// canonical sysvar pubkey. CHECK: address-pinned downstream.
+    #[account(address = sysvar::instructions::ID)]
+    pub instruction_sysvar: UncheckedAccount<'info>,
 }
 
 pub fn handler(
@@ -277,6 +286,7 @@ pub fn handler(
             usdc_mint: ctx.accounts.usdc_mint.to_account_info(),
             user: ctx.accounts.user.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
+            instruction_sysvar: ctx.accounts.instruction_sysvar.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(
             ctx.accounts.sooth_market_program.to_account_info(),

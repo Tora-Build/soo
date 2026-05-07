@@ -474,6 +474,15 @@
             "`vault → lock_vault` transfer. Mandatory after the Wave 1B fix."
           ],
           "address": "SoothMkt11111111111111111111111111111111111"
+        },
+        {
+          "name": "instruction_sysvar",
+          "docs": [
+            "Instructions sysvar — forwarded to `sooth_market::transfer_to_lock`",
+            "where it gates against direct (non-CPI) calls via parent-ix",
+            "introspection. The AMM doesn't read this account itself."
+          ],
+          "address": "Sysvar1nstructions1111111111111111111111111"
         }
       ],
       "args": [
@@ -618,6 +627,15 @@
             "1B fix (the `lock_authority` PDA is owned by `sooth_market`)."
           ],
           "address": "SoothMkt11111111111111111111111111111111111"
+        },
+        {
+          "name": "instruction_sysvar",
+          "docs": [
+            "Instructions sysvar — forwarded to",
+            "`sooth_market::transfer_from_lock_vault` where it gates against",
+            "direct (non-CPI) calls via parent-ix introspection."
+          ],
+          "address": "Sysvar1nstructions1111111111111111111111111"
         }
       ],
       "args": []

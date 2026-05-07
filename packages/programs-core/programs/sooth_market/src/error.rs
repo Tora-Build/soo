@@ -57,4 +57,7 @@ pub enum SoothMarketError {
 
     #[msg("Adjudicator pubkey is not present on the allowlist")]
     AdjudicatorNotPresent,
+
+    #[msg("Helper ixs must be CPI'd from sooth_amm; direct calls are rejected.")]
+    InvalidParentInstruction,
 }

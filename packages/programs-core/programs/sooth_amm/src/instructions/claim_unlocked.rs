@@ -31,6 +31,7 @@
 //! a single landed transaction.
 
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::sysvar;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
 use sooth_market::cpi::accounts::TransferFromLockVault;
@@ -128,6 +129,15 @@ pub struct ClaimUnlocked<'info> {
     /// `lock_vault → user_usdc_ata` transfer. Mandatory after the Wave 1B
     /// fix (the `lock_authority` PDA is owned by `sooth_market`, not the AMM).
     pub sooth_market_program: Program<'info, SoothMarket>,
+
+    /// Instructions sysvar — forwarded to
+    /// `sooth_market::transfer_from_lock_vault` where it gates against
+    /// direct (non-CPI) calls via parent-ix introspection. The AMM doesn't
+    /// read this account itself; declared so Anchor places it on the CPI
+    /// account list. Pinned to the canonical sysvar pubkey. CHECK:
+    /// address-pinned downstream.
+    #[account(address = sysvar::instructions::ID)]
+    pub instruction_sysvar: UncheckedAccount<'info>,
 }
 
 pub fn handler(ctx: Context<ClaimUnlocked>) -> Result<()> {
@@ -159,6 +169,7 @@ pub fn handler(ctx: Context<ClaimUnlocked>) -> Result<()> {
             usdc_mint: ctx.accounts.usdc_mint.to_account_info(),
             user: ctx.accounts.user.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
+            instruction_sysvar: ctx.accounts.instruction_sysvar.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(
             ctx.accounts.sooth_market_program.to_account_info(),

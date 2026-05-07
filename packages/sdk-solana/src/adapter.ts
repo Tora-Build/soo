@@ -27,6 +27,7 @@ import {
   TransactionInstruction,
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
   ComputeBudgetProgram,
 } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAccount } from "@solana/spl-token";
@@ -554,6 +555,13 @@ export class SolanaChainAdapter implements ChainAdapter {
         // PDA is owned by `sooth_market`, so the AMM cannot `invoke_signed`
         // against it directly — see the matching commit on the on-chain side.
         soothMarketProgram: this.programIds.soothMarket,
+        // Auth-gap closer: `transfer_to_lock` reads the Instructions sysvar
+        // to verify a parent `sell_positions` ix exists in the same tx. The
+        // sysvar account is forwarded through this AMM ix to the helper CPI.
+        // The IDL pin (`address = Sysvar1nstructions...`) means Anchor would
+        // resolve it automatically, but we pass explicitly to keep the
+        // intent visible at the call site.
+        instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
 
@@ -666,6 +674,11 @@ export class SolanaChainAdapter implements ChainAdapter {
         // `sooth_market::transfer_from_lock_vault` for the PDA-signed
         // `lock_vault → user_usdc_ata` transfer.
         soothMarketProgram: this.programIds.soothMarket,
+        // Auth-gap closer: `transfer_from_lock_vault` reads the Instructions
+        // sysvar to verify a parent `claim_unlocked` ix exists in the same
+        // tx. Forwarded through this AMM ix to the helper CPI. See the
+        // matching comment in `buildSell`.
+        instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
 

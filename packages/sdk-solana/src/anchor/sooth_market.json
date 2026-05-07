@@ -910,6 +910,15 @@
         {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "instruction_sysvar",
+          "docs": [
+            "Instructions sysvar — read by the parent-ix introspection check.",
+            "Pinned to the canonical sysvar pubkey so a malicious caller cannot",
+            "substitute a forged sysvar account with a fabricated instruction list."
+          ],
+          "address": "Sysvar1nstructions1111111111111111111111111"
         }
       ],
       "args": [
@@ -983,6 +992,15 @@
         {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "instruction_sysvar",
+          "docs": [
+            "Instructions sysvar — read by the parent-ix introspection check.",
+            "Pinned to the canonical sysvar pubkey so a malicious caller cannot",
+            "substitute a forged sysvar account with a fabricated instruction list."
+          ],
+          "address": "Sysvar1nstructions1111111111111111111111111"
         }
       ],
       "args": [
@@ -1110,6 +1128,11 @@
       "code": 6016,
       "name": "AdjudicatorNotPresent",
       "msg": "Adjudicator pubkey is not present on the allowlist"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidParentInstruction",
+      "msg": "Helper ixs must be CPI'd from sooth_amm; direct calls are rejected."
     }
   ],
   "types": [

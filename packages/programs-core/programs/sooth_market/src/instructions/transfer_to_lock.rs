@@ -8,38 +8,46 @@
 //! "Cross-program invocation with unauthorized signer or writable account"
 //! because the seeds derive a *different* PDA under `sooth_amm::ID`.
 //!
-//! ## Auth model (this commit only — see TODO below)
+//! ## Auth model
 //!
-//! The user's signature on the outer `sell_positions` ix flows down through
-//! the CPI as a signer. We re-check it here (`user: Signer`). Combined with:
+//! Two layered gates:
+//!
+//!   1. **User signature** — `user: Signer` re-checks the outer `sell_positions`
+//!      signer flowed down through the CPI. Combined with the position
+//!      validation below this means the caller controls the underlying
+//!      Position.
+//!   2. **Parent-ix introspection** — the runtime's `Instructions` sysvar is
+//!      walked to confirm one of the preceding top-level ixs is from
+//!      `sooth_amm` with the `sell_positions` discriminator. This closes
+//!      the solvency hole where a user could call `transfer_to_lock`
+//!      directly to move USDC `vault → lock_vault` without producing a
+//!      `LockEntry` (which only `sell_positions` can mint). See
+//!      `instruction_introspection.rs` for the full mechanism.
+//!
+//! Position-shape checks remain belt-and-braces:
 //!
 //!   1. `position.owner == sooth_amm::ID` (manual check — Position is owned
 //!      by `sooth_amm`, not `sooth_market`, so we can't use a typed
 //!      `Account<'info, Position>` without circular path-deps).
 //!   2. `position.user == user.key()` (manual offset parse).
 //!   3. `position.market == market.key()` (manual offset parse).
-//!
-//! the helper trusts the caller's intent. Note: a malicious user *could*
-//! call this directly outside any `sell_positions` context to drain `vault`
-//! into `lock_vault` without producing a `LockEntry`, breaking AMM solvency.
-//!
-//! TODO (post-Wave-1B): add an `Instructions` sysvar introspection check
-//! that enforces the calling program is `sooth_amm` and the parent ix is
-//! `sell_positions`. Out-of-scope for the bug-fix commit per session brief.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::sysvar;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 use crate::error::SoothMarketError;
+use crate::instruction_introspection::{require_parent_ix, SELL_POSITIONS_DISCRIMINATOR};
 use crate::state::{Market, MarketLifecycle};
 use crate::SOOTH_AMM_PROGRAM_ID;
 
-/// Position account layout (mirrored from `sooth_amm::state::Position`):
-///   8 disc + 32 user + 32 market + 16 yes + 16 no + 8 lock_nonce + 1 bump
-const POSITION_USER_OFFSET: usize = 8;
-const POSITION_MARKET_OFFSET: usize = 8 + 32;
-const POSITION_MIN_LEN: usize = 8 + 32 + 32 + 16 + 16 + 8 + 1;
+// Position account layout — sourced from `sooth-account-offsets` (see
+// crate-level docstring). The compile-time assertion in
+// `sooth_amm::state::position` ties `POSITION_TOTAL_LEN` to the live
+// `Position::SPACE`, so any drift here trips the build of `sooth_amm`.
+use sooth_account_offsets::{
+    POSITION_MARKET_OFFSET, POSITION_TOTAL_LEN as POSITION_MIN_LEN, POSITION_USER_OFFSET,
+};
 
 #[derive(Accounts)]
 pub struct TransferToLock<'info> {
@@ -95,9 +103,30 @@ pub struct TransferToLock<'info> {
     pub user: Signer<'info>,
 
     pub token_program: Program<'info, Token>,
+
+    /// Instructions sysvar — read by the parent-ix introspection check
+    /// (see module docstring §"Auth model" and
+    /// `instruction_introspection::require_parent_ix`). Pinned to the
+    /// canonical sysvar pubkey via the `address` constraint so a malicious
+    /// caller cannot substitute a forged sysvar account with a fabricated
+    /// instruction list. CHECK: address-pinned.
+    #[account(address = sysvar::instructions::ID)]
+    pub instruction_sysvar: UncheckedAccount<'info>,
 }
 
 pub fn handler(ctx: Context<TransferToLock>, amount: u64) -> Result<()> {
+    // ── 0. Parent-ix introspection ───────────────────────────────────────
+    //
+    // The auth-gap closer: refuse any call whose top-level ix list does not
+    // include a sooth_amm `sell_positions` dispatch. Runs before the zero-
+    // amount short-circuit so even a no-op direct call is rejected (the
+    // introspection gate is the invariant; the zero-amount fast path is
+    // an unrelated tolerance for LMSR rounding edges).
+    require_parent_ix(
+        &ctx.accounts.instruction_sysvar,
+        &SELL_POSITIONS_DISCRIMINATOR,
+    )?;
+
     if amount == 0 {
         // No-op for zero — keeps the CPI surface tolerant of LMSR rounding
         // edges where `proceeds_usdc == 0`. Mirrors the `if proceeds_usdc > 0`
@@ -138,10 +167,6 @@ pub fn handler(ctx: Context<TransferToLock>, amount: u64) -> Result<()> {
         ctx.accounts.market.key(),
         SoothMarketError::VaultAuthorityMismatch
     );
-
-    // Mark the instructions sysvar reference as used to silence unused-import
-    // warnings until the parent-program introspection lands.
-    let _ = sysvar::instructions::ID;
 
     // ── 2. PDA-signed CPI: vault → lock_vault ────────────────────────────
     let market_id = ctx.accounts.market.market_id;

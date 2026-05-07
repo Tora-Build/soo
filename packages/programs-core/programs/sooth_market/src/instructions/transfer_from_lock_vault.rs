@@ -5,9 +5,20 @@
 //! `transfer_to_lock`; same PDA-ownership rationale (the `lock_authority`
 //! PDA is owned by `sooth_market`, so only this program can sign with it).
 //!
-//! ## Auth model (this commit only — see TODO in `transfer_to_lock.rs`)
+//! ## Auth model
 //!
-//! User signature gates the transfer. We additionally validate:
+//! Two layered gates:
+//!
+//!   1. **User signature** — flowed down from `claim_unlocked` via CPI.
+//!   2. **Parent-ix introspection** — the runtime's `Instructions` sysvar is
+//!      walked to confirm one of the preceding top-level ixs is from
+//!      `sooth_amm` with the `claim_unlocked` discriminator. Closes the
+//!      same solvency hole as `transfer_to_lock.rs` (a direct call could
+//!      drain `lock_vault` without closing a `LockEntry`, so the per-sell
+//!      escrow accounting drifts from on-chain state). See
+//!      `instruction_introspection.rs` for the mechanism.
+//!
+//! LockEntry-shape checks remain belt-and-braces:
 //!
 //!   1. `lock_entry.owner == sooth_amm::ID`
 //!   2. `lock_entry.user == user.key()`
@@ -18,17 +29,22 @@
 //! helper only does the PDA-signed transfer.
 
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::sysvar;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 use crate::error::SoothMarketError;
+use crate::instruction_introspection::{require_parent_ix, CLAIM_UNLOCKED_DISCRIMINATOR};
 use crate::state::Market;
 use crate::SOOTH_AMM_PROGRAM_ID;
 
-/// LockEntry account layout (mirrored from `sooth_amm::state::LockEntry`):
-///   8 disc + 32 user + 32 market + 8 amount_usdc + 8 unlock_at + 8 nonce + 1 bump
-const LOCK_ENTRY_USER_OFFSET: usize = 8;
-const LOCK_ENTRY_MARKET_OFFSET: usize = 8 + 32;
-const LOCK_ENTRY_MIN_LEN: usize = 8 + 32 + 32 + 8 + 8 + 8 + 1;
+// LockEntry account layout — sourced from `sooth-account-offsets` (see
+// crate-level docstring). The compile-time assertion in
+// `sooth_amm::state::lock_entry` ties `LOCK_ENTRY_TOTAL_LEN` to the live
+// `LockEntry::SPACE`, so any drift here trips the build of `sooth_amm`.
+use sooth_account_offsets::{
+    LOCK_ENTRY_MARKET_OFFSET, LOCK_ENTRY_TOTAL_LEN as LOCK_ENTRY_MIN_LEN,
+    LOCK_ENTRY_USER_OFFSET,
+};
 
 #[derive(Accounts)]
 pub struct TransferFromLockVault<'info> {
@@ -74,9 +90,28 @@ pub struct TransferFromLockVault<'info> {
     pub user: Signer<'info>,
 
     pub token_program: Program<'info, Token>,
+
+    /// Instructions sysvar — read by the parent-ix introspection check
+    /// (see module docstring §"Auth model" and
+    /// `instruction_introspection::require_parent_ix`). Pinned to the
+    /// canonical sysvar pubkey via the `address` constraint so a malicious
+    /// caller cannot substitute a forged sysvar account with a fabricated
+    /// instruction list. CHECK: address-pinned.
+    #[account(address = sysvar::instructions::ID)]
+    pub instruction_sysvar: UncheckedAccount<'info>,
 }
 
 pub fn handler(ctx: Context<TransferFromLockVault>, amount: u64) -> Result<()> {
+    // ── 0. Parent-ix introspection ───────────────────────────────────────
+    //
+    // Symmetric to `transfer_to_lock`: refuse any call whose top-level ix
+    // list does not include a sooth_amm `claim_unlocked` dispatch. Runs
+    // before the zero-amount short-circuit on the same rationale.
+    require_parent_ix(
+        &ctx.accounts.instruction_sysvar,
+        &CLAIM_UNLOCKED_DISCRIMINATOR,
+    )?;
+
     if amount == 0 {
         // No-op for zero — defensive parity with `transfer_to_lock`.
         return Ok(());
