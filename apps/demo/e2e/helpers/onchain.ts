@@ -163,3 +163,27 @@ export async function getTxStatus(
   }
   return { kind: "success" };
 }
+
+/**
+ * Decode an Anchor `Custom: <code>` error from a tx err object against a
+ * loaded IDL `errors` array. Returns `{name, msg}` if matched, else null.
+ */
+export function decodeAnchorError(
+  err: unknown,
+  errors: Array<{ code: number; name: string; msg: string }>,
+): { code: number; name: string; msg: string } | null {
+  // err shape (Solana JSON-RPC): { InstructionError: [ixIdx, { Custom: code } | string] }
+  const e = err as
+    | { InstructionError?: [number, { Custom?: number } | string] }
+    | undefined;
+  const ix = e?.InstructionError;
+  if (!ix || ix.length < 2) return null;
+  const inner = ix[1];
+  if (typeof inner === "string") return null;
+  const code = inner?.Custom;
+  if (typeof code !== "number") return null;
+  const match = errors.find((x) => x.code === code);
+  return match
+    ? { code, name: match.name, msg: match.msg }
+    : { code, name: "Unknown", msg: `code=${code}` };
+}
