@@ -105,10 +105,18 @@ sooth-solana/
 ```bash
 # Prereqs: solana-cli, Phantom or Solflare browser extension
 pnpm install
+
+# Option A — solana-test-validator (canonical, slower startup ~10s)
 pnpm --filter @sooth/demo dev:localnet
+
+# Option B — Surfpool (sub-second startup, exposes setClock cheatcode)
+#  Install once:  curl -sL https://run.surfpool.run/ | bash
+pnpm --filter @sooth/demo dev:surfpool
 ```
 
-`dev:localnet` boots `solana-test-validator` (preloaded with USDC at the canonical address), deploys all 4 .so binaries, runs `initialize_protocol → initialize_fee_pool → initialize_adjudicator_allowlist → addAdjudicator → createMarket → registerAdjudicator`, writes `apps/demo/.localnet/user-keypair.json` (1000 USDC + 10 SOL pre-funded) + `.env.local`, and serves vite on http://localhost:5175.
+Both scripts run the same Phase 1–4 flow: USDC mint dump → boot validator → init protocol → vite. The Surfpool path drops the 24h sell-lock UI smoke blocker via `surfnet_timeTravel` (see `apps/demo/scripts/surfnet-cheats.sh time-travel --seconds 86400` to fast-forward past the lock window without restarting). `solana-test-validator` has no equivalent — claim_unlocked / operator settle UI smoke is wall-clock gated there.
+
+Either path then runs `seed-localnet.mjs init` which: deploys 2 of the 4 .so binaries (Surfpool auto-deploys all 4 via Anchor.toml), runs `initialize_protocol → initialize_fee_pool → initialize_adjudicator_allowlist → addAdjudicator → createMarket → registerAdjudicator`, writes `apps/demo/.localnet/user-keypair.json` (1000 USDC + 10 SOL pre-funded) + `.env.local`, and serves vite on http://localhost:5175.
 
 In Phantom/Solflare:
 
@@ -201,8 +209,8 @@ The dapp works locally end-to-end with a real Phantom wallet (verified 2026-05-0
 
 1. **Founder decision on P1.** All evidence is in `docs/research/monaco-investigation-week-01.md`. Once approved (or rejected), `sooth_book` becomes scaffold-able. Until then `/orderbook/:market` renders an "unavailable" card via ErrorBoundary.
 2. **Finish the AMM devnet deploy.** Get ~3 SOL into `apps/demo/.deploy-payer.json` (fresh airdrop or out-of-band funding) and run `solana program deploy target/deploy/sooth_amm.so --program-id target/deploy/sooth_amm-keypair.json --keypair apps/demo/.deploy-payer.json --use-rpc --url devnet`. Then `node apps/demo/scripts/seed-devnet.mjs --keypair apps/demo/.deploy-payer.json --with-market` to seed the demo market.
-3. **Operator console wire-up (P1.5).** `/operator` UI still calls EVM `finalizeResolution` / `resolve` directly via `writeContract`. Add chain-shim dispatchers (`request_lock`, `attest_outcome`, optionally `dispute`) and either rewrite the operator console handlers or extend the dispatchers to accept the EVM names. UI smoke is gated on the 24h lock window — `solana-test-validator` has no `setClock`, so the localnet path can't bridge `request_lock → attest_outcome` without out-of-band wall-clock advance.
-4. **Surfpool migration for e2e tests.** Drop the seed-localnet ceremony in favor of mainnet-state snapshots. Real win for setup speed + parity; medium effort. Skill: `web3-e2e-solana`.
+3. **Operator console wire-up (P1.5).** Chain-shim dispatchers and an operator panel on /portfolio landed in commit e1eac87, but the upstream `/operator` page itself still calls EVM `finalizeResolution` / `resolve` via writeContract — those need to either route to `requestLock` / `attestOutcome` through the chain-shim or be replaced by the new Solana-native panel. UI smoke for the Lock → Attest bridge is no longer wall-clock gated when running under Surfpool: `bash apps/demo/scripts/surfnet-cheats.sh time-travel --seconds 86400` advances past the 24h gate without restart.
+4. **Surfpool e2e migration.** The `dev:surfpool` script + `surfnet-cheats.sh` helper landed (commit `<TBD>`). Next step is migrating the Playwright on-chain specs at `apps/demo/e2e/` from the bankrun + solana-test-validator setup to a Surfpool-driven fixture so the wall-clock-gated specs (sell+claim, attest+settle, redeem+post-settle) run in CI without setClock plumbing in test code.
 5. **Fix the inner `SoothBookTerminal` hook crash at the source.** `useReadContracts` indexes into a tuple that's `undefined` when sooth_book isn't deployed. The page is contained behind `<ErrorBoundary>` today but the crash should be guarded at the source once sooth_book lands.
 6. **UI smoke pass for the deferred flows.** mint / merge / redeem CTAs on `/portfolio` are wired through the SDK + chain-shim, exercised by the SDK round-trip test (`tests/complete-set.test.ts`) and the cargo CPI suite. Real-Phantom click-verify deferred until Chrome DevTools session is back online.
 7. **Performance / observability.** No structured indexer integration yet — the demo footer reads "Indexer offline". Decide on Helius / Triton / custom Postgres ingest before broader user testing.

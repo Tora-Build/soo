@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "vite",
     "dev:localnet": "bash scripts/dev-localnet.sh",
+    "dev:surfpool": "bash scripts/dev-surfpool.sh",
+    "cheats": "bash scripts/surfnet-cheats.sh",
     "seed:prepare": "node scripts/seed-localnet.mjs prepare",
     "seed:init": "node scripts/seed-localnet.mjs init",
     "build": "tsc -p tsconfig.build.json && vite build",
