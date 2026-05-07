@@ -7,6 +7,7 @@ import { Card } from "../components/ui/Card";
 import { useActivePositions, useLPPositions } from "../hooks";
 import { TradingAccountCard } from "../components/features/portfolio/TradingAccountCard";
 import { ActiveOrdersCard } from "../components/features/portfolio/ActiveOrdersCard";
+import { CompleteSetPanel } from "../components/features/portfolio/CompleteSetPanel";
 import { formatCurrencyCompact } from "../lib/utils";
 import { useTranslation } from "react-i18next";
 
@@ -82,17 +83,13 @@ export const Portfolio = () => {
             </p>
           </div>
           <div className="border border-rule bg-inset p-4">
-            <p className="text-xs text-muted">
-              {t("portfolio.lpFloorValue")}
-            </p>
+            <p className="text-xs text-muted">{t("portfolio.lpFloorValue")}</p>
             <p className="mt-1 text-base font-mono font-semibold text-ink">
               {formatUsd(totalLPValueNumber)}
             </p>
           </div>
           <div className="border border-rule bg-inset p-4">
-            <p className="text-xs text-muted">
-              {t("portfolio.openMarkets")}
-            </p>
+            <p className="text-xs text-muted">{t("portfolio.openMarkets")}</p>
             <p className="mt-1 text-base font-mono font-semibold text-ink">
               {activePositions.length + lpPositions.length}
             </p>
@@ -101,6 +98,8 @@ export const Portfolio = () => {
       </Card>
 
       <TradingAccountCard />
+
+      <CompleteSetPanel />
 
       <Card className="bg-raised border border-rule p-6">
         <div className="flex items-center justify-between mb-4">
@@ -120,9 +119,7 @@ export const Portfolio = () => {
           </div>
         ) : activePositions.length === 0 ? (
           <div className="border border-rule bg-inset p-6 text-center space-y-3">
-            <p className="text-sm text-muted">
-              {t("portfolio.noPositions")}
-            </p>
+            <p className="text-sm text-muted">{t("portfolio.noPositions")}</p>
             <Link
               to="/markets"
               className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-accent hover:underline"
@@ -210,9 +207,7 @@ export const Portfolio = () => {
           </div>
         ) : lpPositions.length === 0 ? (
           <div className="border border-rule bg-inset p-6 text-center space-y-3">
-            <p className="text-sm text-muted">
-              {t("portfolio.noLpPositions")}
-            </p>
+            <p className="text-sm text-muted">{t("portfolio.noLpPositions")}</p>
             <Link
               to="/create"
               className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-accent hover:underline"
