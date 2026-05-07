@@ -58,11 +58,13 @@ export async function fetchRegistryNodeForDeployment(
   }
   const payload = (await res.json()) as { data?: RegistryNode[] };
   const normalizedLaunchpadEngine = launchpadEngine.toLowerCase();
-  return payload.data?.find(
-    (node) =>
-      node.chainId === chainId &&
-      node.contracts.launchpadEngine.toLowerCase() ===
-        normalizedLaunchpadEngine,
+  return (
+    payload.data?.find(
+      (node) =>
+        node.chainId === chainId &&
+        node.contracts.launchpadEngine.toLowerCase() ===
+          normalizedLaunchpadEngine,
+    ) ?? null
   );
 }
 
