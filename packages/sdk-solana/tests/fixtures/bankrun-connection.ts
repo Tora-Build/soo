@@ -15,6 +15,7 @@
 import type { BanksClient, ProgramTestContext } from "solana-bankrun";
 import {
   Connection,
+  Keypair,
   PublicKey,
   Transaction,
   VersionedTransaction,
@@ -29,6 +30,13 @@ type Wireable = Transaction | VersionedTransaction;
 export class BankrunConnection extends Connection {
   private readonly _banks: BanksClient;
   private readonly _ctx: ProgramTestContext;
+  // Optional keypairs used to partial-sign unsigned transactions inside
+  // `simulateTransaction`. Real Solana RPC's `simulateTransaction` accepts
+  // unsigned legacy txs (sigVerify defaults to false), but bankrun's
+  // BanksClient enforces signature verification even on simulation. Tests
+  // exercising `adapter.preflight()` (which builds an unsigned tx) seed this
+  // list with the feePayer keypair so the mock can match real-RPC semantics.
+  private _simSigners: Keypair[] = [];
 
   constructor(ctx: ProgramTestContext) {
     // The base `Connection` requires a URL — pass localhost to satisfy the
@@ -41,6 +49,10 @@ export class BankrunConnection extends Connection {
 
   get banksClient(): BanksClient {
     return this._banks;
+  }
+
+  setSimSigners(signers: Keypair[]): void {
+    this._simSigners = signers;
   }
 
   override async getAccountInfo(
@@ -137,6 +149,19 @@ export class BankrunConnection extends Connection {
     _signersOrConfig?: any,
   ): Promise<any> {
     if (transaction instanceof Transaction) {
+      // Bankrun's BanksClient.simulateTransaction enforces sigVerify even
+      // though real RPC defaults to sigVerify=false on legacy txs without
+      // signers. Match real-RPC behavior by partial-signing with any
+      // pre-registered sim-signer whose pubkey is referenced by the message.
+      if (this._simSigners.length > 0 && transaction.recentBlockhash) {
+        const referenced = new Set(
+          transaction.compileMessage().accountKeys.map((k) => k.toBase58()),
+        );
+        const matched = this._simSigners.filter((kp) =>
+          referenced.has(kp.publicKey.toBase58()),
+        );
+        if (matched.length > 0) transaction.partialSign(...matched);
+      }
       const meta = await this._banks.simulateTransaction(transaction);
       return {
         context: { slot: 0 },

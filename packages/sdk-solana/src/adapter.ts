@@ -1305,8 +1305,112 @@ export class SolanaChainAdapter implements ChainAdapter {
     );
   }
 
-  async preflight(_req: SoothRequest): Promise<PreflightResult> {
-    notImplemented("preflight");
+  async preflight(req: SoothRequest): Promise<PreflightResult> {
+    // Mirror submit's tx construction so the simulation hits the same compute
+    // path (CU limit + preIxs + main ix). Diverging here would make
+    // unitsConsumed misleading vs the real send.
+    const meta = req.meta as
+      | undefined
+      | {
+          ixData: string;
+          ixKeys: Array<{
+            pubkey: string;
+            isSigner: boolean;
+            isWritable: boolean;
+          }>;
+          ixProgramId: string;
+          userPk: string;
+          preIxs?: Array<{
+            programId: string;
+            keys: Array<{
+              pubkey: string;
+              isSigner: boolean;
+              isWritable: boolean;
+            }>;
+            data: string;
+          }>;
+        };
+    if (!meta?.ixData) {
+      return {
+        ok: false,
+        error: {
+          kind: "ProgramError",
+          msg: "preflight: request missing meta.ixData",
+        },
+      };
+    }
+
+    const userPk = new PublicKey(meta.userPk);
+    const ix = new TransactionInstruction({
+      programId: new PublicKey(meta.ixProgramId),
+      keys: meta.ixKeys.map((k) => ({
+        pubkey: new PublicKey(k.pubkey),
+        isSigner: k.isSigner,
+        isWritable: k.isWritable,
+      })),
+      data: Buffer.from(meta.ixData, "base64"),
+    });
+    const preIxs: TransactionInstruction[] = (meta.preIxs ?? []).map(
+      (p) =>
+        new TransactionInstruction({
+          programId: new PublicKey(p.programId),
+          keys: p.keys.map((k) => ({
+            pubkey: new PublicKey(k.pubkey),
+            isSigner: k.isSigner,
+            isWritable: k.isWritable,
+          })),
+          data: Buffer.from(p.data, "base64"),
+        }),
+    );
+
+    const tx = new Transaction();
+    tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+    for (const pre of preIxs) tx.add(pre);
+    tx.add(ix);
+    tx.feePayer = userPk;
+
+    try {
+      const bh = await this.connection.getLatestBlockhash("confirmed");
+      tx.recentBlockhash = bh.blockhash;
+    } catch (e) {
+      return {
+        ok: false,
+        error: {
+          kind: "NetworkError",
+          msg: (e as Error).message ?? String(e),
+        },
+      };
+    }
+
+    let sim;
+    try {
+      sim = await this.connection.simulateTransaction(tx);
+    } catch (e) {
+      return {
+        ok: false,
+        error: {
+          kind: "NetworkError",
+          msg: (e as Error).message ?? String(e),
+        },
+      };
+    }
+
+    if (sim.value.err !== null && sim.value.err !== undefined) {
+      return {
+        ok: false,
+        error: {
+          kind: "SimulationFailed",
+          err: sim.value.err,
+          logs: sim.value.logs ?? [],
+        },
+      };
+    }
+
+    const unitsConsumed = sim.value.unitsConsumed;
+    return {
+      ok: true,
+      gasEstimate: unitsConsumed != null ? BigInt(unitsConsumed) : undefined,
+    };
   }
 
   // ─── Subscriptions (intentionally not wired) ────────────────────────────
