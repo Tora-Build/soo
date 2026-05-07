@@ -66,16 +66,73 @@ const fmtUsd = (v: number) =>
 // Component
 // ---------------------------------------------------------------------------
 
-export function SoothBookTerminal({
+// Outer dispatcher: resolves the sooth_book deployment address and either
+// renders the unavailable card OR mounts the heavy Active variant. Splitting
+// this way means the ~30 hooks inside `SoothBookTerminalActive` only mount
+// when sooth_book is deployed — Rules of Hooks stays satisfied unconditionally
+// and the Solana fork (where SoothBook is undefined per docs/decision-log.md
+// spike P1) renders the empty-state card without ever touching useOrderbook /
+// useOrderbookTrade / the SoothBook multicalls.
+export function SoothBookTerminal(props: SoothBookTerminalProps) {
+  const { contracts } = useDeployments();
+  const resolvedSB = (props.soothBookAddress ?? contracts.SoothBook) as
+    | Address
+    | undefined;
+
+  if (!resolvedSB) {
+    return <SoothBookUnavailable {...props} />;
+  }
+
+  return <SoothBookTerminalActive {...props} resolvedSB={resolvedSB} />;
+}
+
+function SoothBookUnavailable({
   marketAddress,
   marketQuestion,
-  soothBookAddress: soothBookProp,
+  beforeOrderbookPane,
+  afterOrderbookPane,
+}: SoothBookTerminalProps) {
+  return (
+    <div className="flex flex-col lg:flex-row gap-1 bg-canvas items-start">
+      <div className="flex flex-col gap-1 w-full min-w-0">
+        {beforeOrderbookPane}
+        <div className="bg-raised p-10 text-center space-y-3">
+          <h2 className="font-sans text-lg font-medium text-ink">
+            {marketQuestion || "Orderbook not available"}
+          </h2>
+          <p className="text-sm text-muted max-w-md mx-auto">
+            Orderbook not available on this chain — the{" "}
+            <span className="font-mono">sooth_book</span> program is not
+            deployed (gated on spike P1).
+          </p>
+          <a
+            href={`/amm/${marketAddress}`}
+            className="inline-block mt-2 px-4 py-2 font-mono text-xs uppercase tracking-[0.12em] font-bold border border-accent text-accent hover:bg-accent-muted"
+          >
+            Go to AMM
+          </a>
+          <p className="font-mono text-[9px] text-faint pt-2">
+            {marketAddress}
+          </p>
+        </div>
+        {afterOrderbookPane}
+      </div>
+    </div>
+  );
+}
+
+function SoothBookTerminalActive({
+  marketAddress,
+  marketQuestion,
+  resolvedSB,
   beforeOrderbookPane,
   afterOrderbookPane,
   beforeTradePane,
   afterTradePane,
   onOutcomeChange,
-}: SoothBookTerminalProps) {
+}: Omit<SoothBookTerminalProps, "soothBookAddress"> & {
+  resolvedSB: Address;
+}) {
   const { address: user } = useAccount();
   // Use the app-selected chain (store) as source of truth for reads so users
   // browsing MegaETH still see its on-chain state when their wallet is on a
@@ -83,49 +140,8 @@ export function SoothBookTerminal({
   const walletChainId = useChainId();
   const { selectedChainId } = useChainStore();
   const chainId = Number(selectedChainId) || walletChainId;
-  const { contracts } = useDeployments();
 
   const { t } = useTranslation();
-  const resolvedSB = (soothBookProp ?? contracts.SoothBook) as
-    | Address
-    | undefined;
-
-  // Solana fork: the `sooth_book` program is gated behind P1 in
-  // docs/decision-log.md and has no on-chain implementation yet.
-  // `useDeployments` returns `SoothBook: undefined` for every chain, so the
-  // hooks below (`useOrderbook`, `useOrderbookTrade`, the SoothBook
-  // multicall reads) destructure on undefined and crash. Render a
-  // styled empty-state card instead so the route is navigable but the
-  // user understands the feature is unavailable.
-  if (!resolvedSB) {
-    return (
-      <div className="flex flex-col lg:flex-row gap-1 bg-canvas items-start">
-        <div className="flex flex-col gap-1 w-full min-w-0">
-          {beforeOrderbookPane}
-          <div className="bg-raised p-10 text-center space-y-3">
-            <h2 className="font-sans text-lg font-medium text-ink">
-              {marketQuestion || "Orderbook not available"}
-            </h2>
-            <p className="text-sm text-muted max-w-md mx-auto">
-              Orderbook not available on this chain — the{" "}
-              <span className="font-mono">sooth_book</span> program is not
-              deployed (gated on spike P1).
-            </p>
-            <a
-              href={`/amm/${marketAddress}`}
-              className="inline-block mt-2 px-4 py-2 font-mono text-xs uppercase tracking-[0.12em] font-bold border border-accent text-accent hover:bg-accent-muted"
-            >
-              Go to AMM
-            </a>
-            <p className="font-mono text-[9px] text-faint pt-2">
-              {marketAddress}
-            </p>
-          </div>
-          {afterOrderbookPane}
-        </div>
-      </div>
-    );
-  }
 
   const marketKey = useMemo(() => {
     if (!marketAddress) return undefined;
