@@ -57,6 +57,42 @@
 
 **Spike artifact**: `_spikes/lmsr-cu/` (Cargo workspace-private; bench reproducible via `cargo build-sbf && cargo test-sbf -- --nocapture`). Cargo.lock pinned because three transitive deps had to be downgraded to escape edition2024 dependencies that platform-tools v1.51's cargo 1.84.0 rejects — note for whoever ports the math into `sooth_amm`.
 
+### D6. Devnet program IDs locked in (2026-05-07)
+
+**Decision**: The four production Anchor programs are pinned to the
+following devnet program IDs, mirrored across `declare_id!`,
+`sooth_protocol_types::ids`, the four IDL JSONs in `@sooth/sdk-solana`,
+`packages/programs-core/Anchor.toml`, and `apps/demo/src/lib/config.ts`:
+
+| Program             | Program ID                                     |
+| ------------------- | ---------------------------------------------- |
+| `sooth_amm`         | `67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k` |
+| `sooth_market`      | `ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n` |
+| `sooth_launchpad`   | `HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3` |
+| `sooth_adjudicator` | `4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8` |
+
+**Why**: Replaces the deterministic placeholder strings (`SoothAMM1...`
+etc.) used during pre-deploy development. Real ed25519 keypairs were
+generated at `target/deploy/<program>-keypair.json` (gitignored). The
+compile-time `pubkey_eq` asserts in each program's `lib.rs` keep all
+`declare_id!`/protocol-types pairs in lockstep — drift trips the build.
+
+**Status**: 3/4 programs (`sooth_market`, `sooth_launchpad`,
+`sooth_adjudicator`) deployed to devnet on 2026-05-07; `sooth_amm`
+keypair is locked in but the deploy itself is pending — devnet faucet
+rate-limited the deploy payer mid-rollout. Singleton bootstrap PDAs
+(`ProtocolConfig`, `fee_pool_vault`, `AdjudicatorAllowlist`) are all
+initialised. See `HANDOVER.md > Devnet deployment status` for the
+exact addresses and resume instructions.
+
+**Implication**: `pnpm dev` (no flag) now targets devnet by default;
+`pnpm dev:localnet` remains the offline-iteration path. Future redeploys
+that rotate keypairs must edit the four `declare_id!`s, the four
+`SOOTH_*_PROGRAM_ID` constants in `sooth-protocol-types::ids`, the four
+IDL `address` fields in `@sooth/sdk-solana`, and the `Anchor.toml`
+`[programs.devnet]`/`[programs.localnet]` blocks — `cargo check` will
+flag any miss via the `pubkey_eq` asserts.
+
 ### D5. Atomic escrow is structurally load-bearing in production; D2 stands (2026-05-05; resolves P4)
 
 **Decision**: `escrow=true` is not a user-toggled feature — it is the only way the production telegram app expresses limit sells on SoothBook. The Solana orderbook MUST preserve atomic escrow. This re-confirms D2.

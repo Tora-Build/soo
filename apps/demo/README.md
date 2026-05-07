@@ -37,7 +37,28 @@ Hooks bound to wallet-adapter (`useAccount`, `useDisconnect`, `useAppKit`, `useP
 
 The faithful fork accepts that most pages render but show empty/error states. That's the **honest gap surface** the brief calls out.
 
-## Quick start (one-command localnet)
+## Quick start
+
+`pnpm dev` (no flag) targets devnet by default — the four Sooth programs
+are deployed at the IDs pinned in `src/lib/config.ts` (sourced from the
+SDK's IDL JSON), and the protocol singletons (`ProtocolConfig`,
+`fee_pool_vault`, `AdjudicatorAllowlist`) are bootstrapped already. To
+re-bootstrap (e.g. after a fresh program redeploy) or to seed a fresh
+demo market, run:
+
+```sh
+node apps/demo/scripts/seed-devnet.mjs --keypair apps/demo/.deploy-payer.json [--with-market]
+```
+
+`--with-market` requires the signing wallet to hold devnet USDC at the
+canonical mint (`4zMM…ncDU`). Without it the script still bootstraps the
+singletons (idempotent, safe to re-run).
+
+For offline iteration, `pnpm dev:localnet` boots a fresh
+`solana-test-validator`, deploys the programs, mints USDC, and seeds a
+market — see [Localnet (offline)](#localnet-offline).
+
+## Localnet (offline)
 
 The dapp needs a running validator with both Sooth programs deployed and a market initialized. `pnpm dev:localnet` does all three.
 
@@ -144,12 +165,17 @@ For full SDK validation, see `pnpm -F @sooth/sdk-solana test` which exercises `S
 
 | Env                           | Default                                        | Purpose                                           |
 | ----------------------------- | ---------------------------------------------- | ------------------------------------------------- |
-| `VITE_SOLANA_RPC_URL`         | `http://127.0.0.1:8899`                        | RPC endpoint                                      |
+| `VITE_SOLANA_RPC_URL`         | `https://api.devnet.solana.com`                | RPC endpoint                                      |
 | `VITE_USDC_MINT`              | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` | Collateral mint (canonical devnet USDC)           |
-| `VITE_SOOTH_AMM_ID`           | `SoothAMM11111111111111111111111111111111111`  | sooth_amm program ID                              |
-| `VITE_SOOTH_MARKET_ID`        | `SoothMkt11111111111111111111111111111111111`  | sooth_market program ID                           |
+| `VITE_SOOTH_AMM_ID`           | `67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k` | sooth_amm program ID (devnet)                     |
+| `VITE_SOOTH_MARKET_ID`        | `ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n` | sooth_market program ID (devnet)                  |
 | `VITE_DEMO_MARKET_REF`        | (none)                                         | `sol:<base58>` of the demo market PDA             |
 | `VITE_DEMO_AIRDROP_RECIPIENT` | (none)                                         | User pubkey the seed script funded with 1000 USDC |
+
+`pnpm dev:localnet` writes a `.env.local` that overrides `VITE_SOLANA_RPC_URL`
+to `http://127.0.0.1:8899` (and ditto for the program IDs if the local
+keypairs differ); the bare `pnpm dev` flow uses the devnet defaults
+above without touching `.env.local`.
 
 ## Troubleshooting
 

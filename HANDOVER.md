@@ -141,12 +141,44 @@ The wired pages (`/markets`, `/m/:marketAddress`, `/portfolio`) drive the real `
 
 If you don't have access to `sooth-alpha`, the relevant facts are summarized in `docs/research/porting-evaluation.md` and `packages/programs-core/docs/architecture.md`.
 
+## Devnet deployment status (2026-05-07)
+
+Three of four production programs are deployed and the protocol singletons
+are bootstrapped. Deploy payer is `apps/demo/.deploy-payer.json`
+(gitignored), pubkey `3rrWjQLuUUcxsFjiGDKpBzHW8yfaioMNa88TEKU8dKcY`.
+
+| Program             | Program ID                                     | Status   | Solscan                                                                                           |
+| ------------------- | ---------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `sooth_amm`         | `67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k` | NOT YET  | [solscan](https://solscan.io/account/67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k?cluster=devnet) |
+| `sooth_market`      | `ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n` | deployed | [solscan](https://solscan.io/account/ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n?cluster=devnet) |
+| `sooth_launchpad`   | `HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3` | deployed | [solscan](https://solscan.io/account/HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3?cluster=devnet) |
+| `sooth_adjudicator` | `4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8` | deployed | [solscan](https://solscan.io/account/4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8?cluster=devnet) |
+
+`sooth_amm` deploy was blocked by a devnet faucet rate-limit during the
+initial rollout; the keypair at `target/deploy/sooth_amm-keypair.json` is
+already wired into every `declare_id!`, IDL, and Anchor.toml entry — running
+`solana program deploy target/deploy/sooth_amm.so --program-id
+target/deploy/sooth_amm-keypair.json --keypair apps/demo/.deploy-payer.json
+--use-rpc --url devnet` once the payer has ~3 SOL again will land the
+program at the expected ID with no further code changes.
+
+Singleton bootstrap (`apps/demo/scripts/seed-devnet.mjs`) is complete:
+
+- `ProtocolConfig` PDA: `5zeukhATu775fSK7tbewDrDvSy9DNkAuXsXLPZrGAeZ8`
+- `fee_pool_vault`: `BvoFfmXcEEaKHKzPNTmSbmzBfAWWDoFW197F3BfuEyiZ`
+- `AdjudicatorAllowlist` PDA: `C7E2akWKo2ZNHvfT5xMFXqYzRAG1gY8P1H9ZK1q8H8Jc`
+- Demo adjudicator (deploy payer): `3rrWjQLuUUcxsFjiGDKpBzHW8yfaioMNa88TEKU8dKcY`
+
+Once `sooth_amm` is deployed, `node apps/demo/scripts/seed-devnet.mjs
+--keypair apps/demo/.deploy-payer.json --with-market` will seed a market
+end-to-end (requires the signer to have devnet USDC on hand).
+
 ## What to do next (concrete)
 
 The dapp works locally. The most-impactful remaining items:
 
 1. **Founder decision on P1.** All evidence is in `docs/research/monaco-investigation-week-01.md`. Once approved (or rejected), `sooth_book` becomes scaffold-able.
-2. **Devnet keypair generation + deploy.** Replace placeholder program IDs (`SoothAMM1...`, `SoothMkt1...`, `SoothLP1...`, `SoothAdj1...`) with real keypairs; deploy to devnet; update `apps/demo/src/lib/config.ts` defaults so `dev` (not just `dev:localnet`) targets devnet.
+2. **Finish the AMM devnet deploy.** Get ~3 SOL into `apps/demo/.deploy-payer.json` (e.g. via a fresh airdrop window or out-of-band funding) and run `solana program deploy target/deploy/sooth_amm.so --program-id target/deploy/sooth_amm-keypair.json --keypair apps/demo/.deploy-payer.json --use-rpc --url devnet`. Then `node apps/demo/scripts/seed-devnet.mjs --keypair apps/demo/.deploy-payer.json --with-market` to seed the demo market.
 3. **LP minting on pre-graduation buys.** Architecture §4.2: `if !is_graduated: CPI mint_to(lp_mint → user_lp_ata, lp_amount)`. The `lp_mint_authority` PDA scheme is established by `sooth_launchpad::seed_lp` (commit `2bc0857`) — `sooth_amm::trade_positions` needs to consume it.
 4. **`redeem` body on sooth_market.** Spec lives in the module comment (1:1 winner payout, 50:50 INVALID per `TruthMarket.getRedemptionValue`). Gated on `sooth_adjudicator` having attested an outcome (already real for the Manual variant).
 5. **`sooth_adjudicator::dispute`** body. Currently `todo!()`. Architecture §4.4.

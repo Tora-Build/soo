@@ -70,7 +70,22 @@ and `sha256("event:<EventName>")[:8]` respectively.
 
 **`cargo build-sbf` must be invoked per-program, not at workspace level.** `sooth_amm` declares `sooth_market` as a path dep with `features = ["cpi"]`, which causes a workspace-level build to unify `cpi`+`no-entrypoint` features and emit a 896-byte stub `sooth_market.so` with no entrypoint (unloadable). Building each program from its own manifest path produces the correct loadable `.so`.
 
-`anchor build` is deferred until the Anchor.toml at `packages/programs-core/Anchor.toml` is exercised against real keypairs (currently uses placeholder program IDs — replace via `solana-keygen new -o target/deploy/<program>-keypair.json` and update `declare_id!` + `Anchor.toml`).
+`anchor build` is deferred until the proc-macro2 mismatch is fixed; the
+real keypairs and program IDs were rotated in for the devnet rollout
+(2026-05-07). The `Anchor.toml` `[programs.devnet]` and `[programs.localnet]`
+blocks now both list the production IDs:
+
+| Program             | Devnet program ID                              | Status                                  |
+| ------------------- | ---------------------------------------------- | --------------------------------------- |
+| `sooth_amm`         | `67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k` | Keypair generated, deploy pending funds |
+| `sooth_market`      | `ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n` | Deployed                                |
+| `sooth_launchpad`   | `HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3` | Deployed                                |
+| `sooth_adjudicator` | `4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8` | Deployed                                |
+
+Keypairs live at `target/deploy/<program>-keypair.json` (gitignored). The
+deploy payer keypair is at `apps/demo/.deploy-payer.json` (gitignored).
+See `HANDOVER.md > Devnet deployment status` for the singleton bootstrap
+PDA addresses.
 
 `sooth_market` originally co-init'd the Market PDA, both outcome mints, and both USDC vaults in a single `initialize_market` instruction. Anchor 0.30.1's `try_accounts` codegen frame for that combined accounts struct exceeded the SBF 4 KB stack limit by ~2.8 KB even with every payload-bearing field `Box<>`'d, and at runtime the overflow corrupted the deserialized `args` struct (e.g. `args.deadline > args.start_time` evaluating false on plainly-ordered literals). The flow is now split across three instructions — `initialize_market` (Market PDA only), `initialize_outcome_mints` (yes_mint + no_mint), and `initialize_market_vaults` (USDC vault + lock vault, flips lifecycle to `Open`) — each of which compiles under the 4 KB ceiling with no warnings. SDKs must call all three (in order) to land a tradeable market.
 
