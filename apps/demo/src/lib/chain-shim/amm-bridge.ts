@@ -737,11 +737,11 @@ async function dispatchAddAdjudicator(
  *   mint:  N USDC in → N·WAD YES + N·WAD NO out
  *   merge: N·WAD YES + N·WAD NO in → N USDC out
  *
- * Both sides call into `sooth_market` directly (no Anchor `methods.X` route
- * exists on the SDK adapter today — this is a TODO to hoist into
- * `@sooth/sdk-solana::buildMint/buildMerge` so the SDK + e2e helper +
- * dapp share one builder). For now we mirror the pattern from
- * `apps/demo/e2e/helpers/sdk-helpers.ts::mintCompleteSetViaAdapter`.
+ * Routes through `adapter.buildMintCompleteSet` /
+ * `adapter.buildMergeCompleteSet` for ix construction and
+ * `adapter.submit` for sign/send/confirm — same machinery the trade path
+ * uses. Idempotent-ATA-create preIxs ride along on the mint path so
+ * first-time minters don't need a separate account-bootstrap tx.
  *
  * Args:
  *   args[0]: market reference — `0x<base58>` or `sol:<base58>`
@@ -774,138 +774,17 @@ async function dispatchCompleteSet(
     throw new Error(`${kind}CompleteSet: amount must be positive`);
   }
 
-  const userPk = new PublicKey(ctx.userBase58);
-  const marketPda = new PublicKey(marketRef.replace(/^sol:/, ""));
-  const marketAcc = await ctx.adapter.connection.getAccountInfo(marketPda);
-  if (!marketAcc) {
-    throw new Error(`${kind}CompleteSet: market PDA not found on-chain`);
-  }
-  const marketId = marketAcc.data.subarray(8, 24);
-
-  const programs = ctx.adapter.programIds;
-  const [vaultAuthority] = PublicKey.findProgramAddressSync(
-    [Buffer.from("vault_auth"), marketId],
-    programs.soothMarket,
-  );
-  const [yesMint] = PublicKey.findProgramAddressSync(
-    [Buffer.from("yes_mint"), marketId],
-    programs.soothMarket,
-  );
-  const [noMint] = PublicKey.findProgramAddressSync(
-    [Buffer.from("no_mint"), marketId],
-    programs.soothMarket,
-  );
-  const usdcMint = ctx.adapter.usdcMint;
-  const vault = getAssociatedTokenAddressSync(usdcMint, vaultAuthority, true);
-  const userUsdcAta = getAssociatedTokenAddressSync(usdcMint, userPk);
-  const userYesAta = getAssociatedTokenAddressSync(yesMint, userPk);
-  const userNoAta = getAssociatedTokenAddressSync(noMint, userPk);
-
-  // One-shot Anchor program for ix building. Stub wallet — we sign via
-  // the connected wallet's signTransaction below, not the provider.
-  const stubWallet = {
-    publicKey: userPk,
-    payer: undefined as Keypair | undefined,
-    signTransaction: async <T>(tx: T) => tx,
-    signAllTransactions: async <T>(txs: T[]) => txs,
-  };
-  const provider = new AnchorProvider(
-    ctx.adapter.connection,
-    stubWallet as never,
-    {
-      commitment: "confirmed",
-      preflightCommitment: "confirmed",
-    },
-  );
-  const program = new Program(
-    { ...soothMarketIdl, address: programs.soothMarket.toBase58() } as Idl,
-    provider,
-  );
-
-  const methodName = kind === "mint" ? "mintCompleteSet" : "mergeCompleteSet";
-  // BN import — Anchor's bn() returns a BN. We use the loose-typed methods
-  // accessor (Anchor's IDL inference is heavy); pass a number cast at the
-  // boundary. Safe: u64 USDC amounts fit comfortably.
-  const { BN } = await import("@coral-xyz/anchor");
-  const ix = await (program.methods as any)
-    [methodName](new BN(amount.toString()))
-    .accounts({
-      market: marketPda,
-      vaultAuthority,
-      yesMint,
-      noMint,
-      vault,
-      userUsdcAta,
-      userYesAta,
-      userNoAta,
-      user: userPk,
-      tokenProgram: TOKEN_PROGRAM_ID,
-    })
-    .instruction();
-
-  // Route through the SDK's `submit()` so we get the same retry / sign /
-  // confirm machinery the trade path uses. submit() expects a SoothRequest
-  // with `meta` carrying ixData/ixKeys/userPk/preIxs — it rebuilds the tx
-  // (CU limit + preIxs + main ix) on each attempt with a fresh blockhash,
-  // signs via ctx.signer, and surfaces classified errors. Idempotent ATA
-  // creates ride along as preIxs so the user doesn't have to fund them
-  // separately.
-  const ataYesIx = createAssociatedTokenAccountIdempotentInstruction(
-    userPk,
-    userYesAta,
-    userPk,
-    yesMint,
-  );
-  const ataNoIx = createAssociatedTokenAccountIdempotentInstruction(
-    userPk,
-    userNoAta,
-    userPk,
-    noMint,
-  );
-
-  const ixKeysTyped = ix.keys as Array<{
-    pubkey: PublicKey;
-    isSigner: boolean;
-    isWritable: boolean;
-  }>;
-  const meta = {
-    ixData: Buffer.from(ix.data).toString("base64"),
-    ixKeys: ixKeysTyped.map((k) => ({
-      pubkey: k.pubkey.toBase58(),
-      isSigner: k.isSigner,
-      isWritable: k.isWritable,
-    })),
-    ixProgramId: ix.programId.toBase58(),
-    userPk: userPk.toBase58(),
-    preIxs: [ataYesIx, ataNoIx].map((p) => ({
-      programId: p.programId.toBase58(),
-      keys: p.keys.map((k) => ({
-        pubkey: k.pubkey.toBase58(),
-        isSigner: k.isSigner,
-        isWritable: k.isWritable,
-      })),
-      data: Buffer.from(p.data).toString("base64"),
-    })),
-  };
-  const req = {
-    kind: "trade" as const,
-    serializedTx: undefined,
-    costEstimateWad: undefined,
-    meta,
-  };
-  // Preflight first to surface real-RPC simulation logs in the failure
-  // case. submit()'s retry loop wraps SendTransactionError into a generic
-  // NetworkError that loses .logs; preflight returns the structured
-  // SimulationFailed error including the program's logs array.
-  const pf = await ctx.adapter.preflight(req);
-  if (!pf.ok) {
-    const err = pf.error as
-      | { kind?: string; logs?: unknown; err?: unknown; msg?: unknown }
-      | undefined;
-    throw new Error(
-      `${kind}CompleteSet preflight failed: ${err?.kind ?? "?"} — ${JSON.stringify(err?.err ?? err?.msg ?? err)} logs=${JSON.stringify(err?.logs)}`,
-    );
-  }
+  const userRef = `sol:${ctx.userBase58}`;
+  const req =
+    kind === "mint"
+      ? await ctx.adapter.buildMintCompleteSet(marketRef, {
+          user: userRef,
+          amount,
+        })
+      : await ctx.adapter.buildMergeCompleteSet(marketRef, {
+          user: userRef,
+          amount,
+        });
   const receipt = await ctx.adapter.submit(req, ctx.signer);
   const sig = receipt.txId.replace(/^sol:/, "");
   return synthHashFromSignature(sig);

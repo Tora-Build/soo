@@ -218,6 +218,16 @@ export interface BuyArgs {
   matchLimit: number;
   maxCost?: bigint;
 }
+
+// `mint_complete_set` / `merge_complete_set` on Solana take a single u64
+// USDC-base-units arg. The ix mints / burns equal-weight YES + NO outcome
+// tokens at parity (1 USDC = 1·WAD YES = 1·WAD NO).
+//
+// `user` is a Solana-only meta channel — same convention as TradeArgs.user.
+export interface CompleteSetArgs {
+  user?: AddressRef;
+  amount: bigint;
+}
 export interface SellArgs extends BuyArgs {}
 export interface CreateMarketArgs {
   question: string;

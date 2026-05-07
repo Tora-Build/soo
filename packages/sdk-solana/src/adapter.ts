@@ -73,6 +73,7 @@ import type {
   ChainAdapter,
   ClaimArgs,
   ClaimRequest,
+  CompleteSetArgs,
   CreateMarketArgs,
   CreateMarketRequest,
   MarketEvent,
@@ -966,6 +967,152 @@ export class SolanaChainAdapter implements ChainAdapter {
       },
     };
   }
+  // ─── Mint / merge complete-set ─────────────────────────────────────────
+  //
+  // 1 USDC ↔ 1·WAD YES + 1·WAD NO at parity. No price impact, no fee.
+  // mint   : N USDC in   → N·WAD YES + N·WAD NO out
+  // merge  : N·WAD YES + N·WAD NO in → N USDC out
+  //
+  // Both routes lower into `sooth_market::{mint,merge}_complete_set`
+  // (architecture §4.5). `amount` is the USDC base-unit (u64) value the
+  // on-chain ix expects.
+  //
+  // The mint path includes idempotent-ATA-create preIxs for the user's
+  // YES/NO outcome ATAs so first-time mints don't require a separate
+  // account-bootstrap tx. The merge path can assume those ATAs already
+  // exist (you can only merge tokens you already hold).
+  async buildMintCompleteSet(
+    market: MarketRef,
+    args: CompleteSetArgs,
+  ): Promise<TradeRequest> {
+    return this.buildCompleteSetInner(market, args, "mint");
+  }
+
+  async buildMergeCompleteSet(
+    market: MarketRef,
+    args: CompleteSetArgs,
+  ): Promise<TradeRequest> {
+    return this.buildCompleteSetInner(market, args, "merge");
+  }
+
+  private async buildCompleteSetInner(
+    market: MarketRef,
+    args: CompleteSetArgs,
+    kind: "mint" | "merge",
+  ): Promise<TradeRequest> {
+    if (!args.user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method: `build${kind === "mint" ? "Mint" : "Merge"}CompleteSet — args.user (Solana-only meta) is required at build time`,
+      });
+    }
+    if (args.amount <= 0n) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `build${kind === "mint" ? "Mint" : "Merge"}CompleteSet: amount must be positive`,
+      });
+    }
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+
+    const [vaultAuthority] = deriveVaultAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const [yesMint] = deriveYesMintPda(resolved.marketId, this.programIds);
+    const [noMint] = deriveNoMintPda(resolved.marketId, this.programIds);
+    const marketVault = deriveMarketVaultAta(
+      resolved.marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+    const userUsdcAta = getAssociatedTokenAddressSync(this.usdcMint, userPk);
+    const userYesAta = getAssociatedTokenAddressSync(yesMint, userPk);
+    const userNoAta = getAssociatedTokenAddressSync(noMint, userPk);
+
+    const methodName = kind === "mint" ? "mintCompleteSet" : "mergeCompleteSet";
+    const ix: TransactionInstruction = await (this.soothMarket.methods as any)
+      [methodName](bigIntToBn(args.amount))
+      .accounts({
+        market: marketPda,
+        vaultAuthority,
+        yesMint,
+        noMint,
+        vault: marketVault,
+        userUsdcAta,
+        userYesAta,
+        userNoAta,
+        user: userPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    // Idempotent ATA creates for the outcome tokens. Mint must have these
+    // present (they receive the new tokens); merge must have these present
+    // with non-zero balance (the ix burns from them). Either way, prepending
+    // the idempotent create is safe — it's a no-op when the ATA exists.
+    const preIxs: Array<{
+      programId: string;
+      keys: Array<{
+        pubkey: string;
+        isSigner: boolean;
+        isWritable: boolean;
+      }>;
+      data: string;
+    }> = [];
+    if (kind === "mint") {
+      const yesAtaIx = createAssociatedTokenAccountIdempotentInstruction(
+        userPk,
+        userYesAta,
+        userPk,
+        yesMint,
+      );
+      const noAtaIx = createAssociatedTokenAccountIdempotentInstruction(
+        userPk,
+        userNoAta,
+        userPk,
+        noMint,
+      );
+      for (const p of [yesAtaIx, noAtaIx]) {
+        preIxs.push({
+          programId: p.programId.toBase58(),
+          keys: p.keys.map((k) => ({
+            pubkey: k.pubkey.toBase58(),
+            isSigner: k.isSigner,
+            isWritable: k.isWritable,
+          })),
+          data: Buffer.from(p.data).toString("base64"),
+        });
+      }
+    }
+
+    const accounts = ix.keys.map((k) => ({
+      pubkey: k.pubkey.toBase58(),
+      isSigner: k.isSigner,
+      isWritable: k.isWritable,
+    }));
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      // Cost estimate: 1 USDC = 1·WAD shares, so the WAD-side estimate is
+      // amount * 1e12 (USDC base units → WAD).
+      costEstimateWad: args.amount * 1_000_000_000_000n,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        userPk: userPk.toBase58(),
+        ixData: Buffer.from(ix.data).toString("base64"),
+        ixKeys: accounts,
+        ixProgramId: ix.programId.toBase58(),
+        operation: kind === "mint" ? "mintCompleteSet" : "mergeCompleteSet",
+        amountStr: args.amount.toString(),
+        preIxs,
+      },
+    };
+  }
+
   async buildOrderbookBuy(
     _market: MarketRef,
     _args: BuyArgs,
