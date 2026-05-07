@@ -4,9 +4,18 @@
 //   - Same React-Query / React-Router / Toaster providers and route table
 //   - Wagmi/AppKit providers replaced with @solana/wallet-adapter-react's
 //     <ConnectionProvider> + <WalletProvider> + <WalletModalProvider>
-//   - autoConnect={false} on purpose — silent autoConnect failures hide
-//     the connect error UX. Explicit click → wallet-adapter modal → error
-//     visible on the modal.
+//   - `autoConnect` is required — despite the name, in
+//     @solana/wallet-adapter-react v0.15.x it gates the modal's
+//     select-then-connect flow, not just silent reconnect on reload
+//     (anza-xyz/wallet-adapter#307). With autoConnect={false} every
+//     modal wallet click stores the choice but never calls
+//     adapter.connect() — the user sees no popup and the modal silently
+//     closes.
+//   - `wallets={[]}` in production: Phantom/Solflare/Backpack/MetaMask/
+//     Magic Eden register via Wallet Standard and are auto-discovered
+//     by `useStandardWalletAdapters`. Including legacy adapter classes
+//     here causes the warning "X was registered as a Standard Wallet —
+//     can be removed from your app".
 //
 // Polyfills first — wallet-adapter-base touches Buffer at module-init.
 
@@ -23,10 +32,6 @@ import {
   WalletProvider,
 } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-} from "@solana/wallet-adapter-wallets";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
 import "./lib/i18n";
@@ -65,23 +70,27 @@ const queryClient = new QueryClient();
 
 function Root() {
   const wallets = useMemo(
-    () =>
-      IS_TEST_MODE
-        ? [new LocalKeypairAdapter()]
-        : [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
+    () => (IS_TEST_MODE ? [new LocalKeypairAdapter()] : []),
     [],
   );
 
   return (
-    <React.StrictMode>
-      <ConnectionProvider endpoint={demoConfig.node.rpcUrl}>
-        <WalletProvider wallets={wallets} autoConnect={false}>
-          <WalletModalProvider>
-            {IS_TEST_MODE && <TestWalletBridge />}
-            <QueryClientProvider client={queryClient}>
-              <DemoProvider>
-                <BrowserRouter>
-                  <QuickTradeProvider>
+    // StrictMode is intentionally INSIDE the wallet providers, not wrapping
+    // them. Wrapping ConnectionProvider/WalletProvider in StrictMode causes
+    // double-mount cleanup to call adapter.disconnect() between the two
+    // mount cycles, which leaves StandardWalletAdapter._connected = false
+    // even though useWallet().publicKey is still populated. The next
+    // wallet.signTransaction() then throws "not connected"
+    // (anza-xyz/wallet-adapter#686).
+    <ConnectionProvider endpoint={demoConfig.node.rpcUrl}>
+      <WalletProvider wallets={wallets} autoConnect>
+        <WalletModalProvider>
+          {IS_TEST_MODE && <TestWalletBridge />}
+          <QueryClientProvider client={queryClient}>
+            <DemoProvider>
+              <BrowserRouter>
+                <QuickTradeProvider>
+                  <React.StrictMode>
                     <Toaster
                       position="bottom-right"
                       toastOptions={{
@@ -123,14 +132,14 @@ function Root() {
                         />
                       </Route>
                     </Routes>
-                  </QuickTradeProvider>
-                </BrowserRouter>
-              </DemoProvider>
-            </QueryClientProvider>
-          </WalletModalProvider>
-        </WalletProvider>
-      </ConnectionProvider>
-    </React.StrictMode>
+                  </React.StrictMode>
+                </QuickTradeProvider>
+              </BrowserRouter>
+            </DemoProvider>
+          </QueryClientProvider>
+        </WalletModalProvider>
+      </WalletProvider>
+    </ConnectionProvider>
   );
 }
 
