@@ -32,6 +32,16 @@ import "@solana/wallet-adapter-react-ui/styles.css";
 import "./lib/i18n";
 import { DemoProvider } from "./lib/DemoContext";
 import { demoConfig } from "./lib/config";
+import { LocalKeypairAdapter, TestWalletBridge } from "./lib/testWalletAdapter";
+
+// Test mode swaps the Phantom/Solflare adapters for a single LocalKeypair
+// adapter that signs with VITE_TEST_KEYPAIR_BYTES. The bridge exposes
+// window._connectTestWallet for Playwright. Production builds tree-shake
+// the adapter (vite.config.ts also throws on `build` with VITE_TEST_MODE
+// for defense in depth).
+const IS_TEST_MODE =
+  ((import.meta as unknown as { env?: Record<string, string> }).env ?? {})
+    .VITE_TEST_MODE === "true";
 
 // Pages — copied verbatim from upstream.
 import { AppLayout } from "./layouts/AppLayout";
@@ -55,7 +65,10 @@ const queryClient = new QueryClient();
 
 function Root() {
   const wallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
+    () =>
+      IS_TEST_MODE
+        ? [new LocalKeypairAdapter()]
+        : [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
     [],
   );
 
@@ -64,6 +77,7 @@ function Root() {
       <ConnectionProvider endpoint={demoConfig.node.rpcUrl}>
         <WalletProvider wallets={wallets} autoConnect={false}>
           <WalletModalProvider>
+            {IS_TEST_MODE && <TestWalletBridge />}
             <QueryClientProvider client={queryClient}>
               <DemoProvider>
                 <BrowserRouter>

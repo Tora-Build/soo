@@ -10,3 +10,9 @@
 .env
 .env.local
 .env.*.local
+
+# Playwright e2e artifacts
+/test-results
+/playwright-report
+/playwright/.cache
+/e2e/.e2e-fixture.json
