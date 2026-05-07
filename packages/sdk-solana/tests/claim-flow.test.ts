@@ -130,14 +130,29 @@ describe("AMM claim_unlocked flow", () => {
     expect((earlyError as { kind?: string }).kind).toBe("LockNotElapsed");
 
     // ─── 4. Warp the clock past unlock_at ───────────────────────────────
+    // Two things happen here:
+    //   1. `warpToSlot` advances the bank to a fresh slot. Bankrun caches the
+    //      most-recent blockhash per slot; without an advance, the late-claim
+    //      tx would land on the *same* blockhash as the early-claim tx.
+    //      That makes the two tx messages byte-identical (same ix, same
+    //      accounts, same recent_blockhash) → identical signature → bankrun's
+    //      dedup rejects the second send with "transaction has already been
+    //      processed". This was the root cause of the ~50% flake rate.
+    //   2. `setClock` overwrites the clock sysvar's `unix_timestamp` so the
+    //      on-chain `Clock::get()?.unix_timestamp >= unlock_at` check passes.
+    //      `warpToSlot` resets the sysvar's slot to the new value but does
+    //      NOT change `unix_timestamp`, so we set it explicitly afterwards
+    //      using the post-warp slot.
     const unlockAt = lockEntryAcc!.data.readBigInt64LE(80);
-    const existingClock = await smoke.ctx.banksClient.getClock();
+    const preWarpClock = await smoke.ctx.banksClient.getClock();
+    smoke.ctx.warpToSlot(preWarpClock.slot + 1n);
+    const postWarpClock = await smoke.ctx.banksClient.getClock();
     smoke.ctx.setClock(
       new Clock(
-        existingClock.slot,
-        existingClock.epochStartTimestamp,
-        existingClock.epoch,
-        existingClock.leaderScheduleEpoch,
+        postWarpClock.slot,
+        postWarpClock.epochStartTimestamp,
+        postWarpClock.epoch,
+        postWarpClock.leaderScheduleEpoch,
         unlockAt + 1n,
       ),
     );
