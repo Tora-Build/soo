@@ -19,6 +19,7 @@ import { useOnChainMarkets } from "../../../hooks/useOnChainMarkets";
 import { SoothBookTerminal, HistoricalPriceCard } from "../pro";
 import { useChainStore } from "../../../store/useChainStore";
 import { DEFAULT_CHAIN_ID } from "../../../lib/chains";
+import { ErrorBoundary } from "../../ui/ErrorBoundary";
 
 interface OrderbookPageBodyProps {
   marketAddress: string;
@@ -120,11 +121,33 @@ export const OrderbookPageBody = ({
         rule={sqfMeta?.rule}
       />
 
-      <SoothBookTerminal
-        marketAddress={marketAddress as `0x${string}`}
-        beforeOrderbookPane={priceCard}
-        onOutcomeChange={setViewOutcome}
-      />
+      <ErrorBoundary
+        context="Orderbook Terminal"
+        fallback={
+          <div className="bg-raised p-10 text-center space-y-3">
+            <h2 className="font-sans text-lg font-medium text-ink">
+              Orderbook unavailable
+            </h2>
+            <p className="text-sm text-muted max-w-md mx-auto">
+              The orderbook terminal failed to load on this chain. The{" "}
+              <span className="font-mono">sooth_book</span> program is gated on
+              spike P1 and isn't deployed on the Solana fork yet.
+            </p>
+            <a
+              href={`/amm/${marketAddress}`}
+              className="inline-block mt-2 px-4 py-2 font-mono text-xs uppercase tracking-[0.12em] font-bold border border-accent text-accent hover:bg-accent-muted"
+            >
+              Go to AMM
+            </a>
+          </div>
+        }
+      >
+        <SoothBookTerminal
+          marketAddress={marketAddress as `0x${string}`}
+          beforeOrderbookPane={priceCard}
+          onOutcomeChange={setViewOutcome}
+        />
+      </ErrorBoundary>
     </div>
   );
 };

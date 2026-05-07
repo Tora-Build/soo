@@ -11,7 +11,12 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { useAccount, useChainId, useReadContracts } from "@/lib/chain-shim";
-import { keccak256, encodePacked, formatUnits, type Address } from "@/lib/chain-shim";
+import {
+  keccak256,
+  encodePacked,
+  formatUnits,
+  type Address,
+} from "@/lib/chain-shim";
 import { cn } from "../../../lib/utils";
 import { useTranslation } from "react-i18next";
 import { SOOTHBOOK_ABI } from "../../../config/abis";
@@ -84,6 +89,43 @@ export function SoothBookTerminal({
   const resolvedSB = (soothBookProp ?? contracts.SoothBook) as
     | Address
     | undefined;
+
+  // Solana fork: the `sooth_book` program is gated behind P1 in
+  // docs/decision-log.md and has no on-chain implementation yet.
+  // `useDeployments` returns `SoothBook: undefined` for every chain, so the
+  // hooks below (`useOrderbook`, `useOrderbookTrade`, the SoothBook
+  // multicall reads) destructure on undefined and crash. Render a
+  // styled empty-state card instead so the route is navigable but the
+  // user understands the feature is unavailable.
+  if (!resolvedSB) {
+    return (
+      <div className="flex flex-col lg:flex-row gap-1 bg-canvas items-start">
+        <div className="flex flex-col gap-1 w-full min-w-0">
+          {beforeOrderbookPane}
+          <div className="bg-raised p-10 text-center space-y-3">
+            <h2 className="font-sans text-lg font-medium text-ink">
+              {marketQuestion || "Orderbook not available"}
+            </h2>
+            <p className="text-sm text-muted max-w-md mx-auto">
+              Orderbook not available on this chain — the{" "}
+              <span className="font-mono">sooth_book</span> program is not
+              deployed (gated on spike P1).
+            </p>
+            <a
+              href={`/amm/${marketAddress}`}
+              className="inline-block mt-2 px-4 py-2 font-mono text-xs uppercase tracking-[0.12em] font-bold border border-accent text-accent hover:bg-accent-muted"
+            >
+              Go to AMM
+            </a>
+            <p className="font-mono text-[9px] text-faint pt-2">
+              {marketAddress}
+            </p>
+          </div>
+          {afterOrderbookPane}
+        </div>
+      </div>
+    );
+  }
 
   const marketKey = useMemo(() => {
     if (!marketAddress) return undefined;
@@ -256,7 +298,8 @@ export function SoothBookTerminal({
   // Tick is uint16 in [1, 999] = price ∈ {0.001, …, 0.999}. Input is in
   // cents at 0.1¢ precision, so 0.1 ≤ value ≤ 99.9 in 0.1 increments.
   const tickOffStep =
-    sharesNum > 0 && Math.abs(limitPriceCents * 10 - Math.round(limitPriceCents * 10)) > 1e-9;
+    sharesNum > 0 &&
+    Math.abs(limitPriceCents * 10 - Math.round(limitPriceCents * 10)) > 1e-9;
   const tickOutOfRange =
     sharesNum > 0 &&
     (limitPriceCents < 0.1 || limitPriceCents > 99.9 || tickOffStep);
