@@ -55,3 +55,23 @@ pub struct MarketSettled {
     pub winning_outcome: u8,
     pub ts: i64,
 }
+
+/// Mirror of EVM `OrderEngine.PositionSettled` (`OrderEngine.sol:430`).
+/// Emitted by `redeem` after a successful post-settlement burn-and-pay.
+#[event]
+pub struct Redeemed {
+    pub user: Pubkey,
+    pub market: Pubkey,
+    /// Resolved outcome at the time of redeem, copied from
+    /// `Market::winning_outcome`. 0=NO, 1=YES, 2=INVALID.
+    pub outcome: u8,
+    /// YES outcome-token base units burned (0 if user held none, or if
+    /// outcome=NO).
+    pub yes_burned: u64,
+    /// NO outcome-token base units burned (0 if user held none, or if
+    /// outcome=YES).
+    pub no_burned: u64,
+    /// USDC base units transferred from vault to user.
+    pub usdc_paid: u64,
+    pub ts: i64,
+}

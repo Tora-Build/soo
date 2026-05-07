@@ -75,6 +75,9 @@
 //! `sooth_market`, since only it can sign for `vault_authority`).
 
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
+use anchor_lang::solana_program::program::invoke;
+use anchor_lang::solana_program::sysvar;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 use sooth_account_offsets::{
@@ -86,6 +89,13 @@ use crate::events::PositionTraded;
 use crate::math::{cost_delta, wad_to_usdc_ceil, MathError};
 use crate::state::{AmmState, Market, Position};
 use crate::SOOTH_LAUNCHPAD_PROGRAM_ID;
+
+/// Anchor discriminator for `sooth_launchpad::mint_lp_for_buy`. Pinned here
+/// rather than imported from `sooth_protocol_types` so the constant lives
+/// adjacent to the call site that consumes it. Matches
+/// `sha256("global:mint_lp_for_buy")[..8]` and the IDL entry on
+/// `sooth_launchpad`.
+const MINT_LP_FOR_BUY_DISCRIMINATOR: [u8; 8] = [45, 61, 27, 158, 134, 162, 204, 168];
 
 /// Protocol-wide OUTCOME encoding. Mirrors `glossary.md`.
 const OUTCOME_NO: u8 = 0;
@@ -214,12 +224,67 @@ pub struct TradePositions<'info> {
     )]
     pub fee_pool_vault: Box<Account<'info, TokenAccount>>,
 
+    /// Per-market LP token mint owned by `sooth_launchpad`. Address pinned
+    /// via PDA seeds under the launchpad program so a forged mint can't be
+    /// substituted. CPI'd into `sooth_launchpad::mint_lp_for_buy` on the
+    /// pre-graduation buy path. Architecture §4.2.
+    #[account(
+        mut,
+        seeds = [b"lp", market.market_id.as_ref()],
+        bump,
+        seeds::program = SOOTH_LAUNCHPAD_PROGRAM_ID,
+    )]
+    pub lp_mint: Box<Account<'info, Mint>>,
+
+    /// Signer-only PDA owned by `sooth_launchpad`. Mint authority on
+    /// `lp_mint`; only the launchpad can `invoke_signed` against it. We
+    /// declare it here so the CPI account-list flatten step can forward
+    /// it to `mint_lp_for_buy`. CHECK: derived via seeds.
+    #[account(
+        seeds = [b"lp_mint_authority", market.market_id.as_ref()],
+        bump,
+        seeds::program = SOOTH_LAUNCHPAD_PROGRAM_ID,
+    )]
+    pub lp_mint_authority: UncheckedAccount<'info>,
+
+    /// User's LP-token ATA — destination of the `mint_to` CPI inside
+    /// `sooth_launchpad::mint_lp_for_buy`. Authority must be `user`; mint
+    /// must be `lp_mint`. The SDK pre-creates this ATA idempotently before
+    /// dispatching `trade_positions` (mirrors the user_usdc_ata pattern).
+    #[account(
+        mut,
+        token::mint = lp_mint,
+        token::authority = user,
+    )]
+    pub user_lp_ata: Box<Account<'info, TokenAccount>>,
+
     #[account(mut)]
     pub user: Signer<'info>,
 
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,
+
+    /// `sooth_launchpad` program — CPI'd into for the PDA-signed LP-mint on
+    /// the pre-graduation buy path. Address-pinned to the canonical
+    /// launchpad ID to prevent a forged program substitution. Note: we
+    /// can't take a `Program<'info, SoothLaunchpad>` typed handle here
+    /// because that would close a path-dep cycle (`sooth_launchpad` already
+    /// depends on `sooth_amm` via the `cpi` feature). The CPI is therefore
+    /// constructed manually via `solana_program::program::invoke` against
+    /// this `UncheckedAccount`. CHECK: address-pinned.
+    #[account(address = SOOTH_LAUNCHPAD_PROGRAM_ID)]
+    pub sooth_launchpad_program: UncheckedAccount<'info>,
+
+    /// Instructions sysvar — forwarded to `sooth_launchpad::mint_lp_for_buy`
+    /// where it gates against direct (non-CPI) calls via parent-ix
+    /// introspection. The AMM doesn't read this account itself; we declare
+    /// it solely so it ends up on the CPI account list. Pinned to the
+    /// canonical sysvar pubkey via the `address` constraint so a malicious
+    /// caller cannot substitute a forged sysvar with a fabricated
+    /// instruction list. CHECK: address-pinned.
+    #[account(address = sysvar::instructions::ID)]
+    pub instruction_sysvar: UncheckedAccount<'info>,
 }
 
 pub fn handler(
@@ -261,16 +326,31 @@ pub fn handler(
     );
     require!(now < market.deadline, SoothAmmError::TradingClosed);
 
-    let amm = &mut ctx.accounts.amm_state;
-    require!(!amm.is_dismissed, SoothAmmError::MarketDismissed);
-    require!(amm.b > 0, SoothAmmError::InvalidLiquidity);
+    // Snapshot AmmState fields used downstream + run pre-flight invariants.
+    // We re-borrow `amm_state` mutably later (scoped) to apply the
+    // `q_yes/q_no` mutation, but read-only access for the LMSR math is
+    // taken via the snapshot to avoid a borrow conflict with the LP-mint
+    // CPI's `ctx.accounts.position.to_account_info()` later in the body.
+    let (amm_q_yes, amm_q_no, amm_b, amm_is_graduated) = {
+        let amm = &ctx.accounts.amm_state;
+        require!(!amm.is_dismissed, SoothAmmError::MarketDismissed);
+        require!(amm.b > 0, SoothAmmError::InvalidLiquidity);
+        (amm.q_yes, amm.q_no, amm.b, amm.is_graduated)
+    };
 
     // Pin the position bump so `init_if_needed` works on subsequent trades.
-    let position = &mut ctx.accounts.position;
-    if position.user == Pubkey::default() {
-        position.user = ctx.accounts.user.key();
-        position.market = market.key();
-        position.bump = ctx.bumps.position;
+    // Scoped: the mutable borrow is released before the LP-mint CPI below
+    // (which reborrows `position` via `to_account_info`).
+    let market_key = market.key();
+    let user_key = ctx.accounts.user.key();
+    let position_bump = ctx.bumps.position;
+    {
+        let position = &mut ctx.accounts.position;
+        if position.user == Pubkey::default() {
+            position.user = user_key;
+            position.market = market_key;
+            position.bump = position_bump;
+        }
     }
 
     // ── 2. Compute LMSR cost delta (REAL — the load-bearing math) ────────
@@ -284,7 +364,7 @@ pub fn handler(
         (0i128, delta_shares)
     };
 
-    let cost_wad: i128 = cost_delta(amm.q_yes, amm.q_no, amm.b, d_yes, d_no)
+    let cost_wad: i128 = cost_delta(amm_q_yes, amm_q_no, amm_b, d_yes, d_no)
         .map_err(map_math_err)?;
 
     // ── 3. Fee — read fee_bps from ProtocolConfig and compute fee_wad ────
@@ -396,30 +476,105 @@ pub fn handler(
     }
 
     // ── 7. State mutation (REAL) ─────────────────────────────────────────
-    if outcome == OUTCOME_YES {
-        amm.q_yes = amm.q_yes.checked_add(delta_shares).ok_or(error!(SoothAmmError::MathOverflow))?;
-        position.yes_shares = position
-            .yes_shares
-            .checked_add(delta_shares)
-            .ok_or(error!(SoothAmmError::MathOverflow))?;
-        require!(position.yes_shares >= 0, SoothAmmError::InsufficientShares);
-    } else {
-        amm.q_no = amm.q_no.checked_add(delta_shares).ok_or(error!(SoothAmmError::MathOverflow))?;
-        position.no_shares = position
-            .no_shares
-            .checked_add(delta_shares)
-            .ok_or(error!(SoothAmmError::MathOverflow))?;
-        require!(position.no_shares >= 0, SoothAmmError::InsufficientShares);
+    //
+    // Scoped — the mutable borrows on `amm_state` / `position` must be
+    // dropped before the LP-mint CPI below, which re-borrows `position`
+    // via `to_account_info()`.
+    {
+        let amm = &mut ctx.accounts.amm_state;
+        let position = &mut ctx.accounts.position;
+        if outcome == OUTCOME_YES {
+            amm.q_yes = amm
+                .q_yes
+                .checked_add(delta_shares)
+                .ok_or(error!(SoothAmmError::MathOverflow))?;
+            position.yes_shares = position
+                .yes_shares
+                .checked_add(delta_shares)
+                .ok_or(error!(SoothAmmError::MathOverflow))?;
+            require!(position.yes_shares >= 0, SoothAmmError::InsufficientShares);
+        } else {
+            amm.q_no = amm
+                .q_no
+                .checked_add(delta_shares)
+                .ok_or(error!(SoothAmmError::MathOverflow))?;
+            position.no_shares = position
+                .no_shares
+                .checked_add(delta_shares)
+                .ok_or(error!(SoothAmmError::MathOverflow))?;
+            require!(position.no_shares >= 0, SoothAmmError::InsufficientShares);
+        }
     }
 
-    // ── 8. LP mint on pre-graduation buys — STUB ─────────────────────────
+    // ── 8. LP mint on pre-graduation buys ────────────────────────────────
     //
-    // Architecture §4.2: pre-graduation, every buy mints LP tokens 1:1 with
-    // cost_wad. Post-graduation, no LP mint and the fee split kicks in.
-    // Owned by `sooth_launchpad::LpMint` PDA — wire this once the launchpad
-    // program exists.
-    if !amm.is_graduated {
-        // unimplemented!("LP mint — phase 2; architecture §4.2")
+    // Architecture §4.2: pre-graduation, every buy mints LP tokens to the
+    // trader. EVM precedent (`FeeRouter._distributePreGrad` line 354 +
+    // `AMMEngine.mintLPTokens` line 542): `1 LP unit ≡ 1 fee WAD`. We use
+    // the USDC-base-unit equivalent (`fee_usdc`, ceil-converted from
+    // `fee_wad` already on line ~355) because the LP mint has 6 decimals
+    // matching USDC — so `fee_usdc` LP base units corresponds to the same
+    // dollar-denominated fee. This also matches the convention in
+    // `seed_lp` where `args.lp_amount = total_initial_b` (creator's seed
+    // deposit in USDC base units).
+    //
+    // Post-graduation, no LP mint and the fee split kicks in instead
+    // (the post-grad split is destination-side, applied later in
+    // `sooth_launchpad::distribute_fees`).
+    //
+    // ## Cyclic-dep avoidance — manual CPI
+    //
+    // `sooth_amm` cannot take a path-dep on `sooth_launchpad` (the
+    // launchpad already depends on the AMM via the `cpi` feature for
+    // `create_market`'s composition CPI; the reverse direction would
+    // close the cycle). We construct the `mint_lp_for_buy` ix manually:
+    // 8-byte Anchor discriminator + Borsh-serialised `amount: u64`, and
+    // dispatch via `solana_program::program::invoke`. The ix accepts no
+    // signer seeds from the caller — its own handler PDA-signs against
+    // `lp_mint_authority` (which is owned by `sooth_launchpad`).
+    //
+    // Account list ordering MUST match
+    // `sooth_launchpad::instructions::mint_lp_for_buy::MintLpForBuy`:
+    //   [market, lp_mint, lp_mint_authority, user_lp_ata, position,
+    //    user, instruction_sysvar, token_program]
+    if !amm_is_graduated && fee_usdc > 0 {
+        let lp_amount: u64 = fee_usdc;
+
+        let mint_lp_accounts = vec![
+            AccountMeta::new_readonly(ctx.accounts.market.key(), false),
+            AccountMeta::new(ctx.accounts.lp_mint.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.lp_mint_authority.key(), false),
+            AccountMeta::new(ctx.accounts.user_lp_ata.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.position.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.user.key(), true),
+            AccountMeta::new_readonly(ctx.accounts.instruction_sysvar.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.token_program.key(), false),
+        ];
+
+        let mut data = Vec::with_capacity(16);
+        data.extend_from_slice(&MINT_LP_FOR_BUY_DISCRIMINATOR);
+        data.extend_from_slice(&lp_amount.to_le_bytes());
+
+        let ix = Instruction {
+            program_id: SOOTH_LAUNCHPAD_PROGRAM_ID,
+            accounts: mint_lp_accounts,
+            data,
+        };
+
+        invoke(
+            &ix,
+            &[
+                ctx.accounts.market.to_account_info(),
+                ctx.accounts.lp_mint.to_account_info(),
+                ctx.accounts.lp_mint_authority.to_account_info(),
+                ctx.accounts.user_lp_ata.to_account_info(),
+                ctx.accounts.position.to_account_info(),
+                ctx.accounts.user.to_account_info(),
+                ctx.accounts.instruction_sysvar.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.sooth_launchpad_program.to_account_info(),
+            ],
+        )?;
     }
 
     // ── 9. Emit (REAL) ───────────────────────────────────────────────────
@@ -427,8 +582,8 @@ pub fn handler(
     // guard above — re-using avoids a second sysvar load (~100 CU) and keeps
     // the emitted timestamp consistent with the guard.
     emit!(PositionTraded {
-        market: market.key(),
-        user: ctx.accounts.user.key(),
+        market: market_key,
+        user: user_key,
         outcome,
         delta_shares,
         cost_wad,

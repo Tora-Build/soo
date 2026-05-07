@@ -19,12 +19,19 @@ use anchor_lang::prelude::Pubkey;
 use sooth_adjudicator::state::{Adjudicator, AdjudicatorKind};
 
 fn fresh_adjudicator() -> Adjudicator {
+    let authority = Pubkey::new_unique();
     Adjudicator {
         market: Pubkey::new_unique(),
-        authority: Pubkey::new_unique(),
+        authority,
+        // v1 collapsed-role: dispute_authority defaults to the attestation
+        // authority. Tests that exercise the separate-authority case
+        // override this field directly.
+        dispute_authority: authority,
         kind: AdjudicatorKind::Manual,
         attested_outcome: None,
         attested_at: None,
+        disputed: false,
+        disputed_at: None,
         bump: 254,
     }
 }
@@ -48,15 +55,31 @@ fn adjudicator_kind_space_constant_matches_layout() {
 #[test]
 fn adjudicator_space_constant_is_self_consistent() {
     // Recompute SPACE from first principles. Anchor's rent calc trusts
-    // SPACE; a mismatch would silently under-rent the account.
+    // SPACE; a mismatch would silently under-rent the account. Layout:
+    //
+    //   discriminator        8
+    //   market              32
+    //   authority           32
+    //   dispute_authority   32
+    //   kind                 2  (AdjudicatorKind::SPACE)
+    //   attested_outcome     2  (Option<u8>: tag + u8)
+    //   attested_at          9  (Option<i64>: tag + i64)
+    //   disputed             1  (bool)
+    //   disputed_at          9  (Option<i64>: tag + i64)
+    //   bump                 1
+    //                       ── = 128
     let expected = 8        // discriminator
         + 32                // market
         + 32                // authority
+        + 32                // dispute_authority
         + AdjudicatorKind::SPACE
         + 1 + 1             // Option<u8>: tag + u8
         + 1 + 8             // Option<i64>: tag + i64
+        + 1                 // disputed: bool
+        + 1 + 8             // Option<i64>: tag + i64
         + 1; // bump
     assert_eq!(Adjudicator::SPACE, expected);
+    assert_eq!(Adjudicator::SPACE, 128);
 }
 
 #[test]
@@ -98,9 +121,14 @@ fn register(
     Ok(Adjudicator {
         market,
         authority,
+        // v1: dispute_authority defaults to authority. Mirrors the on-chain
+        // handler in `register_adjudicator`.
+        dispute_authority: authority,
         kind,
         attested_outcome: None,
         attested_at: None,
+        disputed: false,
+        disputed_at: None,
         bump: 254,
     })
 }
@@ -215,4 +243,177 @@ fn attest_accepts_invalid_outcome_per_protocol() {
     let mut adj = register(Pubkey::new_unique(), auth, AdjudicatorKind::Manual).unwrap();
     attest(&mut adj, auth, OUTCOME_INVALID, 0).unwrap();
     assert_eq!(adj.attested_outcome, Some(OUTCOME_INVALID));
+}
+
+// ─── Dispute predicate ───────────────────────────────────────────────────
+//
+// Same shape as `attest` above — replicates the on-chain handler's body
+// inline so the host-side tests can drive each branch with direct struct
+// mutation. The on-chain handler in `instructions/dispute.rs` must stay
+// in lock-step with this helper. Mirrors the EVM `AdjudicatorBase.dispute`
+// flow but collapsed for v1: no time window, single dispute_authority
+// pubkey instead of a guardian whitelist.
+fn dispute(
+    adj: &mut Adjudicator,
+    market_settled: bool,
+    signer: Pubkey,
+    new_outcome: u8,
+    now: i64,
+) -> Result<(), &'static str> {
+    if !matches!(new_outcome, OUTCOME_NO | OUTCOME_YES | OUTCOME_INVALID) {
+        return Err("InvalidOutcome");
+    }
+    if market_settled {
+        return Err("MarketAlreadySettled");
+    }
+    if adj.attested_outcome.is_none() {
+        return Err("NotAttested");
+    }
+    if adj.disputed {
+        return Err("AlreadyDisputed");
+    }
+    if signer != adj.dispute_authority {
+        return Err("NotDisputeAuthority");
+    }
+    adj.attested_outcome = Some(new_outcome);
+    adj.disputed = true;
+    adj.disputed_at = Some(now);
+    Ok(())
+}
+
+#[test]
+fn dispute_happy_path_overrides_outcome_to_invalid() {
+    // Canonical EVM-style "force invalidation" — original attestation YES,
+    // dispute flips to INVALID.
+    let auth = Pubkey::new_unique();
+    let mut adj = register(Pubkey::new_unique(), auth, AdjudicatorKind::Manual).unwrap();
+    attest(&mut adj, auth, OUTCOME_YES, 1_000).unwrap();
+
+    dispute(&mut adj, false, auth, OUTCOME_INVALID, 2_000).unwrap();
+    assert_eq!(adj.attested_outcome, Some(OUTCOME_INVALID));
+    assert!(adj.is_disputed());
+    assert_eq!(adj.disputed_at, Some(2_000));
+    // attested_at preserved as the original-attestation timestamp.
+    assert_eq!(adj.attested_at, Some(1_000));
+}
+
+#[test]
+fn dispute_happy_path_overrides_outcome_to_other_valid() {
+    // The EVM model also allows a guardian-supplied alternative outcome —
+    // not just INVALID. v1 supports the same: dispute can flip YES→NO.
+    let auth = Pubkey::new_unique();
+    let mut adj = register(Pubkey::new_unique(), auth, AdjudicatorKind::Manual).unwrap();
+    attest(&mut adj, auth, OUTCOME_YES, 1_000).unwrap();
+
+    dispute(&mut adj, false, auth, OUTCOME_NO, 2_000).unwrap();
+    assert_eq!(adj.attested_outcome, Some(OUTCOME_NO));
+    assert!(adj.is_disputed());
+}
+
+#[test]
+fn dispute_rejects_invalid_outcome() {
+    let auth = Pubkey::new_unique();
+    let mut adj = register(Pubkey::new_unique(), auth, AdjudicatorKind::Manual).unwrap();
+    attest(&mut adj, auth, OUTCOME_YES, 0).unwrap();
+
+    let err = dispute(&mut adj, false, auth, 9, 0).unwrap_err();
+    assert_eq!(err, "InvalidOutcome");
+    // Original outcome preserved.
+    assert_eq!(adj.attested_outcome, Some(OUTCOME_YES));
+    assert!(!adj.is_disputed());
+}
+
+#[test]
+fn dispute_rejects_when_market_already_settled() {
+    // Once `settle` has run on the market the lifecycle is terminal — a
+    // late dispute would be a soundness break. This predicate mirrors the
+    // on-chain handler's `MarketAlreadySettled` check.
+    let auth = Pubkey::new_unique();
+    let mut adj = register(Pubkey::new_unique(), auth, AdjudicatorKind::Manual).unwrap();
+    attest(&mut adj, auth, OUTCOME_YES, 0).unwrap();
+
+    let err = dispute(&mut adj, true, auth, OUTCOME_INVALID, 0).unwrap_err();
+    assert_eq!(err, "MarketAlreadySettled");
+    assert!(!adj.is_disputed());
+}
+
+#[test]
+fn dispute_rejects_before_attestation() {
+    // Nothing to dispute — the resolve/attest leg is the canonical first
+    // leg. Without `attested_outcome.is_some()` the dispute path is moot.
+    let auth = Pubkey::new_unique();
+    let mut adj = register(Pubkey::new_unique(), auth, AdjudicatorKind::Manual).unwrap();
+
+    let err = dispute(&mut adj, false, auth, OUTCOME_INVALID, 0).unwrap_err();
+    assert_eq!(err, "NotAttested");
+}
+
+#[test]
+fn dispute_is_one_shot_per_market() {
+    // Mirrors `attest`'s single-shot guard. Once dispute has overridden
+    // the outcome, a second dispute is rejected. EVM semantics return the
+    // market to ACTIVE for re-resolve; v1 collapses that to "the dispute
+    // *is* the new attestation" — so the lock is permanent.
+    let auth = Pubkey::new_unique();
+    let mut adj = register(Pubkey::new_unique(), auth, AdjudicatorKind::Manual).unwrap();
+    attest(&mut adj, auth, OUTCOME_YES, 0).unwrap();
+    dispute(&mut adj, false, auth, OUTCOME_INVALID, 1_000).unwrap();
+
+    let err = dispute(&mut adj, false, auth, OUTCOME_NO, 2_000).unwrap_err();
+    assert_eq!(err, "AlreadyDisputed");
+    // First-dispute outcome must remain.
+    assert_eq!(adj.attested_outcome, Some(OUTCOME_INVALID));
+    assert_eq!(adj.disputed_at, Some(1_000));
+}
+
+#[test]
+fn dispute_rejects_wrong_signer() {
+    let auth = Pubkey::new_unique();
+    let attacker = Pubkey::new_unique();
+    let mut adj = register(Pubkey::new_unique(), auth, AdjudicatorKind::Manual).unwrap();
+    attest(&mut adj, auth, OUTCOME_YES, 0).unwrap();
+
+    let err = dispute(&mut adj, false, attacker, OUTCOME_INVALID, 0).unwrap_err();
+    assert_eq!(err, "NotDisputeAuthority");
+    assert_eq!(adj.attested_outcome, Some(OUTCOME_YES));
+    assert!(!adj.is_disputed());
+}
+
+#[test]
+fn dispute_separate_authority_can_override_attest_authority() {
+    // Production-mode: `dispute_authority` is rotated to a separate guardian
+    // multisig pubkey while the attestation `authority` remains the
+    // operational resolver. The attest authority signs `attest_outcome`
+    // but CANNOT sign `dispute`; the guardian signs `dispute` but CANNOT
+    // sign `attest_outcome`. v1 stores both so this rotation is a single
+    // field write rather than an account migration.
+    let attest_auth = Pubkey::new_unique();
+    let guardian = Pubkey::new_unique();
+    let mut adj = register(Pubkey::new_unique(), attest_auth, AdjudicatorKind::Manual).unwrap();
+    // Simulate post-register rotation of dispute_authority to the guardian.
+    adj.dispute_authority = guardian;
+
+    // The attest authority can still attest.
+    attest(&mut adj, attest_auth, OUTCOME_YES, 0).unwrap();
+
+    // The attest authority CANNOT dispute.
+    let err = dispute(&mut adj, false, attest_auth, OUTCOME_INVALID, 0).unwrap_err();
+    assert_eq!(err, "NotDisputeAuthority");
+
+    // The guardian CAN dispute.
+    dispute(&mut adj, false, guardian, OUTCOME_INVALID, 1_000).unwrap();
+    assert_eq!(adj.attested_outcome, Some(OUTCOME_INVALID));
+    assert!(adj.is_disputed());
+}
+
+#[test]
+fn register_defaults_dispute_authority_to_attest_authority() {
+    // v1 collapsed-role: `register_adjudicator` populates `dispute_authority`
+    // with the same pubkey as `authority`. Mirrors the on-chain handler.
+    let auth = Pubkey::new_unique();
+    let adj = register(Pubkey::new_unique(), auth, AdjudicatorKind::Manual).unwrap();
+    assert_eq!(adj.authority, auth);
+    assert_eq!(adj.dispute_authority, auth);
+    assert!(!adj.disputed);
+    assert!(adj.disputed_at.is_none());
 }

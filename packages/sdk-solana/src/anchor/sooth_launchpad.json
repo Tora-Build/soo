@@ -747,6 +747,115 @@
           }
         }
       ]
+    },
+    {
+      "name": "mint_lp_for_buy",
+      "docs": [
+        "PDA-signed LP-token mint helper for the AMM buy path. CPI'd into",
+        "by sooth_amm::trade_positions on every pre-graduation buy to credit",
+        "the trader's LP ATA with `amount` LP base units (1:1 with the",
+        "fee_usdc paid on the trade). Auth: parent-ix introspection requires",
+        "the calling top-level ix be a sooth_amm::trade_positions dispatch."
+      ],
+      "discriminator": [45, 61, 27, 158, 134, 162, 204, 168],
+      "accounts": [
+        {
+          "name": "market",
+          "docs": ["Market PDA — owned by sooth_market. Read-only."],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [109, 97, 114, 107, 101, 116]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
+                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
+                0, 0, 0, 0
+              ]
+            }
+          }
+        },
+        {
+          "name": "lp_mint",
+          "docs": ["Per-market LP token mint. Mut for mint_to."],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [108, 112]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_mint_authority",
+          "docs": ["Per-market signer-only PDA. Mint authority on lp_mint."],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108, 112, 95, 109, 105, 110, 116, 95, 97, 117, 116, 104, 111,
+                  114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_lp_ata",
+          "docs": ["User's LP-token ATA — destination of the mint_to CPI."],
+          "writable": true
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Per-(user, market) Position from sooth_amm. Owner + PDA",
+            "derivation are validated in the handler."
+          ]
+        },
+        {
+          "name": "user",
+          "signer": true
+        },
+        {
+          "name": "instruction_sysvar",
+          "docs": [
+            "Instructions sysvar — read by the parent-ix introspection check."
+          ],
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
     }
   ],
   "accounts": [

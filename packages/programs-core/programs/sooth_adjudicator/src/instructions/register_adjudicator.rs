@@ -105,9 +105,17 @@ pub fn handler(
     let adjudicator = &mut ctx.accounts.adjudicator;
     adjudicator.market = market_key;
     adjudicator.authority = authority;
+    // v1 collapsed-role: dispute_authority defaults to the same pubkey as the
+    // attestation authority. Production would rotate this to a separate
+    // guardian multisig without re-registering — the field exists as a
+    // dedicated slot so that future rotation can land as a small additional
+    // ix (`set_dispute_authority`) rather than an account migration.
+    adjudicator.dispute_authority = authority;
     adjudicator.kind = kind;
     adjudicator.attested_outcome = None;
     adjudicator.attested_at = None;
+    adjudicator.disputed = false;
+    adjudicator.disputed_at = None;
     adjudicator.bump = ctx.bumps.adjudicator;
 
     let now = Clock::get()?.unix_timestamp;

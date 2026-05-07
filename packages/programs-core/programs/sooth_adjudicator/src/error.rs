@@ -30,4 +30,13 @@ pub enum SoothAdjudicatorError {
 
     #[msg("Dispute path is not implemented in v1; see architecture §4.4")]
     DisputeNotImplemented,
+
+    #[msg("Caller is not the registered dispute authority for this adjudicator")]
+    NotDisputeAuthority,
+
+    #[msg("Adjudicator has already been disputed; dispute is one-shot per market")]
+    AlreadyDisputed,
+
+    #[msg("Market is already settled; dispute can no longer override the outcome")]
+    MarketAlreadySettled,
 }

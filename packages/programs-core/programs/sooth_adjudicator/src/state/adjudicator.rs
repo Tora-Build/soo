@@ -86,21 +86,45 @@ pub struct Adjudicator {
     /// MUST be non-default — `register_adjudicator` rejects `Pubkey::default()`.
     pub authority: Pubkey,
 
+    /// Authority gating the `dispute` veto path. Defaults to `authority` at
+    /// `register_adjudicator` time (collapsed v1 role) but is stored as a
+    /// separate field so production can rotate it to a guardian multisig
+    /// without re-registering the market. EVM analogue: the per-adjudicator
+    /// guardian whitelist on `AdjudicatorBase` (`_guardians` mapping); v1
+    /// collapses that whitelist to a single Pubkey for simplicity. MUST be
+    /// non-default — `register_adjudicator` rejects `Pubkey::default()`.
+    pub dispute_authority: Pubkey,
+
     /// Variant tag. v1 only services `Manual`; `ZkTLS` / `Other` are
     /// placeholders rejected at attest-time with `UnsupportedKind`.
     pub kind: AdjudicatorKind,
 
-    /// Recorded outcome iff the authority has called `attest_outcome`.
-    /// `None` until then. 0=NO, 1=YES, 2=INVALID per protocol-wide OUTCOME
-    /// encoding (see `glossary.md`). Read by `sooth_market::settle` via the
-    /// CPI handshake — settle accepts only the introspection-verified parent
-    /// `attest_outcome` ix and trusts the outcome it computed.
+    /// Recorded outcome iff the authority has called `attest_outcome` (or
+    /// the `dispute` veto path has overridden it). 0=NO, 1=YES, 2=INVALID
+    /// per protocol-wide OUTCOME encoding (see `glossary.md`). Read by
+    /// `sooth_market::settle` via the CPI handshake — settle accepts only
+    /// the introspection-verified `attest_outcome` or `dispute` parent ixs
+    /// and trusts the outcome the chosen parent committed.
     pub attested_outcome: Option<u8>,
 
-    /// Unix-seconds timestamp of attestation, populated alongside
-    /// `attested_outcome`. Useful for indexers + a future veto-window
-    /// computation if the dispute path lands.
+    /// Unix-seconds timestamp of the original attestation. Populated by
+    /// `attest_outcome` and NOT overwritten by `dispute` — useful for
+    /// indexers reconstructing the resolve → attest → dispute → settle
+    /// timeline.
     pub attested_at: Option<i64>,
+
+    /// One-shot guard: once `dispute` mutates `attested_outcome`, this flag
+    /// is set true and a subsequent `dispute` (or `attest_outcome`, which
+    /// is also gated on `!is_attested()`) is rejected. Settle remains the
+    /// terminal action; once it runs the market lifecycle locks the outcome
+    /// regardless of this flag.
+    pub disputed: bool,
+
+    /// Unix-seconds timestamp of the dispute, populated alongside `disputed`.
+    /// `None` if `dispute` has not been called. Stored even though v1
+    /// enforces no time window so a future veto-window upgrade can read the
+    /// timestamp without a fresh account-layout migration.
+    pub disputed_at: Option<i64>,
 
     /// Bump for the `Adjudicator` PDA itself.
     pub bump: u8,
@@ -112,12 +136,19 @@ impl Adjudicator {
     pub const SPACE: usize = 8     // discriminator
         + 32                       // market
         + 32                       // authority
+        + 32                       // dispute_authority
         + AdjudicatorKind::SPACE   // kind
-        + 1 + 1                    // Option<u8>: tag + payload
-        + 1 + 8                    // Option<i64>: tag + payload
+        + 1 + 1                    // attested_outcome: Option<u8>: tag + payload
+        + 1 + 8                    // attested_at: Option<i64>: tag + payload
+        + 1                        // disputed: bool
+        + 1 + 8                    // disputed_at: Option<i64>: tag + payload
         + 1; // bump
 
     pub fn is_attested(&self) -> bool {
         self.attested_outcome.is_some()
+    }
+
+    pub fn is_disputed(&self) -> bool {
+        self.disputed
     }
 }

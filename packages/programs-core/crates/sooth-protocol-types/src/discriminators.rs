@@ -31,6 +31,13 @@
 /// lock_vault without producing the matching `LockEntry` mutation).
 pub const SELL_POSITIONS_DISCRIMINATOR: [u8; 8] = [3, 151, 9, 138, 95, 252, 50, 39];
 
+/// `sooth_amm::trade_positions`. Used by
+/// `sooth_launchpad::mint_lp_for_buy` to verify the calling top-level ix is
+/// the legitimate AMM buy dispatcher (closes the auth gap that would
+/// otherwise allow a direct `mint_lp_for_buy` call to mint LP tokens to
+/// the caller's ATA without producing the matching `Position` mutation).
+pub const TRADE_POSITIONS_DISCRIMINATOR: [u8; 8] = [14, 33, 158, 91, 88, 26, 89, 136];
+
 /// `sooth_amm::claim_unlocked`. Companion to `SELL_POSITIONS_DISCRIMINATOR`,
 /// gates `sooth_market::transfer_from_lock_vault` to require the legitimate
 /// AMM-side claim ix as the top-level dispatcher.
@@ -48,6 +55,13 @@ pub const REQUEST_LOCK_DISCRIMINATOR: [u8; 8] = [184, 126, 124, 46, 186, 78, 238
 /// `REQUEST_LOCK_DISCRIMINATOR`, gates `sooth_market::settle` to require
 /// the legitimate adjudicator-side attestation ix as the dispatcher.
 pub const ATTEST_OUTCOME_DISCRIMINATOR: [u8; 8] = [115, 210, 81, 230, 222, 14, 85, 209];
+
+/// `sooth_adjudicator::dispute`. Second-leg veto-path ix that overrides an
+/// attested outcome and CPIs into `sooth_market::settle`. Settle's parent-ix
+/// introspection accepts either `ATTEST_OUTCOME_DISCRIMINATOR` or
+/// `DISPUTE_DISCRIMINATOR` so the dispute path can drive `Locked → Settled`
+/// without re-running `attest_outcome` (which is one-shot).
+pub const DISPUTE_DISCRIMINATOR: [u8; 8] = [216, 92, 128, 146, 202, 85, 135, 73];
 
 // ── sooth_market-owned helper ix discriminators ──────────────────────────
 //

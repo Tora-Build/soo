@@ -44,6 +44,11 @@ import {
 // tree via a relative monorepo path. This keeps a single fixture authority.
 import { bootSmoke } from "../../../packages/sdk-solana/tests/fixtures/setup";
 import { BankrunConnection } from "../../../packages/sdk-solana/tests/fixtures/bankrun-connection";
+import {
+  deriveLpMintPda,
+  deriveUserLpAta,
+} from "../../../packages/sdk-solana/src/pdas";
+import { unpackAccount } from "@solana/spl-token";
 
 beforeAll(() => {
   // happy-dom doesn't expose `matchMedia` / `ResizeObserver` — upstream
@@ -205,10 +210,31 @@ test("AMM buy YES end-to-end against bankrun", async () => {
   expect(snap.market.qYes).toBe(10n * WAD);
   expect(snap.market.qNo).toBe(0n);
 
+  // ─── LP-mint side-effect (architecture §4.2) ────────────────────────────
+  //
+  // Pre-graduation buys mint LP tokens to the trader's LP ATA, proportional
+  // to the fee paid. The chain-shim wires the LP-ATA-create + LP-mint
+  // accounts through `buildTrade` → `submit`; this assertion confirms the
+  // end-to-end SDK adapter wiring delivered the LP-mint side-effect.
+  const [lpMint] = deriveLpMintPda(smoke.marketId, {
+    soothLaunchpad: smoke.programs.soothLaunchpad!,
+  });
+  const userLpAta = deriveUserLpAta(smoke.user.publicKey, lpMint);
+  const lpAtaInfo = await conn.getAccountInfo(userLpAta);
+  expect(lpAtaInfo).toBeTruthy();
+  // Web3.js's `AccountInfo<Buffer>` shape matches `unpackAccount`'s expected
+  // input — but at runtime the bankrun-shim returns `Buffer | Uint8Array`
+  // so we wrap once.
+  const tokenAccount = unpackAccount(userLpAta, {
+    ...(lpAtaInfo as NonNullable<typeof lpAtaInfo>),
+    data: Buffer.from(lpAtaInfo!.data),
+  });
+  expect(tokenAccount.amount).toBeGreaterThan(0n);
+
   const tTotal = Date.now() - t0;
   // eslint-disable-next-line no-console
   console.log(
-    `amm-buy-flow timing: total=${tTotal}ms position.yesShares=${finalPos.yesShares}`,
+    `amm-buy-flow timing: total=${tTotal}ms position.yesShares=${finalPos.yesShares} lpBalance=${tokenAccount.amount}`,
   );
 }, /* timeout */ 60_000);
 

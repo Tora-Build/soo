@@ -341,6 +341,8 @@ Tradeoff: more accounts (sell now needs the `sooth_market` program +
 on-wire `Position` shape, which would re-trigger the offset-sync work
 above for any reader of `Position`.
 
+> **Sidebar — Anchor `declare_id!` ergonomics.** Anchor's `declare_id!` macro emits BOTH `pub static ID: Pubkey` AND `pub const ID_CONST: Pubkey`. The `static` cannot be used in const context (e.g., the compile-time `pubkey_eq` asserts that `sooth-protocol-types` uses to hold `sooth_amm` / `sooth_market` IDs in lock-step), but `ID_CONST` can. This is undocumented in Anchor's user docs; it's only visible in `anchor-attribute-account-0.30.1/src/id.rs`'s codegen. Cross-program PDA-signing helpers like the ones above need program IDs at compile time to derive PDAs in `const fn`-style helpers, so the `sooth-protocol-types` crate's pubkey-equality asserts use `crate::ID_CONST` rather than `crate::ID` for that reason. Discovered during the cross-program signing refactor when the natural-looking `assert!(pubkey_eq(crate::ID, …))` failed with "non-const fn in const context".
+
 ### 4.4 Settlement (Multi-phase Adjudicator)
 
 EVM lifecycle: `configureMarket → resolve → attest → settle` with

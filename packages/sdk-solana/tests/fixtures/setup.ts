@@ -58,11 +58,15 @@ import {
   deriveFeePoolVaultAta,
   deriveLockAuthorityPda,
   deriveLockVaultAta,
+  deriveLpMintAuthorityPda,
+  deriveLpMintPda,
+  deriveLpPositionPda,
   deriveMarketPda,
   deriveMarketVaultAta,
   deriveNoMintPda,
   deriveProtocolConfigPda,
   deriveUserUsdcAta,
+  deriveUserLpAta,
   deriveVaultAuthorityPda,
   deriveYesMintPda,
   type ProgramIds,
@@ -476,6 +480,61 @@ export async function bootSmoke(
             ammState: ammStatePda,
             creator: creator.publicKey,
             systemProgram: SystemProgram.programId,
+          })
+          .instruction(),
+      ],
+      creator.publicKey,
+    ),
+  );
+
+  // ─── 5. seed_lp — bootstrap per-market LP mint + creator allocation ────
+  //
+  // Architecture §4.2: every pre-graduation buy mints LP units to the
+  // trader via `sooth_amm::trade_positions` → CPI → `sooth_launchpad::
+  // mint_lp_for_buy`. That CPI requires the per-market `lp_mint` PDA to
+  // already exist as an SPL Mint. Bootstrap it here so trade smoke tests
+  // (and the demo amm-buy-flow) exercise the LP-mint-on-buy side-effect.
+  //
+  // `lp_amount` mirrors the seed deposit in USDC base units (the
+  // architecture-§4.2 "1:1 with deposit" rule applied at bootstrap).
+  // `bWad` is the LMSR liquidity in WAD; convert to USDC base units by
+  // dividing by 1e12 (WAD/USDC scale ratio — same as `wadToUsdcCeil`
+  // would yield for a clean multiple).
+  const [lpMint] = deriveLpMintPda(marketId, {
+    soothLaunchpad: SOOTH_LAUNCHPAD_ID,
+  });
+  const [lpMintAuthority] = deriveLpMintAuthorityPda(marketId, {
+    soothLaunchpad: SOOTH_LAUNCHPAD_ID,
+  });
+  const [lpPosition] = deriveLpPositionPda(marketId, creator.publicKey, {
+    soothLaunchpad: SOOTH_LAUNCHPAD_ID,
+  });
+  const creatorLpAta = deriveUserLpAta(creator.publicKey, lpMint);
+  const lpAmountBaseUnits = bWad / 1_000_000_000_000n;
+  await sendTx(
+    ctx,
+    [creator],
+    await buildTx(
+      ctx,
+      [
+        await (launchpadProgram.methods as any)
+          .seedLp({
+            lpAmount: bigIntToBn(lpAmountBaseUnits),
+            seedDepositWad: bigIntToBn(bWad),
+          })
+          .accounts({
+            config: protocolConfigPda,
+            market: marketPda,
+            ammState: ammStatePda,
+            lpMint,
+            lpMintAuthority,
+            creatorLpAta,
+            lpPosition,
+            creator: creator.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+            rent: SYSVAR_RENT_PUBKEY,
           })
           .instruction(),
       ],

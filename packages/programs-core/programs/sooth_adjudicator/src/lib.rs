@@ -108,11 +108,15 @@ pub mod sooth_adjudicator {
         instructions::attest_outcome::handler(ctx, winning_outcome)
     }
 
-    /// Dispute / veto path. **STUB** — body returns
-    /// `DisputeNotImplemented`. Architecture §4.4 sketches the veto branch;
-    /// re-entering it post-v1 is a separate ix that does not require state-
-    /// machine changes on the v1 surface.
-    pub fn dispute(ctx: Context<Dispute>) -> Result<()> {
-        instructions::dispute::handler(ctx)
+    /// Dispute / veto path. The `dispute_authority` overrides the attested
+    /// outcome (set to INVALID, or to a different valid value) and CPIs into
+    /// `sooth_market::settle` to drive `Locked → Settled` with the new
+    /// outcome. Settle's parent-ix introspection accepts either
+    /// `attest_outcome` or `dispute` as the legitimate parent. v1 does NOT
+    /// enforce a time window — dispute is callable any time before settle
+    /// has run on this market. See `instructions/dispute.rs` for the full
+    /// auth + lifecycle model and the design-decision log.
+    pub fn dispute(ctx: Context<Dispute>, new_outcome: u8) -> Result<()> {
+        instructions::dispute::handler(ctx, new_outcome)
     }
 }

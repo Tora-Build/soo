@@ -33,7 +33,9 @@ import {
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
   getAccount,
+  getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 
 import {
@@ -49,11 +51,14 @@ import {
   deriveLockAuthorityPda,
   deriveLockEntryPda,
   deriveLockVaultAta,
+  deriveLpMintPda,
+  deriveLpMintAuthorityPda,
   deriveMarketPda,
   deriveMarketVaultAta,
   deriveNoMintPda,
   derivePositionPda,
   deriveProtocolConfigPda,
+  deriveUserLpAta,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
   deriveYesMintPda,
@@ -453,6 +458,23 @@ export class SolanaChainAdapter implements ChainAdapter {
       },
     );
 
+    // LP-mint plumbing for the pre-graduation buy path (architecture §4.2).
+    // `trade_positions` CPIs into `sooth_launchpad::mint_lp_for_buy` on
+    // every pre-graduation buy and credits the trader's LP ATA. The
+    // launchpad-side ix is a no-op when `amm.is_graduated == true`, but
+    // Anchor still requires the accounts to be present in the account list
+    // — so we always derive and pass them.
+    const launchpadProgramId = (
+      this.programIds as { soothLaunchpad: PublicKey }
+    ).soothLaunchpad;
+    const [lpMint] = deriveLpMintPda(resolved.marketId, {
+      soothLaunchpad: launchpadProgramId,
+    });
+    const [lpMintAuthority] = deriveLpMintAuthorityPda(resolved.marketId, {
+      soothLaunchpad: launchpadProgramId,
+    });
+    const userLpAta = deriveUserLpAta(userPk, lpMint);
+
     // Build the `trade_positions` instruction. Anchor's coder takes `BN`
     // for `i128` / `u128` args; we widen at the boundary.
     const ix: TransactionInstruction = await (this.soothAmm.methods as any)
@@ -471,17 +493,44 @@ export class SolanaChainAdapter implements ChainAdapter {
         usdcMint: this.usdcMint,
         protocolConfig,
         feePoolVault,
+        lpMint,
+        lpMintAuthority,
+        userLpAta,
         user: userPk,
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
         rent: SYSVAR_RENT_PUBKEY,
+        soothLaunchpadProgram: launchpadProgramId,
+        instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
+
+    // Idempotent ATA-create for the user's LP ATA. The Anchor
+    // `token::authority = user, token::mint = lp_mint` constraint on
+    // `user_lp_ata` requires the account to exist when `trade_positions`
+    // runs. A fresh trader has no LP ATA on first buy; this prepended ix
+    // creates it (no-op if it already exists). Same convention as the
+    // user_usdc_ata pattern: creation is the SDK's responsibility, not
+    // the program's.
+    //
+    // Carried through `meta.preIxs` so `submit()` can replay it under a
+    // fresh blockhash without re-deriving — the ATA-create ix is data-only
+    // (no per-blockhash content), so the identical bytes are valid every
+    // attempt.
+    const lpAtaCreateIx = createAssociatedTokenAccountIdempotentInstruction(
+      userPk, // payer
+      userLpAta,
+      userPk, // owner
+      lpMint,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
 
     const tx = new Transaction();
     // Generous CU bump — `trade_positions` benched ~75-80k per the spike but
     // `init_if_needed` on the first Position adds rent payer overhead.
     tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+    tx.add(lpAtaCreateIx);
     tx.add(ix as TransactionInstruction);
     tx.feePayer = userPk;
     // The latest blockhash is fetched at submit time (so the request remains
@@ -520,6 +569,21 @@ export class SolanaChainAdapter implements ChainAdapter {
           isWritable: k.isWritable,
         })),
         ixProgramId: ix.programId.toBase58(),
+        // Pre-ixs replayed by `submit()` ahead of the trade ix. Currently
+        // a single idempotent ATA-create for `user_lp_ata` (architecture
+        // §4.2 LP-mint side-effect requires the trader's LP ATA to exist
+        // before `trade_positions` runs).
+        preIxs: [
+          {
+            programId: lpAtaCreateIx.programId.toBase58(),
+            keys: lpAtaCreateIx.keys.map((k) => ({
+              pubkey: k.pubkey.toBase58(),
+              isSigner: k.isSigner,
+              isWritable: k.isWritable,
+            })),
+            data: Buffer.from(lpAtaCreateIx.data).toString("base64"),
+          },
+        ],
         deltaSharesStr: args.deltaShares.toString(),
         maxCostWadStr: args.maxCostWad.toString(),
         outcome: args.outcome,
@@ -695,22 +759,33 @@ export class SolanaChainAdapter implements ChainAdapter {
     };
   }
 
-  // ─── Claim path (Wave 1A `claim_unlocked` ix) ──────────────────────────
+  // ─── Claim path ────────────────────────────────────────────────────────
   //
-  // The integrator-contract spec types `buildClaim(market, args: ClaimArgs)`.
-  // EVM's `claimUnlocked(maxClaims)` walks a per-user storage queue; on
-  // Solana each `LockEntry` is its own account, so we resolve a *single*
-  // entry per ix invocation (one-lock-per-call mirrors the on-chain
-  // handler's design, see `claim_unlocked.rs` "Why one-lock-per-call").
+  // The integrator-contract spec types `buildClaim(market, args: ClaimArgs)`
+  // and earmarks it for "Settlement redemption" (`useClaim` /
+  // `buildClaimRequest`). On Solana there are TWO distinct post-trade USDC
+  // outflows that share the "claim" semantic surface:
   //
-  // The `ClaimArgs` shape is shared across chains and doesn't carry a
-  // LockEntry pubkey, so the Solana adapter accepts an extension via the
-  // same `args.user` / `args.lockEntry` meta channel buildTrade uses for
-  // `args.user`. Callers wanting to claim multiple lock entries fan out N
-  // builds + submits at the call site (the demo's chain-shim does this).
+  //   1. `kind: 'unlock'` — drain a `LockEntry` from the AMM sell-with-lock
+  //      cooldown (Wave 1A `sooth_amm::claim_unlocked`). This is the EVM
+  //      `claimUnlocked(maxClaims)` analogue. One LockEntry per call mirrors
+  //      the on-chain handler (see `claim_unlocked.rs`).
+  //
+  //   2. `kind: 'redeem'` — post-settlement redemption against the resolved
+  //      outcome (`sooth_market::redeem`). EVM `OrderEngine.settlePosition`
+  //      analogue; pays out per `TruthMarket.getRedemptionValue`.
+  //
+  // The discriminator dispatches between them. Default = `'unlock'` to
+  // preserve the Wave 4 call shape (existing tests don't pass `kind`).
+  // Both paths return a `ClaimRequest` with `kind: 'claim'` at the wire
+  // level so `client.submit` is unchanged.
   async buildClaim(
     market: MarketRef,
-    args: ClaimArgs & { user?: AddressRef; lockEntry?: AddressRef },
+    args: ClaimArgs & {
+      user?: AddressRef;
+      lockEntry?: AddressRef;
+      kind?: "unlock" | "redeem";
+    },
   ): Promise<ClaimRequest> {
     const user = args.user;
     if (!user) {
@@ -720,18 +795,85 @@ export class SolanaChainAdapter implements ChainAdapter {
           "buildClaim — args.user (Solana-only meta) is required at build time",
       });
     }
+    const userPk = decodePubkeyRef(user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+
+    const dispatchKind = args.kind ?? "unlock";
+
+    if (dispatchKind === "redeem") {
+      // ── Post-settlement redemption — sooth_market::redeem ────────────
+      //
+      // No CPI fan-out: `redeem` owns its own vault transfer + outcome-
+      // token burns directly (the vault_authority PDA is `sooth_market`-
+      // owned). The user signs the burn (their ATA is the burn source).
+      const [vaultAuthority] = deriveVaultAuthorityPda(
+        resolved.marketId,
+        this.programIds,
+      );
+      const userUsdcAta = deriveUserUsdcAta(userPk, this.usdcMint);
+      const marketVault = deriveMarketVaultAta(
+        resolved.marketId,
+        this.usdcMint,
+        this.programIds,
+      );
+      const userYesAta = getAssociatedTokenAddressSync(
+        resolved.yesMint,
+        userPk,
+      );
+      const userNoAta = getAssociatedTokenAddressSync(resolved.noMint, userPk);
+
+      const ix: TransactionInstruction = await (this.soothMarket.methods as any)
+        .redeem()
+        .accounts({
+          market: marketPda,
+          vaultAuthority,
+          yesMint: resolved.yesMint,
+          noMint: resolved.noMint,
+          vault: marketVault,
+          userUsdcAta,
+          userYesAta,
+          userNoAta,
+          user: userPk,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .instruction();
+
+      const accounts = ix.keys.map((k) => ({
+        pubkey: k.pubkey.toBase58(),
+        isSigner: k.isSigner,
+        isWritable: k.isWritable,
+      }));
+
+      return {
+        kind: "claim",
+        serializedTx: undefined,
+        accounts,
+        meta: {
+          marketPda: marketPda.toBase58(),
+          userPk: userPk.toBase58(),
+          ixData: Buffer.from(ix.data).toString("base64"),
+          ixKeys: ix.keys.map((k) => ({
+            pubkey: k.pubkey.toBase58(),
+            isSigner: k.isSigner,
+            isWritable: k.isWritable,
+          })),
+          ixProgramId: ix.programId.toBase58(),
+          operation: "redeem",
+          winningOutcome: resolved.winningOutcome,
+        },
+      };
+    }
+
+    // ── Default: AMM lock-claim — sooth_amm::claim_unlocked ────────────
     const lockEntryRef = args.lockEntry;
     if (!lockEntryRef) {
       throw new SoothError({
         kind: "NotImplemented",
         method:
-          "buildClaim — args.lockEntry (Solana-only meta; the LockEntry PDA to drain) is required",
+          "buildClaim — args.lockEntry (Solana-only meta; the LockEntry PDA to drain) is required for kind='unlock'",
       });
     }
-
-    const marketPda = decodePubkeyRef(market);
-    const resolved = await this.fetchMarket(marketPda);
-    const userPk = decodePubkeyRef(user);
     const lockEntryPda = decodePubkeyRef(lockEntryRef);
 
     const [positionPda] = derivePositionPda(
@@ -986,6 +1128,20 @@ export class SolanaChainAdapter implements ChainAdapter {
           }>;
           ixProgramId: string;
           userPk: string;
+          // Optional pre-ixs prepended ahead of the main ix on every submit
+          // attempt. Used by `buildTrade` to ship the idempotent ATA-create
+          // for `user_lp_ata` (architecture §4.2). Each entry is the same
+          // {programId, keys, data} shape as the main ix and is replayed
+          // verbatim under each fresh blockhash.
+          preIxs?: Array<{
+            programId: string;
+            keys: Array<{
+              pubkey: string;
+              isSigner: boolean;
+              isWritable: boolean;
+            }>;
+            data: string;
+          }>;
         };
     if (!meta?.ixData) {
       throw new SoothError({
@@ -1012,6 +1168,23 @@ export class SolanaChainAdapter implements ChainAdapter {
       data: Buffer.from(meta.ixData, "base64"),
     });
 
+    // Reconstruct any pre-ixs (e.g. the LP-ATA idempotent create from
+    // `buildTrade`). These are replayed verbatim on every attempt — they
+    // carry no per-blockhash data, so the bytes are identical across
+    // retries.
+    const preIxs: TransactionInstruction[] = (meta.preIxs ?? []).map(
+      (p) =>
+        new TransactionInstruction({
+          programId: new PublicKey(p.programId),
+          keys: p.keys.map((k) => ({
+            pubkey: new PublicKey(k.pubkey),
+            isSigner: k.isSigner,
+            isWritable: k.isWritable,
+          })),
+          data: Buffer.from(p.data, "base64"),
+        }),
+    );
+
     const requested = options?.maxAttempts ?? MAX_SUBMIT_ATTEMPTS;
     // Clamp to spec: at least 1, at most MAX_SUBMIT_ATTEMPTS.
     const maxAttempts = Math.max(
@@ -1026,6 +1199,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       // the new send. The signer is invoked once per attempt.
       const tx = new Transaction();
       tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+      for (const pre of preIxs) tx.add(pre);
       tx.add(ix);
       tx.feePayer = userPk;
 

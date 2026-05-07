@@ -702,7 +702,9 @@
       "docs": [
         "Redeem winning shares for USDC. EVM analogue:",
         "`OrderEngine.settlePosition` (`OrderEngine.sol:399-431`).",
-        "**STUB** — body is `todo!()` until `sooth_adjudicator` is wired."
+        "Body branches on `market.winning_outcome` per the EVM",
+        "`TruthMarket.getRedemptionValue` table (1.0 USDC for the winning side,",
+        "0.5 for both on INVALID)."
       ],
       "discriminator": [184, 12, 86, 149, 70, 196, 97, 225],
       "accounts": [
@@ -750,13 +752,9 @@
         {
           "name": "vault",
           "docs": [
-            "Market USDC vault. H1 (Codex): when the body lands, add",
-            "`constraint = vault.mint == crate::USDC_MINT_DEVNET` here (the same",
-            "pin used by `mint_complete_set`/`merge_complete_set`) to keep the",
-            "canonical-USDC chain unbroken — `initialize_market_vaults` pins",
-            "`usdc_mint` at vault-creation time, so this is transitive-trust",
-            "today, but the explicit constraint is cheap defense-in-depth and",
-            "keeps the IDL self-documenting once redeem is wired."
+            "Market USDC vault. Pinned to `market.vault` and constrained to",
+            "`USDC_MINT_DEVNET` (same defense-in-depth chain documented on",
+            "`mint_complete_set`/`merge_complete_set`)."
           ],
           "writable": true
         },
@@ -766,10 +764,20 @@
         },
         {
           "name": "user_yes_ata",
+          "docs": [
+            "User's YES outcome-token ATA — burned from when YES wins or on",
+            "INVALID. Required even if the user holds zero YES; the handler",
+            "skips the burn when `amount == 0`."
+          ],
           "writable": true
         },
         {
           "name": "user_no_ata",
+          "docs": [
+            "User's NO outcome-token ATA — burned from when NO wins or on",
+            "INVALID. Required even if the user holds zero NO; the handler",
+            "skips the burn when `amount == 0`."
+          ],
           "writable": true
         },
         {
@@ -1066,6 +1074,10 @@
     {
       "name": "MarketSettled",
       "discriminator": [237, 212, 22, 175, 201, 117, 215, 99]
+    },
+    {
+      "name": "Redeemed",
+      "discriminator": [14, 29, 183, 71, 31, 165, 107, 38]
     }
   ],
   "errors": [
@@ -1501,6 +1513,59 @@
               "0=NO, 1=YES, 2=INVALID per protocol-wide OUTCOME encoding."
             ],
             "type": "u8"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Redeemed",
+      "docs": [
+        "Mirror of EVM `OrderEngine.PositionSettled` (`OrderEngine.sol:430`).",
+        "Emitted by `redeem` after a successful post-settlement burn-and-pay."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "docs": [
+              "Resolved outcome at the time of redeem, copied from",
+              "`Market::winning_outcome`. 0=NO, 1=YES, 2=INVALID."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "yes_burned",
+            "docs": [
+              "YES outcome-token base units burned (0 if user held none, or if",
+              "outcome=NO)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "no_burned",
+            "docs": [
+              "NO outcome-token base units burned (0 if user held none, or if",
+              "outcome=YES)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "usdc_paid",
+            "docs": ["USDC base units transferred from vault to user."],
+            "type": "u64"
           },
           {
             "name": "ts",

@@ -9,11 +9,17 @@
 //! ## Authority gating
 //!
 //! Parent-ix introspection — same shape as `lock_for_resolution`. The
-//! calling top-level ix MUST be `sooth_adjudicator::attest_outcome` (matched
-//! by program-id + Anchor discriminator). This is the call-time auth gate
-//! that closes the deferred half of Codex's C2 finding; the abfcf15
-//! `AdjudicatorAllowlist` mitigation remains in place as create-time
-//! defense-in-depth.
+//! calling top-level ix MUST be one of:
+//!   - `sooth_adjudicator::attest_outcome` — happy path; the per-market
+//!     authority commits the resolved outcome.
+//!   - `sooth_adjudicator::dispute` — veto path; the per-market
+//!     `dispute_authority` overrides a previously-attested outcome (e.g.
+//!     flipping it to INVALID after a contested resolution).
+//!
+//! Both are matched by program-id + Anchor discriminator. This is the
+//! call-time auth gate that closes the deferred half of Codex's C2 finding;
+//! the abfcf15 `AdjudicatorAllowlist` mitigation remains in place as
+//! create-time defense-in-depth.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::sysvar;
@@ -21,7 +27,7 @@ use anchor_lang::solana_program::sysvar;
 use crate::error::SoothMarketError;
 use crate::events::MarketSettled;
 use crate::instruction_introspection::{
-    require_adjudicator_parent_ix, ATTEST_OUTCOME_DISCRIMINATOR,
+    require_adjudicator_parent_ix_any, ATTEST_OUTCOME_DISCRIMINATOR, DISPUTE_DISCRIMINATOR,
 };
 use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
 use crate::state::{Market, MarketLifecycle};
@@ -60,12 +66,13 @@ pub fn handler(ctx: Context<Settle>, winning_outcome: u8) -> Result<()> {
 
     // ── Auth — parent-ix introspection ───────────────────────────────────
     //
-    // Caller MUST be `sooth_adjudicator::attest_outcome`. See
+    // Caller MUST be `sooth_adjudicator::attest_outcome` (happy path) OR
+    // `sooth_adjudicator::dispute` (veto-override path). See
     // `instruction_introspection.rs` for the mechanism and
     // `lock_for_resolution.rs` for the layered-defense rationale.
-    require_adjudicator_parent_ix(
+    require_adjudicator_parent_ix_any(
         &ctx.accounts.instruction_sysvar,
-        &ATTEST_OUTCOME_DISCRIMINATOR,
+        &[ATTEST_OUTCOME_DISCRIMINATOR, DISPUTE_DISCRIMINATOR],
     )?;
 
     let market = &mut ctx.accounts.market;

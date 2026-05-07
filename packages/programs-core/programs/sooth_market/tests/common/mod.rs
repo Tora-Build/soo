@@ -83,6 +83,12 @@ pub struct Harness {
     pub creator: Keypair,
     pub allowlist_pda: Pubkey,
     pub protocol_config_pda: Pubkey,
+    /// Keypair that controls the canonical USDC mint installed at
+    /// `USDC_MINT_DEVNET`. Tests that need to mint test USDC into a user ATA
+    /// (e.g. the redeem flow needs the user to first `mint_complete_set`
+    /// some collateral) sign their `spl_token::instruction::mint_to` with
+    /// this keypair.
+    pub usdc_mint_authority: Keypair,
 }
 
 impl Harness {
@@ -117,9 +123,11 @@ impl Harness {
         // Hand-write the canonical USDC mint at USDC_MINT_DEVNET. The
         // on-chain Accounts entries pin `usdc_mint` to that exact address;
         // we can't use real devnet USDC under LiteSVM. The mint authority
-        // is a throwaway (we don't mint test USDC in any of these tests).
-        let mint_authority = Pubkey::new_unique();
-        write_mint(&mut svm, USDC_MINT, mint_authority);
+        // is a real Keypair so tests that need to seed USDC into user ATAs
+        // (e.g. `cpi_redeem`) can sign `spl_token::instruction::mint_to`.
+        let usdc_mint_authority = Keypair::new();
+        svm.airdrop(&usdc_mint_authority.pubkey(), 1_000_000_000).unwrap();
+        write_mint(&mut svm, USDC_MINT, usdc_mint_authority.pubkey());
 
         // Funded creator. Doubles as allowlist authority + adjudicator
         // authority + market creator + protocol config authority — same
@@ -199,6 +207,7 @@ impl Harness {
             creator,
             allowlist_pda,
             protocol_config_pda,
+            usdc_mint_authority,
         }
     }
 }
@@ -364,6 +373,29 @@ pub fn build_attest_outcome_ix(
     )
 }
 
+/// Build a `dispute` ix — the veto-path trigger that overrides an attested
+/// outcome and CPIs into `sooth_market::settle`. `disputer` is the signer
+/// (typically `harness.creator` since v1 collapses `dispute_authority` to
+/// the same key as the attestation `authority` at register time). The
+/// `new_outcome` ∈ {NO=0, YES=1, INVALID=2}.
+pub fn build_dispute_ix(
+    pdas: &MarketPdas,
+    disputer: Pubkey,
+    new_outcome: u8,
+) -> Instruction {
+    build_ix(
+        ADJ_ID,
+        sooth_adjudicator::accounts::Dispute {
+            adjudicator: pdas.adjudicator_pda,
+            market: pdas.market,
+            disputer,
+            sooth_market_program: MARKET_ID,
+            instruction_sysvar: sysvar::instructions::ID,
+        },
+        sooth_adjudicator::instruction::Dispute { new_outcome },
+    )
+}
+
 /// Anchor's pubkey-only `Accounts` struct (`accounts::*`) implements
 /// `ToAccountMetas`; the args struct (`instruction::*`) implements
 /// `InstructionData`. Together they fully specify a top-level Solana
@@ -490,4 +522,57 @@ pub fn market_id(salt: u8) -> [u8; 16] {
         *b = i as u8 ^ salt;
     }
     id
+}
+
+/// Create an associated-token-account for `(owner, mint)` if it does not
+/// already exist. Idempotent: cheap to call multiple times. Pays rent from
+/// `payer`. Used by tests that seed user ATAs before exercising the
+/// mint/merge/redeem flows.
+pub fn ensure_ata(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    owner: Pubkey,
+    mint: Pubkey,
+) -> Pubkey {
+    let ata = get_associated_token_address(&owner, &mint);
+    if svm.get_account(&ata).map(|a| a.data.len()).unwrap_or(0) > 0 {
+        return ata;
+    }
+    let ix = spl_associated_token_account::instruction::create_associated_token_account(
+        &payer.pubkey(),
+        &owner,
+        &mint,
+        &spl_token::ID,
+    );
+    send_ixs(svm, payer, &[ix]);
+    ata
+}
+
+/// Mint `amount` USDC base units into `dest_ata`. The harness's
+/// `usdc_mint_authority` signs the SPL `mint_to` ix.
+pub fn mint_usdc(svm: &mut LiteSVM, mint_authority: &Keypair, dest_ata: Pubkey, amount: u64) {
+    let ix = spl_token::instruction::mint_to(
+        &spl_token::ID,
+        &USDC_MINT,
+        &dest_ata,
+        &mint_authority.pubkey(),
+        &[],
+        amount,
+    )
+    .expect("mint_to ix build");
+    send_ixs(svm, mint_authority, &[ix]);
+}
+
+/// Read an SPL Token account's `amount` field. Returns 0 if the account
+/// does not exist on the cluster (matches the "no balance" intuition rather
+/// than panicking).
+pub fn fetch_token_amount(svm: &LiteSVM, ata: Pubkey) -> u64 {
+    let Some(acc) = svm.get_account(&ata) else {
+        return 0;
+    };
+    if acc.data.is_empty() {
+        return 0;
+    }
+    let parsed = spl_token::state::Account::unpack(&acc.data).expect("token unpack");
+    parsed.amount
 }

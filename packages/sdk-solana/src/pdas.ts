@@ -44,6 +44,9 @@ const SEED_N = enc.encode("n");
 const SEED_PROTOCOL_CONFIG = enc.encode("protocol_config");
 const SEED_FEE_POOL_AUTHORITY = enc.encode("fee_pool_authority");
 const SEED_ADJUDICATOR_ALLOWLIST = enc.encode("adjudicator_allowlist");
+const SEED_LP = enc.encode("lp");
+const SEED_LP_MINT_AUTHORITY = enc.encode("lp_mint_authority");
+const SEED_LP_POSITION = enc.encode("lp_position");
 
 function assertMarketId(marketId: MarketId): Buffer {
   if (marketId.length !== 16) {
@@ -269,5 +272,72 @@ export function deriveAdjudicatorAllowlistPda(
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_ADJUDICATOR_ALLOWLIST)],
     programs.soothMarket,
+  );
+}
+
+// Per-market LP token mint owned by `sooth_launchpad`. Seeds:
+// [b"lp", market_id]. Created by `sooth_launchpad::seed_lp` (one-shot per
+// market) and credited on every pre-graduation buy via
+// `sooth_launchpad::mint_lp_for_buy` (CPI'd from
+// `sooth_amm::trade_positions`). Architecture §4.2 / §1 row 7.
+export function deriveLpMintPda(
+  marketId: MarketId,
+  programs: Pick<ProgramIds, "soothLaunchpad"> & {
+    soothLaunchpad: PublicKey;
+  },
+): [PublicKey, number] {
+  const id = assertMarketId(marketId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_LP), id],
+    programs.soothLaunchpad,
+  );
+}
+
+// Per-market signer-only PDA owned by `sooth_launchpad`. The mint
+// authority on the per-market LP mint. Seeds: [b"lp_mint_authority",
+// market_id]. PDA-signed by `sooth_launchpad::seed_lp` (initial seed) and
+// `sooth_launchpad::mint_lp_for_buy` (per-buy LP credit).
+export function deriveLpMintAuthorityPda(
+  marketId: MarketId,
+  programs: Pick<ProgramIds, "soothLaunchpad"> & {
+    soothLaunchpad: PublicKey;
+  },
+): [PublicKey, number] {
+  const id = assertMarketId(marketId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_LP_MINT_AUTHORITY), id],
+    programs.soothLaunchpad,
+  );
+}
+
+// Per-(creator, market) LP claim record owned by `sooth_launchpad`.
+// Seeds: [b"lp_position", market_id, creator]. Created by
+// `sooth_launchpad::seed_lp` and consumed by the dismiss/refund flow.
+export function deriveLpPositionPda(
+  marketId: MarketId,
+  creator: PublicKey,
+  programs: Pick<ProgramIds, "soothLaunchpad"> & {
+    soothLaunchpad: PublicKey;
+  },
+): [PublicKey, number] {
+  const id = assertMarketId(marketId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_LP_POSITION), id, creator.toBuffer()],
+    programs.soothLaunchpad,
+  );
+}
+
+// User's LP-token ATA. Off-curve permitted because the LP mint may have
+// PDA-owned token accounts; for a regular `user: PublicKey` this returns
+// the standard ATA address. Used by `trade_positions` (the SDK pre-creates
+// this idempotently before dispatching the buy) and by any future LP
+// redeem ix.
+export function deriveUserLpAta(user: PublicKey, lpMint: PublicKey): PublicKey {
+  return getAssociatedTokenAddressSync(
+    lpMint,
+    user,
+    /* allowOwnerOffCurve */ true,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID,
   );
 }

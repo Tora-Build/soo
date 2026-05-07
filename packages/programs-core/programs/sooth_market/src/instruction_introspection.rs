@@ -38,14 +38,14 @@ use anchor_lang::solana_program::sysvar::instructions as ix_sysvar;
 use crate::error::SoothMarketError;
 use crate::{SOOTH_ADJUDICATOR_PROGRAM_ID, SOOTH_AMM_PROGRAM_ID};
 
-// The four discriminators consumed by the gates below. See
+// The five discriminators consumed by the gates below. See
 // `sooth_protocol_types::discriminators` for the canonical definitions and
 // the host-side test in `tests/{transfer_helpers,adjudicator_introspection}.rs`
 // for the `sha256("global:<ix>")[..8]` re-derivation that pins these values
 // against any drift in the on-chain Anchor codegen.
 pub use sooth_protocol_types::{
-    ATTEST_OUTCOME_DISCRIMINATOR, CLAIM_UNLOCKED_DISCRIMINATOR, REQUEST_LOCK_DISCRIMINATOR,
-    SELL_POSITIONS_DISCRIMINATOR,
+    ATTEST_OUTCOME_DISCRIMINATOR, CLAIM_UNLOCKED_DISCRIMINATOR, DISPUTE_DISCRIMINATOR,
+    REQUEST_LOCK_DISCRIMINATOR, SELL_POSITIONS_DISCRIMINATOR,
 };
 
 /// On-chain wrapper. Borrows the sysvar account, scans the top-level ix
@@ -123,6 +123,38 @@ pub fn require_adjudicator_parent_ix(
     )
 }
 
+/// Accept-any-of variant of `require_adjudicator_parent_ix`. Used by
+/// `settle` to allow either `attest_outcome` (the happy path) or `dispute`
+/// (the veto-override path) as a legitimate parent. The semantics are
+/// otherwise identical to the single-discriminator wrapper: the caller must
+/// be `sooth_adjudicator::ID` and the matched ix must lie in the
+/// `0..=current_index` window. Rejects with `InvalidParentInstruction` if
+/// none of the supplied discriminators match.
+pub fn require_adjudicator_parent_ix_any(
+    instruction_sysvar: &AccountInfo,
+    expected_discriminators: &[[u8; 8]],
+) -> Result<()> {
+    let current_index = ix_sysvar::load_current_index_checked(instruction_sysvar)? as usize;
+
+    for i in 0..=current_index {
+        let ix = ix_sysvar::load_instruction_at_checked(i, instruction_sysvar)?;
+        if ix.program_id != SOOTH_ADJUDICATOR_PROGRAM_ID {
+            continue;
+        }
+        if ix.data.len() < 8 {
+            continue;
+        }
+        let head = &ix.data[..8];
+        for expected in expected_discriminators {
+            if head == expected {
+                return Ok(());
+            }
+        }
+    }
+
+    Err(error!(SoothMarketError::InvalidParentInstruction))
+}
+
 /// Pure host-side parser that operates directly on the serialized sysvar
 /// data. Mirrors `require_parent_ix` but without the `AccountInfo` shell so
 /// it can be exercised by `cargo test -p sooth_market` (which doesn't ship
@@ -156,6 +188,47 @@ pub fn require_parent_ix_from_data(
             && &ix.data[..8] == expected_discriminator
         {
             return Ok(());
+        }
+    }
+
+    Err(SoothMarketError::InvalidParentInstruction)
+}
+
+/// Multi-discriminator host-side parser variant. Mirrors
+/// `require_adjudicator_parent_ix_any` for the host-side tests in
+/// `tests/adjudicator_introspection.rs` so the parent-ix gate's "either
+/// `attest_outcome` or `dispute`" semantics are exercised without the SBF
+/// VM. Sister to `require_parent_ix_from_data`; same byte-layout trick.
+#[allow(deprecated)]
+pub fn require_parent_ix_from_data_any(
+    sysvar_data: &[u8],
+    expected_program: &Pubkey,
+    expected_discriminators: &[[u8; 8]],
+) -> std::result::Result<(), SoothMarketError> {
+    if sysvar_data.len() < 2 {
+        return Err(SoothMarketError::InvalidParentInstruction);
+    }
+    let len = sysvar_data.len();
+    let mut idx_buf = [0u8; 2];
+    idx_buf.copy_from_slice(&sysvar_data[len - 2..len]);
+    let current_index = u16::from_le_bytes(idx_buf) as usize;
+
+    for i in 0..=current_index {
+        let ix = match ix_sysvar::load_instruction_at(i, sysvar_data) {
+            Ok(ix) => ix,
+            Err(_) => return Err(SoothMarketError::InvalidParentInstruction),
+        };
+        if ix.program_id != *expected_program {
+            continue;
+        }
+        if ix.data.len() < 8 {
+            continue;
+        }
+        let head = &ix.data[..8];
+        for expected in expected_discriminators {
+            if head == expected {
+                return Ok(());
+            }
         }
     }
 

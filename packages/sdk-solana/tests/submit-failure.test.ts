@@ -22,6 +22,7 @@ import {
   Keypair,
   PublicKey,
   SystemProgram,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
   SYSVAR_RENT_PUBKEY,
   Transaction,
   TransactionInstruction,
@@ -30,7 +31,11 @@ import {
   type RpcResponseAndContext,
   type SignatureResult,
 } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
+} from "@solana/spl-token";
 import { BN } from "@coral-xyz/anchor";
 
 import { SolanaChainAdapter } from "../src/adapter.js";
@@ -38,9 +43,12 @@ import { SoothError } from "../src/errors.js";
 import {
   deriveAmmStatePda,
   deriveFeePoolVaultAta,
+  deriveLpMintAuthorityPda,
+  deriveLpMintPda,
   deriveMarketVaultAta,
   derivePositionPda,
   deriveProtocolConfigPda,
+  deriveUserLpAta,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
   type ProgramIds,
@@ -116,6 +124,18 @@ describe("submit failure surfacing", () => {
     };
     const program = new Program(ammIdl as any, provider);
 
+    // LP-mint accounts (architecture §4.2). Anchor would attempt to auto-
+    // resolve these from the IDL's `pda` blocks, but the resolver hits the
+    // 6-deep recursion ceiling on `market.market_id` chasing — derive
+    // explicitly and pass through.
+    const [lpMint] = deriveLpMintPda(smoke.marketId, {
+      soothLaunchpad: smoke.programs.soothLaunchpad!,
+    });
+    const [lpMintAuthority] = deriveLpMintAuthorityPda(smoke.marketId, {
+      soothLaunchpad: smoke.programs.soothLaunchpad!,
+    });
+    const userLpAta = deriveUserLpAta(smoke.user.publicKey, lpMint);
+
     const badIx: TransactionInstruction = await (program.methods as any)
       .tradePositions(
         2, // INVALID outcome — guard returns 6001 InvalidOutcome
@@ -139,12 +159,33 @@ describe("submit failure surfacing", () => {
         feePoolVault: deriveFeePoolVaultAta(smoke.usdcMint, {
           soothLaunchpad: smoke.programs.soothLaunchpad!,
         }),
+        lpMint,
+        lpMintAuthority,
+        userLpAta,
         user: smoke.user.publicKey,
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
         rent: SYSVAR_RENT_PUBKEY,
+        soothLaunchpadProgram: smoke.programs.soothLaunchpad!,
+        instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
+
+    // Pre-ix: idempotent ATA-create for `user_lp_ata`. Anchor's
+    // `try_accounts` runs the LP-ATA `token::mint = lp_mint, token::
+    // authority = user` constraint BEFORE the handler's `outcome`
+    // validation, so a missing LP ATA would surface as
+    // `AccountNotInitialized = 3012` rather than the `InvalidOutcome
+    // = 6001` we want to assert. Match the same pre-ix `buildTrade`
+    // ships through `meta.preIxs`.
+    const lpAtaCreateIx = createAssociatedTokenAccountIdempotentInstruction(
+      smoke.user.publicKey,
+      userLpAta,
+      smoke.user.publicKey,
+      lpMint,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
 
     // Hand-build the same shape `buildTrade` returns — submit reads ixData /
     // ixKeys / ixProgramId / userPk off req.meta.
@@ -163,6 +204,17 @@ describe("submit failure surfacing", () => {
           isWritable: k.isWritable,
         })),
         ixProgramId: badIx.programId.toBase58(),
+        preIxs: [
+          {
+            programId: lpAtaCreateIx.programId.toBase58(),
+            keys: lpAtaCreateIx.keys.map((k) => ({
+              pubkey: k.pubkey.toBase58(),
+              isSigner: k.isSigner,
+              isWritable: k.isWritable,
+            })),
+            data: Buffer.from(lpAtaCreateIx.data).toString("base64"),
+          },
+        ],
         deltaSharesStr: "1",
         maxCostWadStr: "10",
         outcome: 2,

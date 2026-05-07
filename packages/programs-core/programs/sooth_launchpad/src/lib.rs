@@ -145,8 +145,24 @@ pub mod sooth_launchpad {
     /// `instructions/seed_lp.rs` module comment for the hand-rolled
     /// `system_instruction::create_account` + `token::initialize_mint`
     /// + ATA-create + PDA-signed `mint_to` flow. Pre-graduation
-    /// LP-mint-on-buy (architecture §4.2) is a separate follow-up.
+    /// LP-mint-on-buy (architecture §4.2) is wired via `mint_lp_for_buy`
+    /// below.
     pub fn seed_lp(ctx: Context<SeedLp>, args: SeedLpArgs) -> Result<()> {
         instructions::seed_lp::handler(ctx, args)
+    }
+
+    /// PDA-signed LP-token mint helper for the AMM buy path. CPI'd into by
+    /// `sooth_amm::trade_positions` on every pre-graduation buy to credit
+    /// the trader's LP ATA with `amount` LP base units (1:1 with the
+    /// `fee_usdc` paid on the trade — mirrors EVM
+    /// `FeeRouter._distributePreGrad` + `AMMEngine.mintLPTokens`).
+    /// Auth: parent-ix introspection requires the calling top-level ix be
+    /// a `sooth_amm::trade_positions` dispatch; user signature flows down
+    /// through the CPI; the `Position` is parsed raw and matched against
+    /// the user. See `instructions/mint_lp_for_buy.rs` module comment for
+    /// the cross-program signing rationale (mirrors Wave 4's
+    /// `sooth_market::transfer_to_lock` pattern).
+    pub fn mint_lp_for_buy(ctx: Context<MintLpForBuy>, amount: u64) -> Result<()> {
+        instructions::mint_lp_for_buy::handler(ctx, amount)
     }
 }

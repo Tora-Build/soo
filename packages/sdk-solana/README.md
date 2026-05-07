@@ -2,7 +2,7 @@
 
 > Solana adapter for `@sooth/sdk` — workspace member of the `sooth-solana` monorepo.
 > Published to npm as `@sooth/sdk-solana`. Loaded dynamically by `@sooth/sdk` (in `sooth-alpha`) when the active node is a Solana node.
-> Status: spec only, no implementation yet.
+> Status: AMM buy / sell / claim and `create_market` wired end-to-end. 29-spec vitest suite green on `litesvm`. Orderbook, redeem, and portfolio paths still throw `NotImplemented`.
 
 ## What this is
 
@@ -27,22 +27,24 @@ The integrator contract is **canonical** — it freezes the public API. The impl
 
 ## Status
 
-**Buy-path scaffold landed.** The package now exports a real `SolanaChainAdapter` class with the AMM buy path wired end-to-end (read state, build tx, sign+submit, read back). A solana-bankrun smoke test exercises the full vertical and asserts the expected on-chain mutations.
+**AMM vertical landed.** The package exports a real `SolanaChainAdapter` class with the AMM buy / sell / claim paths and `create_market` wired end-to-end (read state, build tx, sign+submit, read back). A 29-spec vitest suite covering smoke / sell / claim / create-market / submit-failure plus the LMSR port runs against `litesvm` in <5s.
 
 What's real today:
 
 - `readSnapshot(market, user?)` — Market PDA + AmmState PDA + Position PDA
 - `readQuote(market, outcome, deltaShares)` — off-chain LMSR cost (TS port mirrors `_spikes/lmsr-cu`)
 - `readPosition(market, user)`
-- `buildTrade(market, args)` for `side: "buy"`
-- `submit(req, signer)` via `Connection.sendRawTransaction` + `confirmTransaction`
+- `buildTrade(market, args)` for `side: "buy"` (sell callers route through `buildSell` — see below)
+- `buildSell(market, args)` — `sooth_amm::sell_positions` + lock-on-sell `LockEntry` PDA init
+- `buildClaim(market, args)` — `sooth_amm::claim_unlocked` (one LockEntry per call; multi-claim fans out at the call site)
+- `buildCreateMarket(args)` — `sooth_launchpad::create_market` composes the four-leg init flow via CPI
+- `submit(req, signer)` via `Connection.sendRawTransaction` + `confirmTransaction`, with bounded retry on transient `BlockhashNotFound`
 
 What still throws `SoothError({ kind: "NotImplemented" })`:
 
-- `readPortfolio`, `buildClaim`, `buildOrderbook*`, `buildCreateMarket`, `preflight`,
-  `subscribeMarketEvents`, `subscribePositionEvents`, `getCollateralBalance`, `buildApprove`
-- `buildTrade(side: "sell")` — the on-chain sell branch in
-  `programs/sooth_amm/src/instructions/trade_positions.rs §6` is itself stubbed (no USDC outflow).
+- `readPortfolio`, `buildOrderbook*` (gated on §6's CLOB choice — see programs-core/docs/architecture.md), `preflight`, `subscribeMarketEvents`, `subscribePositionEvents`, `getCollateralBalance`, `buildApprove`
+- `buildTrade({ side: "sell" })` deliberately throws `NotImplemented` with a "use buildSell()" hint — the SDK split mirrors the on-chain ix split (Wave 1A landed `sell_positions` separate from `trade_positions`).
+- Redeem / LP-redeem (gated on `sooth_market::redeem` and `sooth_launchpad::seed_lp` landing — both currently `todo!()` per architecture.md §4.5 / §8).
 
 The ChainAdapter interface and supporting types are **vendored** at the top of `src/types.ts` with a `// VENDORED — replace with @sooth/sdk@0.3.0` comment. When upstream Phase A ships, replace the vendored types with the upstream import; the swap is mechanical.
 
@@ -90,7 +92,7 @@ pnpm -F @sooth/sdk-solana build            # tsc compile
 pnpm -F @sooth/sdk-solana test             # vitest, including bankrun smoke test
 ```
 
-The smoke test boots `solana-bankrun`, deploys both Sooth programs from `target/deploy/`, hand-builds the Market + AmmState fixtures, and runs a buy-1%-of-b YES against a fresh USDC mint. Total runtime <1s on a developer laptop. See `tests/fixtures/setup.ts` for the gory details — including the bankrun `setAccount` workaround for two on-chain bugs noted in the change report.
+The smoke / sell / claim / create-market / submit-failure tests boot `litesvm`, deploy all three Sooth programs from `target/deploy/`, hand-build the Market + AmmState fixtures, and exercise the corresponding adapter methods against a fresh USDC mint. Full 29-spec suite runs in <5s on a developer laptop. See `tests/fixtures/setup.ts` for the fixture layer.
 
 ## Layout
 
@@ -100,17 +102,28 @@ packages/sdk-solana/                # workspace member of sooth-solana monorepo
 ├── docs/
 │   ├── integrator-contract.md      # third-party-facing frozen surface (CANONICAL)
 │   └── implementation-guide.md     # SDK-author implementation guide
-└── (future)
-    ├── package.json                # name: "@sooth/sdk-solana"
-    ├── tsconfig.json
-    └── src/
-        ├── adapter.ts              # implements ChainAdapter from @sooth/sdk
-        ├── client.ts               # Anchor program client factory
-        ├── orderbook.ts            # client-driven matcher integration
-        ├── idls/                   # consumed from ../programs-core/target/idl/
-        ├── matcher-wasm/           # built from ../programs-core/crates/sooth-book-matcher/
-        └── tx-builder/             # ALT mgmt, retry-on-race
+├── package.json                    # name: "@sooth/sdk-solana"
+├── tsconfig.json
+├── src/
+│   ├── adapter.ts                  # implements ChainAdapter (vendored at top of types.ts)
+│   ├── anchor/                     # generated IDL types from ../programs-core/target/idl/
+│   ├── math/                       # LMSR closed-form port of _spikes/lmsr-cu
+│   ├── pdas.ts                     # PDA derivation helpers
+│   ├── refs.ts                     # AddressRef / MarketRef encode-decode
+│   ├── errors.ts                   # SoothError taxonomy
+│   ├── types.ts                    # vendored ChainAdapter contract (replace at upstream Phase A)
+│   └── index.ts                    # public surface
+└── tests/                          # vitest suite (litesvm-backed); 29 specs across
+    ├── smoke.test.ts               #   buy / sell / claim / create-market / submit-failure /
+    ├── sell-flow.test.ts           #   plus the LMSR closed-form port.
+    ├── claim-flow.test.ts
+    ├── create-market.test.ts
+    ├── submit-failure.test.ts
+    ├── lmsr.test.ts
+    └── fixtures/                   # litesvm boot, USDC mint, fixture seeding
 ```
+
+Orderbook (`buildOrderbook*`) and Address-Lookup-Table / matcher-wasm modules are absent because the CLOB program (`sooth_book`) hasn't landed — see programs-core/docs/architecture.md §6.
 
 Note: the chain-agnostic `core/` code (`ChainAdapter` interface, types, hooks, math, errors taxonomy) lives in **`@sooth/sdk`** (in `sooth-alpha/packages/sdk`), not in this package. `@sooth/sdk-solana` only ships the Solana adapter implementation; integrators install both packages, and `@sooth/sdk` dynamically imports the adapter when the active node is Solana. See [`docs/implementation-guide.md §7`](./docs/implementation-guide.md) for the full proposed layout.
 

@@ -85,10 +85,12 @@
     {
       "name": "dispute",
       "docs": [
-        "Dispute / veto path. **STUB** — body returns `DisputeNotImplemented`.",
-        "Architecture §4.4 sketches the veto branch; re-entering it post-v1 is",
-        "a separate ix that does not require state-machine changes on the v1",
-        "surface."
+        "Dispute / veto path. The `dispute_authority` overrides an attested",
+        "outcome (set to INVALID, or to a different valid value) and CPIs into",
+        "`sooth_market::settle`. Settle's parent-ix introspection accepts",
+        "either `attest_outcome` or `dispute` as the legitimate parent. v1",
+        "does NOT enforce a time window — dispute is callable any time before",
+        "settle has run on this market."
       ],
       "discriminator": [216, 92, 128, 146, 202, 85, 135, 73],
       "accounts": [
@@ -110,6 +112,7 @@
         },
         {
           "name": "market",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -135,9 +138,27 @@
         {
           "name": "disputer",
           "signer": true
+        },
+        {
+          "name": "sooth_market_program",
+          "address": "SoothMkt11111111111111111111111111111111111"
+        },
+        {
+          "name": "instruction_sysvar",
+          "docs": [
+            "Instructions sysvar — forwarded to `sooth_market::settle` where the",
+            "parent-ix introspection accepts either `attest_outcome` or `dispute`",
+            "as the legitimate parent."
+          ],
+          "address": "Sysvar1nstructions1111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "new_outcome",
+          "type": "u8"
+        }
+      ]
     },
     {
       "name": "register_adjudicator",
@@ -341,6 +362,21 @@
       "code": 6007,
       "name": "DisputeNotImplemented",
       "msg": "Dispute path is not implemented in v1; see architecture §4.4"
+    },
+    {
+      "code": 6008,
+      "name": "NotDisputeAuthority",
+      "msg": "Caller is not the registered dispute authority for this adjudicator"
+    },
+    {
+      "code": 6009,
+      "name": "AlreadyDisputed",
+      "msg": "Adjudicator has already been disputed; dispute is one-shot per market"
+    },
+    {
+      "code": 6010,
+      "name": "MarketAlreadySettled",
+      "msg": "Market is already settled; dispute can no longer override the outcome"
     }
   ],
   "types": [
@@ -364,6 +400,16 @@
             "type": "pubkey"
           },
           {
+            "name": "dispute_authority",
+            "docs": [
+              "Authority gating `dispute` (veto / override path). Defaults to",
+              "`authority` at register-time; production rotates to a guardian",
+              "multisig. EVM analogue: per-adjudicator guardian whitelist,",
+              "collapsed to a single Pubkey for v1."
+            ],
+            "type": "pubkey"
+          },
+          {
             "name": "kind",
             "type": {
               "defined": {
@@ -374,7 +420,8 @@
           {
             "name": "attested_outcome",
             "docs": [
-              "0=NO, 1=YES, 2=INVALID per protocol-wide OUTCOME encoding."
+              "0=NO, 1=YES, 2=INVALID per protocol-wide OUTCOME encoding.",
+              "Populated by `attest_outcome`; overridden by `dispute`."
             ],
             "type": {
               "option": "u8"
@@ -382,6 +429,29 @@
           },
           {
             "name": "attested_at",
+            "docs": [
+              "Unix-seconds timestamp of the original attestation. NOT",
+              "overwritten by `dispute` — the dispute timestamp lives on",
+              "`disputed_at`."
+            ],
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "disputed",
+            "docs": [
+              "One-shot guard: once `dispute` mutates `attested_outcome`,",
+              "this flag is set true and a subsequent dispute is rejected."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "disputed_at",
+            "docs": [
+              "Unix-seconds timestamp of the dispute, populated alongside",
+              "`disputed`. `None` if `dispute` has not been called."
+            ],
             "type": {
               "option": "i64"
             }
@@ -453,6 +523,10 @@
     },
     {
       "name": "DisputeRaised",
+      "docs": [
+        "Emitted by `dispute` when the `dispute_authority` overrides an",
+        "attested outcome. Mirrors EVM `AdjudicatorBase.MarketDisputed`."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -467,6 +541,19 @@
           {
             "name": "disputer",
             "type": "pubkey"
+          },
+          {
+            "name": "previous_outcome",
+            "docs": ["Outcome recorded by the original `attest_outcome`."],
+            "type": "u8"
+          },
+          {
+            "name": "new_outcome",
+            "docs": [
+              "Outcome the `dispute_authority` is asserting. 0=NO, 1=YES,",
+              "2=INVALID per protocol-wide OUTCOME encoding."
+            ],
+            "type": "u8"
           },
           {
             "name": "ts",

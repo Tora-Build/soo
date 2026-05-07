@@ -435,7 +435,7 @@ async function dispatchClaim(
     outcome: 0, // ClaimArgs.outcome is unused on the Solana path; placeholder.
     user: `sol:${ctx.userBase58}`,
     lockEntry: lockEntryRef,
-  } as never);
+  });
 
   const receipt = await ctx.adapter.submit(req, ctx.signer);
   const sig = receipt.txId.replace(/^sol:/, "");

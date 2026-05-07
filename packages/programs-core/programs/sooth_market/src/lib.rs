@@ -158,7 +158,9 @@ pub mod sooth_market {
 
     /// Redeem winning shares for USDC. EVM analogue:
     /// `OrderEngine.settlePosition` (`OrderEngine.sol:399-431`).
-    /// **STUB** — body is `todo!()` until `sooth_adjudicator` is wired.
+    /// Body branches on `market.winning_outcome` per the EVM
+    /// `TruthMarket.getRedemptionValue` table (1.0 USDC for the winning side,
+    /// 0.5 for both on INVALID).
     pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
         instructions::redeem::handler(ctx)
     }
