@@ -3,6 +3,7 @@ import {
   useAccount,
   useChainId,
   useConfig,
+  useDemo,
   useReadContract,
   useWriteContract,
 } from "@/lib/chain-shim";
@@ -218,6 +219,12 @@ export const Launchpad = () => {
   const queryClient = useQueryClient();
   const deployments = useDeployments();
   const { writeContractAsync } = useWriteContract();
+  // Solana fork detection: if a DemoProvider is mounted with a real adapter,
+  // we're on the Solana chain-shim and the receipt-decoding path below
+  // should bypass the EVM event-log loop in favour of the bridge's
+  // out-of-band market-PDA channel.
+  const demo = useDemo();
+  const isSolanaFork = !!demo?.adapter;
 
   const [question, setQuestion] = useState("");
   const [form, setForm] = useState({
@@ -653,30 +660,52 @@ export const Launchpad = () => {
         ...(isMonad || isMegaETH || isHyperEvm ? { gas: MAX_GAS_CAP } : {}),
       });
 
-      const receipt = await waitForTransactionReceipt(config, {
-        hash: createHash,
-      });
       let marketAddress: Address | undefined;
 
-      for (const log of receipt.logs) {
-        try {
-          const decoded = decodeEventLog({
-            abi: ABIS.LaunchpadEngine,
-            data: log.data,
-            topics: log.topics,
-          });
-          if (decoded.eventName === "MarketCreated" && decoded.args) {
-            marketAddress = (decoded.args as unknown as { market: Address })
-              .market;
-            break;
-          }
-        } catch {
-          continue;
+      if (isSolanaFork) {
+        // Solana path: the chain-shim's `dispatchCreateMarket` stashes the
+        // new market PDA on a global side channel before returning the
+        // synthetic Hash. EVM event-log decoding doesn't apply — Solana
+        // has no equivalent of `decodeEventLog`. Pull the PDA off the
+        // side channel and feed it into the localStorage / navigate path
+        // below as the market identifier.
+        const pda = (
+          globalThis as unknown as { __lastCreatedMarketPda?: string }
+        ).__lastCreatedMarketPda;
+        if (!pda) {
+          throw new Error(
+            "Solana createMarket: market PDA missing from side channel",
+          );
         }
-      }
+        marketAddress = pda as Address;
+        // Clear the side channel so a follow-up create can't re-use a
+        // stale value if the bridge fails before stashing.
+        delete (globalThis as unknown as { __lastCreatedMarketPda?: string })
+          .__lastCreatedMarketPda;
+      } else {
+        const receipt = await waitForTransactionReceipt(config, {
+          hash: createHash,
+        });
+        for (const log of receipt.logs) {
+          try {
+            const decoded = decodeEventLog({
+              abi: ABIS.LaunchpadEngine,
+              data: log.data,
+              topics: log.topics,
+            });
+            if (decoded.eventName === "MarketCreated" && decoded.args) {
+              marketAddress = (decoded.args as unknown as { market: Address })
+                .market;
+              break;
+            }
+          } catch {
+            continue;
+          }
+        }
 
-      if (!marketAddress) {
-        throw new Error("MarketCreated event not found");
+        if (!marketAddress) {
+          throw new Error("MarketCreated event not found");
+        }
       }
 
       const marketMetaKey = `market_meta_${marketAddress.toLowerCase()}`;

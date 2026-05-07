@@ -33,10 +33,17 @@
 //   decimals        → 6 (USDC)
 
 import {
+  Keypair,
   PublicKey,
+  Transaction,
   type Connection as SolanaConnection,
 } from "@solana/web3.js";
-import { getAccount } from "@solana/spl-token";
+import {
+  createAssociatedTokenAccountIdempotentInstruction,
+  createMintToInstruction,
+  getAccount,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
 import {
   deriveUserUsdcAta,
   yesPriceWad,
@@ -310,6 +317,12 @@ export async function dispatchAmmWrite(
   if (call.functionName === "claimUnlocked") {
     return dispatchClaim(call, ctx);
   }
+  if (call.functionName === "mint") {
+    return dispatchMint(call, ctx);
+  }
+  if (call.functionName === "createMarket") {
+    return dispatchCreateMarket(call, ctx);
+  }
   return NOT_HANDLED;
 }
 
@@ -436,6 +449,168 @@ async function dispatchClaim(
     user: `sol:${ctx.userBase58}`,
     lockEntry: lockEntryRef,
   });
+
+  const receipt = await ctx.adapter.submit(req, ctx.signer);
+  const sig = receipt.txId.replace(/^sol:/, "");
+  return synthHashFromSignature(sig);
+}
+
+/**
+ * Faucet path. Upstream's `Faucet.tsx` calls
+ *   `writeContractAsync({ functionName: "mint", args: [address, amount] })`
+ * against the EVM `MockUSDC` contract. On Solana the equivalent is an SPL
+ * `MintTo` ix signed by the localnet mint authority. The authority's
+ * secret key is inlined via `VITE_TEST_MINT_AUTHORITY_BYTES` (see
+ * `apps/demo/scripts/seed-localnet.mjs`).
+ *
+ * The recipient is ALWAYS `ctx.userBase58` — `args[0]` is an EVM-shaped
+ * address slot and is intentionally ignored. This prevents the in-browser
+ * faucet from minting to arbitrary wallets even if the upstream UI passes
+ * a different `to` field.
+ */
+async function dispatchMint(
+  _call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  if (!ctx.userBase58) {
+    throw new Error("mint: no Solana wallet pubkey — connect a wallet first");
+  }
+  const args = _call.args ?? [];
+  const amount =
+    typeof args[1] === "bigint" ? args[1] : BigInt((args[1] as any) ?? 0);
+  if (amount <= 0n) {
+    throw new Error("mint: amount must be positive");
+  }
+
+  const rawBytes = (
+    import.meta as unknown as { env: Record<string, string | undefined> }
+  ).env?.VITE_TEST_MINT_AUTHORITY_BYTES;
+  if (!rawBytes) {
+    throw new Error(
+      "VITE_TEST_MINT_AUTHORITY_BYTES required for faucet mint on localnet (regenerate .env.local via pnpm dev:localnet)",
+    );
+  }
+
+  let mintAuthority: Keypair;
+  try {
+    const arr = JSON.parse(rawBytes) as number[];
+    mintAuthority = Keypair.fromSecretKey(Uint8Array.from(arr));
+  } catch (e) {
+    throw new Error(
+      `VITE_TEST_MINT_AUTHORITY_BYTES is not a valid JSON byte array: ${(e as Error).message}`,
+    );
+  }
+
+  const recipient = new PublicKey(ctx.userBase58);
+  const usdcMint = ctx.adapter.usdcMint;
+  const recipientAta = getAssociatedTokenAddressSync(usdcMint, recipient);
+
+  const tx = new Transaction();
+  tx.add(
+    createAssociatedTokenAccountIdempotentInstruction(
+      mintAuthority.publicKey,
+      recipientAta,
+      recipient,
+      usdcMint,
+    ),
+  );
+  tx.add(
+    createMintToInstruction(
+      usdcMint,
+      recipientAta,
+      mintAuthority.publicKey,
+      amount,
+    ),
+  );
+
+  const { blockhash, lastValidBlockHeight } =
+    await ctx.adapter.connection.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = blockhash;
+  tx.lastValidBlockHeight = lastValidBlockHeight;
+  tx.feePayer = mintAuthority.publicKey;
+  tx.partialSign(mintAuthority);
+
+  const serialized = tx.serialize();
+  const sig = await ctx.adapter.connection.sendRawTransaction(serialized, {
+    skipPreflight: false,
+  });
+  await ctx.adapter.connection.confirmTransaction(
+    { signature: sig, blockhash, lastValidBlockHeight },
+    "confirmed",
+  );
+  return synthHashFromSignature(sig);
+}
+
+/**
+ * Launchpad path. Upstream's `Launchpad.tsx` calls
+ *   `writeContractAsync({ functionName: "createMarket", args: [
+ *     sqfQuestion, startTime, deadline, customAdjudicator,
+ *     bWei, initialProbabilityWad, adjudicatorConfig
+ *   ]})`
+ * against `LaunchpadEngine`. We map the relevant args onto
+ * `adapter.buildCreateMarket` and submit. The new market's PDA is stashed
+ * on a global side channel (`globalThis.__lastCreatedMarketPda`) because
+ * the EVM-flavored receipt-decoding path upstream loops over event logs to
+ * extract `marketAddress` — Solana has no equivalent ABI dispatch, so the
+ * shim hands the PDA off out-of-band.
+ */
+async function dispatchCreateMarket(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  if (!ctx.signer) {
+    throw new Error(
+      "createMarket: no Solana signer available — connect a wallet first",
+    );
+  }
+  if (!ctx.userBase58) {
+    throw new Error(
+      "createMarket: no Solana wallet pubkey — connect a wallet first",
+    );
+  }
+  const args = call.args ?? [];
+
+  const question =
+    typeof args[0] === "string" ? args[0] : String(args[0] ?? "");
+  const deadlineRaw = args[2];
+  const deadline =
+    typeof deadlineRaw === "bigint"
+      ? deadlineRaw
+      : BigInt((deadlineRaw as any) ?? 0);
+  if (deadline <= 0n) {
+    throw new Error("createMarket: deadline must be positive");
+  }
+  const initialBRaw = args[4];
+  const initialB =
+    typeof initialBRaw === "bigint"
+      ? initialBRaw
+      : BigInt((initialBRaw as any) ?? 0);
+
+  // EVM `customAdjudicator` is a 0x-prefixed address. We can't decode that
+  // into a Solana pubkey, so the bridge defaults to the connected user as
+  // both creator and adjudicator (matches the localnet seed default — the
+  // creator wallet is the on-chain allowlist authority + per-market
+  // adjudicator). Future work: surface a Solana-typed adjudicator picker.
+  const userRef = `sol:${ctx.userBase58}`;
+
+  const req = await ctx.adapter.buildCreateMarket({
+    question,
+    deadline,
+    initialB: initialB > 0n ? initialB : undefined,
+    user: userRef,
+    adjudicator: userRef,
+  });
+
+  // Stash the market PDA on a global side channel BEFORE submit so the
+  // caller (Launchpad.tsx) can pick it up after `writeContractAsync`
+  // resolves. We can't surface it through the synthetic Hash return type
+  // without breaking upstream's typing.
+  const meta = req.meta as { marketPda?: string } | undefined;
+  if (meta?.marketPda) {
+    (
+      globalThis as unknown as { __lastCreatedMarketPda?: string }
+    ).__lastCreatedMarketPda = meta.marketPda;
+  }
 
   const receipt = await ctx.adapter.submit(req, ctx.signer);
   const sig = receipt.txId.replace(/^sol:/, "");
