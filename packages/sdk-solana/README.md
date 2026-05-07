@@ -2,7 +2,7 @@
 
 > Solana adapter for `@sooth/sdk` — workspace member of the `sooth-solana` monorepo.
 > Published to npm as `@sooth/sdk-solana`. Loaded dynamically by `@sooth/sdk` (in `sooth-alpha`) when the active node is a Solana node.
-> Status: AMM buy / sell / claim, `create_market`, and `preflight` (simulate-before-sign) wired end-to-end. 40-spec vitest suite green on `litesvm` (smoke / sell / claim / create-market / submit-failure / preflight / per-program error-classifier). Orderbook, redeem, and full portfolio paths still throw `NotImplemented`.
+> Status: AMM (buy / sell / claim), complete-set (mint / merge / redeem), operator (request_lock / attest_outcome), `create_market`, and `preflight` (simulate-before-sign) all wired end-to-end. 44-spec vitest suite green on `litesvm` covering smoke / sell / claim / complete-set / redeem-request / operator-request / create-market / submit-failure / preflight / per-program error-classifier / LMSR. Orderbook (`buildOrderbook*`) still throws `NotImplemented` — gated on `sooth_book` (spike P1).
 
 ## What this is
 
@@ -27,24 +27,32 @@ The integrator contract is **canonical** — it freezes the public API. The impl
 
 ## Status
 
-**AMM vertical landed.** The package exports a real `SolanaChainAdapter` class with the AMM buy / sell / claim paths, `create_market`, and `preflight` (simulate-before-sign) wired end-to-end (read state, build tx, sign+submit, read back). A 40-spec vitest suite covering smoke / sell / claim / create-market / submit-failure / preflight / per-program error-classifier plus the LMSR port runs against `litesvm` in <5s.
+**Four programs fully wired.** `SolanaChainAdapter` covers the AMM, complete-set, operator-attestation, and launchpad flows end-to-end (read state, build tx, sign+submit, read back). A 44-spec vitest suite runs against `litesvm` in ~5s.
 
 What's real today:
 
 - `readSnapshot(market, user?)` — Market PDA + AmmState PDA + Position PDA
+- `readSnapshots(markets[])` — batched `readSnapshot` for portfolio paths
 - `readQuote(market, outcome, deltaShares)` — off-chain LMSR cost (TS port mirrors `_spikes/lmsr-cu`)
 - `readPosition(market, user)`
-- `buildTrade(market, args)` for `side: "buy"` (sell callers route through `buildSell` — see below)
+- `readAdjudicator(market)` — `Adjudicator` PDA fetch (authority + flags) for operator-console gating
+- `readPendingUnlocks(market, user)` — enumerate matured `LockEntry` PDAs to drive the claim panel
+- `buildTrade(market, args)` for `side: "buy"`
 - `buildSell(market, args)` — `sooth_amm::sell_positions` + lock-on-sell `LockEntry` PDA init
-- `buildClaim(market, args)` — `sooth_amm::claim_unlocked` (one LockEntry per call; multi-claim fans out at the call site)
+- `buildClaim(market, args)` — dispatches on `args.kind`:
+  - `"unlock"` (default): `sooth_amm::claim_unlocked` against a matured `LockEntry`
+  - `"redeem"`: `sooth_market::redeem` against the resolved outcome (post-settlement)
+- `buildMintCompleteSet(market, args)` / `buildMergeCompleteSet(market, args)` — `sooth_market::mint_complete_set` / `merge_complete_set` for 1 USDC ↔ (1 YES + 1 NO) round-trips
+- `buildRequestLock(market, args)` / `buildAttestOutcome(market, args)` — `sooth_adjudicator::request_lock` / `attest_outcome` (operator path; signer must be `Adjudicator.authority`)
 - `buildCreateMarket(args)` — `sooth_launchpad::create_market` composes the four-leg init flow via CPI
-- `submit(req, signer)` via `Connection.sendRawTransaction` + `confirmTransaction`, with bounded retry on transient `BlockhashNotFound`
+- `submit(req, signer)` — reconstructs the tx from `req.meta`, attaches a fresh blockhash on each attempt, signs + sends + confirms with bounded retry on transient `BlockhashNotFound`. Returns 1–5 receipts per the integrator contract.
+- `preflight(req)` — mirrors `submit`'s tx construction and runs `simulateTransaction` so the consumer sees `unitsConsumed` + a typed `SoothError` before the user is asked to sign.
 
 What still throws `SoothError({ kind: "NotImplemented" })`:
 
-- `readPortfolio`, `buildOrderbook*` (gated on §6's CLOB choice — see programs-core/docs/architecture.md), `preflight`, `subscribeMarketEvents`, `subscribePositionEvents`, `getCollateralBalance`, `buildApprove`
-- `buildTrade({ side: "sell" })` deliberately throws `NotImplemented` with a "use buildSell()" hint — the SDK split mirrors the on-chain ix split (Wave 1A landed `sell_positions` separate from `trade_positions`).
-- Redeem / LP-redeem (gated on `sooth_market::redeem` and `sooth_launchpad::seed_lp` landing — both currently `todo!()` per architecture.md §4.5 / §8).
+- `buildOrderbook{Buy,Sell,Cancel}` — gated on the `sooth_book` program (spike P1, see programs-core/docs/architecture.md §6)
+- `readPortfolio`, `subscribeMarketEvents`, `subscribePositionEvents`, `getCollateralBalance`, `buildApprove`
+- `buildTrade({ side: "sell" })` — deliberate; throws with a "use buildSell()" hint. The SDK split mirrors the on-chain ix split (Wave 1A landed `sell_positions` separate from `trade_positions`).
 
 The ChainAdapter interface and supporting types are **vendored** at the top of `src/types.ts` with a `// VENDORED — replace with @sooth/sdk@0.3.0` comment. When upstream Phase A ships, replace the vendored types with the upstream import; the swap is mechanical.
 
@@ -62,6 +70,8 @@ See [`docs/implementation-guide.md §8`](./docs/implementation-guide.md) for the
 
 ## Quick usage
 
+### Read-only
+
 ```ts
 import { SolanaChainAdapter, encodePubkeyRef } from "@sooth/sdk-solana";
 import { PublicKey } from "@solana/web3.js";
@@ -75,6 +85,8 @@ const adapter = new SolanaChainAdapter({
     programs: {
       soothAmm: "SoothAMM11111111111111111111111111111111111",
       soothMarket: "SoothMkt11111111111111111111111111111111111",
+      soothLaunchpad: "SoothLp1111111111111111111111111111111111111",
+      soothAdjudicator: "SoothAdj111111111111111111111111111111111111",
     },
   },
 });
@@ -84,15 +96,94 @@ const snap = await adapter.readSnapshot(marketRef);
 console.log(snap.market.qYes, snap.market.qNo, snap.market.b);
 ```
 
+### Build → preflight → submit (wallet adapter)
+
+`SoothRequest.meta` carries an unsigned ix payload that `submit()` (and
+`preflight()`) reconstruct on each attempt with a fresh blockhash — the build
+methods are pure, so callers can re-quote and re-simulate without rebuilding
+state. `submit()` accepts any signer that can produce a `SignatureBytes` for
+a `MessageBytes` blob; below uses `@solana/wallet-adapter-react`.
+
+```ts
+import { useWallet } from "@solana/wallet-adapter-react";
+import { encodePubkeyRef, encodeAddressRef } from "@sooth/sdk-solana";
+
+const wallet = useWallet();
+
+// 1. Build (no network round-trip beyond what readSnapshot needed).
+const req = await adapter.buildTrade(marketRef, {
+  side: "buy",
+  outcome: "yes",
+  deltaShares: 5n * 10n ** 18n, // 5 YES at WAD
+  maxCost: 5_000_000n, // 5 USDC ceiling (USDC mint = 6 decimals)
+  user: encodeAddressRef(wallet.publicKey!),
+});
+
+// 2. Simulate before asking the user to sign — surfaces compute usage and
+//    typed ProgramError before the wallet popup.
+const sim = await adapter.preflight(req);
+if (!sim.ok) throw sim.error;
+
+// 3. Sign + send + confirm. The signer takes the message bytes the SDK builds
+//    for each retry attempt, not the raw `req`.
+const receipt = await adapter.submit(req, {
+  publicKey: wallet.publicKey!.toBase58(),
+  signMessageBytes: async (msg) => {
+    const tx = Transaction.from(msg); // construct a v0 / legacy tx wrapper
+    const signed = await wallet.signTransaction!(tx);
+    return signed.signature!;
+  },
+});
+console.log("submitted in", receipt.attempts, "attempts");
+```
+
+`buildSell`, `buildClaim`, `buildMintCompleteSet`, `buildMergeCompleteSet`,
+`buildRequestLock`, `buildAttestOutcome`, and `buildCreateMarket` follow the
+same shape — only the `args` differ.
+
+### SoothRequest meta shape
+
+`req.meta` is the unsigned ix payload the adapter rebuilds on each `submit` /
+`preflight` attempt. It is intentionally serializable so callers can ship it
+across worker boundaries:
+
+```ts
+type SoothRequestMeta = {
+  ixData: string; // base64 ix data
+  ixKeys: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }>;
+  ixProgramId: string; // base58
+  userPk: string; // base58 — fee payer + first signer
+  preIxs?: Array<{
+    // prepended verbatim under each fresh blockhash;
+    programId: string; //   used by buildTrade for the user_lp_ata
+    keys: Array<{
+      //   create-or-no-op (architecture §4.2)
+      pubkey: string;
+      isSigner: boolean;
+      isWritable: boolean;
+    }>;
+    data: string; // base64
+  }>;
+};
+```
+
 ## Building / testing locally
 
 ```sh
 pnpm install                               # from repo root
 pnpm -F @sooth/sdk-solana build            # tsc compile
-pnpm -F @sooth/sdk-solana test             # vitest, including bankrun smoke test
+pnpm -F @sooth/sdk-solana test             # vitest (litesvm-backed)
 ```
 
-The smoke / sell / claim / create-market / submit-failure tests boot `litesvm`, deploy all three Sooth programs from `target/deploy/`, hand-build the Market + AmmState fixtures, and exercise the corresponding adapter methods against a fresh USDC mint. Full 29-spec suite runs in <5s on a developer laptop. See `tests/fixtures/setup.ts` for the fixture layer.
+Tests boot `litesvm`, deploy all four Sooth programs from `target/deploy/`,
+hand-build the Market + AmmState + Adjudicator fixtures, and exercise the
+adapter methods against a fresh USDC mint. The 44-spec suite runs in ~5s on
+a developer laptop. See `tests/fixtures/setup.ts` for the fixture layer.
+
+> **Build-step gotcha:** the demo and any consumer ESM caller import from
+> `dist/`. After editing `src/`, run `pnpm -F @sooth/sdk-solana build` (or
+> `pnpm -r build`) before reloading the dapp — vitest hits `src/` directly,
+> but the bundled consumer does not.
 
 ## Layout
 
@@ -113,14 +204,19 @@ packages/sdk-solana/                # workspace member of sooth-solana monorepo
 │   ├── errors.ts                   # SoothError taxonomy
 │   ├── types.ts                    # vendored ChainAdapter contract (replace at upstream Phase A)
 │   └── index.ts                    # public surface
-└── tests/                          # vitest suite (litesvm-backed); 29 specs across
-    ├── smoke.test.ts               #   buy / sell / claim / create-market / submit-failure /
-    ├── sell-flow.test.ts           #   plus the LMSR closed-form port.
-    ├── claim-flow.test.ts
-    ├── create-market.test.ts
-    ├── submit-failure.test.ts
-    ├── lmsr.test.ts
-    └── fixtures/                   # litesvm boot, USDC mint, fixture seeding
+└── tests/                          # vitest suite (litesvm-backed); 44 specs across 11 files
+    ├── smoke.test.ts               #   AMM buy round-trip
+    ├── sell-flow.test.ts           #   sell_positions + LockEntry init
+    ├── claim-flow.test.ts          #   claim_unlocked against matured LockEntry
+    ├── complete-set.test.ts        #   mint_complete_set + merge_complete_set
+    ├── redeem-request.test.ts      #   buildClaim({kind:"redeem"}) request shape
+    ├── operator-request.test.ts    #   request_lock + attest_outcome shapes
+    ├── create-market.test.ts       #   launchpad four-leg CPI
+    ├── submit-failure.test.ts      #   bounded retry on BlockhashNotFound
+    ├── preflight.test.ts           #   simulate-before-sign happy + error paths
+    ├── error-classifier.test.ts    #   per-program Anchor error disambiguation
+    ├── lmsr.test.ts                #   LMSR closed-form port parity
+    └── fixtures/                   #   litesvm boot, USDC mint, fixture seeding
 ```
 
 Orderbook (`buildOrderbook*`) and Address-Lookup-Table / matcher-wasm modules are absent because the CLOB program (`sooth_book`) hasn't landed — see programs-core/docs/architecture.md §6.
