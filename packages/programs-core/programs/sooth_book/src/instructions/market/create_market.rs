@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::context::{CreateMarket, InitializeMarketOutcome};
 use crate::instructions::{current_timestamp, price_precision_is_within_range};
-use crate::monaco_protocol::{PRICE_SCALE, SEED_SEPARATOR_CHAR};
+use crate::sooth_book::{PRICE_SCALE, SEED_SEPARATOR_CHAR};
 use crate::state::market_account::{Market, MarketOrderBehaviour, MarketStatus};
 use crate::state::market_matching_pool_account::{Cirque, MarketMatchingPool};
 use crate::state::market_outcome_account::MarketOutcome;

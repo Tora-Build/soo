@@ -1,14 +1,14 @@
 [package]
-name = "monaco_protocol"
+name = "sooth_book"
 version = "0.15.5"
 edition = "2021"
-description = "Vendored Monaco Protocol v0.15.5 source for the SoothBook fork"
+description = "Vendored orderbook source for the SoothBook fork"
 license = "Apache-2.0"
 repository = "https://github.com/Tora-Build/sooth-solana"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "monaco_protocol"
+name = "sooth_book"
 doctest = false
 
 [features]
@@ -17,9 +17,6 @@ no-idl = []
 no-log-ix-name = []
 cpi = ["no-entrypoint"]
 default = []
-stable = []
-dev = []
-edge = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]

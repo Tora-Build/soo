@@ -20,17 +20,10 @@ pub mod events;
 pub mod instructions;
 pub mod state;
 
-#[cfg(feature = "stable")]
-declare_id!("5Q2hKsxShaPxFqgVtQH3ErTkiBf8NGb99nmpaGw7FCrr");
-#[cfg(feature = "dev")]
-declare_id!("yxvZ2jHThHQPTN6mGC8Z4i7iVBtQb3eBGeURQuLSrG9");
-#[cfg(feature = "edge")]
-declare_id!("mpDEVnZKneBb4w1vQsoTgMkNqnFe1rwW8qjmf3NsrAU");
-#[cfg(not(any(feature = "stable", feature = "dev", feature = "edge")))]
-declare_id!("monacoUXKtUi6vKsQwaLyxmXKSievfNWEcYXTgkbCih");
+declare_id!("5gAMjRCaZfb4NtHmBf2RZHFJVLAAZQ1PBP6dRNPUTxkH");
 
 #[program]
-pub mod monaco_protocol {
+pub mod sooth_book {
     use super::*;
     use crate::instructions::current_timestamp;
     use crate::state::market_liquidities::LiquiditySource;
@@ -68,7 +61,7 @@ pub mod monaco_protocol {
                     market.key().as_ref(),
                     &[ctx.accounts.market.funding_account_bump],
                 ],
-                &monaco_protocol::ID,
+                &sooth_book::ID,
             )
             .map_or_else(
                 |_| Err(CoreError::OrderRequestCreationInvalidPayerTokenAccount.into()),

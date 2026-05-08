@@ -5,7 +5,7 @@ use protocol_product::state::product::Product;
 use solana_program::rent::Rent;
 
 use crate::error::CoreError;
-use crate::monaco_protocol::SEED_SEPARATOR;
+use crate::sooth_book::SEED_SEPARATOR;
 use crate::state::market_liquidities::MarketLiquidities;
 use crate::state::market_matching_pool_account::MarketMatchingPool;
 use crate::state::market_matching_queue_account::MarketMatchingQueue;
@@ -842,7 +842,7 @@ pub struct SettleMarketPosition<'info> {
     #[account(mut, seeds = [market_position.purchaser.as_ref(), market.key().as_ref()], bump)]
     pub market_position: Account<'info, MarketPosition>,
 
-    #[account(seeds = [b"product".as_ref(), b"MONACO_PROTOCOL".as_ref()], seeds::program=&protocol_product::ID, bump)]
+    #[account(seeds = [b"product".as_ref(), b"SOOTH_BOOK".as_ref()], seeds::program=&protocol_product::ID, bump)]
     pub protocol_config: Box<Account<'info, Product>>,
 
     #[account(address = anchor_spl::token::ID)]
