@@ -1,0 +1,77 @@
+# Status — sooth-solana
+
+> Snapshot of program / SDK / demo / devnet state. Refresh when a layer
+> meaningfully changes. For the moving sources of truth see `git log --oneline`,
+> the per-package READMEs, and `programs-core/docs/architecture.md`.
+
+## Program / SDK / demo state
+
+**4/5 production programs FULLY implemented (incl. redeem / dispute / LP-mint hook) + demo dapp end-to-end via real Phantom.**
+
+| Layer                                            | State                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sooth_amm`                                      | LMSR math + buy + sell + claim_unlocked + fee accrual end-to-end. `trade_positions` (buy with manual CPI into `sooth_launchpad::mint_lp_for_buy` for pre-grad LP minting per architecture §4.2), `sell_positions`, `claim_unlocked`, `initialize_amm_state`. Fee router consumed via `ProtocolConfig`.                                                                                                                                                                                                                                                                                                                                                                      |
+| `sooth_market`                                   | Market PDA + lifecycle + custody + mint/merge_complete_set + **redeem** (post-settle 1:1 winner payout, half-pay on INVALID; 4 LiteSVM CPI tests) + adjudicator-allowlist + `lock_for_resolution` + `settle` (both gated on `sooth_adjudicator` parent-ix CPI introspection).                                                                                                                                                                                                                                                                                                                                                                                               |
+| `sooth_launchpad`                                | `initialize_protocol` + `initialize_fee_pool` + `create_market` (composes 4 init CPIs) + `distribute_fees` + `seed_lp` + `mint_lp_for_buy` (PDA-signed mint helper for the AMM buy hook; auth-gap closer via parent-ix introspection on `sooth_amm::trade_positions`).                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `sooth_adjudicator`                              | Manual variant: `register_adjudicator` + `request_lock` + `attest_outcome` + **`dispute`** (one-shot per market; cargo `cpi_dispute` 3/3 green). ZkTLS variant placeholder.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `sooth_book`                                     | Spec only. Gated on P1 (Monaco fork vs custom build) — research complete (`docs/research/monaco-investigation-week-01.md`), founder approval pending.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `@sooth/sdk-solana`                              | Buy + sell + claim (unlock and **redeem**) + create_market + **mint/merge complete-set** + **request_lock / attest_outcome** + preflight (simulate-before-sign) + readAdjudicator + readPendingUnlocks + per-program error classifier (disambiguates Anchor codes by failing program ID). Vendored `ChainAdapter` types per implementation-guide §2.                                                                                                                                                                                                                                                                                                                        |
+| `apps/demo`                                      | 162 ts/tsx files faithful fork. `chain-shim` routes upstream hooks through the adapter for AMM + Portfolio + Markets list + Faucet (real SPL `MintTo`) + Launchpad (real `createMarket`) + **mint/merge/redeem complete-set CTAs on /portfolio** + **pending-unlocks panel with claim button** + **operator REQUEST LOCK + ATTEST YES/NO/INVALID** (self-gated on `Adjudicator.authority`). Adjudicator auto-registration on first connect. Header shows "Localnet/Devnet/Mainnet" based on `VITE_SOLANA_RPC_URL`. Orderbook page renders a "gated on P1" card directly (heavy hooks only mount when `sooth_book` is deployed). Indexer status pill renders "pending (P3)". |
+| `sooth-account-offsets` + `sooth-protocol-types` | Shared workspace crates. The first guards Position/LockEntry layout drift via compile-time `SPACE` asserts; the second centralizes program IDs + USDC mint + cross-program ix discriminators.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+
+## Test scoreboard
+
+- **153 cargo tests** across the four programs (incl. cpi_redeem 4/4, cpi_dispute 3/3, LP-mint flow).
+- **44/44 SDK tests** across 11 files: smoke / sell-flow / claim-flow / complete-set / redeem-request / operator-request / create-market / submit-failure / preflight / per-program error-classifier / LMSR.
+- 6/6 demo unit tests (Vitest + happy-dom).
+- **5 real on-chain UI tx flows** verified end-to-end via real Phantom on localnet (Connect, Buy YES, Buy NO, Sell YES, Faucet mint, Launchpad create-market).
+- **12 Playwright on-chain e2e specs** against the LocalKeypairAdapter. Specs 08 (claim_unlocked) and 09 (trading-window) self-skip on stock test-validator and run real round-trips when booted via Surfpool — they use `surfnet_timeTravel` to bridge the 24h sell-lock and post-deadline gates.
+
+## Codex review
+
+2-pass complete. 2 critical, 6 high, 3 medium, 2 low findings — all closed (commits `68b663b` and `abfcf15..b029129`). Runtime gap on the C2 introspection check now closed via the LiteSVM CPI suite (commit `b029129`).
+
+## Devnet deployment status (2026-05-07)
+
+Three of four production programs are deployed and the protocol singletons
+are bootstrapped. Deploy payer is `apps/demo/.deploy-payer.json`
+(gitignored), pubkey `3rrWjQLuUUcxsFjiGDKpBzHW8yfaioMNa88TEKU8dKcY`.
+
+| Program             | Program ID                                     | Status   | Solscan                                                                                           |
+| ------------------- | ---------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `sooth_amm`         | `67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k` | NOT YET  | [solscan](https://solscan.io/account/67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k?cluster=devnet) |
+| `sooth_market`      | `ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n` | deployed | [solscan](https://solscan.io/account/ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n?cluster=devnet) |
+| `sooth_launchpad`   | `HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3` | deployed | [solscan](https://solscan.io/account/HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3?cluster=devnet) |
+| `sooth_adjudicator` | `4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8` | deployed | [solscan](https://solscan.io/account/4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8?cluster=devnet) |
+
+`sooth_amm` deploy was blocked by a devnet faucet rate-limit during the
+initial rollout; the keypair at `target/deploy/sooth_amm-keypair.json` is
+already wired into every `declare_id!`, IDL, and Anchor.toml entry — running
+
+```
+solana program deploy target/deploy/sooth_amm.so \
+  --program-id target/deploy/sooth_amm-keypair.json \
+  --keypair apps/demo/.deploy-payer.json \
+  --use-rpc --url devnet
+```
+
+once the payer has ~3 SOL again will land the program at the expected ID
+with no further code changes.
+
+Singleton bootstrap (`apps/demo/scripts/seed-devnet.mjs`) is complete:
+
+- `ProtocolConfig` PDA: `5zeukhATu775fSK7tbewDrDvSy9DNkAuXsXLPZrGAeZ8`
+- `fee_pool_vault`: `BvoFfmXcEEaKHKzPNTmSbmzBfAWWDoFW197F3BfuEyiZ`
+- `AdjudicatorAllowlist` PDA: `C7E2akWKo2ZNHvfT5xMFXqYzRAG1gY8P1H9ZK1q8H8Jc`
+- Demo adjudicator (deploy payer): `3rrWjQLuUUcxsFjiGDKpBzHW8yfaioMNa88TEKU8dKcY`
+
+Once `sooth_amm` is deployed, `node apps/demo/scripts/seed-devnet.mjs --keypair apps/demo/.deploy-payer.json --with-market` will seed a market end-to-end (requires the signer to have devnet USDC on hand).
+
+## Sources of truth (in order of recency)
+
+1. `git log --oneline main` — every wave + fix is documented here.
+2. `docs/decision-log.md` — D1-D5 resolved entries, append-only.
+3. `packages/programs-core/README.md` — per-program status table + toolchain notes.
+4. `packages/sdk-solana/README.md` — adapter status (refreshed in commit `ddcd2a2`).
+5. `apps/demo/README.md` — dev workflow + what's wired vs stub.
+6. `packages/programs-core/docs/architecture.md` — re-synced with implementation reality (commit `482795a`).

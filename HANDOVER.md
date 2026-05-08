@@ -1,8 +1,7 @@
 # Handover — sooth-solana
 
 > Briefing for a new contributor (human or AI) picking up this repo.
-> Read this first; it gives you the why, the state, and the next concrete actions.
-> Last updated: 2026-05-07 (post real-Phantom UI verification + chain-shim write wiring).
+> Read this first; it's an index of the focused docs.
 
 ## What this repo is
 
@@ -12,22 +11,34 @@
 - **`packages/sdk-solana/`** — `@sooth/sdk-solana` TypeScript adapter. Implements the vendored `ChainAdapter` interface; consumed directly by the demo (no umbrella SDK dependency under the current Solana-only scoping).
 - **`apps/demo/`** — Solana-only fork of `sooth-alpha/apps/demo`. Upstream's React tree runs unchanged via a `chain-shim` layer that translates EVM hook signatures (wagmi/viem) into Solana adapter calls. Validates D1 by construction.
 
-## Status: 4/5 production programs FULLY implemented (incl. redeem / dispute / LP-mint hook) + demo dapp end-to-end via real Phantom
+## Where to look
 
-| Layer                                            | State                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sooth_amm`                                      | LMSR math + buy + sell + claim_unlocked + fee accrual end-to-end. `trade_positions` (buy with manual CPI into `sooth_launchpad::mint_lp_for_buy` for pre-grad LP minting per architecture §4.2), `sell_positions`, `claim_unlocked`, `initialize_amm_state`. Fee router consumed via `ProtocolConfig`.                                                                                                                                                                                                                                                        |
-| `sooth_market`                                   | Market PDA + lifecycle + custody + mint/merge_complete_set + **redeem** (post-settle 1:1 winner payout, half-pay on INVALID; 4 LiteSVM CPI tests) + adjudicator-allowlist + `lock_for_resolution` + `settle` (both gated on `sooth_adjudicator` parent-ix CPI introspection).                                                                                                                                                                                                                                                                                 |
-| `sooth_launchpad`                                | `initialize_protocol` + `initialize_fee_pool` + `create_market` (composes 4 init CPIs) + `distribute_fees` + `seed_lp` + `mint_lp_for_buy` (PDA-signed mint helper for the AMM buy hook; auth-gap closer via parent-ix introspection on `sooth_amm::trade_positions`).                                                                                                                                                                                                                                                                                        |
-| `sooth_adjudicator`                              | Manual variant: `register_adjudicator` + `request_lock` + `attest_outcome` + **`dispute`** (one-shot per market; cargo `cpi_dispute` 3/3 green). ZkTLS variant placeholder.                                                                                                                                                                                                                                                                                                                                                                                   |
-| `sooth_book`                                     | Spec only. Gated on P1 (Monaco fork vs custom build) — research complete (`docs/research/monaco-investigation-week-01.md`), founder approval pending.                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `@sooth/sdk-solana`                              | Buy + sell + claim (unlock and **redeem**) + create_market + **mint/merge complete-set** + preflight (simulate-before-sign) + per-program error classifier (disambiguates Anchor codes by failing program ID). Vendored `ChainAdapter` types per implementation-guide §2.                                                                                                                                                                                                                                                                                     |
-| `apps/demo`                                      | 162 ts/tsx files faithful fork. `chain-shim` routes upstream hooks through the adapter for AMM + Portfolio + Markets list + Faucet (real SPL `MintTo`) + Launchpad (real `createMarket`) + **mint/merge/redeem complete-set CTAs on /portfolio** + **pending-unlocks panel with claim button**. Adjudicator auto-registration on first connect. Header shows "Localnet/Devnet/Mainnet" based on `VITE_SOLANA_RPC_URL`. Orderbook page renders a "gated on P1" card via ErrorBoundary; operator console renders but writes are still EVM-named (P1.5 backlog). |
-| `sooth-account-offsets` + `sooth-protocol-types` | Shared workspace crates. The first guards Position/LockEntry layout drift via compile-time `SPACE` asserts; the second centralizes program IDs + USDC mint + cross-program ix discriminators.                                                                                                                                                                                                                                                                                                                                                                 |
+| Topic                                     | Doc                                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Program / SDK / demo / devnet state       | [`docs/status.md`](docs/status.md)                                                                     |
+| Build the demo locally (Phantom UX)       | [`docs/build.md`](docs/build.md)                                                                       |
+| What's left + pending decisions           | [`docs/roadmap.md`](docs/roadmap.md)                                                                   |
+| Resolved + pending decisions, append-only | [`docs/decision-log.md`](docs/decision-log.md)                                                         |
+| Terminology (WAD, OUTCOME, tick, …)       | [`docs/glossary.md`](docs/glossary.md)                                                                 |
+| 5-program design, synced with reality     | [`packages/programs-core/docs/architecture.md`](packages/programs-core/docs/architecture.md)           |
+| Frozen public API surface (CANONICAL)     | [`packages/sdk-solana/docs/integrator-contract.md`](packages/sdk-solana/docs/integrator-contract.md)   |
+| `ChainAdapter` interface, layout          | [`packages/sdk-solana/docs/implementation-guide.md`](packages/sdk-solana/docs/implementation-guide.md) |
 
-**Test scoreboard:** **153 cargo tests** across the four programs (incl. cpi_redeem 4/4, cpi_dispute 3/3, LP-mint flow). **42/42 SDK tests** (smoke / sell-flow / claim-flow / create-market / submit-failure / preflight / per-program error-classifier / **complete-set parity round-trip** / **redeem request shape**). 6/6 demo tests. **5 real on-chain UI tx flows** verified end-to-end via real Phantom on localnet (Connect, Buy YES, Buy NO, Sell YES, Faucet mint, Launchpad create-market). 12 Playwright on-chain e2e specs against the LocalKeypairAdapter.
+## Reading order for new contributors
 
-**Codex review:** 2-pass complete. 2 critical, 6 high, 3 medium, 2 low findings — all closed (commits `68b663b` and `abfcf15..b029129`). Runtime gap on the C2 introspection check now closed via the LiteSVM CPI suite (commit `b029129`).
+1. `README.md` — suite navigation
+2. [`docs/status.md`](docs/status.md) — what's wired, test scoreboard, devnet IDs
+3. [`docs/build.md`](docs/build.md) — get the dapp running locally
+4. [`docs/research/porting-evaluation.md`](docs/research/porting-evaluation.md) — code-first analysis of the EVM stack
+5. [`docs/research/orderbook-survey.md`](docs/research/orderbook-survey.md) — survey of 10 production Solana orderbooks
+6. [`docs/monaco-fork-analysis.md`](docs/monaco-fork-analysis.md) — deep dive on Monaco as a fork base
+7. [`docs/research/monaco-investigation-week-01.md`](docs/research/monaco-investigation-week-01.md) — P1 investigation output
+8. [`packages/programs-core/docs/architecture.md`](packages/programs-core/docs/architecture.md) — 5-program design
+9. [`packages/sdk-solana/docs/integrator-contract.md`](packages/sdk-solana/docs/integrator-contract.md) — frozen public API
+10. [`packages/sdk-solana/docs/implementation-guide.md`](packages/sdk-solana/docs/implementation-guide.md) — `ChainAdapter` interface, package layout
+11. [`docs/decision-log.md`](docs/decision-log.md) — running record
+12. [`docs/glossary.md`](docs/glossary.md) — terminology
+13. [`docs/roadmap.md`](docs/roadmap.md) — what to do next
 
 ## Repo layout
 
@@ -43,6 +54,9 @@ sooth-solana/
 ├── apps/
 │   └── demo/                                # Solana-only forked demo + dev:localnet flow
 ├── docs/
+│   ├── status.md                            # program / SDK / demo / devnet state
+│   ├── build.md                             # local build + wallet rules
+│   ├── roadmap.md                           # active items + pending decisions
 │   ├── decision-log.md                      # 5 resolved + remaining pending
 │   ├── glossary.md                          # WAD, OUTCOME, tick, CU, PDA, ATA
 │   ├── monaco-fork-analysis.md              # Monaco eval + 60-cap finding
@@ -65,102 +79,12 @@ sooth-solana/
 │   └── sdk-solana/
 │       ├── README.md
 │       ├── src/                             # adapter, pdas, math/lmsr, anchor IDLs, types
-│       ├── tests/                           # bankrun smoke + sell/claim/create flows
+│       ├── tests/                           # litesvm-backed; 44 specs across 11 files
 │       └── docs/
 │           ├── integrator-contract.md       # CANONICAL — third-party API frozen surface
 │           └── implementation-guide.md      # ChainAdapter + Phase A migration plan
 └── target/                                  # cargo + .so build outputs (gitignored)
 ```
-
-## Resolved decisions (`docs/decision-log.md`)
-
-1. **D1 — SDK compatibility means third-party integrator surface, not just our apps.** Canonical contract: `packages/sdk-solana/docs/integrator-contract.md`.
-2. **D2 — Escrow atomicity is a hard SDK invariant.** Disqualifies Phoenix and OpenBook v2.
-3. **D3 — Sooth Solana ships as a single monorepo (this repo), separate from `sooth-alpha`.**
-4. **D4 — LMSR fits within Solana's CU budget; ship Variant A (Taylor exact).** Spike at `_spikes/lmsr-cu/` measured 55k CU peak vs 300k target. Production `trade_positions` ~68k CU.
-5. **D5 — Atomic escrow is structurally load-bearing in production.** Telegram-app's only sell path on the orderbook routes through escrow=true; resolved without needing Postgres analytics.
-
-## Pending decisions
-
-| ID     | Decision                                                                                      | Type                                                                                                                                     |
-| ------ | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **P1** | Custom-built `sooth_book` vs Monaco fork                                                      | Founder approval. Engineering recommendation: **fork** (2 hard sites, ~3-4 months). See `docs/research/monaco-investigation-week-01.md`. |
-| **P3** | Indexer namespace strategy: widen `chainId` (text) or namespace Solana to integers (900/901)? | Founder.                                                                                                                                 |
-| **P5** | Acceptance threshold for race-induced retries on Solana                                       | Operational target (suggest <5%); needs devnet to validate.                                                                              |
-| **P6** | Privy Solana SDK eval                                                                         | Wallet UX; current demo uses `@solana/wallet-adapter-react`.                                                                             |
-| **P7** | Pricing model: who pays priority fees?                                                        | Founder.                                                                                                                                 |
-| **P8** | CLI port to Solana                                                                            | Low priority; deferable.                                                                                                                 |
-
-## Status snapshot (canonical sources, in order of recency)
-
-1. **`git log --oneline main`** — every wave + fix is documented here. Most recent commits cover Wave 6 (sooth-protocol-types, seed_lp, LiteSVM CPI tests).
-2. **`docs/decision-log.md`** — D1-D5 resolved entries, append-only.
-3. **`packages/programs-core/README.md`** — per-program status table + toolchain notes.
-4. **`packages/sdk-solana/README.md`** — adapter status (note: top header still says "spec only" but body documents the wired paths; followup to refresh).
-5. **`apps/demo/README.md`** — dev workflow + what's wired vs stub.
-6. **`packages/programs-core/docs/architecture.md`** — re-synced with implementation reality (commit `482795a`).
-
-## Building the demo locally
-
-```bash
-# Prereqs: solana-cli, Phantom or Solflare browser extension
-pnpm install
-
-# Option A — solana-test-validator (canonical, slower startup ~10s)
-pnpm --filter @sooth/demo dev:localnet
-
-# Option B — Surfpool (sub-second startup, exposes setClock cheatcode)
-#  Install once:  curl -sL https://run.surfpool.run/ | bash
-pnpm --filter @sooth/demo dev:surfpool
-```
-
-Both scripts run the same Phase 1–4 flow: USDC mint dump → boot validator → init protocol → vite. The Surfpool path drops the 24h sell-lock UI smoke blocker via `surfnet_timeTravel` (see `apps/demo/scripts/surfnet-cheats.sh time-travel --seconds 86400` to fast-forward past the lock window without restarting). `solana-test-validator` has no equivalent — claim_unlocked / operator settle UI smoke is wall-clock gated there.
-
-Either path then runs `seed-localnet.mjs init` which: deploys 2 of the 4 .so binaries (Surfpool auto-deploys all 4 via Anchor.toml), runs `initialize_protocol → initialize_fee_pool → initialize_adjudicator_allowlist → addAdjudicator → createMarket → registerAdjudicator`, writes `apps/demo/.localnet/user-keypair.json` (1000 USDC + 10 SOL pre-funded) + `.env.local`, and serves vite on http://localhost:5175.
-
-In Phantom/Solflare:
-
-1. Settings → Developer Settings → Testnet Mode → Solana Localnet
-2. Settings → Developer Settings → **Auto-Confirm on localhost: ON** — required for the e2e demo flow; without it every tx pops a manual approval. Phantom-extension only; doesn't exist on mobile.
-3. Optionally: Settings → Add/Connect Wallet → Import Private Key → paste the byte array from `apps/demo/.localnet/user-keypair.json` (the pre-funded fixture). Or connect any Phantom account and use the Faucet page (now wired) to mint 100k mUSDC to the connected pubkey.
-
-The wired pages (`/markets`, `/amm/:marketAddress`, `/portfolio`, `/faucet`, `/launchpad`) drive the real `SolanaChainAdapter`. `/orderbook/:marketAddress` renders a "gated on P1" card via `<ErrorBoundary>` (the inner SoothBookTerminal hooks still throw when sooth_book is undeployed; the boundary contains it). `/operator` renders but the action buttons are gated on the connected wallet being on the adjudicator allowlist.
-
-**Adjudicator allowlist gate.** Any wallet that wants to call `createMarket` (Launchpad) or operator settle/attest paths must be on the on-chain `AdjudicatorAllowlist` PDA (singleton owned by `sooth_market`). `seed-localnet.mjs` registers the creator-keypair at boot. To register an arbitrary wallet (e.g. your Phantom pubkey), have the creator keypair sign:
-
-```js
-await soothMarketProgram.methods
-  .addAdjudicator(newPubkey)
-  .accounts({ allowlist: allowlistPda, authority: creator.publicKey })
-  .signers([creator])
-  .rpc();
-```
-
-A persistent UI-side fix is open: either auto-register the connected wallet on first connect, or surface a "Request adjudicator role" CTA. For now this is a manual fixture step — easy to miss.
-
-**Wallet-adapter wiring rules** (do not regress; verified end-to-end this session):
-
-- `wallets={[]}` on `<WalletProvider>` for production. Wallet Standard auto-discovers Phantom / Solflare / Backpack / MetaMask / Magic Eden via `useStandardWalletAdapters`. Including legacy adapter classes here causes the modal click to dispatch to a stale instance and silently no-op.
-- `autoConnect` on `<WalletProvider>` is required despite the name — in v0.15.x it gates the modal's select-then-connect path, not just reload-reconnect (anza-xyz/wallet-adapter#307).
-- `<React.StrictMode>` MUST be inside `<ConnectionProvider>` + `<WalletProvider>`, not wrapping them. Wrapping causes double-mount cleanup to call `adapter.disconnect()` between mounts, leaving `connected=false` for the first sign attempt (solana-labs/wallet-adapter#686).
-- Test mode (`VITE_TEST_MODE=true`) swaps `wallets={[]}` for `[new LocalKeypairAdapter()]` so e2e specs sign without Phantom popups. Production builds tree-shake the adapter; `vite.config.ts` refuses production bundles touching `VITE_TEST_*`.
-
-**Localnet faucet env var.** `seed-localnet.mjs` exports `VITE_TEST_MINT_AUTHORITY_BYTES` into `.env.local` — the localnet USDC mint authority's secret key, consumed by the chain-shim's `dispatchAmmWrite("mint")` to sign the SPL `MintTo` ix. Acceptable for localnet only; never run a build against devnet/mainnet with this var set.
-
-**Test gotcha:** `apps/demo` consumes `@sooth/sdk-solana` via its `dist/` bundle, not `src/`. After IDL changes, run `pnpm -F @sooth/sdk-solana build` before `pnpm -F @sooth/demo test` so the demo picks them up.
-
-## Architectural foundation (read these in order)
-
-1. **`README.md`** — suite navigation
-2. **`docs/research/porting-evaluation.md`** — code-first analysis of the EVM stack
-3. **`docs/research/orderbook-survey.md`** — survey of 10 production Solana orderbooks
-4. **`docs/monaco-fork-analysis.md`** — deep dive on Monaco as a fork base
-5. **`docs/research/monaco-investigation-week-01.md`** — P1 investigation output
-6. **`packages/programs-core/docs/architecture.md`** — 5-program design (current with implementation)
-7. **`packages/sdk-solana/docs/integrator-contract.md`** — frozen public API surface
-8. **`packages/sdk-solana/docs/implementation-guide.md`** — `ChainAdapter` interface, package layout
-9. **`docs/decision-log.md`** — running record
-10. **`docs/glossary.md`** — terminology
 
 ## Sooth context that lives in `sooth-alpha`
 
@@ -171,84 +95,14 @@ A persistent UI-side fix is open: either auto-register the connected wallet on f
 
 If you don't have access to `sooth-alpha`, the relevant facts are summarized in `docs/research/porting-evaluation.md` and `packages/programs-core/docs/architecture.md`.
 
-## Devnet deployment status (2026-05-07)
-
-Three of four production programs are deployed and the protocol singletons
-are bootstrapped. Deploy payer is `apps/demo/.deploy-payer.json`
-(gitignored), pubkey `3rrWjQLuUUcxsFjiGDKpBzHW8yfaioMNa88TEKU8dKcY`.
-
-| Program             | Program ID                                     | Status   | Solscan                                                                                           |
-| ------------------- | ---------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `sooth_amm`         | `67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k` | NOT YET  | [solscan](https://solscan.io/account/67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k?cluster=devnet) |
-| `sooth_market`      | `ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n` | deployed | [solscan](https://solscan.io/account/ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n?cluster=devnet) |
-| `sooth_launchpad`   | `HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3` | deployed | [solscan](https://solscan.io/account/HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3?cluster=devnet) |
-| `sooth_adjudicator` | `4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8` | deployed | [solscan](https://solscan.io/account/4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8?cluster=devnet) |
-
-`sooth_amm` deploy was blocked by a devnet faucet rate-limit during the
-initial rollout; the keypair at `target/deploy/sooth_amm-keypair.json` is
-already wired into every `declare_id!`, IDL, and Anchor.toml entry — running
-`solana program deploy target/deploy/sooth_amm.so --program-id
-target/deploy/sooth_amm-keypair.json --keypair apps/demo/.deploy-payer.json
---use-rpc --url devnet` once the payer has ~3 SOL again will land the
-program at the expected ID with no further code changes.
-
-Singleton bootstrap (`apps/demo/scripts/seed-devnet.mjs`) is complete:
-
-- `ProtocolConfig` PDA: `5zeukhATu775fSK7tbewDrDvSy9DNkAuXsXLPZrGAeZ8`
-- `fee_pool_vault`: `BvoFfmXcEEaKHKzPNTmSbmzBfAWWDoFW197F3BfuEyiZ`
-- `AdjudicatorAllowlist` PDA: `C7E2akWKo2ZNHvfT5xMFXqYzRAG1gY8P1H9ZK1q8H8Jc`
-- Demo adjudicator (deploy payer): `3rrWjQLuUUcxsFjiGDKpBzHW8yfaioMNa88TEKU8dKcY`
-
-Once `sooth_amm` is deployed, `node apps/demo/scripts/seed-devnet.mjs
---keypair apps/demo/.deploy-payer.json --with-market` will seed a market
-end-to-end (requires the signer to have devnet USDC on hand).
-
-## What to do next (concrete)
-
-The dapp works locally end-to-end with a real Phantom wallet (verified 2026-05-07). All four implementable production programs (`sooth_amm`, `sooth_market`, `sooth_launchpad`, `sooth_adjudicator`) are now FULLY implemented incl. previously-flagged-stub paths (redeem, dispute, LP-mint hook). Demo dapp surfaces every program write that matters: buy / sell / mint / merge / redeem / claim-unlocked / create-market / faucet. Remaining items, ordered by impact:
-
-1. **Founder decision on P1.** All evidence is in `docs/research/monaco-investigation-week-01.md`. Once approved (or rejected), `sooth_book` becomes scaffold-able. Until then `/orderbook/:market` renders an "unavailable" card via ErrorBoundary.
-2. **Finish the AMM devnet deploy.** Get ~3 SOL into `apps/demo/.deploy-payer.json` (fresh airdrop or out-of-band funding) and run `solana program deploy target/deploy/sooth_amm.so --program-id target/deploy/sooth_amm-keypair.json --keypair apps/demo/.deploy-payer.json --use-rpc --url devnet`. Then `node apps/demo/scripts/seed-devnet.mjs --keypair apps/demo/.deploy-payer.json --with-market` to seed the demo market.
-3. **Operator console wire-up (P1.5).** Chain-shim dispatchers and an operator panel on /portfolio landed in commit e1eac87, but the upstream `/operator` page itself still calls EVM `finalizeResolution` / `resolve` via writeContract — those need to either route to `requestLock` / `attestOutcome` through the chain-shim or be replaced by the new Solana-native panel. UI smoke for the Lock → Attest bridge is no longer wall-clock gated when running under Surfpool: `bash apps/demo/scripts/surfnet-cheats.sh time-travel --seconds 86400` advances past the 24h gate without restart.
-4. **Surfpool e2e migration.** The `dev:surfpool` script + `surfnet-cheats.sh` helper landed (commit `<TBD>`). Next step is migrating the Playwright on-chain specs at `apps/demo/e2e/` from the bankrun + solana-test-validator setup to a Surfpool-driven fixture so the wall-clock-gated specs (sell+claim, attest+settle, redeem+post-settle) run in CI without setClock plumbing in test code.
-5. **Fix the inner `SoothBookTerminal` hook crash at the source.** `useReadContracts` indexes into a tuple that's `undefined` when sooth_book isn't deployed. The page is contained behind `<ErrorBoundary>` today but the crash should be guarded at the source once sooth_book lands.
-6. **UI smoke pass for the deferred flows.** mint / merge / redeem CTAs on `/portfolio` are wired through the SDK + chain-shim, exercised by the SDK round-trip test (`tests/complete-set.test.ts`) and the cargo CPI suite. Real-Phantom click-verify deferred until Chrome DevTools session is back online.
-7. **Performance / observability.** No structured indexer integration yet — the demo footer reads "Indexer offline". Decide on Helius / Triton / custom Postgres ingest before broader user testing.
-8. **TS typecheck refresh on `packages/sdk-solana/README.md`** — header now reflects the 42-spec test scoreboard; body could use a cleanup pass to drop the "Status: NotImplemented for X" lines that no longer apply.
-
-## What's NOT in scope for this repo
-
-- The EVM stack (lives in `sooth-alpha`)
-- Apps consuming the EVM SDK (`sooth-alpha/apps/{telegram,market,world}`); only the demo is forked here as the SDK-compatibility test harness.
-- HyperEVM precompile adjudicator and Lens post-action (chain-locked to EVM)
-- The multi-actor CLI test harness — stays EVM-only per P8
-
 ## Authority and access
 
-- **License**: Apache-2.0 (matches Monaco if forking)
-- **Visibility**: private at the time of writing
+- **License**: Apache-2.0 (matches Monaco if forking).
+- **Visibility**: private at the time of writing.
 - **Repo URL**: https://github.com/Tora-Build/sooth-solana
-- **Maintainer org**: Tora-Build
-- **Created**: 2026-05-05 by extraction from `sooth-alpha/solana/`
-
-## Glossary one-liner reminders
-
-- **WAD** = 1e18 fixed-point precision used for internal math
-- **OUTCOME** = `{ NO: 0, YES: 1, INVALID: 2 }` protocol-wide
-- **tick** = integer 1..999 in SoothBook's 1000-tick price grid; tick T means "buyer pays T/1000"
-- **escrow** (orderbook flag) = use opposite-side shares as collateral instead of base token; atomic round-trip
-- **surplus** = collateral generated when `yesTick + noTick > 1000`; paid out as complete-set mint
-- **PDA** = Program Derived Address (Solana's stateful-account model)
-- **CU** = Compute Unit (Solana's gas equivalent; ~200k default per ix, max 1.4M)
-- **ALT** = Address Lookup Table (compresses TX account-list footprint in v0 transactions)
-- **ATA** = Associated Token Account
-
-Full definitions in `docs/glossary.md`.
-
-## Questions to escalate
-
-Founder decisions: P1 (sooth_book direction — research complete), P3 (indexer namespace), P6 (Privy), P7 (priority fee model). Engineers can drive P5 (retry threshold; needs devnet first) and P8 (CLI port).
+- **Maintainer org**: Tora-Build.
+- **Created**: 2026-05-05 by extraction from `sooth-alpha/solana/`.
 
 ---
 
-_Welcome. Start with `git log --oneline main | head -30`, then `docs/decision-log.md`, then whichever architectural doc maps to your role. The dapp works locally via `pnpm --filter @sooth/demo dev:localnet`._
+_Welcome. Start with `git log --oneline main | head -30`, then `docs/status.md`, then whichever architectural doc maps to your role. The dapp works locally via `pnpm --filter @sooth/demo dev:localnet`._
