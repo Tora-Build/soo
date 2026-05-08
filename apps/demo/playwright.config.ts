@@ -37,6 +37,8 @@ export default defineConfig({
   use: {
     headless: true,
     baseURL: BASE_URL,
+    video: process.env.E2E_VIDEO === "on" ? "on" : "off",
+    viewport: { width: 1280, height: 720 },
   },
   webServer: {
     command: `VITE_TEST_MODE=true VITE_TEST_KEYPAIR_BYTES='${VITE_TEST_KEYPAIR_BYTES}' node node_modules/vite/bin/vite.js --port ${PORT} --strictPort`,
