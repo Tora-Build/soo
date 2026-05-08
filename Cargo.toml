@@ -5,10 +5,10 @@ members = [
     "packages/programs-core/programs/sooth_market",
     "packages/programs-core/programs/sooth_launchpad",
     "packages/programs-core/programs/sooth_adjudicator",
+    "packages/programs-core/programs/sooth_book",
     "packages/programs-core/crates/sooth-account-offsets",
     "packages/programs-core/crates/sooth-protocol-types",
-    # Future members (uncomment as the programs land):
-    #   "packages/programs-core/programs/sooth_book",
+    # Future members (uncomment as the crates land):
     #   "packages/programs-core/crates/sooth-book-matcher",
 ]
 

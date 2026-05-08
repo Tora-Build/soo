@@ -10,12 +10,14 @@ sooth_amm = "67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k"
 sooth_market = "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
 sooth_launchpad = "HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3"
 sooth_adjudicator = "4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8"
+sooth_book = "5gAMjRCaZfb4NtHmBf2RZHFJVLAAZQ1PBP6dRNPUTxkH"
 
 [programs.devnet]
 sooth_amm = "67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k"
 sooth_market = "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
 sooth_launchpad = "HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3"
 sooth_adjudicator = "4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8"
+sooth_book = "5gAMjRCaZfb4NtHmBf2RZHFJVLAAZQ1PBP6dRNPUTxkH"
 
 [registry]
 url = "https://api.apr.dev"
@@ -29,4 +31,4 @@ test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
 
 # Workspace-relative paths so `anchor build` finds the programs from this dir.
 [workspace]
-members = ["programs/sooth_amm", "programs/sooth_market", "programs/sooth_launchpad", "programs/sooth_adjudicator"]
+members = ["programs/sooth_amm", "programs/sooth_market", "programs/sooth_launchpad", "programs/sooth_adjudicator", "programs/sooth_book"]

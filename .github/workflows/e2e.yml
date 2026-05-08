@@ -110,6 +110,8 @@ jobs:
             --manifest-path packages/programs-core/programs/sooth_launchpad/Cargo.toml
           cargo build-sbf \
             --manifest-path packages/programs-core/programs/sooth_adjudicator/Cargo.toml
+          cargo build-sbf \
+            --manifest-path packages/programs-core/programs/sooth_book/Cargo.toml
 
       - name: Create local deploy payer
         run: solana-keygen new -o apps/demo/.deploy-payer.json --no-bip39-passphrase --silent
