@@ -55,6 +55,7 @@ import {
   soothMarketIdl,
   type SolanaChainAdapter,
   type SignerRef,
+  type SoothRequest,
 } from "@sooth/sdk-solana";
 import { AnchorProvider, Program, type Idl } from "@coral-xyz/anchor";
 
@@ -352,16 +353,7 @@ async function dispatchTrade(
   call: WriteCallShape,
   ctx: AmmBridgeCtx,
 ): Promise<string> {
-  if (!ctx.signer) {
-    throw new Error(
-      "tradePositions: no Solana signer available — connect a wallet first",
-    );
-  }
-  if (!ctx.userBase58) {
-    throw new Error(
-      "tradePositions: no Solana wallet pubkey — connect a wallet first",
-    );
-  }
+  const { signer, userBase58 } = requireWallet(ctx, "tradePositions");
   const args = call.args ?? [];
   const marketRef = toMarketRef(args[0]);
   if (!marketRef) {
@@ -373,42 +365,31 @@ async function dispatchTrade(
   const limitCost =
     typeof args[3] === "bigint" ? args[3] : BigInt((args[3] as any) ?? 0);
 
-  const userRef = `sol:${ctx.userBase58}`;
+  const userRef = `sol:${userBase58}`;
   const isSell = deltaShares < 0n;
   const absDelta = isSell ? -deltaShares : deltaShares;
 
-  if (isSell) {
-    // SELL: route to `buildSell` → `sell_positions` ix. EVM's slippage
-    // anchor is `quote.cost * 95%` (a *minimum* proceeds value); pass it
-    // through as `minProceedsWad`. The adapter applies the wire-side sign
-    // flip — pass the absolute share count.
-    const req = await ctx.adapter.buildSell(marketRef, {
-      outcome,
-      deltaShares: absDelta,
-      minProceedsWad: limitCost > 0n ? limitCost : 0n,
-      user: userRef,
-    });
-    const receipt = await ctx.adapter.submit(req, ctx.signer);
-    const sig = receipt.txId.replace(/^sol:/, "");
-    return synthHashFromSignature(sig);
-  }
-
+  // SELL: route to `buildSell` → `sell_positions` ix. EVM's slippage
+  // anchor is `quote.cost * 95%` (a *minimum* proceeds value); pass it
+  // through as `minProceedsWad`. The adapter applies the wire-side sign
+  // flip — pass the absolute share count.
   // BUY: existing path through `buildTrade` → `trade_positions` ix.
-  const req = await ctx.adapter.buildTrade(marketRef, {
-    side: "buy",
-    outcome,
-    deltaShares: absDelta,
-    maxCostWad: limitCost,
-    // @ts-expect-error — Solana-only meta channel; see adapter.ts.
-    user: userRef,
-  });
-
-  const receipt = await ctx.adapter.submit(req, ctx.signer);
-  // `txId` is `sol:<base58 signature>`. Encode into a synthetic hex hash
-  // so wagmi-shaped Hash slots accept it. The signature is opaque to
-  // upstream's UI — only the toast text reads it.
-  const sig = receipt.txId.replace(/^sol:/, "");
-  return synthHashFromSignature(sig);
+  const req = isSell
+    ? await ctx.adapter.buildSell(marketRef, {
+        outcome,
+        deltaShares: absDelta,
+        minProceedsWad: limitCost > 0n ? limitCost : 0n,
+        user: userRef,
+      })
+    : await ctx.adapter.buildTrade(marketRef, {
+        side: "buy",
+        outcome,
+        deltaShares: absDelta,
+        maxCostWad: limitCost,
+        // @ts-expect-error — Solana-only meta channel; see adapter.ts.
+        user: userRef,
+      });
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 async function dispatchClaim(
@@ -421,16 +402,7 @@ async function dispatchClaim(
   // PDA so we drain one per ix invocation. The bridge resolves the *first*
   // matured LockEntry on the active market and submits a single claim. If
   // none exists, throw a non-fatal error the upstream form can surface.
-  if (!ctx.signer) {
-    throw new Error(
-      "claimUnlocked: no Solana signer available — connect a wallet first",
-    );
-  }
-  if (!ctx.userBase58) {
-    throw new Error(
-      "claimUnlocked: no Solana wallet pubkey — connect a wallet first",
-    );
-  }
+  const { signer, userBase58 } = requireWallet(ctx, "claimUnlocked");
 
   // The EVM `claimUnlocked(maxClaims)` ABI passes the user's queue limit;
   // the Solana shim doesn't need it (we drain one per call). Allow a
@@ -468,13 +440,10 @@ async function dispatchClaim(
 
   const req = await ctx.adapter.buildClaim(marketRef, {
     outcome: 0, // ClaimArgs.outcome is unused on the Solana path; placeholder.
-    user: `sol:${ctx.userBase58}`,
+    user: `sol:${userBase58}`,
     lockEntry: lockEntryRef,
   });
-
-  const receipt = await ctx.adapter.submit(req, ctx.signer);
-  const sig = receipt.txId.replace(/^sol:/, "");
-  return synthHashFromSignature(sig);
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /**
@@ -580,16 +549,7 @@ async function dispatchCreateMarket(
   call: WriteCallShape,
   ctx: AmmBridgeCtx,
 ): Promise<string> {
-  if (!ctx.signer) {
-    throw new Error(
-      "createMarket: no Solana signer available — connect a wallet first",
-    );
-  }
-  if (!ctx.userBase58) {
-    throw new Error(
-      "createMarket: no Solana wallet pubkey — connect a wallet first",
-    );
-  }
+  const { signer, userBase58 } = requireWallet(ctx, "createMarket");
   const args = call.args ?? [];
 
   const question =
@@ -613,7 +573,7 @@ async function dispatchCreateMarket(
   // both creator and adjudicator (matches the localnet seed default — the
   // creator wallet is the on-chain allowlist authority + per-market
   // adjudicator). Future work: surface a Solana-typed adjudicator picker.
-  const userRef = `sol:${ctx.userBase58}`;
+  const userRef = `sol:${userBase58}`;
 
   const req = await ctx.adapter.buildCreateMarket({
     question,
@@ -634,9 +594,7 @@ async function dispatchCreateMarket(
     ).__lastCreatedMarketPda = meta.marketPda;
   }
 
-  const receipt = await ctx.adapter.submit(req, ctx.signer);
-  const sig = receipt.txId.replace(/^sol:/, "");
-  return synthHashFromSignature(sig);
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /**
@@ -762,41 +720,25 @@ async function dispatchCompleteSet(
   ctx: AmmBridgeCtx,
   kind: "mint" | "merge",
 ): Promise<string> {
-  if (!ctx.signer) {
-    throw new Error(
-      `${kind}CompleteSet: no Solana signer available — connect a wallet first`,
-    );
-  }
-  if (!ctx.userBase58) {
-    throw new Error(
-      `${kind}CompleteSet: no Solana wallet pubkey — connect a wallet first`,
-    );
-  }
+  const op = `${kind}CompleteSet`;
+  const { signer, userBase58 } = requireWallet(ctx, op);
   const args = call.args ?? [];
   const marketRef = toMarketRef(args[0]);
   if (!marketRef) {
-    throw new Error(`${kind}CompleteSet: invalid market reference`);
+    throw new Error(`${op}: invalid market reference`);
   }
   const amount =
     typeof args[1] === "bigint" ? args[1] : BigInt((args[1] as any) ?? 0);
   if (amount <= 0n) {
-    throw new Error(`${kind}CompleteSet: amount must be positive`);
+    throw new Error(`${op}: amount must be positive`);
   }
 
-  const userRef = `sol:${ctx.userBase58}`;
+  const userArgs = { user: `sol:${userBase58}`, amount };
   const req =
     kind === "mint"
-      ? await ctx.adapter.buildMintCompleteSet(marketRef, {
-          user: userRef,
-          amount,
-        })
-      : await ctx.adapter.buildMergeCompleteSet(marketRef, {
-          user: userRef,
-          amount,
-        });
-  const receipt = await ctx.adapter.submit(req, ctx.signer);
-  const sig = receipt.txId.replace(/^sol:/, "");
-  return synthHashFromSignature(sig);
+      ? await ctx.adapter.buildMintCompleteSet(marketRef, userArgs)
+      : await ctx.adapter.buildMergeCompleteSet(marketRef, userArgs);
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /**
@@ -820,14 +762,7 @@ async function dispatchRedeem(
   call: WriteCallShape,
   ctx: AmmBridgeCtx,
 ): Promise<string> {
-  if (!ctx.signer) {
-    throw new Error(
-      "redeem: no Solana signer available — connect a wallet first",
-    );
-  }
-  if (!ctx.userBase58) {
-    throw new Error("redeem: no Solana wallet pubkey — connect a wallet first");
-  }
+  const { signer, userBase58 } = requireWallet(ctx, "redeem");
   const args = call.args ?? [];
   const marketRef = toMarketRef(args[0]);
   if (!marketRef) {
@@ -836,12 +771,10 @@ async function dispatchRedeem(
 
   const req = await ctx.adapter.buildClaim(marketRef, {
     outcome: 0, // unused on Solana redeem path; placeholder for ClaimArgs shape
-    user: `sol:${ctx.userBase58}`,
+    user: `sol:${userBase58}`,
     kind: "redeem",
   });
-  const receipt = await ctx.adapter.submit(req, ctx.signer);
-  const sig = receipt.txId.replace(/^sol:/, "");
-  return synthHashFromSignature(sig);
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /**
@@ -857,26 +790,16 @@ async function dispatchRequestLock(
   call: WriteCallShape,
   ctx: AmmBridgeCtx,
 ): Promise<string> {
-  if (!ctx.signer) {
-    throw new Error(
-      "requestLock: no Solana signer available — connect a wallet first",
-    );
-  }
-  if (!ctx.userBase58) {
-    throw new Error(
-      "requestLock: no Solana wallet pubkey — connect a wallet first",
-    );
-  }
+  const { signer, userBase58 } = requireWallet(ctx, "requestLock");
   const args = call.args ?? [];
   const marketRef = toMarketRef(args[0]);
   if (!marketRef) {
     throw new Error("requestLock: invalid market reference");
   }
   const req = await ctx.adapter.buildRequestLock(marketRef, {
-    user: `sol:${ctx.userBase58}`,
+    user: `sol:${userBase58}`,
   });
-  const receipt = await ctx.adapter.submit(req, ctx.signer);
-  return synthHashFromSignature(receipt.txId.replace(/^sol:/, ""));
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /**
@@ -892,16 +815,7 @@ async function dispatchAttestOutcome(
   call: WriteCallShape,
   ctx: AmmBridgeCtx,
 ): Promise<string> {
-  if (!ctx.signer) {
-    throw new Error(
-      "attestOutcome: no Solana signer available — connect a wallet first",
-    );
-  }
-  if (!ctx.userBase58) {
-    throw new Error(
-      "attestOutcome: no Solana wallet pubkey — connect a wallet first",
-    );
-  }
+  const { signer, userBase58 } = requireWallet(ctx, "attestOutcome");
   const args = call.args ?? [];
   const marketRef = toMarketRef(args[0]);
   if (!marketRef) {
@@ -914,11 +828,10 @@ async function dispatchAttestOutcome(
     );
   }
   const req = await ctx.adapter.buildAttestOutcome(marketRef, {
-    user: `sol:${ctx.userBase58}`,
+    user: `sol:${userBase58}`,
     winningOutcome: outcome as 0 | 1 | 2,
   });
-  const receipt = await ctx.adapter.submit(req, ctx.signer);
-  return synthHashFromSignature(receipt.txId.replace(/^sol:/, ""));
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -955,4 +868,38 @@ function synthHashFromSignature(sig: string): string {
   // Lowercase a-f, pad with zeros. Output is `0x` + 64 hex chars.
   const hex = Buffer.from(sig).toString("hex").slice(0, 64);
   return ("0x" + hex.padEnd(64, "0")) as string;
+}
+
+/**
+ * Common pre-check for write dispatchers: an active signer + connected
+ * wallet pubkey are both required. Throws op-named errors so toast UX
+ * stays informative; returns the values narrowed to non-undefined.
+ */
+function requireWallet(
+  ctx: AmmBridgeCtx,
+  op: string,
+): { signer: SignerRef; userBase58: string } {
+  if (!ctx.signer) {
+    throw new Error(
+      `${op}: no Solana signer available — connect a wallet first`,
+    );
+  }
+  if (!ctx.userBase58) {
+    throw new Error(`${op}: no Solana wallet pubkey — connect a wallet first`);
+  }
+  return { signer: ctx.signer, userBase58: ctx.userBase58 };
+}
+
+/**
+ * Standard tail of a write dispatcher: submit the SoothRequest and convert
+ * the resulting `sol:<sig>` txId into the synthetic 0x-hex Hash that
+ * upstream's wagmi-shaped writeContract callers expect.
+ */
+async function submitAndSynth(
+  adapter: SolanaChainAdapter,
+  req: SoothRequest,
+  signer: SignerRef,
+): Promise<string> {
+  const receipt = await adapter.submit(req, signer);
+  return synthHashFromSignature(receipt.txId.replace(/^sol:/, ""));
 }
