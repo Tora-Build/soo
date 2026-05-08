@@ -1,18 +1,13 @@
-// merge-complete-set-e2e — adapter-direct.
+// merge-complete-set-e2e — UI-driven via /portfolio CompleteSetPanel.
 //
-// Inverse of 05-mint-complete-set. Same UI rationale: MintMergePanel is
-// EVM-wired (uses chain-shim's useWriteContract → SoothBook contract path
-// with no Solana branch), so the demo never surfaces this ix on Solana.
-// Drive `sooth_market::merge_complete_set` directly to prove the protocol
-// path.
-//
-// Pre-condition: mint 10 USDC worth of complete-set so YES + NO ATAs
-// each carry 10·USDC base units before merge.
+// Inverse of 05-mint-complete-set, also UI-driven now. Pre-condition is
+// adapter-direct (mint 10 USDC of complete-set so YES+NO ATAs each
+// carry ≥10·USDC base units before merge — keeps the spec stable
+// regardless of order with prior specs).
 //
 // Verifications:
-//   1. user_yes_ata.amount drops to 0 (or back to its pre-mint baseline).
-//   2. user_no_ata.amount drops to 0 (or back to its pre-mint baseline).
-//   3. user USDC ATA balance increases by exactly 10·USDC.
+//   - user_yes_ata / user_no_ata each -= 10·USDC
+//   - user USDC ATA += 10·USDC
 
 import { test, expect } from "@playwright/test";
 import { PublicKey } from "@solana/web3.js";
@@ -24,14 +19,15 @@ import {
   deriveNoMintPda,
   loadTestKeypair,
   mintCompleteSetViaAdapter,
-  mergeCompleteSetViaAdapter,
 } from "../helpers/sdk-helpers";
 
-const TEN_USDC = 10_000_000n; // 10 USDC, 6 decimals
+const TEN_USDC = 10_000_000n;
 
-test.describe("merge complete-set (adapter-direct)", () => {
-  test("merge 10 USDC: YES+NO outcome ATAs -= 10·USDC; USDC ATA += 10·USDC", async () => {
-    test.setTimeout(60_000);
+test.describe("merge complete-set (UI-driven)", () => {
+  test("MERGE 10 USDC via /portfolio: YES+NO -= 10·USDC; USDC += 10·USDC", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
     const fixture = loadFixture();
     const conn = makeConnection();
     const TEST_PUBKEY = testPubkey();
@@ -52,8 +48,8 @@ test.describe("merge complete-set (adapter-direct)", () => {
       }
     }
 
-    // Pre-condition: mint 10 USDC of complete-set so we have YES+NO to
-    // burn. Idempotent against re-runs that already left a balance.
+    // Pre-condition: ensure enough YES + NO to merge. Adapter-direct so
+    // the UI walkthrough only captures the merge action, not the setup.
     const signer = loadTestKeypair();
     await mintCompleteSetViaAdapter({
       conn,
@@ -67,25 +63,34 @@ test.describe("merge complete-set (adapter-direct)", () => {
     const yesBefore = await readOutcome(yesMint);
     const noBefore = await readOutcome(noMint);
     const usdcBefore = await getTokenBalance(conn, usdcMint, TEST_PUBKEY);
-    // Sanity: pre-condition produced enough YES + NO to merge.
     expect(yesBefore).toBeGreaterThanOrEqual(TEN_USDC);
     expect(noBefore).toBeGreaterThanOrEqual(TEN_USDC);
 
-    const sig = await mergeCompleteSetViaAdapter({
-      conn,
-      signer,
-      marketPda,
-      marketId: idBytes,
-      usdcMint,
-      amount: TEN_USDC,
+    await page.goto(`/portfolio`);
+    await page.waitForLoadState("networkidle");
+    await page.evaluate(async () => {
+      const w = window as unknown as {
+        _connectTestWallet?: () => Promise<void>;
+      };
+      if (!w._connectTestWallet) {
+        throw new Error(
+          "_connectTestWallet not exposed (VITE_TEST_MODE=true?)",
+        );
+      }
+      await w._connectTestWallet();
     });
-    expect(sig).toMatch(/^[1-9A-HJ-NP-Za-km-z]{43,88}$/);
 
-    const yesAfter = await readOutcome(yesMint);
+    await expect(page.getByTestId("complete-set-panel")).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByTestId("complete-set-amount").fill("10");
+    await page.getByTestId("complete-set-merge").click();
+
+    await expect
+      .poll(async () => await readOutcome(yesMint), { timeout: 60_000 })
+      .toBe(yesBefore - TEN_USDC);
     const noAfter = await readOutcome(noMint);
     const usdcAfter = await getTokenBalance(conn, usdcMint, TEST_PUBKEY);
-
-    expect(yesBefore - yesAfter).toBe(TEN_USDC);
     expect(noBefore - noAfter).toBe(TEN_USDC);
     expect(usdcAfter - usdcBefore).toBe(TEN_USDC);
   });

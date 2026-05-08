@@ -1,39 +1,37 @@
-// mint-complete-set-e2e — adapter-direct.
+// mint-complete-set-e2e — UI-driven via /portfolio CompleteSetPanel.
 //
-// Why adapter-direct: apps/demo/src/components/features/pro/MintMergePanel
-// is wired against the EVM SoothBook contract via the chain-shim's
-// useReadContracts/useWriteContract — it has no Solana branch. The Solana
-// demo therefore exposes no UI for `sooth_market::mint_complete_set`. We
-// drive the on-chain ix directly to prove the protocol path.
+// Flow:
+//   1. Capture before-state: user_yes_ata, user_no_ata, user_usdc_ata.
+//   2. Navigate to /portfolio, connect the LocalKeypair adapter, wait for
+//      the CompleteSetPanel to mount.
+//   3. Fill amount = 10, click MINT.
+//   4. Poll on-chain until yes_ata / no_ata each grew by exactly 10·USDC
+//      (10_000_000 base units, 6-decimal mint) and usdc_ata dropped by
+//      the same.
 //
 // Verifications:
-//   1. user_yes_ata.amount and user_no_ata.amount each grow by 10·USDC
-//      base units (10_000_000 with 6 decimals).
-//   2. user USDC ATA balance drops by exactly 10·USDC.
+//   - user_yes_ata.amount and user_no_ata.amount each += 10·USDC
+//   - user USDC ATA -= 10·USDC
 
 import { test, expect } from "@playwright/test";
 import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync, getAccount } from "@solana/spl-token";
 import { makeConnection, getTokenBalance } from "../helpers/onchain";
 import { loadFixture, testPubkey, marketIdBytes } from "../helpers/fixture";
-import {
-  deriveYesMintPda,
-  deriveNoMintPda,
-  loadTestKeypair,
-  mintCompleteSetViaAdapter,
-} from "../helpers/sdk-helpers";
+import { deriveYesMintPda, deriveNoMintPda } from "../helpers/sdk-helpers";
 
-const TEN_USDC = 10_000_000n; // 10 USDC, 6 decimals
+const TEN_USDC = 10_000_000n;
 
-test.describe("mint complete-set (adapter-direct)", () => {
-  test("mint 10 USDC: YES + NO outcome ATAs each += 10·USDC; USDC ATA -= 10·USDC", async () => {
-    test.setTimeout(60_000);
+test.describe("mint complete-set (UI-driven)", () => {
+  test("MINT 10 USDC via /portfolio: YES+NO ATAs each += 10·USDC; USDC -= 10·USDC", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
     const fixture = loadFixture();
     const conn = makeConnection();
     const TEST_PUBKEY = testPubkey();
     const idBytes = marketIdBytes(fixture);
     const usdcMint = new PublicKey(fixture.usdcMint);
-    const marketPda = new PublicKey(fixture.marketPda);
 
     const yesMint = deriveYesMintPda(idBytes);
     const noMint = deriveNoMintPda(idBytes);
@@ -52,22 +50,32 @@ test.describe("mint complete-set (adapter-direct)", () => {
     const noBefore = await readOutcome(noMint);
     const usdcBefore = await getTokenBalance(conn, usdcMint, TEST_PUBKEY);
 
-    const signer = loadTestKeypair();
-    const sig = await mintCompleteSetViaAdapter({
-      conn,
-      signer,
-      marketPda,
-      marketId: idBytes,
-      usdcMint,
-      amount: TEN_USDC,
+    await page.goto(`/portfolio`);
+    await page.waitForLoadState("networkidle");
+    await page.evaluate(async () => {
+      const w = window as unknown as {
+        _connectTestWallet?: () => Promise<void>;
+      };
+      if (!w._connectTestWallet) {
+        throw new Error(
+          "_connectTestWallet not exposed (VITE_TEST_MODE=true?)",
+        );
+      }
+      await w._connectTestWallet();
     });
-    expect(sig).toMatch(/^[1-9A-HJ-NP-Za-km-z]{43,88}$/);
 
-    const yesAfter = await readOutcome(yesMint);
+    await expect(page.getByTestId("complete-set-panel")).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByTestId("complete-set-amount").fill("10");
+    await page.getByTestId("complete-set-mint").click();
+
+    // Poll on-chain for the yes/no/usdc deltas.
+    await expect
+      .poll(async () => await readOutcome(yesMint), { timeout: 60_000 })
+      .toBe(yesBefore + TEN_USDC);
     const noAfter = await readOutcome(noMint);
     const usdcAfter = await getTokenBalance(conn, usdcMint, TEST_PUBKEY);
-
-    expect(yesAfter - yesBefore).toBe(TEN_USDC);
     expect(noAfter - noBefore).toBe(TEN_USDC);
     expect(usdcBefore - usdcAfter).toBe(TEN_USDC);
   });

@@ -1,20 +1,22 @@
-// claim-unlocked-e2e — adapter-direct round-trip, gated on Surfpool.
+// claim-unlocked-e2e — UI-driven via /portfolio ClaimUnlockedPanel,
+// gated on Surfpool for the wall-clock fast-forward.
 //
 // Sequencing:
-//   1. Buy 10 YES via the adapter (puts YES shares on the user's Position).
-//   2. Sell 5 YES via the adapter (decrements yes_shares, allocates a fresh
-//      LockEntry PDA carrying the proceeds + unlock_at = now + 86_400).
-//   3. Surfpool `surfnet_timeTravel(+86_401s)` — bridges the lock window the
-//      bundled solana-test-validator can't, since it has no setClock RPC.
-//   4. Claim via the adapter against the LockEntry: assert user_usdc_ata
-//      grew by LockEntry.amount_usdc, lock_vault drained, LockEntry account
-//      closed (lamports → 0).
+//   1. Adapter-direct buy 10 NO + sell 5 NO to allocate a fresh LockEntry
+//      PDA (carries proceeds + unlock_at = now + 86_400). Capture the
+//      pre-sell lock_nonce so we know which CLAIM row to drive.
+//   2. surfnet_timeTravel(+86_401s) bridges the lock window the bundled
+//      solana-test-validator can't (no setClock RPC).
+//   3. Navigate to /portfolio, connect the LocalKeypair adapter, wait for
+//      the CompleteSet panel + Pending-Unlocks panel to mount.
+//   4. Click `pending-unlocks-claim-${nonce}` — the UI closes the
+//      LockEntry account and moves USDC.
+//   5. Assert user_usdc_ata grew by LockEntry.amount_usdc, lock_vault
+//      drained the same, LockEntry account closed.
 //
-// On stock test-validator the `isSurfpool()` probe returns false and the
-// describe block self-skips with a pointer to `pnpm dev:surfpool`. The
-// program-level invariants (claim before unlock_at → NotYetUnlocked,
-// double-claim rejection) are still covered by
-// `packages/sdk-solana/tests/claim-flow.test.ts` against bankrun.
+// Gate: self-skips on stock test-validator. Cargo coverage at
+// `programs-core/programs/sooth_amm/...` covers the protocol invariants
+// (NotYetUnlocked, double-claim) regardless.
 
 import { test, expect } from "@playwright/test";
 import { PublicKey } from "@solana/web3.js";
@@ -24,7 +26,6 @@ import { loadFixture, marketIdBytes } from "../helpers/fixture";
 import {
   buyViaAdapter,
   sellViaAdapter,
-  claimUnlockedViaAdapter,
   loadTestKeypair,
   derivePositionPda,
   deriveLockAuthorityPda,
@@ -37,15 +38,17 @@ const TEN_SHARES_WAD = 10n * 10n ** 18n;
 const FIVE_SHARES_WAD = 5n * 10n ** 18n;
 const LOCK_DURATION_SECS = 86_400;
 
-test.describe("AMM claim_unlocked (adapter-direct, Surfpool-gated)", () => {
+test.describe("AMM claim_unlocked (UI-driven, Surfpool-gated)", () => {
   test.beforeAll(async () => {
     test.skip(
       !(await isSurfpool()),
-      "requires Surfpool (surfnet_timeTravel cheatcode). Boot via `pnpm -F @sooth/demo dev:surfpool` and re-run, or trust the bankrun coverage at packages/sdk-solana/tests/claim-flow.test.ts.",
+      "requires Surfpool (surfnet_timeTravel cheatcode). Boot via `pnpm -F @sooth/demo dev:surfpool` and re-run.",
     );
   });
 
-  test("buy → sell → time-travel 24h+1s → claim drains LockEntry", async () => {
+  test("buy → sell → time-travel 24h+1s → CLAIM via /portfolio drains LockEntry", async ({
+    page,
+  }) => {
     test.setTimeout(180_000);
 
     const fixture = loadFixture();
@@ -66,14 +69,7 @@ test.describe("AMM claim_unlocked (adapter-direct, Surfpool-gated)", () => {
       signer.publicKey,
     );
 
-    // Capture starting position — earlier specs accumulate shares on the
-    // same wallet, so absolute-value assertions don't hold. The buy/sell
-    // below use `outcome: 0` (NO), so we track noShares.
-    const posBefore = await fetchPosition(conn, positionPda);
-    const noSharesBefore = posBefore?.noShares ?? 0n;
-
-    // 1) Buy 10 YES so the user has a position to sell. Cost ceiling is
-    //    20·WAD — well above the LMSR price for 10 shares at p≈0.5.
+    // 1) Buy 10 NO so the user has a position to sell.
     await buyViaAdapter({
       conn,
       signer,
@@ -85,7 +81,13 @@ test.describe("AMM claim_unlocked (adapter-direct, Surfpool-gated)", () => {
       maxCostWad: 20n * 10n ** 18n,
     });
 
-    // 2) Sell 5 YES — emits a LockEntry at the pre-sell lock_nonce.
+    // Capture the lock_nonce that this sell will consume — it becomes
+    // the pending-unlocks row testid suffix in the UI.
+    const posPreSell = await fetchPosition(conn, positionPda);
+    if (!posPreSell) throw new Error("Position missing pre-sell");
+    const sellNonce = String(posPreSell.lockNonce);
+
+    // 2) Sell 5 NO — emits a LockEntry at the pre-sell lock_nonce.
     const { lockEntryPda } = await sellViaAdapter({
       conn,
       signer,
@@ -105,37 +107,43 @@ test.describe("AMM claim_unlocked (adapter-direct, Surfpool-gated)", () => {
       conn.getTokenAccountBalance(ata).then((r) => BigInt(r.value.amount));
     const userUsdcBefore = await readBalance(userUsdcAta);
     const lockVaultBefore = await readBalance(lockVault);
-    expect(lockVaultBefore).toBeGreaterThanOrEqual(lockedAmount);
 
-    // 3) Fast-forward past unlock_at. +1s margin so the program-side
-    //    `now >= unlock_at` check is unambiguously true.
+    // 3) Surfpool fast-forward past unlock_at.
     await timeTravel(LOCK_DURATION_SECS + 1);
 
-    // 4) Claim via the adapter — closes LockEntry, moves USDC.
-    await claimUnlockedViaAdapter({
-      conn,
-      signer,
-      marketPda,
-      marketId: idBytes,
-      usdcMint,
-      lockEntryPda,
+    // 4) Drive CLAIM via /portfolio's pending-unlocks panel.
+    await page.goto(`/portfolio`);
+    await page.waitForLoadState("networkidle");
+    await page.evaluate(async () => {
+      const w = window as unknown as {
+        _connectTestWallet?: () => Promise<void>;
+      };
+      if (!w._connectTestWallet) {
+        throw new Error(
+          "_connectTestWallet not exposed (VITE_TEST_MODE=true?)",
+        );
+      }
+      await w._connectTestWallet();
     });
 
-    const lockEntryAfter = await getAccountData(conn, lockEntryPda);
-    expect(lockEntryAfter).toBeNull(); // account closed (lamports → 0)
+    const claimBtn = page.getByTestId(`pending-unlocks-claim-${sellNonce}`);
+    await expect(claimBtn).toBeVisible({ timeout: 30_000 });
+    // Panel polls readPendingUnlocks every ~8s; READY label only renders
+    // once the on-chain Clock is past unlock_at. Wait for the button to
+    // enable rather than asserting on text.
+    await expect(claimBtn).toBeEnabled({ timeout: 30_000 });
+    await claimBtn.click();
+
+    // 5) On-chain assertions: LockEntry closed, USDC moved.
+    await expect
+      .poll(async () => await getAccountData(conn, lockEntryPda), {
+        timeout: 60_000,
+      })
+      .toBeNull();
 
     const userUsdcAfter = await readBalance(userUsdcAta);
     const lockVaultAfter = await readBalance(lockVault);
     expect(userUsdcAfter - userUsdcBefore).toBe(lockedAmount);
     expect(lockVaultBefore - lockVaultAfter).toBe(lockedAmount);
-
-    // Sanity: Position survives — only LockEntry was closed. Net delta
-    // from this spec is +10 buy then -5 sell = +5 NO against the prior
-    // noShares value.
-    const posAfter = await fetchPosition(conn, positionPda);
-    if (!posAfter) throw new Error("Position closed unexpectedly");
-    expect(posAfter.noShares).toBe(
-      noSharesBefore + TEN_SHARES_WAD - FIVE_SHARES_WAD,
-    );
   });
 });

@@ -61,14 +61,43 @@ export function ClaimUnlockedPanel() {
     }
   }, [adapter, marketRef, userRef]);
 
+  // Track on-chain Clock.unix_timestamp instead of wall-clock — these
+  // diverge under Surfpool's surfnet_timeTravel cheatcode (advances the
+  // on-chain clock without moving Date.now()), and the program's
+  // `now >= unlock_at` gate uses on-chain time. Falling back to
+  // wall-clock if the read fails keeps the production path identical.
+  const refreshNow = useCallback(async () => {
+    if (!adapter) {
+      setNow(BigInt(Math.floor(Date.now() / 1000)));
+      return;
+    }
+    try {
+      const SYSVAR_CLOCK = "SysvarC1ock11111111111111111111111111111111";
+      const { PublicKey } = await import("@solana/web3.js");
+      const info = await adapter.connection.getAccountInfo(
+        new PublicKey(SYSVAR_CLOCK),
+      );
+      if (info) {
+        // Layout: slot u64 @ 0, epoch_start u64 @ 8, epoch u64 @ 16,
+        //         leader_schedule_epoch u64 @ 24, unix_timestamp i64 @ 32
+        setNow(info.data.readBigInt64LE(32));
+        return;
+      }
+    } catch {
+      // fall through to wall-clock
+    }
+    setNow(BigInt(Math.floor(Date.now() / 1000)));
+  }, [adapter]);
+
   useEffect(() => {
     void refresh();
+    void refreshNow();
     const id = window.setInterval(() => {
-      setNow(BigInt(Math.floor(Date.now() / 1000)));
+      void refreshNow();
       void refresh();
     }, REFRESH_MS);
     return () => window.clearInterval(id);
-  }, [refresh]);
+  }, [refresh, refreshNow]);
 
   const claim = useCallback(
     async (entry: PendingUnlock) => {
@@ -111,7 +140,7 @@ export function ClaimUnlockedPanel() {
         USDC ATA. Each row below corresponds to one lock entry — once the
         countdown hits zero the CLAIM button enables.
       </p>
-      <div className="space-y-2">
+      <div className="space-y-2" data-testid="pending-unlocks-panel">
         {entries.map((e) => {
           const ready = now >= e.unlockAt;
           const remainingS = ready ? 0 : Number(e.unlockAt - now);
@@ -123,6 +152,7 @@ export function ClaimUnlockedPanel() {
             <div
               key={String(e.nonce)}
               className="flex items-center justify-between border border-rule bg-inset p-3"
+              data-testid={`pending-unlocks-row-${String(e.nonce)}`}
             >
               <div className="font-mono text-sm">
                 <span className="text-ink">${usdc}</span>{" "}
@@ -136,6 +166,7 @@ export function ClaimUnlockedPanel() {
                 onClick={() => claim(e)}
                 disabled={!ready || pendingNonce !== null}
                 isLoading={pendingNonce === e.nonce}
+                data-testid={`pending-unlocks-claim-${String(e.nonce)}`}
               >
                 CLAIM
               </Button>

@@ -99,7 +99,7 @@ export function CompleteSetPanel() {
         it. Redeem (post-settle) burns winning shares for USDC. No price impact
         on mint/merge.
       </p>
-      <div className="flex gap-3 items-end">
+      <div className="flex gap-3 items-end" data-testid="complete-set-panel">
         <label className="flex-1">
           <span className="block text-[10px] font-mono uppercase tracking-[0.12em] text-muted mb-1">
             USDC amount (mint / merge)
@@ -111,6 +111,7 @@ export function CompleteSetPanel() {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             className="w-full bg-inset border border-rule px-3 py-2 text-sm font-mono text-ink"
+            data-testid="complete-set-amount"
           />
         </label>
         <Button
@@ -118,6 +119,7 @@ export function CompleteSetPanel() {
           onClick={() => handle("mint")}
           disabled={pending !== null}
           isLoading={pending === "mint"}
+          data-testid="complete-set-mint"
         >
           MINT
         </Button>
@@ -126,6 +128,7 @@ export function CompleteSetPanel() {
           onClick={() => handle("merge")}
           disabled={pending !== null}
           isLoading={pending === "merge"}
+          data-testid="complete-set-merge"
         >
           MERGE
         </Button>
@@ -135,6 +138,7 @@ export function CompleteSetPanel() {
           disabled={pending !== null}
           isLoading={pending === "redeem"}
           title="Burns winning outcome tokens for USDC. Only works after the market is settled."
+          data-testid="complete-set-redeem"
         >
           REDEEM
         </Button>

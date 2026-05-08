@@ -80,6 +80,19 @@ export class LocalKeypairAdapter extends BaseSignerWalletAdapter {
   constructor(keypair?: Keypair) {
     super();
     this._keypair = keypair ?? resolveTestKeypair();
+    // Singleton-ish reference so the test bridge can swap keypairs
+    // mid-session (spec 10 needs creator-authority for OperatorActionsPanel).
+    activeAdapterRef = this;
+  }
+
+  /**
+   * Swap the underlying signing keypair. Test-only — used by the bridge
+   * to drive specs that require a different on-chain authority than the
+   * default test wallet (e.g. operator/adjudicator actions).
+   */
+  swapKeypair(kp: Keypair): void {
+    this._keypair = kp;
+    this._publicKey = null;
   }
 
   get publicKey(): PublicKey | null {
@@ -141,6 +154,7 @@ export class LocalKeypairAdapter extends BaseSignerWalletAdapter {
 // microtask between the two.
 
 let walletCtxRef: WalletContextState | null = null;
+let activeAdapterRef: LocalKeypairAdapter | null = null;
 
 function exposeBridge(): void {
   if (typeof window === "undefined") return;
@@ -164,6 +178,26 @@ function exposeBridge(): void {
       }
       await walletCtxRef.connect();
     };
+
+  // Spec-only: swap the active LocalKeypair to a different authority
+  // (e.g. creator) and reconnect. Used by the operator/attest spec where
+  // the OperatorActionsPanel only renders for Adjudicator.authority.
+  (window as unknown as Record<string, unknown>)._connectTestWalletAs = async (
+    secretBytes: number[],
+  ) => {
+    if (!walletCtxRef) throw new Error("Wallet context not registered");
+    if (!activeAdapterRef) throw new Error("LocalKeypair adapter not mounted");
+    if (walletCtxRef.connected) await walletCtxRef.disconnect();
+    activeAdapterRef.swapKeypair(
+      Keypair.fromSecretKey(Uint8Array.from(secretBytes)),
+    );
+    walletCtxRef.select(ADAPTER_NAME);
+    for (let i = 0; i < 50; i++) {
+      if (walletCtxRef.wallet) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    await walletCtxRef.connect();
+  };
 }
 
 export function TestWalletBridge(): null {

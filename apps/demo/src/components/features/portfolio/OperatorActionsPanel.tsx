@@ -150,12 +150,16 @@ export function OperatorActionsPanel() {
         lock window between request_lock and attest_outcome on chains with real
         wall-clock; localnet ignores the gate only in tests.
       </p>
-      <div className="flex flex-wrap gap-3">
+      <div
+        className="flex flex-wrap gap-3"
+        data-testid="operator-actions-panel"
+      >
         <Button
           className="btn btn-secondary"
           onClick={lock}
           disabled={pending !== null || settled}
           isLoading={pending === "lock"}
+          data-testid="operator-request-lock"
         >
           REQUEST LOCK
         </Button>
@@ -164,6 +168,7 @@ export function OperatorActionsPanel() {
           onClick={() => attest(1, "attestYes")}
           disabled={pending !== null || settled}
           isLoading={pending === "attestYes"}
+          data-testid="operator-attest-yes"
         >
           ATTEST YES
         </Button>
@@ -172,6 +177,7 @@ export function OperatorActionsPanel() {
           onClick={() => attest(0, "attestNo")}
           disabled={pending !== null || settled}
           isLoading={pending === "attestNo"}
+          data-testid="operator-attest-no"
         >
           ATTEST NO
         </Button>
@@ -180,6 +186,7 @@ export function OperatorActionsPanel() {
           onClick={() => attest(2, "attestInvalid")}
           disabled={pending !== null || settled}
           isLoading={pending === "attestInvalid"}
+          data-testid="operator-attest-invalid"
         >
           ATTEST INVALID
         </Button>
