@@ -13,7 +13,7 @@
 // or `any` so upstream call sites compile without modification. The Solana
 // fork doesn't actually decode any of these — they're inputs to a sentinel.
 
-import { useEffect, useContext, useState } from "react";
+import { useEffect, useContext, useState, type ContextType } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import type { Address, Chain, Hash, TransactionReceipt } from "./viem-shim";
 import {
@@ -34,6 +34,7 @@ import {
   type MarketsBridgeCtx,
 } from "./markets-bridge";
 import { DemoContextObj } from "../DemoContext";
+import { DEFAULT_CHAIN_ID } from "../chains";
 
 // ─── Read dispatch order ────────────────────────────────────────────────────
 //
@@ -119,18 +120,11 @@ export function useAccount(): UseAccountReturn {
 }
 
 export function useChainId(): number {
-  // Mirror DEFAULT_CHAIN_ID. The chain-shim doesn't expose multi-chain
-  // switching on the Solana fork (Phantom's Custom RPC is user-side), so
-  // the wallet "chain" matches whatever cluster the dapp is configured
-  // for: 902 localnet, 901 devnet, 900 mainnet.
-  const env = (
-    import.meta as unknown as { env?: Record<string, string | undefined> }
-  ).env;
-  const rpc = env?.VITE_SOLANA_RPC_URL ?? "";
-  if (rpc.startsWith("http://127.0.0.1") || rpc.startsWith("http://localhost"))
-    return 902;
-  if (rpc.includes("devnet")) return 901;
-  return 900;
+  // The chain-shim doesn't expose multi-chain switching on the Solana fork
+  // (Phantom's Custom RPC is user-side), so the wallet "chain" matches
+  // whatever cluster the dapp is configured for. Single-sourced from
+  // chains.ts (902 localnet / 901 devnet / 900 mainnet).
+  return DEFAULT_CHAIN_ID;
 }
 
 export function useDisconnect() {
@@ -363,6 +357,37 @@ export function useConfig(): ShimWagmiConfig {
   };
 }
 
+// ─── Bridge context construction (shared by read + write hooks) ─────────────
+//
+// useReadContract, useReadContracts, and useWriteContract all build the same
+// shape from `(demo, connection)` to feed the dispatchers. Single-source it
+// here so the connection-fallback rule and the userBase58 strip stay in one
+// place.
+
+type DemoCtx = NonNullable<ContextType<typeof DemoContextObj>>;
+
+function buildBridgeCtxs(
+  demo: DemoCtx,
+  connection: ReturnType<typeof useConnection>["connection"],
+): {
+  bridge: AmmBridgeCtx;
+  portfolio: PortfolioBridgeCtx;
+  markets: MarketsBridgeCtx;
+} {
+  const effectiveConnection = demo.adapter?.connection ?? connection;
+  const knownMarkets = demo.marketRef ? [demo.marketRef] : [];
+  return {
+    bridge: {
+      adapter: demo.adapter,
+      connection: effectiveConnection as never,
+      userBase58: demo.userRef ? demo.userRef.replace(/^sol:/, "") : undefined,
+      signer: demo.signer,
+    },
+    portfolio: { adapter: demo.adapter, knownMarkets },
+    markets: { adapter: demo.adapter, knownMarkets },
+  };
+}
+
 // ─── Read hooks (sentinel — Solana fork has no EVM ABI dispatcher) ──────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -426,21 +451,7 @@ export function useReadContract<T = any>(
       setState({ data: undefined, error: null });
       return;
     }
-    const effectiveConnection = demo.adapter?.connection ?? connection;
-    const bridge: AmmBridgeCtx = {
-      adapter: demo.adapter,
-      connection: effectiveConnection as never,
-      userBase58: demo.userRef ? demo.userRef.replace(/^sol:/, "") : undefined,
-      signer: demo.signer,
-    };
-    const portfolio: PortfolioBridgeCtx = {
-      adapter: demo.adapter,
-      knownMarkets: demo.marketRef ? [demo.marketRef] : [],
-    };
-    const markets: MarketsBridgeCtx = {
-      adapter: demo.adapter,
-      knownMarkets: demo.marketRef ? [demo.marketRef] : [],
-    };
+    const { bridge, portfolio, markets } = buildBridgeCtxs(demo, connection);
     void (async () => {
       try {
         const out = await dispatchRead(call, bridge, portfolio, markets);
@@ -530,21 +541,7 @@ export function useReadContracts<
       setState({ data: undefined, error: null });
       return;
     }
-    const effectiveConnection = demo.adapter?.connection ?? connection;
-    const bridge: AmmBridgeCtx = {
-      adapter: demo.adapter,
-      connection: effectiveConnection as never,
-      userBase58: demo.userRef ? demo.userRef.replace(/^sol:/, "") : undefined,
-      signer: demo.signer,
-    };
-    const portfolio: PortfolioBridgeCtx = {
-      adapter: demo.adapter,
-      knownMarkets: demo.marketRef ? [demo.marketRef] : [],
-    };
-    const markets: MarketsBridgeCtx = {
-      adapter: demo.adapter,
-      knownMarkets: demo.marketRef ? [demo.marketRef] : [],
-    };
+    const { bridge, portfolio, markets } = buildBridgeCtxs(demo, connection);
     void (async () => {
       const results: ReadContractsItem[] = await Promise.all(
         contracts.map(async (c) => {
@@ -615,20 +612,9 @@ export function useWriteContract(_opts?: unknown) {
   const [error, setError] = useState<Error | null>(null);
   const [isPending, setIsPending] = useState(false);
 
-  const buildBridge = (): AmmBridgeCtx | null => {
-    if (!demo) return null;
-    const effectiveConnection = demo.adapter?.connection ?? connection;
-    return {
-      adapter: demo.adapter,
-      connection: effectiveConnection as never,
-      userBase58: demo.userRef ? demo.userRef.replace(/^sol:/, "") : undefined,
-      signer: demo.signer,
-    };
-  };
-
   const run = async (args?: WriteArgs): Promise<Hash> => {
-    const bridge = buildBridge();
-    if (bridge) {
+    if (demo) {
+      const { bridge } = buildBridgeCtxs(demo, connection);
       const out = await dispatchAmmWrite(args ?? {}, bridge);
       if (out !== NOT_HANDLED) {
         return out as Hash;
