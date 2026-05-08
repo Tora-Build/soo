@@ -725,29 +725,12 @@ export class SolanaChainAdapter implements ChainAdapter {
       accounts,
       meta: {
         marketPda: marketPda.toBase58(),
-        userPk: userPk.toBase58(),
-        ixData: Buffer.from(ix.data).toString("base64"),
-        ixKeys: ix.keys.map((k) => ({
-          pubkey: k.pubkey.toBase58(),
-          isSigner: k.isSigner,
-          isWritable: k.isWritable,
-        })),
-        ixProgramId: ix.programId.toBase58(),
+        ...buildIxMeta(ix, userPk),
         // Pre-ixs replayed by `submit()` ahead of the trade ix. Currently
         // a single idempotent ATA-create for `user_lp_ata` (architecture
         // §4.2 LP-mint side-effect requires the trader's LP ATA to exist
         // before `trade_positions` runs).
-        preIxs: [
-          {
-            programId: lpAtaCreateIx.programId.toBase58(),
-            keys: lpAtaCreateIx.keys.map((k) => ({
-              pubkey: k.pubkey.toBase58(),
-              isSigner: k.isSigner,
-              isWritable: k.isWritable,
-            })),
-            data: Buffer.from(lpAtaCreateIx.data).toString("base64"),
-          },
-        ],
+        preIxs: [serializeIx(lpAtaCreateIx)],
         deltaSharesStr: args.deltaShares.toString(),
         maxCostWadStr: args.maxCostWad.toString(),
         outcome: args.outcome,
@@ -892,11 +875,7 @@ export class SolanaChainAdapter implements ChainAdapter {
     const quote = await this.readQuote(market, args.outcome, wireDelta);
     const proceedsAbs = quote.cost < 0n ? -quote.cost : quote.cost;
 
-    const accounts = ix.keys.map((k) => ({
-      pubkey: k.pubkey.toBase58(),
-      isSigner: k.isSigner,
-      isWritable: k.isWritable,
-    }));
+    const accounts = ixKeysToShim(ix.keys);
 
     return {
       kind: "trade",
@@ -905,14 +884,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       accounts,
       meta: {
         marketPda: marketPda.toBase58(),
-        userPk: userPk.toBase58(),
-        ixData: Buffer.from(ix.data).toString("base64"),
-        ixKeys: ix.keys.map((k) => ({
-          pubkey: k.pubkey.toBase58(),
-          isSigner: k.isSigner,
-          isWritable: k.isWritable,
-        })),
-        ixProgramId: ix.programId.toBase58(),
+        ...buildIxMeta(ix, userPk),
         operation: "sell",
         deltaSharesStr: wireDelta.toString(),
         minProceedsWadStr: minProceedsWad.toString(),
@@ -1003,11 +975,7 @@ export class SolanaChainAdapter implements ChainAdapter {
         })
         .instruction();
 
-      const accounts = ix.keys.map((k) => ({
-        pubkey: k.pubkey.toBase58(),
-        isSigner: k.isSigner,
-        isWritable: k.isWritable,
-      }));
+      const accounts = ixKeysToShim(ix.keys);
 
       return {
         kind: "claim",
@@ -1015,14 +983,7 @@ export class SolanaChainAdapter implements ChainAdapter {
         accounts,
         meta: {
           marketPda: marketPda.toBase58(),
-          userPk: userPk.toBase58(),
-          ixData: Buffer.from(ix.data).toString("base64"),
-          ixKeys: ix.keys.map((k) => ({
-            pubkey: k.pubkey.toBase58(),
-            isSigner: k.isSigner,
-            isWritable: k.isWritable,
-          })),
-          ixProgramId: ix.programId.toBase58(),
+          ...buildIxMeta(ix, userPk),
           operation: "redeem",
           winningOutcome: resolved.winningOutcome,
         },
@@ -1080,11 +1041,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       })
       .instruction();
 
-    const accounts = ix.keys.map((k) => ({
-      pubkey: k.pubkey.toBase58(),
-      isSigner: k.isSigner,
-      isWritable: k.isWritable,
-    }));
+    const accounts = ixKeysToShim(ix.keys);
 
     return {
       kind: "claim",
@@ -1092,14 +1049,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       accounts,
       meta: {
         marketPda: marketPda.toBase58(),
-        userPk: userPk.toBase58(),
-        ixData: Buffer.from(ix.data).toString("base64"),
-        ixKeys: ix.keys.map((k) => ({
-          pubkey: k.pubkey.toBase58(),
-          isSigner: k.isSigner,
-          isWritable: k.isWritable,
-        })),
-        ixProgramId: ix.programId.toBase58(),
+        ...buildIxMeta(ix, userPk),
         operation: "claim",
         lockEntryPda: lockEntryPda.toBase58(),
       },
@@ -1213,23 +1163,11 @@ export class SolanaChainAdapter implements ChainAdapter {
         noMint,
       );
       for (const p of [yesAtaIx, noAtaIx]) {
-        preIxs.push({
-          programId: p.programId.toBase58(),
-          keys: p.keys.map((k) => ({
-            pubkey: k.pubkey.toBase58(),
-            isSigner: k.isSigner,
-            isWritable: k.isWritable,
-          })),
-          data: Buffer.from(p.data).toString("base64"),
-        });
+        preIxs.push(serializeIx(p));
       }
     }
 
-    const accounts = ix.keys.map((k) => ({
-      pubkey: k.pubkey.toBase58(),
-      isSigner: k.isSigner,
-      isWritable: k.isWritable,
-    }));
+    const accounts = ixKeysToShim(ix.keys);
 
     return {
       kind: "trade",
@@ -1240,10 +1178,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       accounts,
       meta: {
         marketPda: marketPda.toBase58(),
-        userPk: userPk.toBase58(),
-        ixData: Buffer.from(ix.data).toString("base64"),
-        ixKeys: accounts,
-        ixProgramId: ix.programId.toBase58(),
+        ...buildIxMeta(ix, userPk),
         operation: kind === "mint" ? "mintCompleteSet" : "mergeCompleteSet",
         amountStr: args.amount.toString(),
         preIxs,
@@ -1301,21 +1236,14 @@ export class SolanaChainAdapter implements ChainAdapter {
       })
       .instruction();
 
-    const accounts = ix.keys.map((k) => ({
-      pubkey: k.pubkey.toBase58(),
-      isSigner: k.isSigner,
-      isWritable: k.isWritable,
-    }));
+    const accounts = ixKeysToShim(ix.keys);
     return {
       kind: "trade",
       serializedTx: undefined,
       accounts,
       meta: {
         marketPda: marketPda.toBase58(),
-        userPk: userPk.toBase58(),
-        ixData: Buffer.from(ix.data).toString("base64"),
-        ixKeys: accounts,
-        ixProgramId: ix.programId.toBase58(),
+        ...buildIxMeta(ix, userPk),
         operation: "requestLock",
       },
     };
@@ -1364,21 +1292,14 @@ export class SolanaChainAdapter implements ChainAdapter {
       })
       .instruction();
 
-    const accounts = ix.keys.map((k) => ({
-      pubkey: k.pubkey.toBase58(),
-      isSigner: k.isSigner,
-      isWritable: k.isWritable,
-    }));
+    const accounts = ixKeysToShim(ix.keys);
     return {
       kind: "trade",
       serializedTx: undefined,
       accounts,
       meta: {
         marketPda: marketPda.toBase58(),
-        userPk: userPk.toBase58(),
-        ixData: Buffer.from(ix.data).toString("base64"),
-        ixKeys: accounts,
-        ixProgramId: ix.programId.toBase58(),
+        ...buildIxMeta(ix, userPk),
         operation: "attestOutcome",
         winningOutcome: args.winningOutcome,
       },
@@ -1521,11 +1442,7 @@ export class SolanaChainAdapter implements ChainAdapter {
     // around 80–100k CU on litesvm — well under the 200k default — but
     // bumping the limit gives headroom for IDL-init overhead on the first
     // call after a redeploy. Same pattern as `buildTrade`.
-    const accounts = ix.keys.map((k) => ({
-      pubkey: k.pubkey.toBase58(),
-      isSigner: k.isSigner,
-      isWritable: k.isWritable,
-    }));
+    const accounts = ixKeysToShim(ix.keys);
 
     return {
       kind: "createMarket",
@@ -1535,14 +1452,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         marketIdHex: Buffer.from(marketId).toString("hex"),
-        userPk: userPk.toBase58(),
-        ixData: Buffer.from(ix.data).toString("base64"),
-        ixKeys: ix.keys.map((k) => ({
-          pubkey: k.pubkey.toBase58(),
-          isSigner: k.isSigner,
-          isWritable: k.isWritable,
-        })),
-        ixProgramId: ix.programId.toBase58(),
+        ...buildIxMeta(ix, userPk),
         adjudicator: adjudicator.toBase58(),
         startTimeStr: startTime.toString(),
         deadlineStr: args.deadline.toString(),
@@ -2014,6 +1924,61 @@ function lifecycleName(v: unknown): ResolvedMarket["lifecycle"] {
   // Defensive default — anything we don't understand is "Initializing"
   // (most-conservative interpretation; trades won't be allowed).
   return "Initializing";
+}
+
+// ─── Ix → SoothRequest.meta serialization helpers ────────────────────────────
+//
+// Every build* method needs to translate an Anchor-built TransactionInstruction
+// into the serializable shape `submit()`/`preflight()` rebuild from on each
+// attempt. The shape is tedious — `pubkey: PublicKey` → base58 string,
+// `data: Buffer` → base64 string. Centralize the three patterns here so
+// every adapter method shares one source of truth.
+
+interface SerializedAccountMeta {
+  pubkey: string;
+  isSigner: boolean;
+  isWritable: boolean;
+}
+
+interface SerializedIx {
+  programId: string;
+  keys: SerializedAccountMeta[];
+  data: string;
+}
+
+function ixKeysToShim(
+  keys: TransactionInstruction["keys"],
+): SerializedAccountMeta[] {
+  return keys.map((k) => ({
+    pubkey: k.pubkey.toBase58(),
+    isSigner: k.isSigner,
+    isWritable: k.isWritable,
+  }));
+}
+
+function buildIxMeta(
+  ix: TransactionInstruction,
+  userPk: PublicKey,
+): {
+  userPk: string;
+  ixData: string;
+  ixKeys: SerializedAccountMeta[];
+  ixProgramId: string;
+} {
+  return {
+    userPk: userPk.toBase58(),
+    ixData: Buffer.from(ix.data).toString("base64"),
+    ixKeys: ixKeysToShim(ix.keys),
+    ixProgramId: ix.programId.toBase58(),
+  };
+}
+
+function serializeIx(ix: TransactionInstruction): SerializedIx {
+  return {
+    programId: ix.programId.toBase58(),
+    keys: ixKeysToShim(ix.keys),
+    data: Buffer.from(ix.data).toString("base64"),
+  };
 }
 
 // Map a Solana RPC error (thrown by sendRawTransaction or surfaced via
