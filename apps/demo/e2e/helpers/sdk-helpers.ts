@@ -10,6 +10,7 @@
 // surface).
 
 import { readFileSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -215,6 +216,12 @@ export function deriveLpMintAuthorityPda(marketId: Buffer): PublicKey {
     launchpadProgramId,
   )[0];
 }
+export function deriveLpYieldAuthorityPda(): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("lp_yield_authority")],
+    launchpadProgramId,
+  )[0];
+}
 export function deriveAdjudicatorPda(marketPda: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("adjudicator"), marketPda.toBuffer()],
@@ -230,6 +237,7 @@ export function deriveAdjudicatorPda(marketPda: PublicKey): PublicKey {
 export interface PositionState {
   yesShares: bigint; // i128
   noShares: bigint; // i128
+  lockedCostUsdc: bigint;
   lockNonce: bigint;
 }
 
@@ -240,15 +248,17 @@ export async function fetchPosition(
   const info = await conn.getAccountInfo(positionPda);
   if (!info) return null;
   const data = info.data;
-  // disc(8) + user(32) + market(32) + yes_shares(i128 LE @ 72) + no_shares(i128 LE @ 88) + lock_nonce(u64 @ 104)
+  // disc(8) + user(32) + market(32) + yes_shares(i128 LE @ 72) + no_shares(i128 LE @ 88)
+  // + locked_cost_usdc(u64 @ 104) + lock_nonce(u64 @ 112)
   const lo = data.readBigUInt64LE(72);
   const hi = data.readBigInt64LE(80);
   const yesShares = (hi << 64n) | lo;
   const lo2 = data.readBigUInt64LE(88);
   const hi2 = data.readBigInt64LE(96);
   const noShares = (hi2 << 64n) | lo2;
-  const lockNonce = data.readBigUInt64LE(104);
-  return { yesShares, noShares, lockNonce };
+  const lockedCostUsdc = data.readBigUInt64LE(104);
+  const lockNonce = data.readBigUInt64LE(112);
+  return { yesShares, noShares, lockedCostUsdc, lockNonce };
 }
 
 export interface LockEntryState {
@@ -310,6 +320,46 @@ export async function fetchAdjudicator(
     market: new PublicKey(d.subarray(8, 40)),
     authority: new PublicKey(d.subarray(40, 72)),
     attestedOutcome,
+  };
+}
+
+export interface AmmStateAccount {
+  market: PublicKey;
+  qYes: bigint;
+  qNo: bigint;
+  b: bigint;
+  seedQYes: bigint;
+  seedQNo: bigint;
+  feeBBaseWad: bigint;
+  trialEndAt: bigint;
+  isGraduated: boolean;
+  isDismissed: boolean;
+}
+
+function readI128LE(data: Buffer, offset: number): bigint {
+  const lo = data.readBigUInt64LE(offset);
+  const hi = data.readBigInt64LE(offset + 8);
+  return (hi << 64n) | lo;
+}
+
+export async function fetchAmmState(
+  conn: Connection,
+  ammStatePda: PublicKey,
+): Promise<AmmStateAccount | null> {
+  const info = await conn.getAccountInfo(ammStatePda);
+  if (!info) return null;
+  const d = info.data;
+  return {
+    market: new PublicKey(d.subarray(8, 40)),
+    qYes: readI128LE(d, 40),
+    qNo: readI128LE(d, 56),
+    b: readI128LE(d, 72),
+    seedQYes: readI128LE(d, 88),
+    seedQNo: readI128LE(d, 104),
+    feeBBaseWad: d.readBigUInt64LE(120) | (d.readBigUInt64LE(128) << 64n),
+    trialEndAt: d.readBigInt64LE(136),
+    isGraduated: d[144] !== 0,
+    isDismissed: d[145] !== 0,
   };
 }
 
@@ -380,6 +430,13 @@ export function bn(v: bigint | number | string): anchor.BN {
   return new BN(v.toString());
 }
 
+let directBuySalt = 0;
+
+function nextDirectBuyComputeUnitPrice(): number {
+  directBuySalt = (directBuySalt % 1_000_000) + 1;
+  return directBuySalt;
+}
+
 // ─── Adapter-direct buy via Anchor (used as setup for sell/claim specs) ─
 //
 // Mirrors SolanaChainAdapter.buildTrade — same accounts, same data. We use
@@ -434,7 +491,14 @@ export async function buyViaAdapter(args: {
   );
 
   const tx = new Transaction();
-  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+  tx.add(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+    // Repeated setup buys can otherwise produce identical signatures when
+    // Surfpool returns the same recent blockhash for the same signer + ix.
+    ComputeBudgetProgram.setComputeUnitPrice({
+      microLamports: nextDirectBuyComputeUnitPrice(),
+    }),
+  );
   tx.add(
     createAssociatedTokenAccountIdempotentInstruction(
       signer.publicKey,
@@ -714,6 +778,250 @@ export function loadCreatorKeypair(): Keypair {
   return Keypair.fromSecretKey(
     Uint8Array.from(JSON.parse(readFileSync(CREATOR_KEYPAIR_PATH, "utf8"))),
   );
+}
+
+const MINT_AUTHORITY_KEYPAIR_PATH = resolve(
+  __dirname,
+  "..",
+  "..",
+  ".localnet",
+  "mint-authority.json",
+);
+
+export function loadMintAuthorityKeypair(): Keypair {
+  return Keypair.fromSecretKey(
+    Uint8Array.from(
+      JSON.parse(readFileSync(MINT_AUTHORITY_KEYPAIR_PATH, "utf8")),
+    ),
+  );
+}
+
+export interface FreshMarketSetup {
+  marketId: Buffer;
+  marketPda: PublicKey;
+  ammStatePda: PublicKey;
+  lpMint: PublicKey;
+  creatorLpAta: PublicKey;
+}
+
+export async function createSeededMarketViaAdapter(args: {
+  conn: Connection;
+  creator: Keypair;
+  usdcMint: PublicKey;
+  question?: string;
+  marketId?: Buffer;
+  initialB?: bigint;
+  startTime?: bigint;
+  deadline: bigint;
+}): Promise<FreshMarketSetup> {
+  const setup = await createMarketViaAdapter(args);
+  await registerAdjudicatorViaAdapter({
+    conn: args.conn,
+    signer: args.creator,
+    marketPda: setup.marketPda,
+    authority: args.creator.publicKey,
+  });
+  await seedLpViaAdapter({
+    conn: args.conn,
+    creator: args.creator,
+    marketPda: setup.marketPda,
+    marketId: setup.marketId,
+    initialB: args.initialB ?? 1_000n * 10n ** 18n,
+  });
+  return setup;
+}
+
+export async function createMarketViaAdapter(args: {
+  conn: Connection;
+  creator: Keypair;
+  usdcMint: PublicKey;
+  question?: string;
+  marketId?: Buffer;
+  initialB?: bigint;
+  startTime?: bigint;
+  deadline: bigint;
+}): Promise<FreshMarketSetup> {
+  const {
+    conn,
+    creator,
+    usdcMint,
+    question = `e2e market ${Date.now()}`,
+    initialB = 1_000n * 10n ** 18n,
+    startTime = BigInt(Math.floor(Date.now() / 1000)),
+    deadline,
+  } = args;
+  const programs = makePrograms(conn, creator);
+  const marketId = args.marketId ?? randomBytes(16);
+  if (marketId.length !== 16) {
+    throw new Error(`marketId must be 16 bytes, got ${marketId.length}`);
+  }
+  const questionHash = createHash("sha256").update(question).digest();
+
+  const marketPda = deriveMarketPda(marketId);
+  const ammStatePda = deriveAmmStatePda(marketId);
+  const vaultAuthority = deriveVaultAuthorityPda(marketId);
+  const lockAuthority = deriveLockAuthorityPda(marketId);
+  const yesMint = deriveYesMintPda(marketId);
+  const noMint = deriveNoMintPda(marketId);
+  const marketVault = getAssociatedTokenAddressSync(
+    usdcMint,
+    vaultAuthority,
+    true,
+  );
+  const lockVault = getAssociatedTokenAddressSync(
+    usdcMint,
+    lockAuthority,
+    true,
+  );
+  const protocolConfig = deriveProtocolConfigPda();
+  const allowlist = PublicKey.findProgramAddressSync(
+    [Buffer.from("adjudicator_allowlist")],
+    marketProgramId,
+  )[0];
+
+  const tx = new Transaction();
+  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
+  const ix = await (programs.launchpad.methods as any)
+    .createMarket({
+      marketId: Array.from(marketId),
+      questionHash: Array.from(questionHash),
+      startTime: bn(startTime),
+      deadline: bn(deadline),
+      adjudicator: creator.publicKey,
+      initialB: bn(initialB),
+    })
+    .accounts({
+      config: protocolConfig,
+      market: marketPda,
+      adjudicatorAllowlist: allowlist,
+      vaultAuthority,
+      yesMint,
+      noMint,
+      lockAuthority,
+      usdcMint,
+      vault: marketVault,
+      lockVault,
+      ammState: ammStatePda,
+      creator: creator.publicKey,
+      soothMarketProgram: marketProgramId,
+      soothAmmProgram: ammProgramId,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+      rent: SYSVAR_RENT_PUBKEY,
+    })
+    .instruction();
+  tx.add(ix);
+  await sendAndConfirmTransaction(conn, tx, [creator], {
+    commitment: "confirmed",
+  });
+
+  const lpMint = deriveLpMintPda(marketId);
+  const creatorLpAta = getAssociatedTokenAddressSync(
+    lpMint,
+    creator.publicKey,
+  );
+  return { marketId, marketPda, ammStatePda, lpMint, creatorLpAta };
+}
+
+export async function registerAdjudicatorViaAdapter(args: {
+  conn: Connection;
+  signer: Keypair;
+  marketPda: PublicKey;
+  authority: PublicKey;
+}): Promise<string> {
+  const { conn, signer, marketPda, authority } = args;
+  const programs = makePrograms(conn, signer);
+  const adjudicatorPda = deriveAdjudicatorPda(marketPda);
+  const tx = new Transaction();
+  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }));
+  const ix = await (programs.adjudicator.methods as any)
+    .registerAdjudicator(authority, { manual: {} })
+    .accounts({
+      adjudicator: adjudicatorPda,
+      market: marketPda,
+      signer: signer.publicKey,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+  tx.add(ix);
+  return sendAndConfirmTransaction(conn, tx, [signer], {
+    commitment: "confirmed",
+  });
+}
+
+export async function seedLpViaAdapter(args: {
+  conn: Connection;
+  creator: Keypair;
+  marketPda: PublicKey;
+  marketId: Buffer;
+  initialB: bigint;
+}): Promise<string> {
+  const { conn, creator, marketPda, marketId, initialB } = args;
+  const programs = makePrograms(conn, creator);
+  const lpMint = deriveLpMintPda(marketId);
+  const lpMintAuthority = deriveLpMintAuthorityPda(marketId);
+  const lpPosition = PublicKey.findProgramAddressSync(
+    [Buffer.from("lp_position"), marketId, creator.publicKey.toBuffer()],
+    launchpadProgramId,
+  )[0];
+  const protocolConfig = deriveProtocolConfigPda();
+  const creatorLpAta = getAssociatedTokenAddressSync(lpMint, creator.publicKey);
+  const ammStatePda = deriveAmmStatePda(marketId);
+  const lpMintInfo = await conn.getAccountInfo(lpMint);
+  if (lpMintInfo) return "already-seeded";
+
+  const tx = new Transaction();
+  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+  const ix = await (programs.launchpad.methods as any)
+    .seedLp({
+      lpAmount: bn(initialB / 1_000_000_000_000n),
+      seedDepositWad: bn(initialB),
+    })
+    .accounts({
+      config: protocolConfig,
+      market: marketPda,
+      ammState: ammStatePda,
+      lpMint,
+      lpMintAuthority,
+      creatorLpAta,
+      lpPosition,
+      creator: creator.publicKey,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+      rent: SYSVAR_RENT_PUBKEY,
+    })
+    .instruction();
+  tx.add(ix);
+  return sendAndConfirmTransaction(conn, tx, [creator], {
+    commitment: "confirmed",
+  });
+}
+
+export async function dismissMarketViaAdapter(args: {
+  conn: Connection;
+  creator: Keypair;
+  marketPda: PublicKey;
+  marketId: Buffer;
+}): Promise<string> {
+  const { conn, creator, marketPda, marketId } = args;
+  const programs = makePrograms(conn, creator);
+  const ammState = deriveAmmStatePda(marketId);
+  const tx = new Transaction();
+  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }));
+  const ix = await (programs.amm.methods as any)
+    .dismissMarket()
+    .accounts({
+      market: marketPda,
+      ammState,
+      creator: creator.publicKey,
+    })
+    .instruction();
+  tx.add(ix);
+  return sendAndConfirmTransaction(conn, tx, [creator], {
+    commitment: "confirmed",
+  });
 }
 
 // Drives sooth_adjudicator::request_lock with a creator-keypair signer (the

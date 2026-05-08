@@ -36,6 +36,7 @@ import {
   createAssociatedTokenAccountIdempotentInstruction,
   getAccount,
   getAssociatedTokenAddressSync,
+  getMint,
 } from "@solana/spl-token";
 
 import {
@@ -120,6 +121,7 @@ export interface SolanaAdapterOptions {
 interface ResolvedMarket {
   marketPda: PublicKey;
   marketId: Uint8Array; // 16 bytes
+  creator: PublicKey;
   questionHash: Uint8Array; // 32 bytes (raw — we don't have the original question on-chain)
   yesMint: PublicKey;
   noMint: PublicKey;
@@ -445,6 +447,120 @@ export class SolanaChainAdapter implements ChainAdapter {
       thresholdWad,
       isGraduated: Boolean(ammRaw.isGraduated ?? ammRaw.is_graduated),
       progressBps: Math.max(0, Math.min(10_000, Math.floor(progress))),
+    };
+  }
+
+  async readAmmState(
+    market: MarketRef,
+    user?: AddressRef,
+  ): Promise<{
+    market: MarketRef;
+    creator: AddressRef;
+    trialEndAt: bigint;
+    isGraduated: boolean;
+    isDismissed: boolean;
+    feeBBaseWad: bigint;
+    qYes: bigint;
+    qNo: bigint;
+    b: bigint;
+    lockedCostUsdc: bigint;
+  }> {
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const [ammPda] = deriveAmmStatePda(resolved.marketId, this.programIds);
+    const ammRaw = await (this.soothAmm.account as any).ammState.fetchNullable(
+      ammPda,
+    );
+    if (!ammRaw) {
+      throw new SoothError({
+        kind: "AccountNotFound",
+        msg: `AmmState PDA not found at ${ammPda.toBase58()}`,
+      });
+    }
+
+    let lockedCostUsdc = 0n;
+    if (user) {
+      const userPk = decodePubkeyRef(user);
+      const pos = await this.readPositionInner(resolved.marketId, userPk);
+      lockedCostUsdc = pos.lockedCostUsdc ?? 0n;
+    }
+
+    return {
+      market,
+      creator: `sol:${resolved.creator.toBase58()}`,
+      trialEndAt: bnToBigInt(ammRaw.trialEndAt ?? ammRaw.trial_end_at ?? 0),
+      isGraduated: Boolean(ammRaw.isGraduated ?? ammRaw.is_graduated),
+      isDismissed: Boolean(ammRaw.isDismissed ?? ammRaw.is_dismissed),
+      feeBBaseWad: bnToBigInt(ammRaw.feeBBaseWad ?? ammRaw.fee_b_base_wad ?? 0),
+      qYes: bnToBigInt(ammRaw.qYes ?? ammRaw.q_yes ?? 0),
+      qNo: bnToBigInt(ammRaw.qNo ?? ammRaw.q_no ?? 0),
+      b: bnToBigInt(ammRaw.b ?? 0),
+      lockedCostUsdc,
+    };
+  }
+
+  async readLpRedemption(
+    market: MarketRef,
+    user: AddressRef,
+  ): Promise<{
+    market: MarketRef;
+    lpMint: AddressRef;
+    lpYieldVault: AddressRef;
+    lpBalance: bigint;
+    lpSupply: bigint;
+    lpYieldVaultAmount: bigint;
+    expectedPayoutForFullBalance: bigint;
+    isGraduated: boolean;
+  }> {
+    const marketPda = decodePubkeyRef(market);
+    const userPk = decodePubkeyRef(user);
+    const resolved = await this.fetchMarket(marketPda);
+    const amm = await this.readAmmState(market);
+    if (!this.programIds.soothLaunchpad) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "readLpRedemption: programIds.soothLaunchpad is missing",
+      });
+    }
+
+    const [lpMint] = deriveLpMintPda(resolved.marketId, {
+      soothLaunchpad: this.programIds.soothLaunchpad,
+    });
+    const userLpAta = deriveUserLpAta(userPk, lpMint);
+    const [lpYieldAuthority] = deriveLpYieldAuthority({
+      soothLaunchpad: this.programIds.soothLaunchpad,
+    });
+    const lpYieldVault = getAssociatedTokenAddressSync(
+      this.usdcMint,
+      lpYieldAuthority,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+
+    const lpBalance = await getTokenAmountOrZero(this.connection, userLpAta);
+    const lpYieldVaultAmount = await getTokenAmountOrZero(
+      this.connection,
+      lpYieldVault,
+    );
+    let lpSupply = 0n;
+    try {
+      lpSupply = (await getMint(this.connection, lpMint)).supply;
+    } catch {
+      lpSupply = 0n;
+    }
+    const expectedPayoutForFullBalance =
+      lpSupply > 0n ? (lpYieldVaultAmount * lpBalance) / lpSupply : 0n;
+
+    return {
+      market,
+      lpMint: `sol:${lpMint.toBase58()}`,
+      lpYieldVault: `sol:${lpYieldVault.toBase58()}`,
+      lpBalance,
+      lpSupply,
+      lpYieldVaultAmount,
+      expectedPayoutForFullBalance,
+      isGraduated: amm.isGraduated,
     };
   }
 
@@ -1777,6 +1893,17 @@ export class SolanaChainAdapter implements ChainAdapter {
       // the new send. The signer is invoked once per attempt.
       const tx = new Transaction();
       tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+      // Per-submission CU-price salt: two back-to-back identical writes
+      // (same signer, same ix, same blockhash window) would otherwise
+      // produce identical signatures and the second send is rejected as
+      // duplicate. A monotonically increasing microLamports value makes
+      // every tx unique without changing semantic behavior on devnet
+      // (priority fees on Surfpool / localnet are essentially free).
+      tx.add(
+        ComputeBudgetProgram.setComputeUnitPrice({
+          microLamports: nextSubmitComputeUnitPrice(),
+        }),
+      );
       for (const pre of preIxs) tx.add(pre);
       tx.add(ix);
       tx.feePayer = userPk;
@@ -2039,6 +2166,7 @@ export class SolanaChainAdapter implements ChainAdapter {
     return {
       marketPda,
       marketId: new Uint8Array(raw.marketId),
+      creator: raw.creator,
       questionHash: new Uint8Array(raw.questionHash),
       yesMint: raw.yesMint,
       noMint: raw.noMint,
@@ -2074,6 +2202,21 @@ export class SolanaChainAdapter implements ChainAdapter {
 // with Solana's blockhash validity window (~150 slots ≈ 60s) — we'll always
 // see the blockhash expire before we exhaust the cap on a slow RPC.
 const MAX_SUBMIT_ATTEMPTS = 5;
+
+// Monotonically increasing CU-price salt. Two back-to-back identical
+// writes (same signer + same ix bytes + same recent blockhash) hash
+// identically, so the cluster rejects the second send as duplicate.
+// Adding a per-call price tweak makes every signed tx unique. The price
+// is in microLamports; on Surfpool / localnet the priority-fee market
+// is empty, so even tens of thousands of microLamports are effectively
+// free. Lives at module scope so consecutive submits across multiple
+// adapter instances still see distinct values.
+let __submitCuPriceSalt = 0;
+function nextSubmitComputeUnitPrice(): number {
+  __submitCuPriceSalt = (__submitCuPriceSalt + 1) | 0;
+  // Base 1 + salt keeps the value strictly positive and distinct per call.
+  return 1 + (__submitCuPriceSalt & 0xffff);
+}
 
 // Exponential backoff schedule between attempts (capped). Index 0 = the
 // delay before the SECOND attempt; index 4 is unused (no 6th attempt).
@@ -2203,6 +2346,17 @@ function serializeIx(ix: TransactionInstruction): SerializedIx {
     keys: ixKeysToShim(ix.keys),
     data: Buffer.from(ix.data).toString("base64"),
   };
+}
+
+async function getTokenAmountOrZero(
+  connection: Connection,
+  ata: PublicKey,
+): Promise<bigint> {
+  try {
+    return (await getAccount(connection, ata)).amount;
+  } catch {
+    return 0n;
+  }
 }
 
 // Map a Solana RPC error (thrown by sendRawTransaction or surfaced via

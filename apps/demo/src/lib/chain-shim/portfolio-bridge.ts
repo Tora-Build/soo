@@ -62,11 +62,11 @@ export async function dispatchPortfolioRead(
       // the list shaped as `0x<base58>` strings so the EVM-typed
       // `useOnChainMarkets` pipeline accepts them. The amm-bridge's
       // `toMarketRef` accepts the `0x` prefix and unwraps it correctly.
-      return ctx.knownMarkets.map((ref) => marketRefToEvmAddr(ref));
+      return allKnownMarketRefs(ctx).map((ref) => marketRefToEvmAddr(ref));
     }
 
     case "getMarketCount": {
-      return BigInt(ctx.knownMarkets.length);
+      return BigInt(allKnownMarketRefs(ctx).length);
     }
 
     case "isGraduated": {
@@ -196,6 +196,7 @@ function pickMarketRef(
   call: ReadCallShape,
   ctx: PortfolioBridgeCtx,
 ): string | undefined {
+  const known = allKnownMarketRefs(ctx);
   const v = call.address;
   if (typeof v !== "string" || !v) return undefined;
   // `0x<base58>` — drop the prefix, prepend `sol:`.
@@ -206,9 +207,41 @@ function pickMarketRef(
     // Sanity: only return when the ref matches one of the known markets.
     // Stops cross-talk where a per-engine-address read (e.g. AMMEngine) is
     // accidentally treated as a market read.
-    if (ctx.knownMarkets.includes(ref)) return ref;
+    if (known.includes(ref)) return ref;
     return undefined;
   }
-  if (v.startsWith("sol:")) return v;
+  if (v.startsWith("sol:")) return known.includes(v) ? v : undefined;
   return undefined;
+}
+
+function allKnownMarketRefs(ctx: PortfolioBridgeCtx): string[] {
+  const refs = new Set(ctx.knownMarkets);
+  const created = (
+    globalThis as unknown as { __soothCreatedMarketPdas?: string[] }
+  ).__soothCreatedMarketPdas;
+  if (Array.isArray(created)) {
+    for (const pda of created) {
+      if (typeof pda === "string" && pda) refs.add(`sol:${pda}`);
+    }
+  }
+  // Page-load survives via sessionStorage — `page.goto()` wipes window
+  // globals, so the in-memory list is empty for navigations away from
+  // the page that did createMarket. The amm-bridge persists every
+  // created PDA there.
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      const raw = sessionStorage.getItem("__soothCreatedMarketPdas");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          for (const pda of parsed) {
+            if (typeof pda === "string" && pda) refs.add(`sol:${pda}`);
+          }
+        }
+      }
+    }
+  } catch {
+    // sessionStorage parse / access errors are non-fatal — fall through.
+  }
+  return [...refs];
 }

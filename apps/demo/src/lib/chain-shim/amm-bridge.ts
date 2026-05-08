@@ -346,6 +346,15 @@ export async function dispatchAmmWrite(
   if (call.functionName === "attestOutcome") {
     return dispatchAttestOutcome(call, ctx);
   }
+  if (call.functionName === "dismissMarket") {
+    return dispatchDismissMarket(call, ctx);
+  }
+  if (call.functionName === "claimRefund") {
+    return dispatchClaimRefund(call, ctx);
+  }
+  if (call.functionName === "redeemLp") {
+    return dispatchRedeemLp(call, ctx);
+  }
   return NOT_HANDLED;
 }
 
@@ -592,6 +601,25 @@ async function dispatchCreateMarket(
     (
       globalThis as unknown as { __lastCreatedMarketPda?: string }
     ).__lastCreatedMarketPda = meta.marketPda;
+    const g = globalThis as unknown as { __soothCreatedMarketPdas?: string[] };
+    const merged = [
+      ...new Set([...(g.__soothCreatedMarketPdas ?? []), meta.marketPda]),
+    ];
+    g.__soothCreatedMarketPdas = merged;
+    // Mirror to sessionStorage so the side channel survives page.goto
+    // navigations (window-scoped globals get wiped between routes in
+    // Playwright). markets-bridge / portfolio-bridge read both.
+    try {
+      if (typeof sessionStorage !== "undefined") {
+        sessionStorage.setItem(
+          "__soothCreatedMarketPdas",
+          JSON.stringify(merged),
+        );
+      }
+    } catch {
+      // sessionStorage may be disabled in some contexts; the in-memory
+      // global still works for single-page flows.
+    }
   }
 
   return submitAndSynth(ctx.adapter, req, signer);
@@ -830,6 +858,60 @@ async function dispatchAttestOutcome(
   const req = await ctx.adapter.buildAttestOutcome(marketRef, {
     user: `sol:${userBase58}`,
     winningOutcome: outcome as 0 | 1 | 2,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+async function dispatchDismissMarket(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "dismissMarket");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) {
+    throw new Error("dismissMarket: invalid market reference");
+  }
+  const req = await ctx.adapter.buildDismissMarket(marketRef, {
+    user: `sol:${userBase58}`,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+async function dispatchClaimRefund(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "claimRefund");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) {
+    throw new Error("claimRefund: invalid market reference");
+  }
+  const req = await ctx.adapter.buildClaimRefund(marketRef, {
+    user: `sol:${userBase58}`,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+async function dispatchRedeemLp(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "redeemLp");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) {
+    throw new Error("redeemLp: invalid market reference");
+  }
+  const lpAmount =
+    typeof args[1] === "bigint" ? args[1] : BigInt((args[1] as any) ?? 0);
+  if (lpAmount <= 0n) {
+    throw new Error("redeemLp: lpAmount must be positive");
+  }
+  const req = await ctx.adapter.buildRedeemLp(marketRef, {
+    user: `sol:${userBase58}`,
+    lpAmount,
   });
   return submitAndSynth(ctx.adapter, req, signer);
 }

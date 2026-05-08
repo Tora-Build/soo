@@ -59,6 +59,7 @@ import {
   MintLayout,
   MINT_SIZE,
   TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
   createAssociatedTokenAccountInstruction,
   createMintToInstruction,
   getAssociatedTokenAddressSync,
@@ -414,6 +415,32 @@ async function init() {
     );
   }
 
+  // ─── Global lp_yield_vault (redeem_lp payout source) ─────────────────
+  //
+  // `sooth_launchpad::redeem_lp` pays pro-rata USDC from a singleton ATA
+  // owned by the `lp_yield_authority` PDA. The idempotent ATA create keeps
+  // localnet re-seeds safe and gives the demo a stable env pointer.
+  const [lpYieldAuthorityPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("lp_yield_authority")],
+    SOOTH_LAUNCHPAD_ID,
+  );
+  const lpYieldVaultAta = getAssociatedTokenAddressSync(
+    USDC_MINT_DEVNET,
+    lpYieldAuthorityPda,
+    true,
+  );
+  const lpYieldTx = new Transaction().add(
+    createAssociatedTokenAccountIdempotentInstruction(
+      creator.publicKey,
+      lpYieldVaultAta,
+      lpYieldAuthorityPda,
+      USDC_MINT_DEVNET,
+    ),
+  );
+  await sendAndConfirmTransaction(connection, lpYieldTx, [creator]);
+  log(`  lp_yield_authority=${lpYieldAuthorityPda.toBase58()}`);
+  log(`  lp_yield_vault=${lpYieldVaultAta.toBase58()}`);
+
   // ─── Adjudicator allowlist (Codex C2 minimum-viable mitigation) ──────
   //
   // On-chain `initialize_market` (now reached via the `create_market` CPI
@@ -651,6 +678,7 @@ async function init() {
     `VITE_SOOTH_ADJUDICATOR_ID=${SOOTH_ADJUDICATOR_ID.toBase58()}`,
     `VITE_USDC_MINT=${USDC_MINT_DEVNET.toBase58()}`,
     `VITE_DEMO_MARKET_REF=sol:${marketPda.toBase58()}`,
+    `VITE_DEMO_LP_YIELD_VAULT=${lpYieldVaultAta.toBase58()}`,
     `# Pre-funded user pubkey (1000 USDC, 10 SOL). Import the keypair`,
     `# at apps/demo/.localnet/user-keypair.json into Phantom or Solflare`,
     `# (Settings → Add/Connect Wallet → Import Private Key) to test trades.`,

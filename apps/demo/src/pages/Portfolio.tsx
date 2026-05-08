@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useAccount } from "@/lib/chain-shim";
 import { formatUnits } from "@/lib/chain-shim";
 import { ArrowRight } from "lucide-react";
@@ -10,6 +10,9 @@ import { ActiveOrdersCard } from "../components/features/portfolio/ActiveOrdersC
 import { CompleteSetPanel } from "../components/features/portfolio/CompleteSetPanel";
 import { ClaimUnlockedPanel } from "../components/features/portfolio/ClaimUnlockedPanel";
 import { OperatorActionsPanel } from "../components/features/portfolio/OperatorActionsPanel";
+import { DismissMarketPanel } from "../components/features/portfolio/DismissMarketPanel";
+import { ClaimRefundPanel } from "../components/features/portfolio/ClaimRefundPanel";
+import { RedeemLpPanel } from "../components/features/portfolio/RedeemLpPanel";
 import { formatCurrencyCompact } from "../lib/utils";
 import { useTranslation } from "react-i18next";
 
@@ -24,6 +27,7 @@ const formatBigint = (value: bigint, decimals: number, digits = 4) => {
 
 export const Portfolio = () => {
   const { t } = useTranslation();
+  const location = useLocation();
   const { isConnected } = useAccount();
   const {
     vaultPositions: activePositions = [],
@@ -41,6 +45,11 @@ export const Portfolio = () => {
     [totalLPValue],
   );
   const totalPortfolioValue = totalPositionValue + totalLPValueNumber;
+  const panelMarketRef = useMemo(() => {
+    const raw = new URLSearchParams(location.search).get("market");
+    if (!raw) return null;
+    return raw.startsWith("sol:") ? raw : `sol:${raw}`;
+  }, [location.search]);
 
   if (!isConnected) {
     return (
@@ -104,6 +113,12 @@ export const Portfolio = () => {
       <CompleteSetPanel />
 
       <ClaimUnlockedPanel />
+
+      <DismissMarketPanel marketRef={panelMarketRef} />
+
+      <ClaimRefundPanel marketRef={panelMarketRef} />
+
+      <RedeemLpPanel marketRef={panelMarketRef} />
 
       <OperatorActionsPanel />
 

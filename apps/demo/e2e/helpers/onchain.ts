@@ -29,6 +29,9 @@ import {
 const RPC_URL = process.env.SOLANA_RPC_URL ?? "http://127.0.0.1:8899";
 const COMMITMENT: Commitment =
   (process.env.SOLANA_COMMITMENT as Commitment) ?? "confirmed";
+const SYSVAR_CLOCK = new PublicKey(
+  "SysvarC1ock11111111111111111111111111111111",
+);
 
 export function makeConnection(
   commitment: Commitment = COMMITMENT,
@@ -63,6 +66,12 @@ export function readI128LE(buf: Buffer, offset: number): bigint {
 
 export function readPubkey(buf: Buffer, offset: number): PublicKey {
   return new PublicKey(buf.subarray(offset, offset + 32));
+}
+
+export async function readOnchainClock(conn: Connection): Promise<bigint> {
+  const info = await conn.getAccountInfo(SYSVAR_CLOCK);
+  if (!info) return BigInt(Math.floor(Date.now() / 1000));
+  return info.data.readBigInt64LE(32);
 }
 
 // ─── SPL Token reads ─────────────────────────────────────────────────────

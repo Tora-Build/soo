@@ -107,15 +107,40 @@ function pickMarketRefFromArgs(
 ): string | undefined {
   const v = call.args?.[0];
   if (typeof v !== "string" || !v) return undefined;
+  // Markets created live via `dispatchCreateMarket` are tracked on the
+  // global `__soothCreatedMarketPdas` side channel; fan them in alongside
+  // the seed-time `knownMarkets` list so newly-launched markets resolve
+  // for per-market reads (`getGraduationProgress`, `totalSupply`, etc).
+  const createdPdas =
+    (globalThis as unknown as { __soothCreatedMarketPdas?: string[] })
+      .__soothCreatedMarketPdas ?? [];
+  const known = new Set<string>(ctx.knownMarkets);
+  for (const pda of createdPdas) known.add(`sol:${pda}`);
+  // sessionStorage mirror survives page.goto navigations (window globals
+  // get wiped). amm-bridge writes this on every successful createMarket.
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      const raw = sessionStorage.getItem("__soothCreatedMarketPdas");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          for (const pda of parsed) {
+            if (typeof pda === "string" && pda) known.add(`sol:${pda}`);
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore — in-memory globals still serve the single-page case.
+  }
   if (v.startsWith("0x")) {
     const tail = v.slice(2);
     if (!tail) return undefined;
     const ref = `sol:${tail}`;
-    if (ctx.knownMarkets.includes(ref)) return ref;
-    return undefined;
+    return known.has(ref) ? ref : undefined;
   }
   if (v.startsWith("sol:")) {
-    return ctx.knownMarkets.includes(v) ? v : undefined;
+    return known.has(v) ? v : undefined;
   }
   return undefined;
 }
