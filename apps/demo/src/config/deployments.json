@@ -7,7 +7,15 @@
       "coreVersion": "0.2.1",
       "contracts": {
         "MockUSDC": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
-        "baseTokenDecimals": 6
+        "baseTokenDecimals": 6,
+        "_comment": "Synthetic 0x… placeholders for upstream EVM hooks that gate on !!engineAddress. The Solana chain-shim ignores `address` for AMM reads (routes by functionName), so any non-empty hex unblocks the gate. Real PDAs live in @sooth/sdk-solana.",
+        "AMMEngine": "0x0000000000000000000000000000000000000a01",
+        "LaunchpadEngine": "0x0000000000000000000000000000000000000a02",
+        "SoothBook": "0x0000000000000000000000000000000000000a03",
+        "OrderEngine": "0x0000000000000000000000000000000000000a04",
+        "TruthMarket": "0x0000000000000000000000000000000000000a05",
+        "FeeRouter": "0x0000000000000000000000000000000000000a06",
+        "AdjudicatorRegistry": "0x0000000000000000000000000000000000000a07"
       },
       "markets": [],
       "startBlock": 0
@@ -18,7 +26,15 @@
       "coreVersion": "0.2.1",
       "contracts": {
         "MockUSDC": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
-        "baseTokenDecimals": 6
+        "baseTokenDecimals": 6,
+        "_comment": "Same placeholder pattern as solanaLocalnet — see comment there.",
+        "AMMEngine": "0x0000000000000000000000000000000000000a01",
+        "LaunchpadEngine": "0x0000000000000000000000000000000000000a02",
+        "SoothBook": "0x0000000000000000000000000000000000000a03",
+        "OrderEngine": "0x0000000000000000000000000000000000000a04",
+        "TruthMarket": "0x0000000000000000000000000000000000000a05",
+        "FeeRouter": "0x0000000000000000000000000000000000000a06",
+        "AdjudicatorRegistry": "0x0000000000000000000000000000000000000a07"
       },
       "markets": [],
       "startBlock": 0

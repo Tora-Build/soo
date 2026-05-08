@@ -60,15 +60,28 @@ export const adjudicatorProgramId = new PublicKey(adjudicatorIdl.address);
 
 // ─── Test wallet keypair ────────────────────────────────────────────────
 //
-// Loaded from the same JSON file as VITE_TEST_KEYPAIR_BYTES. We require
-// the path via env so a future move of /tmp/sooth-test-kp.json doesn't
-// silently break the suite.
-const TEST_KEYPAIR_PATH =
-  process.env.TEST_KEYPAIR_PATH ?? "/tmp/sooth-test-kp.json";
+// Default path matches what `pnpm dev:localnet` writes (seed-localnet.mjs
+// → .localnet/user-keypair.json), so a fresh boot needs no extra env
+// plumbing. Two override paths for non-default setups:
+//   - TEST_KEYPAIR_PATH=/abs/path.json — load from disk
+//   - VITE_TEST_KEYPAIR_BYTES=[1,2,...] — inline JSON byte array
+// VITE_TEST_KEYPAIR_BYTES wins when both are set so CI matches the
+// browser-side LocalKeypairAdapter the dapp consumes.
+const DEMO_DIR = resolve(__dirname, "..", "..");
+const DEFAULT_TEST_KEYPAIR_PATH = resolve(
+  DEMO_DIR,
+  ".localnet",
+  "user-keypair.json",
+);
 
 export function loadTestKeypair(): Keypair {
+  const inlineBytes = process.env.VITE_TEST_KEYPAIR_BYTES;
+  if (inlineBytes) {
+    return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(inlineBytes)));
+  }
+  const path = process.env.TEST_KEYPAIR_PATH ?? DEFAULT_TEST_KEYPAIR_PATH;
   return Keypair.fromSecretKey(
-    Uint8Array.from(JSON.parse(readFileSync(TEST_KEYPAIR_PATH, "utf8"))),
+    Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))),
   );
 }
 
