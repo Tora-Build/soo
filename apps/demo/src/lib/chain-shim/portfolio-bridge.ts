@@ -76,61 +76,31 @@ export async function dispatchPortfolioRead(
       return false;
     }
 
-    case "isSettled": {
-      // Read lifecycle from the Market PDA. Lifecycle.Settled iff settled.
-      const marketRef = pickMarketRef(call, ctx);
-      if (!marketRef) return false;
-      try {
-        const snap = await ctx.adapter.readSnapshot(marketRef);
-        return Boolean(snap.market.isSettled);
-      } catch {
-        return false;
-      }
-    }
+    case "isSettled":
+      return readMarketField(call, ctx, false, (m) => Boolean(m.isSettled));
 
-    case "winningOutcome": {
-      const marketRef = pickMarketRef(call, ctx);
-      if (!marketRef) return 0;
-      try {
-        const snap = await ctx.adapter.readSnapshot(marketRef);
-        // Solana adapter exposes `outcome` only when settled.
-        return Number(snap.market.outcome ?? 0);
-      } catch {
-        return 0;
-      }
-    }
+    case "winningOutcome":
+      // Solana adapter exposes `outcome` only when settled.
+      return readMarketField(call, ctx, 0, (m) => Number(m.outcome ?? 0));
 
-    case "questionHash": {
+    case "questionHash":
       // The on-chain Market stores a 32-byte question hash. Return as a
       // 0x-prefixed hex string. `useOnChainMarkets` only checks truthiness.
-      const marketRef = pickMarketRef(call, ctx);
-      if (!marketRef) return "0x" + "00".repeat(32);
-      try {
-        const snap = await ctx.adapter.readSnapshot(marketRef);
-        // adapter encodes question as `0x<hex>`. Return as-is.
-        return snap.market.question;
-      } catch {
-        return "0x" + "00".repeat(32);
-      }
-    }
+      return readMarketField(
+        call,
+        ctx,
+        "0x" + "00".repeat(32),
+        (m) => m.question,
+      );
 
     case "price": {
       // LAUNCHPAD_MARKET_ABI.price(outcome) → uint256 in WAD.
       // Read AMM state and compute LMSR yes-price; route by outcome arg.
-      const marketRef = pickMarketRef(call, ctx);
-      if (!marketRef) return 5n * 10n ** 17n;
       const outcome = Number(call.args?.[0] ?? 0);
-      try {
-        const snap = await ctx.adapter.readSnapshot(marketRef);
-        const yesP = yesPriceWad(
-          snap.market.qYes,
-          snap.market.qNo,
-          snap.market.b,
-        );
+      return readMarketField(call, ctx, 5n * 10n ** 17n, (m) => {
+        const yesP = yesPriceWad(m.qYes, m.qNo, m.b);
         return outcome === 1 ? yesP : 10n ** 18n - yesP;
-      } catch {
-        return 5n * 10n ** 17n;
-      }
+      });
     }
 
     // ─── LP / Vault / Locked-funds — graceful zero ──────────────────────
@@ -148,31 +118,15 @@ export async function dispatchPortfolioRead(
     case "totalLockedProceeds":
       return 0n;
 
-    case "isLive": {
-      const marketRef = pickMarketRef(call, ctx);
-      if (!marketRef) return false;
-      try {
-        const snap = await ctx.adapter.readSnapshot(marketRef);
-        return Boolean(snap.market.isLive);
-      } catch {
-        return false;
-      }
-    }
+    case "isLive":
+      return readMarketField(call, ctx, false, (m) => Boolean(m.isLive));
 
     case "isUnderwater":
     case "isLiquidated":
       return false;
 
-    case "deadline": {
-      const marketRef = pickMarketRef(call, ctx);
-      if (!marketRef) return 0n;
-      try {
-        const snap = await ctx.adapter.readSnapshot(marketRef);
-        return snap.market.deadline;
-      } catch {
-        return 0n;
-      }
-    }
+    case "deadline":
+      return readMarketField(call, ctx, 0n, (m) => m.deadline);
 
     case "creator":
     case "factory":
@@ -194,6 +148,31 @@ export async function dispatchPortfolioRead(
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the market PDA from `call`, fetch its snapshot, and pluck a field.
+ * On any failure (missing market ref, RPC error, malformed account data) the
+ * provided `fallback` is returned — every per-field branch in the dispatch
+ * switch wants this exact shape, so single-sourcing keeps drift out and trims
+ * ~6 try/catch blocks down to one-liner picks.
+ */
+async function readMarketField<T>(
+  call: ReadCallShape,
+  ctx: PortfolioBridgeCtx,
+  fallback: T,
+  pick: (
+    m: Awaited<ReturnType<SolanaChainAdapter["readSnapshot"]>>["market"],
+  ) => T,
+): Promise<T> {
+  const marketRef = pickMarketRef(call, ctx);
+  if (!marketRef) return fallback;
+  try {
+    const snap = await ctx.adapter.readSnapshot(marketRef);
+    return pick(snap.market);
+  } catch {
+    return fallback;
+  }
+}
 
 /**
  * Translate a Solana `sol:<base58>` ref into the EVM-typed `0x<base58>`
