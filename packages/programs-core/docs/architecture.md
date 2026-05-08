@@ -668,16 +668,18 @@ as of 2026-05:
 
 ```
 sooth-solana/
-├── Cargo.toml                  # workspace root (3 programs + 1 shared crate)
+├── Cargo.toml                  # workspace root (4 programs + 2 shared crates)
 ├── packages/
 │   ├── programs-core/          # Anchor programs + their docs
 │   │   ├── Anchor.toml
 │   │   ├── programs/
-│   │   │   ├── sooth_amm/      # LMSR + position state + sell/claim ✓ scaffolded
-│   │   │   ├── sooth_market/   # Market lifecycle + custody ✓ scaffolded
-│   │   │   └── sooth_launchpad/# Factory + fee router (stubs) ✓ scaffolded
+│   │   │   ├── sooth_amm/         # LMSR + buy + sell + claim_unlocked ✓ implemented
+│   │   │   ├── sooth_market/      # Market lifecycle + custody + redeem + adjudicator-allowlist ✓ implemented
+│   │   │   ├── sooth_launchpad/   # Factory + fee router + seed_lp + mint_lp_for_buy ✓ implemented
+│   │   │   └── sooth_adjudicator/ # register + request_lock + attest_outcome + dispute (Manual variant) ✓ implemented
 │   │   ├── crates/
-│   │   │   └── sooth-account-offsets/   # shared Position/LockEntry byte offsets
+│   │   │   ├── sooth-account-offsets/   # shared Position/LockEntry byte offsets
+│   │   │   └── sooth-protocol-types/    # cross-program IDs + USDC mint + ix discriminators
 │   │   ├── docs/
 │   │   │   ├── architecture.md          # this doc
 │   │   │   └── research/                # CLOB / Monaco investigation
@@ -686,20 +688,27 @@ sooth-solana/
 ├── apps/
 │   └── demo/                   # forked Solana-only demo (chain-shim bridge)
 ├── docs/
+│   ├── status.md               # program / SDK / demo / devnet state
+│   ├── build.md                # local build + Phantom UX + wallet-adapter rules
+│   ├── roadmap.md              # active items + pending decisions
 │   ├── decision-log.md         # P-numbers / D-numbers
+│   ├── glossary.md             # WAD, OUTCOME, tick, CU, PDA, ATA
 │   ├── monaco-fork-analysis.md
 │   └── research/
+│       ├── porting-evaluation.md
+│       ├── orderbook-survey.md
 │       └── monaco-investigation-week-01.md
 ├── _spikes/
 │   └── lmsr-cu/                # D4 prototype (excluded from workspace)
-└── HANDOVER.md                 # contributor briefing
+└── HANDOVER.md                 # contributor index
 ```
 
-Programs not yet implemented: `sooth_book` (gated on the Monaco fork
-decision per §6) and `sooth_adjudicator` (Manual variant first, ZkTLS
-later per §7). Workspace `[members]` reserves the `crates/` sibling for
-future shared no-Anchor crates (e.g. `sooth-book-matcher`); the
-`sooth-account-offsets` crate is the first inhabitant.
+Programs not yet implemented: `sooth_book` only (gated on the Monaco fork
+decision per §6 / P1). `sooth_adjudicator` Manual variant ships today; the
+ZkTLS variant remains a placeholder per §7. Workspace `[members]` reserves
+the `crates/` sibling for future shared no-Anchor crates (e.g.
+`sooth-book-matcher`); `sooth-account-offsets` and `sooth-protocol-types`
+are the current inhabitants.
 
 ---
 
