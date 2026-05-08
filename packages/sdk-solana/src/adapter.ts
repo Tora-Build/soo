@@ -132,6 +132,11 @@ interface ResolvedMarket {
   winningOutcome: number;
 }
 
+interface PriorityFeeCacheEntry {
+  expiresAtMs: number;
+  percentileMicroLamports: number;
+}
+
 // Anchor's IDL types are loose; we re-narrow at the boundary.
 type AnyProgram = Program<Idl>;
 
@@ -155,6 +160,7 @@ export class SolanaChainAdapter implements ChainAdapter {
   // (e.g. 6012 means LockNotElapsed in sooth_amm but
   // AdjudicatorNotAllowlisted in sooth_market).
   private readonly programErrorLookup: ProgramErrorLookup;
+  private readonly priorityFeeCache = new Map<string, PriorityFeeCacheEntry>();
 
   constructor(opts: SolanaAdapterOptions) {
     this.node = opts.node;
@@ -1836,6 +1842,7 @@ export class SolanaChainAdapter implements ChainAdapter {
             }>;
             data: string;
           }>;
+          marketPda?: string;
         };
     if (!meta?.ixData) {
       throw new SoothError({
@@ -1891,17 +1898,19 @@ export class SolanaChainAdapter implements ChainAdapter {
       // Each attempt re-fetches the blockhash and re-signs — the blockhash
       // is part of the message, so the previous signature is invalid for
       // the new send. The signer is invoked once per attempt.
+      const microLamports =
+        await this.nextSubmitComputeUnitPriceMicroLamports(
+          parseOptionalPublicKey(meta.marketPda),
+        );
       const tx = new Transaction();
       tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
-      // Per-submission CU-price salt: two back-to-back identical writes
-      // (same signer, same ix, same blockhash window) would otherwise
-      // produce identical signatures and the second send is rejected as
-      // duplicate. A monotonically increasing microLamports value makes
-      // every tx unique without changing semantic behavior on devnet
-      // (priority fees on Surfpool / localnet are essentially free).
+      // Priority fee = recent p50 for this market's locked writable account
+      // plus the existing byte-level salt. The salt remains load-bearing:
+      // two identical writes in the same blockhash window must still hash
+      // differently even if the fee cache returns the same p50 value.
       tx.add(
         ComputeBudgetProgram.setComputeUnitPrice({
-          microLamports: nextSubmitComputeUnitPrice(),
+          microLamports,
         }),
       );
       for (const pre of preIxs) tx.add(pre);
@@ -2151,6 +2160,43 @@ export class SolanaChainAdapter implements ChainAdapter {
     notImplemented("buildApprove");
   }
 
+  private async nextSubmitComputeUnitPriceMicroLamports(
+    marketPda?: PublicKey,
+  ): Promise<number> {
+    const percentile = await this.cachedRecentPriorityFeePercentile(marketPda);
+    return nextSubmitComputeUnitPrice(percentile);
+  }
+
+  private async cachedRecentPriorityFeePercentile(
+    marketPda?: PublicKey,
+  ): Promise<number> {
+    const cacheKey = marketPda?.toBase58() ?? "global";
+    const now = Date.now();
+    const cached = this.priorityFeeCache.get(cacheKey);
+    if (cached && cached.expiresAtMs > now) {
+      return cached.percentileMicroLamports;
+    }
+
+    let percentileMicroLamports = 0;
+    try {
+      const lockedWritableAccounts = marketPda ? [marketPda] : [];
+      const fees = await this.connection.getRecentPrioritizationFees({
+        lockedWritableAccounts,
+      });
+      percentileMicroLamports = percentile50MicroLamports(fees);
+    } catch {
+      // Local bankrun shims and transient RPC failures may not expose recent
+      // fee data. Falling back to the salt-only path keeps submit usable.
+      percentileMicroLamports = 0;
+    }
+
+    this.priorityFeeCache.set(cacheKey, {
+      expiresAtMs: now + PRIORITY_FEE_CACHE_MS,
+      percentileMicroLamports,
+    });
+    return percentileMicroLamports;
+  }
+
   // ─── Internals ──────────────────────────────────────────────────────────
 
   private async fetchMarket(marketPda: PublicKey): Promise<ResolvedMarket> {
@@ -2202,20 +2248,63 @@ export class SolanaChainAdapter implements ChainAdapter {
 // with Solana's blockhash validity window (~150 slots ≈ 60s) — we'll always
 // see the blockhash expire before we exhaust the cap on a slow RPC.
 const MAX_SUBMIT_ATTEMPTS = 5;
+const PRIORITY_FEE_CACHE_MS = 5_000;
+const PRIORITY_FEE_CAP_MICROLAMPORTS = 50_000;
+const PRIORITY_FEE_SALT_HEADROOM_MICROLAMPORTS = 1_000;
 
 // Monotonically increasing CU-price salt. Two back-to-back identical
 // writes (same signer + same ix bytes + same recent blockhash) hash
 // identically, so the cluster rejects the second send as duplicate.
-// Adding a per-call price tweak makes every signed tx unique. The price
-// is in microLamports; on Surfpool / localnet the priority-fee market
-// is empty, so even tens of thousands of microLamports are effectively
-// free. Lives at module scope so consecutive submits across multiple
-// adapter instances still see distinct values.
+// Adding a per-call price tweak makes every signed tx unique. Reserve a
+// small headroom band below the 50k cap so the salt remains visible even
+// when recent fee samples are at or above the ceiling. Lives at module
+// scope so consecutive submits across multiple adapter instances still see
+// distinct values.
 let __submitCuPriceSalt = 0;
-function nextSubmitComputeUnitPrice(): number {
-  __submitCuPriceSalt = (__submitCuPriceSalt + 1) | 0;
-  // Base 1 + salt keeps the value strictly positive and distinct per call.
-  return 1 + (__submitCuPriceSalt & 0xffff);
+function nextSubmitComputeUnitPrice(percentileMicroLamports = 0): number {
+  const percentile = sanitizeMicroLamports(percentileMicroLamports);
+  const salt = nextSubmitComputeUnitPriceSalt(percentile);
+  return Math.min(
+    PRIORITY_FEE_CAP_MICROLAMPORTS,
+    Math.max(salt, percentile, 1),
+  );
+}
+
+function nextSubmitComputeUnitPriceSalt(percentileMicroLamports: number): number {
+  __submitCuPriceSalt =
+    (__submitCuPriceSalt % PRIORITY_FEE_SALT_HEADROOM_MICROLAMPORTS) + 1;
+  const baseline = Math.min(
+    Math.max(1, percentileMicroLamports),
+    PRIORITY_FEE_CAP_MICROLAMPORTS - PRIORITY_FEE_SALT_HEADROOM_MICROLAMPORTS,
+  );
+  return baseline + __submitCuPriceSalt;
+}
+
+function percentile50MicroLamports(
+  samples: Array<{ prioritizationFee: number }>,
+): number {
+  const fees = samples
+    .map((sample) => sanitizeMicroLamports(sample.prioritizationFee))
+    .filter((fee) => fee >= 0)
+    .sort((a, b) => a - b);
+  if (fees.length === 0) return 0;
+  const mid = Math.floor(fees.length / 2);
+  if (fees.length % 2 === 1) return fees[mid]!;
+  return Math.floor((fees[mid - 1]! + fees[mid]!) / 2);
+}
+
+function sanitizeMicroLamports(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
+}
+
+function parseOptionalPublicKey(value: unknown): PublicKey | undefined {
+  if (typeof value !== "string" || value.length === 0) return undefined;
+  try {
+    return new PublicKey(value);
+  } catch {
+    return undefined;
+  }
 }
 
 // Exponential backoff schedule between attempts (capped). Index 0 = the
