@@ -111,9 +111,59 @@ The SoothBook crossing rule (commented at `soothCore.ts:943–951`) explains why
 - Combined with the P1 investigation result, the orderbook direction is effectively decided modulo founder approval: **fork Monaco** with escrow added as a first-class field, per the insertion point already scoped in `docs/research/monaco-investigation-week-01.md` (~200 LOC in `process_order_request` + `MarketPosition` accounting). The atomicity caveat noted in the spike-2 report — verify the Monaco queue step doesn't break atomicity — is now load-bearing and must be resolved before any sell flow ships on Solana.
 - For the indexer, the schema column already exists (`packages/indexer/ponder.schema.ts:202` — `escrow: boolean NOT NULL` on the `order` table). When the Solana adapter writes order events, it must populate the same column to preserve query parity with EVM.
 
+### D7. Fork Monaco for `sooth_book` (2026-05-08; resolves P1)
+
+**Decision**: Fork Monaco for `sooth_book`. Engineering recommendation ratified. Real port lives on a feature branch later; this session only records the decision and reserves a local program-id slot.
+
+**Why**: The week-one Monaco investigation found only two hard rewrite sites and a total touched-site count well below the fork-cliff threshold. Monaco preserves a tested matching/lifecycle base while leaving clear insertion points for Sooth's escrow, complete-set, adjudicator, and 1000-tick price-index work.
+
+**Implication**: The `sooth_book` port is now scheduled as a ~3-4 month engineering effort, not an open direction question. The placeholder program must not be mistaken for the port itself; production orderbook work belongs on a later feature branch.
+
+### D8. Build a standalone Solana indexer (2026-05-08; resolves P3)
+
+**Decision**: Solana gets a standalone indexer. Do not widen the EVM Ponder `chainId` model as the Solana path.
+
+**Why**: Decoupled per-chain indexers keep the EVM and Solana data models honest. Solana account/log ingestion has different operational constraints from the existing EVM Ponder stack, so forcing both through the same chain-id namespace would couple unrelated implementation details.
+
+**Implication**: Demo copy should no longer frame the indexer as blocked on P3. The implementation work remains pending, but it is now a build task for a Solana-native indexer rather than a founder decision.
+
+### D9. Measure retry rate during devnet validation (2026-05-08; resolves P5)
+
+**Decision**: P5 is engineer-driven. Measure race-induced retry rate during devnet validation with an acceptance target below 5%.
+
+**Why**: The real retry rate depends on Solana slot timing, account contention, and the final `sooth_book` matching path. It is better handled as an observed operational metric than as a founder-level product decision.
+
+**Implication**: Devnet validation should include retry-rate instrumentation and a pass/fail readout. If retry rate is 5% or higher, engineers should evaluate mitigations such as tighter compute budgets, better book-state caching, or bundled read/write paths.
+
+### D10. Stay on Solana Wallet Adapter for launch scope (2026-05-08; resolves P6)
+
+**Decision**: Stay on `@solana/wallet-adapter-react`. No Privy port now.
+
+**Why**: The current demo and local validation stack already use Solana Wallet Adapter successfully. A Privy Solana port is not required to validate or launch the Solana protocol surface.
+
+**Implication**: Wallet work remains focused on hardening the existing adapter flow. Privy can be reconsidered later if Telegram/mobile integration needs it.
+
+### D11. Users pay Solana priority fees (2026-05-08; resolves P7)
+
+**Decision**: Users pay priority fees. The SDK adapter sets a sensible default `microLamports` compute-unit price, and the user signs the transaction.
+
+**Why**: This keeps Solana fee accounting aligned with the EVM model where users pay transaction costs. It also avoids adding treasury operations or subsidy accounting to the launch scope.
+
+**Implication**: `@sooth/sdk-solana` submit semantics should estimate recent prioritization fees, cap them, retain duplicate-transaction salt, and place the resulting `ComputeBudgetProgram.setComputeUnitPrice` instruction in the user's transaction.
+
+### D12. Defer the Solana CLI port (2026-05-08; resolves P8)
+
+**Decision**: P8 is deferred. Reconsider a Solana CLI port post-launch.
+
+**Why**: The multi-actor CLI harness is useful but not launch-critical. The demo, cargo tests, SDK tests, and Playwright suite already cover the launch validation surface.
+
+**Implication**: Keep the EVM CLI out of the Solana launch scope. If post-launch operators need scripted multi-actor Solana flows, design a thin Solana-specific harness against the adapter then.
+
 ---
 
-## Pending — block implementation
+## Historical pending prompts
+
+The P1/P3/P5/P6/P7/P8 prompts below are retained as historical context. They are superseded by D7-D12 dated 2026-05-08.
 
 ### P1. Is the orderbook backend custom-built or a Monaco fork?
 
@@ -205,4 +255,4 @@ The auto-match SDK incompatibility was thoroughly analyzed in conversation; the 
 
 ---
 
-_Last updated: 2026-05-05 (D4 resolved P2; D5 resolved P4; P1 has investigation results — recommendation: fork Monaco, awaiting founder approval)._
+_Last updated: 2026-05-08 (D7-D12 resolved P1/P3/P5/P6/P7/P8; D6 was already used for devnet program IDs)._

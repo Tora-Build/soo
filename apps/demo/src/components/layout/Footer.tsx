@@ -48,7 +48,7 @@ export const Footer = () => {
                 className="flex items-center gap-1.5"
                 title={
                   notConfigured
-                    ? "Solana indexer is gated on docs/decision-log.md P3 (namespace strategy). Trade history and pending-unlock lists fall back to RPC reads."
+                    ? "Standalone Solana indexer is pending. Trade history and pending-unlock lists fall back to RPC reads."
                     : error
                       ? "Ponder indexer is offline"
                       : isSynced
@@ -73,7 +73,7 @@ export const Footer = () => {
                 />
                 <span className="font-mono text-xs text-faint">
                   {notConfigured
-                    ? "Indexer pending (P3)"
+                    ? "Indexer pending"
                     : error
                       ? "Indexer offline"
                       : currentChainStatus
