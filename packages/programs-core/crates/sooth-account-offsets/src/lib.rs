@@ -40,10 +40,11 @@
 //       pub market: Pubkey,      // 32
 //       pub yes_shares: i128,    // 16
 //       pub no_shares: i128,     // 16
+//       pub locked_cost_usdc: u64, // 8
 //       pub lock_nonce: u64,     // 8
 //       pub bump: u8,            // 1
 //   }
-// Total payload = 105 bytes; with the 8-byte discriminator that's 113.
+// Total payload = 113 bytes; with the 8-byte discriminator that's 121.
 
 /// Anchor account discriminator length (sha256("account:Position")[..8]).
 pub const POSITION_DISCRIMINATOR_LEN: usize = 8;
@@ -53,6 +54,7 @@ pub const POSITION_USER_LEN: usize = 32;
 pub const POSITION_MARKET_LEN: usize = 32;
 pub const POSITION_YES_SHARES_LEN: usize = 16;
 pub const POSITION_NO_SHARES_LEN: usize = 16;
+pub const POSITION_LOCKED_COST_USDC_LEN: usize = 8;
 pub const POSITION_LOCK_NONCE_LEN: usize = 8;
 pub const POSITION_BUMP_LEN: usize = 1;
 
@@ -64,8 +66,12 @@ pub const POSITION_MARKET_OFFSET: usize = POSITION_USER_OFFSET + POSITION_USER_L
 pub const POSITION_YES_SHARES_OFFSET: usize = POSITION_MARKET_OFFSET + POSITION_MARKET_LEN;
 /// Offset of `Position::no_shares`.
 pub const POSITION_NO_SHARES_OFFSET: usize = POSITION_YES_SHARES_OFFSET + POSITION_YES_SHARES_LEN;
+/// Offset of `Position::locked_cost_usdc`.
+pub const POSITION_LOCKED_COST_USDC_OFFSET: usize =
+    POSITION_NO_SHARES_OFFSET + POSITION_NO_SHARES_LEN;
 /// Offset of `Position::lock_nonce`.
-pub const POSITION_LOCK_NONCE_OFFSET: usize = POSITION_NO_SHARES_OFFSET + POSITION_NO_SHARES_LEN;
+pub const POSITION_LOCK_NONCE_OFFSET: usize =
+    POSITION_LOCKED_COST_USDC_OFFSET + POSITION_LOCKED_COST_USDC_LEN;
 /// Offset of `Position::bump`.
 pub const POSITION_BUMP_OFFSET: usize = POSITION_LOCK_NONCE_OFFSET + POSITION_LOCK_NONCE_LEN;
 
@@ -98,12 +104,10 @@ pub const LOCK_ENTRY_BUMP_LEN: usize = 1;
 
 pub const LOCK_ENTRY_USER_OFFSET: usize = LOCK_ENTRY_DISCRIMINATOR_LEN;
 pub const LOCK_ENTRY_MARKET_OFFSET: usize = LOCK_ENTRY_USER_OFFSET + LOCK_ENTRY_USER_LEN;
-pub const LOCK_ENTRY_AMOUNT_USDC_OFFSET: usize =
-    LOCK_ENTRY_MARKET_OFFSET + LOCK_ENTRY_MARKET_LEN;
+pub const LOCK_ENTRY_AMOUNT_USDC_OFFSET: usize = LOCK_ENTRY_MARKET_OFFSET + LOCK_ENTRY_MARKET_LEN;
 pub const LOCK_ENTRY_UNLOCK_AT_OFFSET: usize =
     LOCK_ENTRY_AMOUNT_USDC_OFFSET + LOCK_ENTRY_AMOUNT_USDC_LEN;
-pub const LOCK_ENTRY_NONCE_OFFSET: usize =
-    LOCK_ENTRY_UNLOCK_AT_OFFSET + LOCK_ENTRY_UNLOCK_AT_LEN;
+pub const LOCK_ENTRY_NONCE_OFFSET: usize = LOCK_ENTRY_UNLOCK_AT_OFFSET + LOCK_ENTRY_UNLOCK_AT_LEN;
 pub const LOCK_ENTRY_BUMP_OFFSET: usize = LOCK_ENTRY_NONCE_OFFSET + LOCK_ENTRY_NONCE_LEN;
 
 /// Total on-chain size of a `LockEntry` account (discriminator + payload).
@@ -166,8 +170,7 @@ pub const PROTOCOL_CONFIG_BUMP_OFFSET: usize =
 /// Total on-chain size of a `ProtocolConfig` account (discriminator + payload).
 /// Must equal `sooth_launchpad::state::ProtocolConfig::SPACE`. Asserted in
 /// `sooth_launchpad/src/state/protocol_config.rs`.
-pub const PROTOCOL_CONFIG_TOTAL_LEN: usize =
-    PROTOCOL_CONFIG_BUMP_OFFSET + PROTOCOL_CONFIG_BUMP_LEN;
+pub const PROTOCOL_CONFIG_TOTAL_LEN: usize = PROTOCOL_CONFIG_BUMP_OFFSET + PROTOCOL_CONFIG_BUMP_LEN;
 
 // ── Internal sanity checks ───────────────────────────────────────────────
 //
@@ -182,9 +185,10 @@ const _: () = assert!(POSITION_USER_OFFSET == 8);
 const _: () = assert!(POSITION_MARKET_OFFSET == 40);
 const _: () = assert!(POSITION_YES_SHARES_OFFSET == 72);
 const _: () = assert!(POSITION_NO_SHARES_OFFSET == 88);
-const _: () = assert!(POSITION_LOCK_NONCE_OFFSET == 104);
-const _: () = assert!(POSITION_BUMP_OFFSET == 112);
-const _: () = assert!(POSITION_TOTAL_LEN == 113);
+const _: () = assert!(POSITION_LOCKED_COST_USDC_OFFSET == 104);
+const _: () = assert!(POSITION_LOCK_NONCE_OFFSET == 112);
+const _: () = assert!(POSITION_BUMP_OFFSET == 120);
+const _: () = assert!(POSITION_TOTAL_LEN == 121);
 
 const _: () = assert!(LOCK_ENTRY_USER_OFFSET == 8);
 const _: () = assert!(LOCK_ENTRY_MARKET_OFFSET == 40);

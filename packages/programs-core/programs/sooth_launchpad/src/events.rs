@@ -76,3 +76,10 @@ pub struct LpSeeded {
     pub seed_deposit_wad: u128,
     pub ts: i64,
 }
+
+#[event]
+pub struct LpRedeemed {
+    pub user: Pubkey,
+    pub lp_burned: u64,
+    pub usdc_paid: u64,
+}

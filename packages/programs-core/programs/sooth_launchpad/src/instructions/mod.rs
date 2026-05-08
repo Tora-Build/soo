@@ -15,6 +15,7 @@ pub mod distribute_fees;
 pub mod initialize_fee_pool;
 pub mod initialize_protocol;
 pub mod mint_lp_for_buy;
+pub mod redeem_lp;
 pub mod seed_lp;
 
 pub use create_market::*;
@@ -22,4 +23,5 @@ pub use distribute_fees::*;
 pub use initialize_fee_pool::*;
 pub use initialize_protocol::*;
 pub use mint_lp_for_buy::*;
+pub use redeem_lp::*;
 pub use seed_lp::*;

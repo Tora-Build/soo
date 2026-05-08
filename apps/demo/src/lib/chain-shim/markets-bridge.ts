@@ -5,18 +5,8 @@
 //
 //   1. `getGraduationProgress(market)` — `FeeRouter.getGraduationProgress`
 //      returns `(feesAccrued, threshold, progressBps)` upstream. The Solana
-//      AMM has no separate FeeRouter contract or per-market fee accumulator
-//      surfaced through `MarketInfo` yet; this bridge synthesizes a sensible
-//      progress from `AmmState.q_yes/q_no/b`. The mapping:
-//
-//        threshold = b · ln(2)         (the LMSR max-loss anchor, in WAD)
-//        progressBps = clamp(10000 · (qYes + qNo) / b, 0..9_999)
-//        feesAccrued = 0n              (no on-chain accumulator exposed)
-//
-//      `progressBps` is capped at 9_999 (99.99%) so upstream never trips the
-//      `progressBps >= 10000` "isEffectiveGraduated" branch from a bridged
-//      read alone — graduation comes from the actual `AmmState.is_graduated`
-//      flag, exposed through `isGraduated`.
+//      adapter now reads the same values from `AmmState.fee_b_base_wad`,
+//      `AmmState.b`, and `AmmState.is_graduated`.
 //
 //   2. `totalSupply()` — LP token total supply. Upstream reads this from
 //      a per-market lpToken contract; the Solana fork doesn't deploy one.
@@ -65,20 +55,12 @@ export async function dispatchMarketsRead(
       const marketRef = pickMarketRefFromArgs(call, ctx);
       if (!marketRef) return [0n, 0n, 0n] as const;
       try {
-        const snap = await ctx.adapter.readSnapshot(marketRef);
-        const { qYes, qNo, b } = snap.market;
-        if (b <= 0n) return [0n, 0n, 0n] as const;
-        // Synthetic threshold = `b · ln(2)` in WAD. Upstream consumers
-        // (`useLaunchpadMarketDirect`, `useAMMQuoteDirect`) only divide /
-        // compare against this value — the absolute scale is irrelevant.
-        const thresholdWad = (b * LN2_WAD) / WAD;
-        // Activity proxy: total absolute shares scaled against `b`. A
-        // freshly seeded market has qYes = qNo = 0 → 0 progress.
-        const totalShares = absSum(qYes, qNo);
-        // Floor at 1 to avoid divide-by-zero further downstream; cap at 9999.
-        let progressBps = b > 0n ? (10_000n * totalShares) / b : 0n;
-        if (progressBps > 9_999n) progressBps = 9_999n;
-        return [0n, thresholdWad, progressBps] as const;
+        const p = await ctx.adapter.readGraduationProgress(marketRef);
+        return [
+          p.feesAccumulatedWad,
+          p.thresholdWad,
+          BigInt(p.progressBps),
+        ] as const;
       } catch {
         return [0n, 0n, 0n] as const;
       }
@@ -136,11 +118,4 @@ function pickMarketRefFromArgs(
     return ctx.knownMarkets.includes(v) ? v : undefined;
   }
   return undefined;
-}
-
-/** Sum of absolute values — guards qYes/qNo treating them as non-negative. */
-function absSum(a: bigint, b: bigint): bigint {
-  const aa = a < 0n ? -a : a;
-  const bb = b < 0n ? -b : b;
-  return aa + bb;
 }

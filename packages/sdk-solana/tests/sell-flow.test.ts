@@ -127,9 +127,10 @@ describe("AMM sell flow", () => {
     );
     const positionAcc = await conn.getAccountInfo(positionPda);
     expect(positionAcc).not.toBeNull();
-    // Position layout: 8 disc + 32 user + 32 market + 16 yes + 16 no + 8 lock_nonce + 1 bump
-    // lock_nonce starts at offset 8 + 32 + 32 + 16 + 16 = 104.
-    const lockNonceFromAcc = positionAcc!.data.readBigUInt64LE(104);
+    // Position layout: 8 disc + 32 user + 32 market + 16 yes + 16 no
+    // + 8 locked_cost_usdc + 8 lock_nonce + 1 bump.
+    // lock_nonce starts at offset 8 + 32 + 32 + 16 + 16 + 8 = 112.
+    const lockNonceFromAcc = positionAcc!.data.readBigUInt64LE(112);
     expect(lockNonceFromAcc).toBe(1n);
 
     // ─── 4. LockEntry PDA exists with correct fields ────────────────────

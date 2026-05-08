@@ -79,6 +79,7 @@ export interface MarketInfo {
 export interface Position {
   yesShares: bigint;
   noShares: bigint;
+  lockedCostUsdc?: bigint;
   lockedYes?: bigint;
   lockedNo?: bigint;
   unlockableAt?: bigint;

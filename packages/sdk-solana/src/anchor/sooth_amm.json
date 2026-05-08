@@ -15,7 +15,16 @@
         "market creator after `sooth_market::initialize_market_vaults`. See",
         "`instructions/initialize_amm_state.rs`."
       ],
-      "discriminator": [107, 21, 178, 73, 206, 85, 154, 116],
+      "discriminator": [
+        107,
+        21,
+        178,
+        73,
+        206,
+        85,
+        154,
+        116
+      ],
       "accounts": [
         {
           "name": "market",
@@ -27,7 +36,14 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [109, 97, 114, 107, 101, 116]
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
               },
               {
                 "kind": "account",
@@ -38,9 +54,38 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -56,7 +101,11 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [97, 109, 109]
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
               },
               {
                 "kind": "account",
@@ -101,7 +150,16 @@
         "(signed in WAD) is `C(q + Δ) - C(q)` with `C(q_yes, q_no, b) = b · ln(",
         "exp(q_yes/b) + exp(q_no/b))`. See architecture §4.2 / §4.3."
       ],
-      "discriminator": [14, 33, 158, 91, 88, 26, 89, 136],
+      "discriminator": [
+        14,
+        33,
+        158,
+        91,
+        88,
+        26,
+        89,
+        136
+      ],
       "accounts": [
         {
           "name": "market",
@@ -117,7 +175,14 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [109, 97, 114, 107, 101, 116]
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
               },
               {
                 "kind": "account",
@@ -128,22 +193,57 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
         },
         {
           "name": "amm_state",
-          "docs": ["Per-market AMM cursor. Seeds match architecture §2.2."],
+          "docs": [
+            "Per-market AMM cursor. Seeds match architecture §2.2."
+          ],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [97, 109, 109]
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
               },
               {
                 "kind": "account",
@@ -165,7 +265,11 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [112, 111, 115]
+                "value": [
+                  112,
+                  111,
+                  115
+                ]
               },
               {
                 "kind": "account",
@@ -192,7 +296,13 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [118, 97, 117, 108, 116]
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
               },
               {
                 "kind": "account",
@@ -203,16 +313,47 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
         },
         {
           "name": "user_usdc_ata",
-          "docs": ["User's USDC ATA — debited on buy, credited on sell."],
+          "docs": [
+            "User's USDC ATA — debited on buy, credited on sell."
+          ],
           "writable": true
         },
         {
@@ -248,17 +389,59 @@
               {
                 "kind": "const",
                 "value": [
-                  112, 114, 111, 116, 111, 99, 111, 108, 95, 99, 111, 110, 102,
-                  105, 103
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
                 ]
               }
             ],
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 31, 32, 77, 169, 227, 195, 204, 215, 210, 122,
-                162, 174, 55, 22, 50, 83, 39, 70, 154, 164, 120, 50, 9, 192, 0,
-                0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                31,
+                32,
+                77,
+                169,
+                227,
+                195,
+                204,
+                215,
+                210,
+                122,
+                162,
+                174,
+                55,
+                22,
+                50,
+                83,
+                39,
+                70,
+                154,
+                164,
+                120,
+                50,
+                9,
+                192,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -286,7 +469,10 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [108, 112]
+                "value": [
+                  108,
+                  112
+                ]
               },
               {
                 "kind": "account",
@@ -297,9 +483,38 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 31, 32, 77, 169, 227, 195, 204, 215, 210, 122,
-                162, 174, 55, 22, 50, 83, 39, 70, 154, 164, 120, 50, 9, 192, 0,
-                0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                31,
+                32,
+                77,
+                169,
+                227,
+                195,
+                204,
+                215,
+                210,
+                122,
+                162,
+                174,
+                55,
+                22,
+                50,
+                83,
+                39,
+                70,
+                154,
+                164,
+                120,
+                50,
+                9,
+                192,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -315,8 +530,23 @@
               {
                 "kind": "const",
                 "value": [
-                  108, 112, 95, 109, 105, 110, 116, 95, 97, 117, 116, 104, 111,
-                  114, 105, 116, 121
+                  108,
+                  112,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
                 ]
               },
               {
@@ -328,9 +558,38 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 31, 32, 77, 169, 227, 195, 204, 215, 210, 122,
-                162, 174, 55, 22, 50, 83, 39, 70, 154, 164, 120, 50, 9, 192, 0,
-                0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                31,
+                32,
+                77,
+                169,
+                227,
+                195,
+                204,
+                215,
+                210,
+                122,
+                162,
+                174,
+                55,
+                22,
+                50,
+                83,
+                39,
+                70,
+                154,
+                164,
+                120,
+                50,
+                9,
+                192,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -410,7 +669,16 @@
         "See the \"Buy vs sell split\" comment in `trade_positions.rs` for why",
         "this is a separate ix from `trade_positions`."
       ],
-      "discriminator": [3, 151, 9, 138, 95, 252, 50, 39],
+      "discriminator": [
+        3,
+        151,
+        9,
+        138,
+        95,
+        252,
+        50,
+        39
+      ],
       "accounts": [
         {
           "name": "market",
@@ -421,7 +689,14 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [109, 97, 114, 107, 101, 116]
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
               },
               {
                 "kind": "account",
@@ -432,9 +707,38 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -446,7 +750,11 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [97, 109, 109]
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
               },
               {
                 "kind": "account",
@@ -467,7 +775,11 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [112, 111, 115]
+                "value": [
+                  112,
+                  111,
+                  115
+                ]
               },
               {
                 "kind": "account",
@@ -491,7 +803,13 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [118, 97, 117, 108, 116]
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
               },
               {
                 "kind": "account",
@@ -502,9 +820,38 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -519,7 +866,12 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [108, 111, 99, 107]
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
               },
               {
                 "kind": "account",
@@ -530,21 +882,54 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
         },
         {
           "name": "market_vault",
-          "docs": ["Market USDC vault — debited (USDC → lock_vault)."],
+          "docs": [
+            "Market USDC vault — debited (USDC → lock_vault)."
+          ],
           "writable": true
         },
         {
           "name": "lock_vault",
-          "docs": ["AMM lock-on-sell escrow vault — credited."],
+          "docs": [
+            "AMM lock-on-sell escrow vault — credited."
+          ],
           "writable": true
         },
         {
@@ -557,7 +942,18 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [108, 111, 99, 107, 95, 101, 110, 116, 114, 121]
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  95,
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
               },
               {
                 "kind": "account",
@@ -632,7 +1028,16 @@
         "Closes the `LockEntry` account and refunds rent to the user.",
         "Architecture §4.3; mirrors EVM `AMMEngine.claimUnlocked`."
       ],
-      "discriminator": [70, 139, 1, 246, 166, 193, 64, 143],
+      "discriminator": [
+        70,
+        139,
+        1,
+        246,
+        166,
+        193,
+        64,
+        143
+      ],
       "accounts": [
         {
           "name": "market",
@@ -640,7 +1045,14 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [109, 97, 114, 107, 101, 116]
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
               },
               {
                 "kind": "account",
@@ -651,9 +1063,38 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -664,7 +1105,11 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [112, 111, 115]
+                "value": [
+                  112,
+                  111,
+                  115
+                ]
               },
               {
                 "kind": "account",
@@ -685,7 +1130,18 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [108, 111, 99, 107, 95, 101, 110, 116, 114, 121]
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  95,
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
               },
               {
                 "kind": "account",
@@ -705,7 +1161,12 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [108, 111, 99, 107]
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
               },
               {
                 "kind": "account",
@@ -716,9 +1177,38 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -764,42 +1254,208 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "close_dismissed_position",
+      "docs": [
+        "Close an AMM Position after sooth_market::claim_refund has transferred the tracked locked cost back to the user."
+      ],
+      "discriminator": [
+        247,
+        68,
+        107,
+        180,
+        228,
+        202,
+        14,
+        5
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "amm_state"
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "instruction_sysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "dismiss_market",
+      "docs": [
+        "Creator flips AmmState.is_dismissed after the trial window closes without graduation."
+      ],
+      "discriminator": [
+        138,
+        225,
+        164,
+        155,
+        53,
+        68,
+        6,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "market"
+        },
+        {
+          "name": "amm_state",
+          "writable": true
+        },
+        {
+          "name": "creator",
+          "signer": true
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
     {
       "name": "AmmState",
-      "discriminator": [66, 127, 244, 168, 102, 12, 95, 2]
+      "discriminator": [
+        66,
+        127,
+        244,
+        168,
+        102,
+        12,
+        95,
+        2
+      ]
     },
     {
       "name": "Market",
-      "discriminator": [219, 190, 213, 55, 0, 227, 198, 154]
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
     },
     {
       "name": "Position",
-      "discriminator": [170, 188, 143, 228, 122, 64, 247, 208]
+      "discriminator": [
+        170,
+        188,
+        143,
+        228,
+        122,
+        64,
+        247,
+        208
+      ]
     },
     {
       "name": "LockEntry",
-      "discriminator": [16, 231, 37, 238, 93, 97, 205, 107]
+      "discriminator": [
+        16,
+        231,
+        37,
+        238,
+        93,
+        97,
+        205,
+        107
+      ]
     }
   ],
   "events": [
     {
       "name": "LiquidityProvided",
-      "discriminator": [94, 97, 39, 34, 15, 96, 79, 135]
+      "discriminator": [
+        94,
+        97,
+        39,
+        34,
+        15,
+        96,
+        79,
+        135
+      ]
     },
     {
       "name": "PositionTraded",
-      "discriminator": [47, 104, 4, 110, 61, 85, 215, 178]
+      "discriminator": [
+        47,
+        104,
+        4,
+        110,
+        61,
+        85,
+        215,
+        178
+      ]
     },
     {
       "name": "PositionSold",
-      "discriminator": [117, 122, 235, 232, 80, 15, 94, 179]
+      "discriminator": [
+        117,
+        122,
+        235,
+        232,
+        80,
+        15,
+        94,
+        179
+      ]
     },
     {
       "name": "LockClaimed",
-      "discriminator": [226, 164, 109, 42, 115, 151, 115, 59]
+      "discriminator": [
+        226,
+        164,
+        109,
+        42,
+        115,
+        151,
+        115,
+        59
+      ]
+    },
+    {
+      "name": "MarketGraduated",
+      "discriminator": [
+        66,
+        242,
+        94,
+        146,
+        88,
+        76,
+        225,
+        23
+      ]
+    },
+    {
+      "name": "MarketDismissed",
+      "discriminator": [
+        38,
+        151,
+        70,
+        216,
+        174,
+        16,
+        118,
+        150
+      ]
     }
   ],
   "errors": [
@@ -872,6 +1528,36 @@
       "code": 6013,
       "name": "LockVaultMismatch",
       "msg": "Lock vault account does not match market.lock_vault"
+    },
+    {
+      "code": 6014,
+      "name": "TrialNotExpired",
+      "msg": "Trial period has not expired yet"
+    },
+    {
+      "code": 6015,
+      "name": "AlreadyGraduated",
+      "msg": "Market has already graduated"
+    },
+    {
+      "code": 6016,
+      "name": "AlreadyDismissed",
+      "msg": "Market has already been dismissed"
+    },
+    {
+      "code": 6017,
+      "name": "AmmStateMarketMismatch",
+      "msg": "AmmState market backlink does not match market account"
+    },
+    {
+      "code": 6018,
+      "name": "MarketNotDismissed",
+      "msg": "Market is not dismissed"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidParentInstruction",
+      "msg": "Helper ix must be CPId from sooth_market::claim_refund"
     }
   ],
   "types": [
@@ -897,12 +1583,16 @@
           },
           {
             "name": "q_no",
-            "docs": ["Outstanding NO shares in WAD."],
+            "docs": [
+              "Outstanding NO shares in WAD."
+            ],
             "type": "i128"
           },
           {
             "name": "b",
-            "docs": ["LMSR liquidity parameter in WAD. > 0 by invariant."],
+            "docs": [
+              "LMSR liquidity parameter in WAD. > 0 by invariant."
+            ],
             "type": "i128"
           },
           {
@@ -1009,7 +1699,10 @@
               "PDA in the protocol — see module comment."
             ],
             "type": {
-              "array": ["u8", 16]
+              "array": [
+                "u8",
+                16
+              ]
             }
           },
           {
@@ -1027,7 +1720,10 @@
           {
             "name": "question_hash",
             "type": {
-              "array": ["u8", 32]
+              "array": [
+                "u8",
+                32
+              ]
             }
           },
           {
@@ -1078,27 +1774,37 @@
           },
           {
             "name": "bump",
-            "docs": ["Bump for the `Market` PDA itself."],
+            "docs": [
+              "Bump for the `Market` PDA itself."
+            ],
             "type": "u8"
           },
           {
             "name": "vault_authority_bump",
-            "docs": ["Bump for the `vault_authority` signer PDA."],
+            "docs": [
+              "Bump for the `vault_authority` signer PDA."
+            ],
             "type": "u8"
           },
           {
             "name": "lock_authority_bump",
-            "docs": ["Bump for the `lock_authority` signer PDA."],
+            "docs": [
+              "Bump for the `lock_authority` signer PDA."
+            ],
             "type": "u8"
           },
           {
             "name": "yes_mint_bump",
-            "docs": ["Bump for `yes_mint` PDA."],
+            "docs": [
+              "Bump for `yes_mint` PDA."
+            ],
             "type": "u8"
           },
           {
             "name": "no_mint_bump",
-            "docs": ["Bump for `no_mint` PDA."],
+            "docs": [
+              "Bump for `no_mint` PDA."
+            ],
             "type": "u8"
           }
         ]
@@ -1139,13 +1845,24 @@
           },
           {
             "name": "yes_shares",
-            "docs": ["Outstanding YES shares the user holds, WAD. Always ≥ 0."],
+            "docs": [
+              "Outstanding YES shares the user holds, WAD. Always ≥ 0."
+            ],
             "type": "i128"
           },
           {
             "name": "no_shares",
-            "docs": ["Outstanding NO shares the user holds, WAD. Always ≥ 0."],
+            "docs": [
+              "Outstanding NO shares the user holds, WAD. Always ≥ 0."
+            ],
             "type": "i128"
+          },
+          {
+            "name": "locked_cost_usdc",
+            "docs": [
+              "Sum-invariant: market_vault.amount == sum(Position.locked_cost_usdc) across all open positions for this market."
+            ],
+            "type": "u64"
           },
           {
             "name": "lock_nonce",
@@ -1196,7 +1913,9 @@
           },
           {
             "name": "nonce",
-            "docs": ["Per-`Position` monotonic nonce — part of the seed."],
+            "docs": [
+              "Per-`Position` monotonic nonce — part of the seed."
+            ],
             "type": "u64"
           },
           {
@@ -1248,7 +1967,9 @@
     },
     {
       "name": "LockClaimed",
-      "docs": ["Emitted by `claim_unlocked` after a successful payout."],
+      "docs": [
+        "Emitted by `claim_unlocked` after a successful payout."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -1311,7 +2032,49 @@
           },
           {
             "name": "ts",
-            "docs": ["Unix timestamp from `Clock`."],
+            "docs": [
+              "Unix timestamp from `Clock`."
+            ],
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketGraduated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "fees_accumulated_wad",
+            "type": "u128"
+          },
+          {
+            "name": "threshold_wad",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketDismissed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "dismissed_at",
             "type": "i64"
           }
         ]

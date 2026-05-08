@@ -21,6 +21,20 @@ pub struct PositionTraded {
     pub ts: i64,
 }
 
+#[event]
+pub struct MarketGraduated {
+    pub market: Pubkey,
+    pub fees_accumulated_wad: u128,
+    pub threshold_wad: u128,
+}
+
+#[event]
+pub struct MarketDismissed {
+    pub market: Pubkey,
+    pub creator: Pubkey,
+    pub dismissed_at: i64,
+}
+
 // Stubbed for now — referenced from the architecture spec but not wired in
 // this scaffold. See architecture §8 (fee router).
 #[event]

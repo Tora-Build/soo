@@ -270,11 +270,8 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
     // handler re-asserts `initial_b > 0` and `initial_b ≤ i128::MAX`
     // (M1 in security review), so we don't pre-validate here.
     let now = Clock::get()?.unix_timestamp;
-    let trial_end_at = compute_trial_end_at(
-        now,
-        args.deadline,
-        ctx.accounts.config.default_trial_period,
-    );
+    let trial_end_at =
+        compute_trial_end_at(now, args.deadline, ctx.accounts.config.default_trial_period);
     {
         let cpi_accounts = sooth_amm::cpi::accounts::InitializeAmmState {
             market: ctx.accounts.market.to_account_info(),

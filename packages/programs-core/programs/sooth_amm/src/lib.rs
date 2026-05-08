@@ -123,4 +123,15 @@ pub mod sooth_amm {
     pub fn claim_unlocked(ctx: Context<ClaimUnlocked>) -> Result<()> {
         instructions::claim_unlocked::handler(ctx)
     }
+
+    /// Close an AMM Position after `sooth_market::claim_refund` has transferred
+    /// the tracked locked cost back to the user. Rejects direct calls via
+    /// parent-ix introspection.
+    pub fn close_dismissed_position(ctx: Context<CloseDismissedPosition>) -> Result<()> {
+        instructions::close_dismissed_position::handler(ctx)
+    }
+
+    pub fn dismiss_market(ctx: Context<DismissMarket>) -> Result<()> {
+        instructions::dismiss_market::handler(ctx)
+    }
 }

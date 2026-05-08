@@ -227,8 +227,7 @@ pub fn handler(ctx: Context<SeedLp>, args: SeedLpArgs) -> Result<()> {
             mint_space as u64,
             &token::ID,
         );
-        let signer_seeds: &[&[&[u8]]] =
-            &[&[b"lp", market_id.as_ref(), &[lp_mint_bump]]];
+        let signer_seeds: &[&[&[u8]]] = &[&[b"lp", market_id.as_ref(), &[lp_mint_bump]]];
         invoke_signed(
             &create_ix,
             &[

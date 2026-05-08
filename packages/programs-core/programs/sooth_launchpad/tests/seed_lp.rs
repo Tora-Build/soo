@@ -22,7 +22,7 @@ use sooth_launchpad::state::LpPosition;
 #[test]
 fn seed_lp_args_borsh_roundtrip_preserves_field_order() {
     let args = SeedLpArgs {
-        lp_amount: 1_000_000,         // 1.0 LP at 6-decimal mint
+        lp_amount: 1_000_000,                         // 1.0 LP at 6-decimal mint
         seed_deposit_wad: 10_000_000_000_000_000_000, // 10 WAD (≈ MIN_DEPOSIT)
     };
     let bytes = AnchorSerialize::try_to_vec(&args).expect("serialize");
@@ -92,8 +92,7 @@ fn lp_position_borsh_roundtrip_after_manual_init() {
     // any subsequent `Account<'info, LpPosition>` resolution will do
     // under the hood.
     assert_eq!(&buf[..8], &LpPosition::DISCRIMINATOR);
-    let decoded =
-        LpPosition::try_from_slice(&buf[8..LpPosition::SPACE]).expect("deserialize");
+    let decoded = LpPosition::try_from_slice(&buf[8..LpPosition::SPACE]).expect("deserialize");
     assert_eq!(decoded.market, position.market);
     assert_eq!(decoded.creator, position.creator);
     assert_eq!(decoded.lp_mint, position.lp_mint);
@@ -143,9 +142,9 @@ fn lp_mint_authority_seed_string_is_stable() {
     // on the placeholder program ID which is expected to rotate at
     // devnet deploy.)
     let market_id = [0u8; 16];
-    let placeholder_program_id = anchor_lang::pubkey!("HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3");
-    let (_, bump) =
-        Pubkey::find_program_address(&[SEED, &market_id], &placeholder_program_id);
+    let placeholder_program_id =
+        anchor_lang::pubkey!("HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3");
+    let (_, bump) = Pubkey::find_program_address(&[SEED, &market_id], &placeholder_program_id);
     let _ = bump; // bump is u8 by type, so range is automatic.
 }
 
@@ -156,9 +155,9 @@ fn lp_mint_seed_string_is_stable() {
     const SEED: &[u8] = b"lp";
     assert_eq!(SEED.len(), 2);
     let market_id = [0u8; 16];
-    let placeholder_program_id = anchor_lang::pubkey!("HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3");
-    let (_, _bump) =
-        Pubkey::find_program_address(&[SEED, &market_id], &placeholder_program_id);
+    let placeholder_program_id =
+        anchor_lang::pubkey!("HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3");
+    let (_, _bump) = Pubkey::find_program_address(&[SEED, &market_id], &placeholder_program_id);
 }
 
 /// PDA seeds for the per-(creator, market) `LpPosition` are
@@ -170,7 +169,8 @@ fn lp_position_seed_string_is_stable() {
     assert_eq!(SEED.len(), 11);
     let market_id = [0u8; 16];
     let creator = Pubkey::new_unique();
-    let placeholder_program_id = anchor_lang::pubkey!("HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3");
+    let placeholder_program_id =
+        anchor_lang::pubkey!("HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3");
     let (_, _bump) = Pubkey::find_program_address(
         &[SEED, &market_id, creator.as_ref()],
         &placeholder_program_id,

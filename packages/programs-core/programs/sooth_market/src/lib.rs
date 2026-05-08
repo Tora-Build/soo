@@ -96,10 +96,7 @@ pub mod sooth_market {
 
     /// Remove a pubkey from the adjudicator allowlist (gated on
     /// `allowlist.authority`). See `instructions/remove_adjudicator.rs`.
-    pub fn remove_adjudicator(
-        ctx: Context<RemoveAdjudicator>,
-        adjudicator: Pubkey,
-    ) -> Result<()> {
+    pub fn remove_adjudicator(ctx: Context<RemoveAdjudicator>, adjudicator: Pubkey) -> Result<()> {
         instructions::remove_adjudicator::handler(ctx, adjudicator)
     }
 
@@ -163,6 +160,12 @@ pub mod sooth_market {
     /// 0.5 for both on INVALID).
     pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
         instructions::redeem::handler(ctx)
+    }
+
+    /// Refund an AMM Position on a dismissed market, then close the Position
+    /// via `sooth_amm::close_dismissed_position`.
+    pub fn claim_refund(ctx: Context<ClaimRefund>) -> Result<()> {
+        instructions::claim_refund::handler(ctx)
     }
 
     /// PDA-signed transfer `vault → lock_vault`. Helper for

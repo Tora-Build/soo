@@ -2,7 +2,7 @@
 
 > Solana adapter for `@sooth/sdk` — workspace member of the `sooth-solana` monorepo.
 > Published to npm as `@sooth/sdk-solana`. Loaded dynamically by `@sooth/sdk` (in `sooth-alpha`) when the active node is a Solana node.
-> Status: AMM (buy / sell / claim), complete-set (mint / merge / redeem), operator (request_lock / attest_outcome), `create_market`, and `preflight` (simulate-before-sign) all wired end-to-end. 44-spec vitest suite green on `litesvm` covering smoke / sell / claim / complete-set / redeem-request / operator-request / create-market / submit-failure / preflight / per-program error-classifier / LMSR. Orderbook (`buildOrderbook*`) still throws `NotImplemented` — gated on `sooth_book` (spike P1).
+> Status: AMM (buy / sell / claim / dismiss / refund), complete-set (mint / merge / redeem), LP redemption, operator (request_lock / attest_outcome), `create_market`, `readGraduationProgress`, and `preflight` (simulate-before-sign) all wired end-to-end. 49-spec vitest suite green on `litesvm` covering smoke / sell / claim / refund / LP redemption / graduation-progress / complete-set / redeem-request / operator-request / create-market / submit-failure / preflight / per-program error-classifier / LMSR. Orderbook (`buildOrderbook*`) still throws `NotImplemented` — gated on `sooth_book` (spike P1).
 
 ## What this is
 
@@ -27,7 +27,7 @@ The integrator contract is **canonical** — it freezes the public API. The impl
 
 ## Status
 
-**Four programs fully wired.** `SolanaChainAdapter` covers the AMM, complete-set, operator-attestation, and launchpad flows end-to-end (read state, build tx, sign+submit, read back). A 44-spec vitest suite runs against `litesvm` in ~5s.
+**Four programs fully wired.** `SolanaChainAdapter` covers the AMM, complete-set, operator-attestation, and launchpad flows end-to-end (read state, build tx, sign+submit, read back). A 49-spec vitest suite runs against `litesvm` in ~5s.
 
 What's real today:
 
@@ -35,6 +35,7 @@ What's real today:
 - `readSnapshots(markets[])` — batched `readSnapshot` for portfolio paths
 - `readQuote(market, outcome, deltaShares)` — off-chain LMSR cost (TS port mirrors `_spikes/lmsr-cu`)
 - `readPosition(market, user)`
+- `readGraduationProgress(market)` — `AmmState.fee_b_base_wad` vs `b * ln(2)` graduation threshold
 - `readAdjudicator(market)` — `Adjudicator` PDA fetch (authority + flags) for operator-console gating
 - `readPendingUnlocks(market, user)` — enumerate matured `LockEntry` PDAs to drive the claim panel
 - `buildTrade(market, args)` for `side: "buy"`
@@ -42,6 +43,9 @@ What's real today:
 - `buildClaim(market, args)` — dispatches on `args.kind`:
   - `"unlock"` (default): `sooth_amm::claim_unlocked` against a matured `LockEntry`
   - `"redeem"`: `sooth_market::redeem` against the resolved outcome (post-settlement)
+- `buildClaimRefund(market, args)` — `sooth_market::claim_refund` for dismissed-market AMM Position refunds
+- `buildDismissMarket(market, args)` — `sooth_amm::dismiss_market` creator-only dismissal after trial expiry
+- `buildRedeemLp(market, args)` — `sooth_launchpad::redeem_lp` post-graduation LP burn for pro-rata USDC yield
 - `buildMintCompleteSet(market, args)` / `buildMergeCompleteSet(market, args)` — `sooth_market::mint_complete_set` / `merge_complete_set` for 1 USDC ↔ (1 YES + 1 NO) round-trips
 - `buildRequestLock(market, args)` / `buildAttestOutcome(market, args)` — `sooth_adjudicator::request_lock` / `attest_outcome` (operator path; signer must be `Adjudicator.authority`)
 - `buildCreateMarket(args)` — `sooth_launchpad::create_market` composes the four-leg init flow via CPI
@@ -137,7 +141,8 @@ const receipt = await adapter.submit(req, {
 console.log("submitted in", receipt.attempts, "attempts");
 ```
 
-`buildSell`, `buildClaim`, `buildMintCompleteSet`, `buildMergeCompleteSet`,
+`buildSell`, `buildClaim`, `buildClaimRefund`, `buildDismissMarket`,
+`buildRedeemLp`, `buildMintCompleteSet`, `buildMergeCompleteSet`,
 `buildRequestLock`, `buildAttestOutcome`, and `buildCreateMarket` follow the
 same shape — only the `args` differ.
 
@@ -177,7 +182,7 @@ pnpm -F @sooth/sdk-solana test             # vitest (litesvm-backed)
 
 Tests boot `litesvm`, deploy all four Sooth programs from `target/deploy/`,
 hand-build the Market + AmmState + Adjudicator fixtures, and exercise the
-adapter methods against a fresh USDC mint. The 44-spec suite runs in ~5s on
+adapter methods against a fresh USDC mint. The 49-spec suite runs in ~5s on
 a developer laptop. See `tests/fixtures/setup.ts` for the fixture layer.
 
 > **Build-step gotcha:** the demo and any consumer ESM caller import from
@@ -204,11 +209,15 @@ packages/sdk-solana/                # workspace member of sooth-solana monorepo
 │   ├── errors.ts                   # SoothError taxonomy
 │   ├── types.ts                    # vendored ChainAdapter contract (replace at upstream Phase A)
 │   └── index.ts                    # public surface
-└── tests/                          # vitest suite (litesvm-backed); 44 specs across 11 files
+└── tests/                          # vitest suite (litesvm-backed); 49 specs across 15 files
     ├── smoke.test.ts               #   AMM buy round-trip
     ├── sell-flow.test.ts           #   sell_positions + LockEntry init
     ├── claim-flow.test.ts          #   claim_unlocked against matured LockEntry
+    ├── claim-refund-flow.test.ts   #   dismissed-market claim_refund
     ├── complete-set.test.ts        #   mint_complete_set + merge_complete_set
+    ├── dismiss-flow.test.ts        #   dismiss_market positive + pre-trial rejection
+    ├── read-graduation.test.ts     #   readGraduationProgress accumulator view
+    ├── redeem-lp-flow.test.ts      #   redeem_lp pro-rata yield payout
     ├── redeem-request.test.ts      #   buildClaim({kind:"redeem"}) request shape
     ├── operator-request.test.ts    #   request_lock + attest_outcome shapes
     ├── create-market.test.ts       #   launchpad four-leg CPI

@@ -165,4 +165,10 @@ pub mod sooth_launchpad {
     pub fn mint_lp_for_buy(ctx: Context<MintLpForBuy>, amount: u64) -> Result<()> {
         instructions::mint_lp_for_buy::handler(ctx, amount)
     }
+
+    /// Burn post-graduation LP tokens and pay the holder a pro-rata share of
+    /// the USDC yield vault based on the pre-burn LP mint supply.
+    pub fn redeem_lp(ctx: Context<RedeemLp>, lp_amount: u64) -> Result<()> {
+        instructions::redeem_lp::handler(ctx, lp_amount)
+    }
 }

@@ -82,10 +82,7 @@ pub fn handler(ctx: Context<InitializeProtocol>, args: InitializeProtocolArgs) -
         + (args.lp_yield_share_bps as u32)
         + (args.adjudicator_share_bps as u32)
         + (args.protocol_share_bps as u32);
-    require!(
-        split_total == 10_000,
-        SoothLaunchpadError::FeeSplitMismatch
-    );
+    require!(split_total == 10_000, SoothLaunchpadError::FeeSplitMismatch);
 
     let cfg = &mut ctx.accounts.config;
     cfg.authority = ctx.accounts.authority.key();

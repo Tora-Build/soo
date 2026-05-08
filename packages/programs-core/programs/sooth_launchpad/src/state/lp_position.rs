@@ -46,5 +46,5 @@ impl LpPosition {
         + 32                       // lp_mint
         + 16                       // seed_deposit_wad
         + 8                        // graduated_at
-        + 1;                       // bump
+        + 1; // bump
 }

@@ -4,7 +4,7 @@
     "name": "sooth_launchpad",
     "version": "0.0.0",
     "spec": "0.1.0",
-    "description": "Sooth Protocol launchpad program \u2014 market factory, fee router, LP mint (LaunchpadEngine + FeeRouter port)",
+    "description": "Sooth Protocol launchpad program — market factory, fee router, LP mint (LaunchpadEngine + FeeRouter port)",
     "repository": "https://github.com/Tora-Build/sooth-solana"
   },
   "instructions": [
@@ -12,28 +12,50 @@
       "name": "create_market",
       "docs": [
         "Create a tradeable market in one transaction by composing the four",
-        "init legs from `sooth_market` + `sooth_amm` via CPI. STUB \u2014 body is",
-        "`todo!()` until the CPI plumbing lands. Architecture \u00a74.1 has the",
+        "init legs from `sooth_market` + `sooth_amm` via CPI. STUB — body is",
+        "`todo!()` until the CPI plumbing lands. Architecture §4.1 has the",
         "full call chain; the Accounts struct below already mirrors the union",
         "of the four leg's account lists so the IDL-shape is committed."
       ],
-      "discriminator": [103, 226, 97, 235, 200, 188, 251, 254],
+      "discriminator": [
+        103,
+        226,
+        97,
+        235,
+        200,
+        188,
+        251,
+        254
+      ],
       "accounts": [
         {
           "name": "config",
           "docs": [
-            "Global protocol config. Read-only here \u2014 used to (a) enforce",
+            "Global protocol config. Read-only here — used to (a) enforce",
             "`creator == config.authority` if the cluster is in \"permissioned\"",
             "mode, and (b) source the `default_trial_period` when leg 4 computes",
-            "`trial_end_at`. Architecture \u00a79."
+            "`trial_end_at`. Architecture §9."
           ],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  112, 114, 111, 116, 111, 99, 111, 108, 95, 99, 111, 110, 102,
-                  105, 103
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
                 ]
               }
             ]
@@ -43,7 +65,7 @@
           "name": "market",
           "docs": [
             "New Market PDA. Owned by `sooth_market`; the CPI in leg 1 will `init`",
-            "it. UncheckedAccount here \u2014 the CPI handler does the real Anchor",
+            "it. UncheckedAccount here — the CPI handler does the real Anchor",
             "validation. CHECK: derived via seeds + initialized by inner program."
           ],
           "writable": true,
@@ -51,7 +73,14 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [109, 97, 114, 107, 101, 116]
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
               },
               {
                 "kind": "arg",
@@ -61,9 +90,38 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -82,29 +140,85 @@
               {
                 "kind": "const",
                 "value": [
-                  97, 100, 106, 117, 100, 105, 99, 97, 116, 111, 114, 95, 97,
-                  108, 108, 111, 119, 108, 105, 115, 116
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114,
+                  95,
+                  97,
+                  108,
+                  108,
+                  111,
+                  119,
+                  108,
+                  105,
+                  115,
+                  116
                 ]
               }
             ],
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
         },
         {
           "name": "vault_authority",
-          "docs": ["outcome mints. Inner CPI re-asserts."],
+          "docs": [
+            "outcome mints. Inner CPI re-asserts."
+          ],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [118, 97, 117, 108, 116]
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
               },
               {
                 "kind": "arg",
@@ -114,9 +228,38 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -128,7 +271,12 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [109, 105, 110, 116]
+                "value": [
+                  109,
+                  105,
+                  110,
+                  116
+                ]
               },
               {
                 "kind": "arg",
@@ -136,15 +284,46 @@
               },
               {
                 "kind": "const",
-                "value": [121]
+                "value": [
+                  121
+                ]
               }
             ],
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -156,7 +335,12 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [109, 105, 110, 116]
+                "value": [
+                  109,
+                  105,
+                  110,
+                  116
+                ]
               },
               {
                 "kind": "arg",
@@ -164,15 +348,46 @@
               },
               {
                 "kind": "const",
-                "value": [110]
+                "value": [
+                  110
+                ]
               }
             ],
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -183,7 +398,12 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [108, 111, 99, 107]
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
               },
               {
                 "kind": "arg",
@@ -193,9 +413,38 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -225,7 +474,11 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [97, 109, 109]
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
               },
               {
                 "kind": "arg",
@@ -235,9 +488,38 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 14, 80, 174, 15, 232, 73, 155, 165, 137, 247,
-                92, 83, 126, 181, 85, 153, 244, 121, 65, 25, 200, 22, 2, 128, 0,
-                0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                14,
+                80,
+                174,
+                15,
+                232,
+                73,
+                155,
+                165,
+                137,
+                247,
+                92,
+                83,
+                126,
+                181,
+                85,
+                153,
+                244,
+                121,
+                65,
+                25,
+                200,
+                22,
+                2,
+                128,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -292,12 +574,21 @@
       "docs": [
         "Drain the global fee_pool_vault USDC ATA and split the proceeds",
         "across the four destinations (bBase, LP yield, adjudicator, protocol",
-        "treasury) per architecture \u00a78. The 4-way bps split is read from",
+        "treasury) per architecture §8. The 4-way bps split is read from",
         "ProtocolConfig; floor div with remainder-to-protocol mirrors EVM",
         "_distributePostGrad. See programs/sooth_launchpad/src/instructions/",
         "distribute_fees.rs for the pool-then-distribute design rationale."
       ],
-      "discriminator": [120, 56, 27, 7, 53, 176, 113, 186],
+      "discriminator": [
+        120,
+        56,
+        27,
+        7,
+        53,
+        176,
+        113,
+        186
+      ],
       "accounts": [
         {
           "name": "config",
@@ -306,8 +597,21 @@
               {
                 "kind": "const",
                 "value": [
-                  112, 114, 111, 116, 111, 99, 111, 108, 95, 99, 111, 110, 102,
-                  105, 103
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
                 ]
               }
             ]
@@ -316,7 +620,7 @@
         {
           "name": "fee_pool_authority",
           "docs": [
-            "Signer-only PDA \u2014 authority on the global fee_pool_vault. Owned",
+            "Signer-only PDA — authority on the global fee_pool_vault. Owned",
             "by sooth_launchpad. Seeds [b\"fee_pool_authority\"]."
           ],
           "pda": {
@@ -324,8 +628,24 @@
               {
                 "kind": "const",
                 "value": [
-                  102, 101, 101, 95, 112, 111, 111, 108, 95, 97, 117, 116, 104,
-                  111, 114, 105, 116, 121
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
                 ]
               }
             ]
@@ -342,7 +662,7 @@
         {
           "name": "fee_pool_vault",
           "docs": [
-            "Global fee-pool ATA \u2014 owner = fee_pool_authority. Source of all",
+            "Global fee-pool ATA — owner = fee_pool_authority. Source of all",
             "four transfers."
           ],
           "writable": true
@@ -368,7 +688,7 @@
           "name": "adjudicator_fee_vault",
           "docs": [
             "Adjudicator-fee ATA. v1 caveat: with a global pool we lose",
-            "per-market adjudicator attribution \u2014 the deposited slice is the",
+            "per-market adjudicator attribution — the deposited slice is the",
             "aggregate over all markets. Re-derivable from PositionTraded",
             "events + configured fee_bps via the indexer."
           ],
@@ -376,13 +696,15 @@
         },
         {
           "name": "protocol_treasury_vault",
-          "docs": ["Protocol treasury ATA. Pinned to config.treasury."],
+          "docs": [
+            "Protocol treasury ATA. Pinned to config.treasury."
+          ],
           "writable": true
         },
         {
           "name": "cranker",
           "docs": [
-            "Anyone can crank fee distribution \u2014 it's a pure split with no",
+            "Anyone can crank fee distribution — it's a pure split with no",
             "authority gate. (EVM FeeRouter._distribute is external and",
             "permissionless.)"
           ],
@@ -405,7 +727,16 @@
         "and sooth_launchpad::distribute_fees (drain side). Rent paid by",
         "signer; no authority gate."
       ],
-      "discriminator": [59, 214, 181, 20, 217, 48, 146, 165],
+      "discriminator": [
+        59,
+        214,
+        181,
+        20,
+        217,
+        48,
+        146,
+        165
+      ],
       "accounts": [
         {
           "name": "fee_pool_authority",
@@ -418,8 +749,24 @@
               {
                 "kind": "const",
                 "value": [
-                  102, 101, 101, 95, 112, 111, 111, 108, 95, 97, 117, 116, 104,
-                  111, 114, 105, 116, 121
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
                 ]
               }
             ]
@@ -449,9 +796,38 @@
               {
                 "kind": "const",
                 "value": [
-                  6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206,
-                  235, 121, 172, 28, 180, 133, 237, 95, 91, 55, 145, 58, 140,
-                  245, 133, 126, 255, 0, 169
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
                 ]
               },
               {
@@ -462,9 +838,38 @@
             "program": {
               "kind": "const",
               "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142,
-                13, 131, 11, 90, 19, 153, 218, 255, 16, 132, 4, 142, 123, 216,
-                219, 233, 248, 89
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
               ]
             }
           }
@@ -510,12 +915,21 @@
         "EVM analogue: `LaunchpadEngine` constructor + `setDefaultTrialPeriod`",
         "/ `setInvalidationBuffer` setters collapsed."
       ],
-      "discriminator": [188, 233, 252, 106, 134, 146, 202, 91],
+      "discriminator": [
+        188,
+        233,
+        252,
+        106,
+        134,
+        146,
+        202,
+        91
+      ],
       "accounts": [
         {
           "name": "config",
           "docs": [
-            "New `ProtocolConfig` singleton. `init` (not `init_if_needed`) \u2014 re-init",
+            "New `ProtocolConfig` singleton. `init` (not `init_if_needed`) — re-init",
             "must be impossible. Seeds have no entropy, so the second caller hits",
             "`account already in use` from the runtime."
           ],
@@ -525,8 +939,21 @@
               {
                 "kind": "const",
                 "value": [
-                  112, 114, 111, 116, 111, 99, 111, 108, 95, 99, 111, 110, 102,
-                  105, 103
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
                 ]
               }
             ]
@@ -561,10 +988,19 @@
         "`createMarket`). On Solana the LP-mint step is hoisted to its own ix",
         "because the `LpMint` PDA needs `init` codegen which would push",
         "`create_market`'s `try_accounts` frame past the SBF 4 KB ceiling (same",
-        "constraint that fragmented `sooth_market::initialize_market`). STUB \u2014",
+        "constraint that fragmented `sooth_market::initialize_market`). STUB —",
         "body is `todo!()`."
       ],
-      "discriminator": [94, 237, 13, 38, 220, 124, 66, 94],
+      "discriminator": [
+        94,
+        237,
+        13,
+        38,
+        220,
+        124,
+        66,
+        94
+      ],
       "accounts": [
         {
           "name": "config",
@@ -573,8 +1009,21 @@
               {
                 "kind": "const",
                 "value": [
-                  112, 114, 111, 116, 111, 99, 111, 108, 95, 99, 111, 110, 102,
-                  105, 103
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
                 ]
               }
             ]
@@ -582,12 +1031,21 @@
         },
         {
           "name": "market",
-          "docs": ["Market PDA \u2014 owned by `sooth_market`. Read-only."],
+          "docs": [
+            "Market PDA — owned by `sooth_market`. Read-only."
+          ],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [109, 97, 114, 107, 101, 116]
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
               },
               {
                 "kind": "account",
@@ -598,21 +1056,56 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
         },
         {
           "name": "amm_state",
-          "docs": ["AmmState PDA \u2014 read `is_graduated` only."],
+          "docs": [
+            "AmmState PDA — read `is_graduated` only."
+          ],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [97, 109, 109]
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
               },
               {
                 "kind": "account",
@@ -623,9 +1116,38 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 14, 80, 174, 15, 232, 73, 155, 165, 137, 247,
-                92, 83, 126, 181, 85, 153, 244, 121, 65, 25, 200, 22, 2, 128, 0,
-                0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                14,
+                80,
+                174,
+                15,
+                232,
+                73,
+                155,
+                165,
+                137,
+                247,
+                92,
+                83,
+                126,
+                181,
+                85,
+                153,
+                244,
+                121,
+                65,
+                25,
+                200,
+                22,
+                2,
+                128,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
@@ -636,14 +1158,17 @@
             "LP token mint owned by the launchpad. CHECK: PDA derived via seeds;",
             "init'd by the handler body via manual `create_account` +",
             "`initialize_mint` (Anchor's `init` constraint codegen overflows the",
-            "SBF 4 KB stack frame for this Accounts struct \u2014 see module comment)."
+            "SBF 4 KB stack frame for this Accounts struct — see module comment)."
           ],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [108, 112]
+                "value": [
+                  108,
+                  112
+                ]
               },
               {
                 "kind": "account",
@@ -658,7 +1183,7 @@
           "docs": [
             "Per-market signer-only PDA. The mint authority on `lp_mint`.",
             "Seeds `[b\"lp_mint_authority\", market_id]` keep the authority",
-            "isolated per market \u2014 same pattern as `sooth_market::vault_authority`",
+            "isolated per market — same pattern as `sooth_market::vault_authority`",
             "/ `lock_authority`. CHECK: derived via seeds; signs the `mint_to`",
             "CPI in the handler body."
           ],
@@ -667,8 +1192,23 @@
               {
                 "kind": "const",
                 "value": [
-                  108, 112, 95, 109, 105, 110, 116, 95, 97, 117, 116, 104, 111,
-                  114, 105, 116, 121
+                  108,
+                  112,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
                 ]
               },
               {
@@ -682,7 +1222,7 @@
         {
           "name": "creator_lp_ata",
           "docs": [
-            "Creator's LP-token ATA \u2014 destination of the `mint_to` CPI. CHECK:",
+            "Creator's LP-token ATA — destination of the `mint_to` CPI. CHECK:",
             "derived via the standard spl-associated-token derivation; init'd",
             "manually in the body."
           ],
@@ -700,7 +1240,19 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [108, 112, 95, 112, 111, 115, 105, 116, 105, 111, 110]
+                "value": [
+                  108,
+                  112,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
               },
               {
                 "kind": "account",
@@ -718,7 +1270,9 @@
           "name": "creator",
           "writable": true,
           "signer": true,
-          "relations": ["market"]
+          "relations": [
+            "market"
+          ]
         },
         {
           "name": "token_program",
@@ -757,16 +1311,34 @@
         "fee_usdc paid on the trade). Auth: parent-ix introspection requires",
         "the calling top-level ix be a sooth_amm::trade_positions dispatch."
       ],
-      "discriminator": [45, 61, 27, 158, 134, 162, 204, 168],
+      "discriminator": [
+        45,
+        61,
+        27,
+        158,
+        134,
+        162,
+        204,
+        168
+      ],
       "accounts": [
         {
           "name": "market",
-          "docs": ["Market PDA — owned by sooth_market. Read-only."],
+          "docs": [
+            "Market PDA — owned by sooth_market. Read-only."
+          ],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [109, 97, 114, 107, 101, 116]
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
               },
               {
                 "kind": "account",
@@ -777,22 +1349,56 @@
             "program": {
               "kind": "const",
               "value": [
-                6, 156, 114, 93, 33, 111, 83, 15, 227, 211, 161, 229, 74, 162,
-                148, 36, 167, 13, 25, 23, 36, 108, 245, 73, 242, 158, 139, 168,
-                0, 0, 0, 0
+                6,
+                156,
+                114,
+                93,
+                33,
+                111,
+                83,
+                15,
+                227,
+                211,
+                161,
+                229,
+                74,
+                162,
+                148,
+                36,
+                167,
+                13,
+                25,
+                23,
+                36,
+                108,
+                245,
+                73,
+                242,
+                158,
+                139,
+                168,
+                0,
+                0,
+                0,
+                0
               ]
             }
           }
         },
         {
           "name": "lp_mint",
-          "docs": ["Per-market LP token mint. Mut for mint_to."],
+          "docs": [
+            "Per-market LP token mint. Mut for mint_to."
+          ],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [108, 112]
+                "value": [
+                  108,
+                  112
+                ]
               },
               {
                 "kind": "account",
@@ -804,14 +1410,31 @@
         },
         {
           "name": "lp_mint_authority",
-          "docs": ["Per-market signer-only PDA. Mint authority on lp_mint."],
+          "docs": [
+            "Per-market signer-only PDA. Mint authority on lp_mint."
+          ],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  108, 112, 95, 109, 105, 110, 116, 95, 97, 117, 116, 104, 111,
-                  114, 105, 116, 121
+                  108,
+                  112,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
                 ]
               },
               {
@@ -824,7 +1447,9 @@
         },
         {
           "name": "user_lp_ata",
-          "docs": ["User's LP-token ATA — destination of the mint_to CPI."],
+          "docs": [
+            "User's LP-token ATA — destination of the mint_to CPI."
+          ],
           "writable": true
         },
         {
@@ -856,24 +1481,114 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "redeem_lp",
+      "docs": [
+        "Burn post-graduation LP tokens and pay the holder a pro-rata share of the USDC yield vault."
+      ],
+      "discriminator": [
+        12,
+        99,
+        190,
+        72,
+        228,
+        108,
+        109,
+        164
+      ],
+      "accounts": [
+        {
+          "name": "amm_state"
+        },
+        {
+          "name": "lp_mint",
+          "writable": true
+        },
+        {
+          "name": "user_lp_ata",
+          "writable": true
+        },
+        {
+          "name": "lp_yield_vault",
+          "writable": true
+        },
+        {
+          "name": "lp_yield_authority"
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "lp_amount",
+          "type": "u64"
+        }
+      ]
     }
   ],
   "accounts": [
     {
       "name": "AmmState",
-      "discriminator": [66, 127, 244, 168, 102, 12, 95, 2]
+      "discriminator": [
+        66,
+        127,
+        244,
+        168,
+        102,
+        12,
+        95,
+        2
+      ]
     },
     {
       "name": "LpPosition",
-      "discriminator": [105, 241, 37, 200, 224, 2, 252, 90]
+      "discriminator": [
+        105,
+        241,
+        37,
+        200,
+        224,
+        2,
+        252,
+        90
+      ]
     },
     {
       "name": "Market",
-      "discriminator": [219, 190, 213, 55, 0, 227, 198, 154]
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
     },
     {
       "name": "ProtocolConfig",
-      "discriminator": [207, 91, 250, 28, 152, 179, 215, 209]
+      "discriminator": [
+        207,
+        91,
+        250,
+        28,
+        152,
+        179,
+        215,
+        209
+      ]
     }
   ],
   "types": [
@@ -892,26 +1607,30 @@
           {
             "name": "q_yes",
             "docs": [
-              "Outstanding YES shares in WAD. Signed because intermediate `q + \u0394` can",
-              "dip during multi-leg trades (see architecture \u00a74.2)."
+              "Outstanding YES shares in WAD. Signed because intermediate `q + Δ` can",
+              "dip during multi-leg trades (see architecture §4.2)."
             ],
             "type": "i128"
           },
           {
             "name": "q_no",
-            "docs": ["Outstanding NO shares in WAD."],
+            "docs": [
+              "Outstanding NO shares in WAD."
+            ],
             "type": "i128"
           },
           {
             "name": "b",
-            "docs": ["LMSR liquidity parameter in WAD. > 0 by invariant."],
+            "docs": [
+              "LMSR liquidity parameter in WAD. > 0 by invariant."
+            ],
             "type": "i128"
           },
           {
             "name": "seed_q_yes",
             "docs": [
               "Initial seed liquidity (creator deposit). Used by the dismiss/refund",
-              "flow per architecture \u00a79."
+              "flow per architecture §9."
             ],
             "type": "i128"
           },
@@ -922,7 +1641,7 @@
           {
             "name": "fee_b_base_wad",
             "docs": [
-              "Accumulator for the bBase fee leg (50% pre-graduation per \u00a78).",
+              "Accumulator for the bBase fee leg (50% pre-graduation per §8).",
               "In WAD; CPI'd out to the fee router after graduation."
             ],
             "type": "u128"
@@ -955,18 +1674,24 @@
             "name": "market_id",
             "docs": [
               "Deterministic 16-byte id (truncated keccak256 of question || creator",
-              "|| nonce). Architecture \u00a72.2. Same field as",
-              "`sooth_market::InitializeMarketArgs::market_id` \u2014 passed through to",
+              "|| nonce). Architecture §2.2. Same field as",
+              "`sooth_market::InitializeMarketArgs::market_id` — passed through to",
               "leg 1."
             ],
             "type": {
-              "array": ["u8", 16]
+              "array": [
+                "u8",
+                16
+              ]
             }
           },
           {
             "name": "question_hash",
             "type": {
-              "array": ["u8", 32]
+              "array": [
+                "u8",
+                32
+              ]
             }
           },
           {
@@ -1000,7 +1725,7 @@
       "name": "FeesCollected",
       "docs": [
         "Mirror of EVM `FeeRouter.FeesDistributed`. Emitted by `distribute_fees`",
-        "when the accumulator drains to the four destinations (architecture \u00a78)."
+        "when the accumulator drains to the four destinations (architecture §8)."
       ],
       "type": {
         "kind": "struct",
@@ -1018,7 +1743,9 @@
           },
           {
             "name": "to_b_base",
-            "docs": ["Slice routed to the bBase LP-yield ATA."],
+            "docs": [
+              "Slice routed to the bBase LP-yield ATA."
+            ],
             "type": "u64"
           },
           {
@@ -1048,7 +1775,7 @@
           {
             "name": "fee_bps",
             "docs": [
-              "Total per-trade fee in basis points. Bounded \u2264 10_000 (100%)."
+              "Total per-trade fee in basis points. Bounded ≤ 10_000 (100%)."
             ],
             "type": "u16"
           },
@@ -1061,7 +1788,9 @@
           },
           {
             "name": "b_base_share_bps",
-            "docs": ["4-way fee split bps. Must sum to 10_000."],
+            "docs": [
+              "4-way fee split bps. Must sum to 10_000."
+            ],
             "type": "u16"
           },
           {
@@ -1081,7 +1810,7 @@
             "docs": [
               "Default trial period in seconds. EVM analogue: `defaultTrialPeriod` on",
               "`LaunchpadEngine`. The concrete `trial_end_at` per-market is computed",
-              "in `create_market` (architecture \u00a79)."
+              "in `create_market` (architecture §9)."
             ],
             "type": "i64"
           }
@@ -1093,7 +1822,7 @@
       "docs": [
         "Per-(creator, market) LP claim record. Created by `seed_lp` via",
         "manual `system_instruction::create_account` + Borsh serialise",
-        "(no Anchor `init` codegen \u2014 see seed_lp module comment for the",
+        "(no Anchor `init` codegen — see seed_lp module comment for the",
         "BPF stack-frame rationale). Mirrors the `MarketState` struct in",
         "EVM `LaunchpadEngine`; the LP token itself is a separate SPL Mint",
         "at `[b\"lp\", market_id]` with mint authority = `lp_mint_authority`."
@@ -1103,17 +1832,23 @@
         "fields": [
           {
             "name": "market",
-            "docs": ["Backlink to the market PDA."],
+            "docs": [
+              "Backlink to the market PDA."
+            ],
             "type": "pubkey"
           },
           {
             "name": "creator",
-            "docs": ["Pubkey of the creator. Equal to `market.creator`."],
+            "docs": [
+              "Pubkey of the creator. Equal to `market.creator`."
+            ],
             "type": "pubkey"
           },
           {
             "name": "lp_mint",
-            "docs": ["LP-token mint at `[b\"lp\", market_id]`."],
+            "docs": [
+              "LP-token mint at `[b\"lp\", market_id]`."
+            ],
             "type": "pubkey"
           },
           {
@@ -1156,7 +1891,9 @@
         "fields": [
           {
             "name": "market",
-            "docs": ["Market PDA the LP mint is scoped to."],
+            "docs": [
+              "Market PDA the LP mint is scoped to."
+            ],
             "type": "pubkey"
           },
           {
@@ -1213,11 +1950,14 @@
             "name": "market_id",
             "docs": [
               "Deterministic id derived from `keccak256(question || creator || nonce)`,",
-              "truncated to 16 bytes per architecture \u00a72.2. Seed for every per-market",
-              "PDA in the protocol \u2014 see module comment."
+              "truncated to 16 bytes per architecture §2.2. Seed for every per-market",
+              "PDA in the protocol — see module comment."
             ],
             "type": {
-              "array": ["u8", 16]
+              "array": [
+                "u8",
+                16
+              ]
             }
           },
           {
@@ -1235,7 +1975,10 @@
           {
             "name": "question_hash",
             "type": {
-              "array": ["u8", 32]
+              "array": [
+                "u8",
+                32
+              ]
             }
           },
           {
@@ -1286,27 +2029,37 @@
           },
           {
             "name": "bump",
-            "docs": ["Bump for the `Market` PDA itself."],
+            "docs": [
+              "Bump for the `Market` PDA itself."
+            ],
             "type": "u8"
           },
           {
             "name": "vault_authority_bump",
-            "docs": ["Bump for the `vault_authority` signer PDA."],
+            "docs": [
+              "Bump for the `vault_authority` signer PDA."
+            ],
             "type": "u8"
           },
           {
             "name": "lock_authority_bump",
-            "docs": ["Bump for the `lock_authority` signer PDA."],
+            "docs": [
+              "Bump for the `lock_authority` signer PDA."
+            ],
             "type": "u8"
           },
           {
             "name": "yes_mint_bump",
-            "docs": ["Bump for `yes_mint` PDA."],
+            "docs": [
+              "Bump for `yes_mint` PDA."
+            ],
             "type": "u8"
           },
           {
             "name": "no_mint_bump",
-            "docs": ["Bump for `no_mint` PDA."],
+            "docs": [
+              "Bump for `no_mint` PDA."
+            ],
             "type": "u8"
           }
         ]
@@ -1316,7 +2069,7 @@
       "name": "MarketCreated",
       "docs": [
         "Mirror of EVM `LaunchpadEngine.MarketCreated`. Emitted by `create_market`",
-        "after the four CPI legs land (architecture \u00a74.1)."
+        "after the four CPI legs land (architecture §4.1)."
       ],
       "type": {
         "kind": "struct",
@@ -1397,7 +2150,7 @@
             "docs": [
               "Pubkey allowed to call setters. Equals `creator` of the",
               "`initialize_protocol` ix. Rotation is intentionally **not** wired in",
-              "this scaffold \u2014 when it lands, gate it on a 2/N multisig per the",
+              "this scaffold — when it lands, gate it on a 2/N multisig per the",
               "security checklist."
             ],
             "type": "pubkey"
@@ -1423,7 +2176,7 @@
           {
             "name": "b_base_share_bps",
             "docs": [
-              "4-way split bps \u2014 must sum to 10_000. Architecture \u00a78."
+              "4-way split bps — must sum to 10_000. Architecture §8."
             ],
             "type": "u16"
           },
@@ -1444,13 +2197,15 @@
             "docs": [
               "Default trial period in seconds. Mirrors EVM `defaultTrialPeriod`. The",
               "concrete `trial_end_at` is computed per-market in `create_market` per",
-              "architecture \u00a79: `min(0.3 \u00d7 (deadline - now), default_trial_period)`."
+              "architecture §9: `min(0.3 × (deadline - now), default_trial_period)`."
             ],
             "type": "i64"
           },
           {
             "name": "bump",
-            "docs": ["Bump for the singleton PDA."],
+            "docs": [
+              "Bump for the singleton PDA."
+            ],
             "type": "u8"
           }
         ]
@@ -1502,12 +2257,109 @@
             "name": "seed_deposit_wad",
             "docs": [
               "Creator's seed deposit in WAD, recorded on `LpPosition` for the",
-              "dismiss/refund flow (architecture \u00a79)."
+              "dismiss/refund flow (architecture §9)."
             ],
             "type": "u128"
           }
         ]
       }
+    },
+    {
+      "name": "LpRedeemed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "lp_burned",
+            "type": "u64"
+          },
+          {
+            "name": "usdc_paid",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "LpRedeemed",
+      "discriminator": [
+        232,
+        192,
+        98,
+        44,
+        177,
+        24,
+        2,
+        106
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Caller is not the registered protocol authority"
+    },
+    {
+      "code": 6001,
+      "name": "FeeBpsOutOfRange",
+      "msg": "Fee bps must not exceed 10000 (100%)"
+    },
+    {
+      "code": 6002,
+      "name": "FeeSplitMismatch",
+      "msg": "Fee split bps do not sum to 10000"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidTreasury",
+      "msg": "Treasury pubkey must be non-default"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidTrialPeriod",
+      "msg": "Default trial period must be > 0"
+    },
+    {
+      "code": 6005,
+      "name": "AlreadyGraduated",
+      "msg": "Market is already graduated; LP-mint flow disabled"
+    },
+    {
+      "code": 6006,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 6007,
+      "name": "AlreadyInitialized",
+      "msg": "Protocol config already initialized"
+    },
+    {
+      "code": 6008,
+      "name": "NothingToDistribute",
+      "msg": "Fee pool is empty -- nothing to distribute"
+    },
+    {
+      "code": 6009,
+      "name": "NotGraduated",
+      "msg": "Market is not graduated"
+    },
+    {
+      "code": 6010,
+      "name": "ZeroLpAmount",
+      "msg": "LP amount must be > 0"
+    },
+    {
+      "code": 6011,
+      "name": "EmptyLpSupply",
+      "msg": "LP supply is empty"
     }
   ]
 }

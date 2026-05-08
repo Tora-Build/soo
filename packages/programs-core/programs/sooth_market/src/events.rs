@@ -75,3 +75,10 @@ pub struct Redeemed {
     pub usdc_paid: u64,
     pub ts: i64,
 }
+
+#[event]
+pub struct RefundClaimed {
+    pub market: Pubkey,
+    pub user: Pubkey,
+    pub amount_usdc: u64,
+}

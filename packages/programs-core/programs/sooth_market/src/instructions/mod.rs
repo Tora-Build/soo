@@ -11,6 +11,7 @@
 #![allow(ambiguous_glob_reexports)]
 
 pub mod add_adjudicator;
+pub mod claim_refund;
 pub mod initialize_adjudicator_allowlist;
 pub mod initialize_market;
 pub mod initialize_market_vaults;
@@ -25,6 +26,7 @@ pub mod transfer_from_lock_vault;
 pub mod transfer_to_lock;
 
 pub use add_adjudicator::*;
+pub use claim_refund::*;
 pub use initialize_adjudicator_allowlist::*;
 pub use initialize_market::*;
 pub use initialize_market_vaults::*;

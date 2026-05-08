@@ -50,6 +50,7 @@ const SEED_ADJUDICATOR_ALLOWLIST = enc.encode("adjudicator_allowlist");
 const SEED_LP = enc.encode("lp");
 const SEED_LP_MINT_AUTHORITY = enc.encode("lp_mint_authority");
 const SEED_LP_POSITION = enc.encode("lp_position");
+const SEED_LP_YIELD_AUTHORITY = enc.encode("lp_yield_authority");
 
 function assertMarketId(marketId: MarketId): Buffer {
   if (marketId.length !== 16) {
@@ -323,6 +324,20 @@ export function deriveLpMintAuthorityPda(
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_LP_MINT_AUTHORITY), id],
+    programs.soothLaunchpad,
+  );
+}
+
+// Singleton signer-only PDA owned by `sooth_launchpad`. Seeds:
+// [b"lp_yield_authority"]. Used as the token authority on the LP-yield USDC
+// vault drained by `sooth_launchpad::redeem_lp`.
+export function deriveLpYieldAuthority(
+  programs: Pick<ProgramIds, "soothLaunchpad"> & {
+    soothLaunchpad: PublicKey;
+  },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_LP_YIELD_AUTHORITY)],
     programs.soothLaunchpad,
   );
 }

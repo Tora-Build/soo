@@ -18,12 +18,9 @@ use sooth_launchpad::state::ProtocolConfig;
 /// the public surface doesn't accidentally expose it as a callable utility.
 fn split_4way(total: u64, cfg: &ProtocolConfig) -> (u64, u64, u64, u64) {
     let total_u128 = total as u128;
-    let to_b_base: u64 =
-        ((total_u128 * cfg.b_base_share_bps as u128) / 10_000) as u64;
-    let to_lp_yield: u64 =
-        ((total_u128 * cfg.lp_yield_share_bps as u128) / 10_000) as u64;
-    let to_adjudicator: u64 =
-        ((total_u128 * cfg.adjudicator_share_bps as u128) / 10_000) as u64;
+    let to_b_base: u64 = ((total_u128 * cfg.b_base_share_bps as u128) / 10_000) as u64;
+    let to_lp_yield: u64 = ((total_u128 * cfg.lp_yield_share_bps as u128) / 10_000) as u64;
+    let to_adjudicator: u64 = ((total_u128 * cfg.adjudicator_share_bps as u128) / 10_000) as u64;
     let to_protocol: u64 = total - to_b_base - to_lp_yield - to_adjudicator;
     (to_b_base, to_lp_yield, to_adjudicator, to_protocol)
 }
@@ -32,11 +29,11 @@ fn default_cfg() -> ProtocolConfig {
     ProtocolConfig {
         authority: anchor_lang::prelude::Pubkey::new_unique(),
         treasury: anchor_lang::prelude::Pubkey::new_unique(),
-        fee_bps: 100, // 1% — the sample value used in protocol_config tests
-        b_base_share_bps: 5_000,    // 50%
-        lp_yield_share_bps: 3_000,  // 30%
+        fee_bps: 100,              // 1% — the sample value used in protocol_config tests
+        b_base_share_bps: 5_000,   // 50%
+        lp_yield_share_bps: 3_000, // 30%
         adjudicator_share_bps: 1_000, // 10%
-        protocol_share_bps: 1_000,  // 10%
+        protocol_share_bps: 1_000, // 10%
         default_trial_period: 24 * 60 * 60,
         bump: 254,
     }

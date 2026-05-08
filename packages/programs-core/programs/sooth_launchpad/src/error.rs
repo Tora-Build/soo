@@ -33,4 +33,13 @@ pub enum SoothLaunchpadError {
 
     #[msg("Fee pool is empty — nothing to distribute")]
     NothingToDistribute,
+
+    #[msg("Market is not graduated")]
+    NotGraduated,
+
+    #[msg("LP amount must be > 0")]
+    ZeroLpAmount,
+
+    #[msg("LP supply is empty")]
+    EmptyLpSupply,
 }

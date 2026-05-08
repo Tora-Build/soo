@@ -28,7 +28,12 @@ export type SoothErrorKind =
   | "TradingClosed"
   | "SellNotImplemented"
   | "LockNotElapsed"
-  | "LockVaultMismatch";
+  | "LockVaultMismatch"
+  | "TrialNotExpired"
+  | "AlreadyGraduated"
+  | "AlreadyDismissed"
+  | "MarketNotDismissed"
+  | "NotGraduated";
 
 export interface SoothErrorInit {
   kind: SoothErrorKind;
@@ -85,6 +90,11 @@ function formatMessage(
     case "SellNotImplemented":
     case "LockNotElapsed":
     case "LockVaultMismatch":
+    case "TrialNotExpired":
+    case "AlreadyGraduated":
+    case "AlreadyDismissed":
+    case "MarketNotDismissed":
+    case "NotGraduated":
       return `SoothError: ${kind} ${fields.msg ?? ""}${sigSuffix}`;
     default:
       return `SoothError: ${kind}${sigSuffix}`;

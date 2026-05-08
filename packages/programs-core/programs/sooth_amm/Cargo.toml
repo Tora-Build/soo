@@ -57,6 +57,11 @@ sooth-protocol-types = { path = "../../crates/sooth-protocol-types" }
 [dev-dependencies]
 # Host-side math unit tests — no SBF, no anchor framework. The tests in
 # `tests/lmsr_unit.rs` exercise the math module directly.
+litesvm = "=0.2.1"
+solana-sdk = "=1.18.26"
+spl-token = "=4.0.0"
+spl-associated-token-account = "=2.3.0"
+sooth_launchpad = { path = "../sooth_launchpad", features = ["cpi"] }
 
 [lints.rust]
 # Match the style the spike uses — silent on the BPF target's unexpected cfgs.

@@ -203,7 +203,10 @@ pub fn handler(
         !ctx.accounts.amm_state.is_dismissed,
         SoothAmmError::MarketDismissed
     );
-    require!(ctx.accounts.amm_state.b > 0, SoothAmmError::InvalidLiquidity);
+    require!(
+        ctx.accounts.amm_state.b > 0,
+        SoothAmmError::InvalidLiquidity
+    );
 
     // ── 2. Compute LMSR cost delta ───────────────────────────────────────
     let (d_yes, d_no) = if outcome == OUTCOME_YES {
@@ -294,6 +297,11 @@ pub fn handler(
         );
         sooth_market::cpi::transfer_to_lock(cpi_ctx, proceeds_usdc)?;
     }
+    ctx.accounts.position.locked_cost_usdc = ctx
+        .accounts
+        .position
+        .locked_cost_usdc
+        .saturating_sub(proceeds_usdc);
 
     // ── 7. Populate the freshly-init'd LockEntry ─────────────────────────
     let unlock_at = now

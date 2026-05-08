@@ -48,4 +48,22 @@ pub enum SoothAmmError {
 
     #[msg("Lock vault account does not match market.lock_vault")]
     LockVaultMismatch,
+
+    #[msg("Trial period has not expired yet")]
+    TrialNotExpired,
+
+    #[msg("Market has already graduated")]
+    AlreadyGraduated,
+
+    #[msg("Market has already been dismissed")]
+    AlreadyDismissed,
+
+    #[msg("AmmState market backlink does not match market account")]
+    AmmStateMarketMismatch,
+
+    #[msg("Market is not dismissed")]
+    MarketNotDismissed,
+
+    #[msg("Helper ix must be CPI'd from sooth_market::claim_refund")]
+    InvalidParentInstruction,
 }

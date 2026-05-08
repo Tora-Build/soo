@@ -85,8 +85,8 @@ use sooth_account_offsets::{
 };
 
 use crate::error::SoothAmmError;
-use crate::events::PositionTraded;
-use crate::math::{cost_delta, wad_to_usdc_ceil, MathError};
+use crate::events::{MarketGraduated, PositionTraded};
+use crate::math::{cost_delta, wad_mul, wad_to_usdc_ceil, MathError, LN2_WAD};
 use crate::state::{AmmState, Market, Position};
 use crate::SOOTH_LAUNCHPAD_PROGRAM_ID;
 
@@ -320,10 +320,7 @@ pub fn handler(
     // tradeable — someone holding underpriced winning shares can dump them
     // post-event before the adjudicator settles.
     let now = Clock::get()?.unix_timestamp;
-    require!(
-        now >= market.start_time,
-        SoothAmmError::TradingNotStarted
-    );
+    require!(now >= market.start_time, SoothAmmError::TradingNotStarted);
     require!(now < market.deadline, SoothAmmError::TradingClosed);
 
     // Snapshot AmmState fields used downstream + run pre-flight invariants.
@@ -364,8 +361,8 @@ pub fn handler(
         (0i128, delta_shares)
     };
 
-    let cost_wad: i128 = cost_delta(amm_q_yes, amm_q_no, amm_b, d_yes, d_no)
-        .map_err(map_math_err)?;
+    let cost_wad: i128 =
+        cost_delta(amm_q_yes, amm_q_no, amm_b, d_yes, d_no).map_err(map_math_err)?;
 
     // ── 3. Fee — read fee_bps from ProtocolConfig and compute fee_wad ────
     //
@@ -429,10 +426,8 @@ pub fn handler(
     // dust accrues to the protocol, not the trader. The fee USDC is a
     // separate transfer to the global `fee_pool_vault`; the
     // `sooth_launchpad::distribute_fees` crank does the 4-way split later.
-    let cost_usdc: u64 = wad_to_usdc_ceil(cost_wad as u128)
-        .map_err(map_math_err)?;
-    let fee_usdc: u64 = wad_to_usdc_ceil(fee_wad)
-        .map_err(map_math_err)?;
+    let cost_usdc: u64 = wad_to_usdc_ceil(cost_wad as u128).map_err(map_math_err)?;
+    let fee_usdc: u64 = wad_to_usdc_ceil(fee_wad).map_err(map_math_err)?;
 
     // ── 6. Token transfers ───────────────────────────────────────────────
     //
@@ -462,6 +457,12 @@ pub fn handler(
         },
     );
     token::transfer(cost_cpi, cost_usdc)?;
+    ctx.accounts.position.locked_cost_usdc = ctx
+        .accounts
+        .position
+        .locked_cost_usdc
+        .checked_add(cost_usdc)
+        .ok_or(error!(SoothAmmError::MathOverflow))?;
 
     if fee_usdc > 0 {
         let fee_cpi = CpiContext::new(
@@ -473,6 +474,40 @@ pub fn handler(
             },
         );
         token::transfer(fee_cpi, fee_usdc)?;
+    }
+
+    // Track the same fee in the per-market WAD accumulator after the SPL
+    // fee-pool transfer succeeds. The global `fee_pool_vault` remains the
+    // drainable token balance for `distribute_fees`; this field is the
+    // market-scoped WAD ledger used by graduation checks and analytics.
+    //
+    // `fee_wad` is the WAD-scale fee already computed above from floor
+    // division of the positive buy cost. Adding it directly keeps the
+    // comparison shape aligned with the graduation threshold `b * ln(2)`,
+    // which is also represented as u128 WAD.
+    ctx.accounts.amm_state.fee_b_base_wad = ctx
+        .accounts
+        .amm_state
+        .fee_b_base_wad
+        .checked_add(fee_wad)
+        .ok_or(error!(SoothAmmError::MathOverflow))?;
+
+    {
+        let amm = &mut ctx.accounts.amm_state;
+        if !amm.is_graduated {
+            let threshold_wad = wad_mul(amm.b, LN2_WAD)
+                .map_err(map_math_err)?
+                .try_into()
+                .map_err(|_| error!(SoothAmmError::MathOverflow))?;
+            if amm.fee_b_base_wad >= threshold_wad {
+                amm.is_graduated = true;
+                emit!(MarketGraduated {
+                    market: amm.market,
+                    fees_accumulated_wad: amm.fee_b_base_wad,
+                    threshold_wad,
+                });
+            }
+        }
     }
 
     // ── 7. State mutation (REAL) ─────────────────────────────────────────

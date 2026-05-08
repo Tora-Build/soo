@@ -16,6 +16,7 @@ export {
   deriveLockAuthorityPda,
   deriveLockEntryPda,
   deriveLockVaultAta,
+  deriveLpYieldAuthority,
   deriveMarketPda,
   deriveMarketVaultAta,
   deriveNoMintPda,

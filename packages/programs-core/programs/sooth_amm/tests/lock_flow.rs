@@ -158,11 +158,11 @@ fn lock_entry_space_layout() {
     assert_eq!(LockEntry::SPACE, 97);
 }
 
-/// Position now carries `lock_nonce`; its SPACE constant must stay in sync.
+/// Position carries `locked_cost_usdc` and `lock_nonce`; its SPACE constant must stay in sync.
 #[test]
 fn position_space_layout_includes_lock_nonce() {
     // 8 (disc) + 32 (user) + 32 (market) + 16 + 16 (yes/no_shares)
-    //   + 8 (lock_nonce) + 1 (bump) = 113
-    assert_eq!(Position::SPACE, 8 + 32 + 32 + 16 + 16 + 8 + 1);
-    assert_eq!(Position::SPACE, 113);
+    //   + 8 (locked_cost_usdc) + 8 (lock_nonce) + 1 (bump) = 121
+    assert_eq!(Position::SPACE, 8 + 32 + 32 + 16 + 16 + 8 + 8 + 1);
+    assert_eq!(Position::SPACE, 121);
 }

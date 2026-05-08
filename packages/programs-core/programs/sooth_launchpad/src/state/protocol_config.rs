@@ -57,7 +57,7 @@ impl ProtocolConfig {
         + 2                        // fee_bps
         + 2 + 2 + 2 + 2            // 4 share bps
         + 8                        // default_trial_period
-        + 1;                       // bump
+        + 1; // bump
 
     /// Total of the four share bps. Used by `initialize_protocol` to enforce
     /// the sum-to-10_000 invariant before writing the account.

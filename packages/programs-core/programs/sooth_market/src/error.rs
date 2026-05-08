@@ -60,4 +60,7 @@ pub enum SoothMarketError {
 
     #[msg("Helper ixs must be CPI'd from sooth_amm; direct calls are rejected.")]
     InvalidParentInstruction,
+
+    #[msg("Market is not dismissed")]
+    MarketNotDismissed,
 }

@@ -44,7 +44,13 @@ import {
   soothLaunchpadIdl,
   soothMarketIdl,
 } from "./anchor/index.js";
-import { costDelta, wadToUsdcCeil, yesPriceWad, WAD } from "./math/lmsr.js";
+import {
+  costDelta,
+  LN2_WAD,
+  wadToUsdcCeil,
+  yesPriceWad,
+  WAD,
+} from "./math/lmsr.js";
 import {
   deriveAdjudicatorAllowlistPda,
   deriveAmmStatePda,
@@ -55,6 +61,7 @@ import {
   deriveLockVaultAta,
   deriveLpMintPda,
   deriveLpMintAuthorityPda,
+  deriveLpYieldAuthority,
   deriveMarketPda,
   deriveMarketVaultAta,
   deriveNoMintPda,
@@ -397,6 +404,47 @@ export class SolanaChainAdapter implements ChainAdapter {
     return {
       yesShares: bnToBigInt(raw.yesShares),
       noShares: bnToBigInt(raw.noShares),
+      lockedCostUsdc:
+        (raw.lockedCostUsdc ?? raw.locked_cost_usdc) != null
+          ? bnToBigInt(raw.lockedCostUsdc ?? raw.locked_cost_usdc)
+          : undefined,
+    };
+  }
+
+  async readGraduationProgress(market: MarketRef): Promise<{
+    feesAccumulatedWad: bigint;
+    thresholdWad: bigint;
+    isGraduated: boolean;
+    progressBps: number;
+  }> {
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const [ammPda] = deriveAmmStatePda(resolved.marketId, this.programIds);
+    const ammRaw = await (this.soothAmm.account as any).ammState.fetchNullable(
+      ammPda,
+    );
+    if (!ammRaw) {
+      throw new SoothError({
+        kind: "AccountNotFound",
+        msg: `AmmState PDA not found at ${ammPda.toBase58()}`,
+      });
+    }
+
+    const feesAccumulatedWad = bnToBigInt(
+      ammRaw.feeBBaseWad ?? ammRaw.fee_b_base_wad ?? 0,
+    );
+    const b = bnToBigInt(ammRaw.b);
+    const thresholdWad = b > 0n ? (b * LN2_WAD) / WAD : 0n;
+    const progress =
+      thresholdWad > 0n
+        ? Number((10_000n * feesAccumulatedWad) / thresholdWad)
+        : 0;
+
+    return {
+      feesAccumulatedWad,
+      thresholdWad,
+      isGraduated: Boolean(ammRaw.isGraduated ?? ammRaw.is_graduated),
+      progressBps: Math.max(0, Math.min(10_000, Math.floor(progress))),
     };
   }
 
@@ -1052,6 +1100,182 @@ export class SolanaChainAdapter implements ChainAdapter {
         ...buildIxMeta(ix, userPk),
         operation: "claim",
         lockEntryPda: lockEntryPda.toBase58(),
+      },
+    };
+  }
+
+  async buildClaimRefund(
+    market: MarketRef,
+    args: { user: AddressRef },
+  ): Promise<ClaimRequest> {
+    if (!args.user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method:
+          "buildClaimRefund — args.user (Solana-only meta) is required at build time",
+      });
+    }
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+
+    const [ammPda] = deriveAmmStatePda(resolved.marketId, this.programIds);
+    const [positionPda] = derivePositionPda(
+      resolved.marketId,
+      userPk,
+      this.programIds,
+    );
+    const [vaultAuthority] = deriveVaultAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const marketVault = deriveMarketVaultAta(
+      resolved.marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+    const userUsdcAta = deriveUserUsdcAta(userPk, this.usdcMint);
+
+    const ix: TransactionInstruction = await (this.soothMarket.methods as any)
+      .claimRefund()
+      .accounts({
+        user: userPk,
+        market: marketPda,
+        ammState: ammPda,
+        vaultAuthority,
+        marketVault,
+        userUsdcAta,
+        position: positionPda,
+        usdcMint: this.usdcMint,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        soothAmmProgram: this.programIds.soothAmm,
+        instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "claim",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "claimRefund",
+        positionPda: positionPda.toBase58(),
+      },
+    };
+  }
+
+  async buildDismissMarket(
+    market: MarketRef,
+    args: { user: AddressRef },
+  ): Promise<TradeRequest> {
+    if (!args.user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method:
+          "buildDismissMarket — args.user (Solana-only meta) is required at build time",
+      });
+    }
+    const creatorPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const [ammPda] = deriveAmmStatePda(resolved.marketId, this.programIds);
+
+    const ix: TransactionInstruction = await (this.soothAmm.methods as any)
+      .dismissMarket()
+      .accounts({
+        market: marketPda,
+        ammState: ammPda,
+        creator: creatorPk,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, creatorPk),
+        operation: "dismissMarket",
+      },
+    };
+  }
+
+  async buildRedeemLp(
+    market: MarketRef,
+    args: { user: AddressRef; lpAmount: bigint },
+  ): Promise<ClaimRequest> {
+    if (!args.user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method:
+          "buildRedeemLp — args.user (Solana-only meta) is required at build time",
+      });
+    }
+    if (args.lpAmount <= 0n || args.lpAmount > 0xffffffffffffffffn) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildRedeemLp: lpAmount must fit in u64 and be > 0, got ${args.lpAmount.toString()}`,
+      });
+    }
+    if (!this.programIds.soothLaunchpad) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildRedeemLp: programIds.soothLaunchpad is missing",
+      });
+    }
+
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const [ammPda] = deriveAmmStatePda(resolved.marketId, this.programIds);
+    const [lpMint] = deriveLpMintPda(resolved.marketId, {
+      soothLaunchpad: this.programIds.soothLaunchpad,
+    });
+    const userLpAta = deriveUserLpAta(userPk, lpMint);
+    const [lpYieldAuthority] = deriveLpYieldAuthority({
+      soothLaunchpad: this.programIds.soothLaunchpad,
+    });
+    const lpYieldVault = getAssociatedTokenAddressSync(
+      this.usdcMint,
+      lpYieldAuthority,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const userUsdcAta = deriveUserUsdcAta(userPk, this.usdcMint);
+
+    const ix: TransactionInstruction = await (
+      this.soothLaunchpad.methods as any
+    )
+      .redeemLp(bigIntToBn(args.lpAmount))
+      .accounts({
+        ammState: ammPda,
+        lpMint,
+        userLpAta,
+        lpYieldVault,
+        lpYieldAuthority,
+        userUsdcAta,
+        user: userPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "claim",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "redeemLp",
+        lpAmountStr: args.lpAmount.toString(),
+        lpYieldVault: lpYieldVault.toBase58(),
       },
     };
   }
@@ -2034,6 +2258,24 @@ const SOOTH_AMM_ERROR_TABLE: Record<number, { kind: string; msg: string }> = {
     kind: "LockVaultMismatch",
     msg: "Lock vault account does not match market.lock_vault",
   },
+  6014: {
+    kind: "TrialNotExpired",
+    msg: "Trial period has not expired yet",
+  },
+  6015: { kind: "AlreadyGraduated", msg: "Market has already graduated" },
+  6016: {
+    kind: "AlreadyDismissed",
+    msg: "Market has already been dismissed",
+  },
+  6017: {
+    kind: "ProgramError",
+    msg: "AmmState market backlink does not match market account",
+  },
+  6018: { kind: "MarketNotDismissed", msg: "Market is not dismissed" },
+  6019: {
+    kind: "ProgramError",
+    msg: "Helper ix must be CPI'd from sooth_market::claim_refund",
+  },
 };
 
 const SOOTH_MARKET_ERROR_TABLE: Record<number, { kind: string; msg: string }> =
@@ -2098,6 +2340,7 @@ const SOOTH_MARKET_ERROR_TABLE: Record<number, { kind: string; msg: string }> =
       kind: "ProgramError",
       msg: "Helper ixs must be CPI'd from sooth_amm; direct calls are rejected.",
     },
+    6018: { kind: "MarketNotDismissed", msg: "Market is not dismissed" },
   };
 
 const SOOTH_LAUNCHPAD_ERROR_TABLE: Record<
@@ -2128,6 +2371,9 @@ const SOOTH_LAUNCHPAD_ERROR_TABLE: Record<
     kind: "ProgramError",
     msg: "Fee pool is empty — nothing to distribute",
   },
+  6009: { kind: "NotGraduated", msg: "Market is not graduated" },
+  6010: { kind: "ProgramError", msg: "LP amount must be > 0" },
+  6011: { kind: "ProgramError", msg: "LP supply is empty" },
 };
 
 const SOOTH_ADJUDICATOR_ERROR_TABLE: Record<
