@@ -717,7 +717,7 @@ pub struct MatchOrders<'info> {
             order_against.market_outcome_index.to_string().as_ref(),
             b"-".as_ref(),
             format!("{:.3}", order_against.expected_price).as_ref(),
-            false.to_string().as_ref(),
+            b"false".as_ref(),
         ],
         bump,
     )]
@@ -756,7 +756,7 @@ pub struct MatchOrders<'info> {
             order_for.market_outcome_index.to_string().as_ref(),
             b"-".as_ref(),
             format!("{:.3}", order_for.expected_price).as_ref(),
-            true.to_string().as_ref(),
+            b"true".as_ref(),
         ],
         bump,
     )]
@@ -902,14 +902,6 @@ pub struct CreateMarketType<'info> {
     pub system_program: Program<'info, System>,
 }
 
-fn get_create_market_version(existing_market: &Option<Account<Market>>) -> u8 {
-    if let Some(existing_market) = existing_market {
-        existing_market.version + 1
-    } else {
-        0
-    }
-}
-
 #[derive(Accounts)]
 #[instruction(
     event_account: Pubkey,
@@ -928,7 +920,12 @@ pub struct CreateMarket<'info> {
             SEED_SEPARATOR,
             market_type_value.as_ref().unwrap_or(&"".to_string()).as_ref(),
             SEED_SEPARATOR,
-            get_create_market_version(&existing_market).to_string().as_ref(),
+            existing_market
+                .as_ref()
+                .map(|existing_market| existing_market.version + 1)
+                .unwrap_or(0)
+                .to_string()
+                .as_ref(),
             mint.key().as_ref(),
         ],
         bump,

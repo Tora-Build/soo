@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 
+#[cfg(not(feature = "no-entrypoint"))]
 use crate::context::*;
 
 pub mod context;
@@ -9,6 +10,7 @@ pub mod state;
 
 declare_id!("mppFrYmM6A4Ud3AxRbGXsGisX1HUsbDfp1nrg9FQJEE");
 
+#[cfg(not(feature = "no-entrypoint"))]
 #[program]
 pub mod protocol_product {
     use super::*;
