@@ -88,13 +88,32 @@ W1 (in-flight)   Vendor + compile + parity tests + IDL
                  ├─ Run Monaco's own test suite for parity baseline
                  └─ anchor build → IDL → SDK anchor/sooth_book.json
 
-W2               CU benchmark + capacity-lift decision
+W2               CU benchmark + capacity-lift decision + W1 cleanup
                  ├─ LiteSVM bench: populate 1000-entry MarketLiquidities,
                  │  measure CU per match against MATCH_CAPACITY=10
                  ├─ If CU < 600k: lift Vec to 1000 (item §2.1-2.3)
                  ├─ If CU > 600k: tick-bitmap rewrite (full replacement
                  │  of MarketLiquidities Vec with bitmap + per-tick
                  │  liquidity nodes)
+                 ├─ anchor-syn IDL-gen fix: anchor-syn 0.30.1 calls
+                 │  proc_macro2::Span::source_file() (removed in
+                 │  rustc 1.95). Either upgrade Anchor to 1.0.x
+                 │  workspace-wide (heavier; touches all 5 programs)
+                 │  or [patch.crates-io] anchor-syn with the local
+                 │  fix codex applied (lighter; reproducible).
+                 │  cargo build-sbf works without this fix; anchor
+                 │  build does not.
+                 ├─ SBF stack-offset warnings: ProcessOrderMatchMaker
+                 │  (8 over), MatchOrders (1504 over), CreateMarket
+                 │  (224 over), OpenMarket (544 over) all exceed
+                 │  Solana's 4096-byte SBF stack ceiling. Fix via
+                 │  Box<>-wrapping large fields in Accounts structs.
+                 │  Non-fatal in build but real UB risk on-chain;
+                 │  audit-blocker.
+                 ├─ protocol_product cleanup: declare_id! still points
+                 │  at Monaco's mainnet program-id (mppFrYmM…JEE).
+                 │  In library-only usage this is dead code, but
+                 │  should be replaced with sooth_book's id or removed.
                  └─ Audit-firm RFP draft (OtterSec / Neodyme / Halborn)
 
 W3               Sportsbook strip-down
