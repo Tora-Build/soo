@@ -152,7 +152,16 @@ function exposeBridge(): void {
       if (!walletCtxRef) throw new Error("Wallet context not registered");
       if (walletCtxRef.connected) return;
       walletCtxRef.select(ADAPTER_NAME);
-      await new Promise((r) => setTimeout(r, 0));
+      // wallet-adapter-react's select() is sync but the React render that
+      // surfaces walletCtxRef.wallet happens on the next microtask. A
+      // setTimeout(0) yield isn't always enough — under faster runtimes
+      // (surfpool e2e) connect() races the render and throws
+      // WalletNotSelectedError. Poll until walletCtxRef.wallet propagates,
+      // capped to 1s so we still fail fast if select() did nothing.
+      for (let i = 0; i < 50; i++) {
+        if (walletCtxRef.wallet) break;
+        await new Promise((r) => setTimeout(r, 20));
+      }
       await walletCtxRef.connect();
     };
 }

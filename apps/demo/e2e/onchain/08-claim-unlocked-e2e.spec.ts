@@ -66,7 +66,14 @@ test.describe("AMM claim_unlocked (adapter-direct, Surfpool-gated)", () => {
       signer.publicKey,
     );
 
-    // 1) Buy 10 YES so the user has a position to sell.
+    // Capture starting position — earlier specs accumulate shares on the
+    // same wallet, so absolute-value assertions don't hold. The buy/sell
+    // below use `outcome: 0` (NO), so we track noShares.
+    const posBefore = await fetchPosition(conn, positionPda);
+    const noSharesBefore = posBefore?.noShares ?? 0n;
+
+    // 1) Buy 10 YES so the user has a position to sell. Cost ceiling is
+    //    20·WAD — well above the LMSR price for 10 shares at p≈0.5.
     await buyViaAdapter({
       conn,
       signer,
@@ -75,6 +82,7 @@ test.describe("AMM claim_unlocked (adapter-direct, Surfpool-gated)", () => {
       usdcMint,
       outcome: 0,
       deltaShares: TEN_SHARES_WAD,
+      maxCostWad: 20n * 10n ** 18n,
     });
 
     // 2) Sell 5 YES — emits a LockEntry at the pre-sell lock_nonce.
@@ -121,9 +129,13 @@ test.describe("AMM claim_unlocked (adapter-direct, Surfpool-gated)", () => {
     expect(userUsdcAfter - userUsdcBefore).toBe(lockedAmount);
     expect(lockVaultBefore - lockVaultAfter).toBe(lockedAmount);
 
-    // Sanity: Position survives — only LockEntry was closed.
+    // Sanity: Position survives — only LockEntry was closed. Net delta
+    // from this spec is +10 buy then -5 sell = +5 NO against the prior
+    // noShares value.
     const posAfter = await fetchPosition(conn, positionPda);
     if (!posAfter) throw new Error("Position closed unexpectedly");
-    expect(posAfter.yesShares).toBe(TEN_SHARES_WAD - FIVE_SHARES_WAD);
+    expect(posAfter.noShares).toBe(
+      noSharesBefore + TEN_SHARES_WAD - FIVE_SHARES_WAD,
+    );
   });
 });

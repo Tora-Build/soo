@@ -170,6 +170,42 @@ if [[ "$HEALTHY" != "1" ]]; then
   exit 1
 fi
 
+# ─── Phase 2.4: airdrop deploy payer + deploy 4 programs ─────────────────
+#
+# Surfpool with `--ci --offline --manifest-file-path` does NOT auto-deploy
+# the .so binaries; it only registers the program IDs from
+# `[programs.localnet]` for txtx workflows. Deploy via solana CLI against
+# the canonical declare_id! pubkeys (kept in lockstep across the IDLs +
+# Anchor.toml + this script per docs/decision-log.md D6).
+DEPLOY_PAYER="$DEMO_DIR/.deploy-payer.json"
+if [[ ! -f "$DEPLOY_PAYER" ]]; then
+  err "missing $DEPLOY_PAYER (deploy payer keypair)"
+  exit 1
+fi
+DEPLOY_PAYER_PUBKEY="$(solana-keygen pubkey "$DEPLOY_PAYER")"
+log "phase 2.4: airdrop 1000 SOL to deploy payer $DEPLOY_PAYER_PUBKEY"
+rpc "$(printf '{"jsonrpc":"2.0","id":1,"method":"requestAirdrop","params":["%s",1000000000000]}' "$DEPLOY_PAYER_PUBKEY")" >/dev/null
+sleep 1
+log "  deploying 4 programs (sooth_amm / market / launchpad / adjudicator)"
+for so in sooth_amm sooth_market sooth_launchpad sooth_adjudicator; do
+  SO_PATH="$REPO_ROOT/target/deploy/${so}.so"
+  KP_PATH="$REPO_ROOT/target/deploy/${so}-keypair.json"
+  if [[ ! -f "$KP_PATH" ]]; then
+    err "missing $KP_PATH"
+    exit 1
+  fi
+  log "    deploy $so"
+  solana program deploy "$SO_PATH" \
+    --program-id "$KP_PATH" \
+    --keypair "$DEPLOY_PAYER" \
+    --url "http://127.0.0.1:$RPC_PORT" \
+    --use-rpc \
+    --output json 2>&1 | tail -1 >> "$SURFPOOL_LOG" || {
+      err "$so deploy failed — see $SURFPOOL_LOG"
+      exit 1
+    }
+done
+
 # ─── Phase 2.5: load USDC mint via cheatcode ─────────────────────────────
 #
 # Surfpool's auto-deploy handles the 4 .so binaries but doesn't know about
@@ -177,12 +213,18 @@ fi
 # format mirrors `solana account --output json` — we extract lamports +
 # data + owner inline rather than requiring a snapshot file.
 log "phase 2.5: load USDC mint at $USDC_MINT_ADDR"
+# Surfpool's `surfnet_setAccount` accepts `data` as a hex string, NOT the
+# `[base64string, "base64"]` tuple `solana account --output json` produces
+# (which is what test-validator's `--account` flag consumes). Translate.
 USDC_DATA="$(node -e '
 const j = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
 const acc = j.account ?? j;
+const dataHex = Array.isArray(acc.data)
+  ? Buffer.from(acc.data[0], acc.data[1] ?? "base64").toString("hex")
+  : Buffer.from(acc.data, "base64").toString("hex");
 process.stdout.write(JSON.stringify({
   lamports: acc.lamports,
-  data: acc.data,
+  data: dataHex,
   owner: acc.owner,
   executable: acc.executable ?? false,
   rentEpoch: acc.rentEpoch ?? 0,

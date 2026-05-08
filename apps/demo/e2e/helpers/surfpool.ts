@@ -58,16 +58,55 @@ export async function isSurfpool(): Promise<boolean> {
 }
 
 /**
- * Fast-forward the cluster's Clock sysvar by `seconds`. Computes an
- * absolute target (now + delta) so repeated calls accumulate forward
- * rather than resetting against a stale reference.
+ * Fast-forward the cluster's Clock sysvar by `seconds`. Bridges the
+ * `LOCK_DURATION_SECS = 86_400` gate on `claim_unlocked` and the
+ * `Market.deadline` cutoff on `trade_positions`.
  *
- * Bridges the `LOCK_DURATION_SECS = 86_400` gate on `claim_unlocked`
- * and the `Market.deadline` cutoff on `trade_positions`.
+ * Reads the current on-chain Clock.unix_timestamp and jumps to
+ * (current + seconds), so it works even when prior calls (within the
+ * same or earlier runs) already advanced the clock past wall-clock.
+ * Without this, a second `timeTravel(60)` after the chain is already
+ * 7 days in the future would compute target = wall + 60s, which is
+ * < current_on_chain → "Cannot travel to past timestamp" Internal error.
+ *
+ * NOTE: surfnet_timeTravel's `absoluteTimestamp` is in MILLISECONDS;
+ * the on-chain Clock.unix_timestamp is seconds. Surfpool converts
+ * internally.
  */
 export async function timeTravel(seconds: number): Promise<void> {
-  const target = Math.floor(Date.now() / 1000) + seconds;
-  const resp = await rpc("surfnet_timeTravel", [{ absoluteTimestamp: target }]);
+  const SYSVAR_CLOCK = "SysvarC1ock11111111111111111111111111111111";
+  const acc = await rpc<{
+    value: { data: [string, string] } | null;
+  }>("getAccountInfo", [SYSVAR_CLOCK, { encoding: "base64" }]);
+  if ("error" in acc || !acc.result?.value) {
+    throw new Error("timeTravel: failed to read Clock sysvar");
+  }
+  const data = Buffer.from(acc.result.value.data[0], "base64");
+  // Clock layout: slot u64 @ 0, epoch_start_ts i64 @ 8, epoch u64 @ 16,
+  //               leader_schedule_epoch u64 @ 24, unix_timestamp i64 @ 32
+  const onChainSecs = Number(data.readBigInt64LE(32));
+  const targetSecs = onChainSecs + seconds;
+  const targetMs = targetSecs * 1000;
+  const resp = await rpc("surfnet_timeTravel", [
+    { absoluteTimestamp: targetMs },
+  ]);
+  if ("error" in resp) {
+    throw new Error(`surfnet_timeTravel failed: ${resp.error.message}`);
+  }
+}
+
+/**
+ * Jump the cluster clock to an absolute UNIX timestamp (seconds). Throws
+ * if the target is before the current on-chain time — surfnet_timeTravel
+ * doesn't support reverse travel.
+ */
+export async function timeTravelToTimestamp(
+  secondsSinceEpoch: number,
+): Promise<void> {
+  const targetMs = Math.floor(secondsSinceEpoch) * 1000;
+  const resp = await rpc("surfnet_timeTravel", [
+    { absoluteTimestamp: targetMs },
+  ]);
   if ("error" in resp) {
     throw new Error(`surfnet_timeTravel failed: ${resp.error.message}`);
   }

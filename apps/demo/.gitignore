@@ -1,7 +1,9 @@
-# Localnet artifacts produced by scripts/dev-localnet.sh.
-# Contains keypairs and a market PDA — both ephemeral, both per-machine.
+# Localnet artifacts produced by scripts/dev-localnet.sh and
+# scripts/dev-surfpool.sh. Contains keypairs and a market PDA — both
+# ephemeral, both per-machine.
 .localnet/
 .localnet.pid
+.surfpool.pid
 
 # Devnet deploy payer keypair (per-machine secret).
 .deploy-payer.json

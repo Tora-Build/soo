@@ -64,6 +64,7 @@ import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
+  ComputeBudgetProgram,
   Connection,
   Keypair,
   LAMPORTS_PER_SOL,
@@ -485,6 +486,11 @@ async function init() {
   // `programs/sooth_launchpad/src/instructions/create_market.rs` and
   // architecture §4.1. The legacy 4-tx flow can be reconstructed from
   // git history if a future on-chain change forces splitting again.
+  // The createMarket flow CPIs into 4 inner ixs (initialize_market +
+  // initialize_outcome_mints + initialize_market_vaults +
+  // initialize_amm_state). Solana's default 200k CU budget is too tight
+  // — observed exhaustion mid-InitializeAmmState. Bump to the per-ix
+  // ceiling (1.4M) via a pre-ix.
   await launchpadProgram.methods
     .createMarket({
       marketId: Array.from(marketId),
@@ -514,6 +520,9 @@ async function init() {
       systemProgram: SystemProgram.programId,
       rent: SYSVAR_RENT_PUBKEY,
     })
+    .preInstructions([
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
+    ])
     .signers([creator])
     .rpc();
   log("  createMarket OK (one-shot — composed 4 inner CPIs)");

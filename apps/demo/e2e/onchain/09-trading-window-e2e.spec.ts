@@ -22,7 +22,7 @@ import {
   loadTestKeypair,
   fetchMarket,
 } from "../helpers/sdk-helpers";
-import { isSurfpool, timeTravel } from "../helpers/surfpool";
+import { isSurfpool, timeTravelToTimestamp } from "../helpers/surfpool";
 
 const ONE_SHARE_WAD = 10n ** 18n;
 
@@ -47,22 +47,12 @@ test.describe("AMM trading-window guard (Surfpool-gated)", () => {
     const market = await fetchMarket(conn, marketPda);
     if (!market) throw new Error("Market PDA missing in fixture");
 
-    // Compute the absolute target as seconds since epoch and warp via
-    // surfnet_timeTravel directly (the helper computes a delta from
-    // wall-clock now; for an absolute we'd want to swap to a slot-based
-    // call but the timestamp form is sufficient when we're warping into
-    // the future).
-    const nowSec = Math.floor(Date.now() / 1000);
-    const targetSec = Number(market.deadline) + 1;
-    const delta = targetSec - nowSec;
-    if (delta <= 0) {
-      // Seeded market is already expired (test-validator clock drift, or
-      // a rerun after a previous timeTravel). Push a small forward step
-      // to force the post-deadline branch.
-      await timeTravel(60);
-    } else {
-      await timeTravel(delta);
-    }
+    // Jump the on-chain Clock to deadline+1 (absolute UNIX seconds).
+    // surfnet_timeTravel rejects past targets, so the spec only works
+    // when the on-chain clock is at-or-before deadline. Spec 08 advances
+    // by 24h+1s, which still leaves us ~6 days before deadline (deadline
+    // = startTime + 7d), so this jump is forward-only either way.
+    await timeTravelToTimestamp(Number(market.deadline) + 1);
 
     let failed = false;
     let errMsg = "";
@@ -75,6 +65,7 @@ test.describe("AMM trading-window guard (Surfpool-gated)", () => {
         usdcMint,
         outcome: 0,
         deltaShares: ONE_SHARE_WAD,
+        maxCostWad: 5n * 10n ** 18n, // generous ceiling — we expect rejection on time
       });
     } catch (e) {
       failed = true;
