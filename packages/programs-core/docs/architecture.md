@@ -210,12 +210,13 @@ ix: sooth_amm::trade_positions
 ```
 
 **Status**: end-to-end real for the buy path (see
-`programs/sooth_amm/src/instructions/trade_positions.rs`). Fee-router CPI
-and pre-graduation LP mint are `todo!()` — the slippage check
-`cost_wad + fee_wad ≤ max_cost_wad` therefore degenerates to
-`cost_wad ≤ max_cost_wad`, which is **looser than the EVM check by exactly
-the fee_wad delta**. Tracked gap until the fee router lands in
-`sooth_launchpad::distribute_fees` (currently a `todo!()` stub).
+`programs/sooth_amm/src/instructions/trade_positions.rs`). Fee transfer
+to `fee_pool_vault` is real, the slippage check
+`cost_wad + fee_wad ≤ max_cost_wad` is byte-for-byte equivalent to the
+EVM, and pre-graduation LP mint runs via the manual CPI into
+`sooth_launchpad::mint_lp_for_buy` (parent-ix introspection auth gate, see
+§4.2). The graduation flip on `fee_b_base_wad ≥ b · ln(2)` lands in the
+same ix and emits `MarketGraduated`.
 
 **Sells**: `trade_positions` is buy-only by design. `delta_shares > 0` is
 required — negative deltas return `SellNotImplemented` to make the SDK's
@@ -373,14 +374,11 @@ ix: sooth_market::settle(winning_outcome: u8)
     - emit!(MarketSettled { ... })
 ```
 
-**Status**: state mutation real; the adjudicator-CPI auth check is left
-as `todo!()` until `sooth_adjudicator` lands. The current implementation
-gates on signer-key equality with `market.adjudicator` plus a defense-in-
-depth panic if `market.adjudicator == Pubkey::default()`. The production
-gate will be either an `Instructions` sysvar introspection check (the
-parent ix's `program_id` must equal `market.adjudicator`) or a program-
-derived signer with seeds `[b"adj_signer", market_id]` — the choice is
-deferred to the `sooth_adjudicator` design.
+**Status**: state mutation real; the adjudicator-CPI auth check is wired
+via parent-ix introspection on the `Instructions` sysvar — the parent
+program-id must equal `market.adjudicator` (the canonical
+`sooth_adjudicator` program ID). The defense-in-depth panic if
+`market.adjudicator == Pubkey::default()` is preserved.
 
 **Adjudicator allowlist** (commit abfcf15 — Codex C2 mitigation):
 `AdjudicatorAllowlist` is a singleton PDA on `sooth_market` (seeds
@@ -406,10 +404,10 @@ Cross-program invocation depth on Solana is capped at 4. Our chain
 
 ### 4.5 Redemption
 
-**Status: STUB.** `sooth_market::redeem` is declared with the full
-account list and IDL signature so the SDK can pin its shape early, but
-the body is `todo!()`. The Accounts struct is finalized — see
-`programs/sooth_market/src/instructions/redeem.rs`.
+**Status: implemented.** `sooth_market::redeem` is the post-settlement
+1:1 winner payout with half-pay on `INVALID`. Cargo `cpi_redeem` 4/4
+green; SDK + e2e cover the YES-wins path through the
+`/portfolio` Redeem CTA. See `programs/sooth_market/src/instructions/redeem.rs`.
 
 Spec (mirrors EVM `OrderEngine.settlePosition` / `TruthMarket.getRedemptionValue`):
 
@@ -587,30 +585,17 @@ distributor with the source-of-truth config keeps the CPI surface
 narrower than threading `ProtocolConfig` through every `trade_positions`
 call. CPI overhead is negligible at ~5–7k CU per hop.
 
-`sooth_launchpad::distribute_fees` is currently a **`todo!()` stub**
-with the Accounts struct committed for IDL stability. Until it lands:
-
-- `sooth_amm::trade_positions` treats `fee_wad = 0` (see §4.2).
-- The slippage check `cost_wad + fee_wad ≤ max_cost_wad` therefore
-  degenerates to `cost_wad ≤ max_cost_wad`, which is **looser than the
-  EVM check by exactly the fee_wad delta**. The SDK's `max_cost_wad`
-  already reserves headroom; the gap is on-chain enforcement, not
-  client-side intent.
-- The 4-way bps split is drained from the fee accumulator on `AmmState`
-  by the future `distribute_fees` ix; per-trade emission is unchanged.
-
-Once wired, destinations:
-
-- `amm_state.b_base` accumulator (incremented in-place on `AmmState`)
-- `lp_yield_vault` ATA
-- `adjudicator_fee_vault` ATA (read from `Market.adjudicator_fee_dest`)
-- `protocol_treasury_vault` ATA
-
-LP minting on pre-graduation trades is hoisted to its own
-`sooth_launchpad::seed_lp` ix (also `todo!()`), not inlined into
-`trade_positions`, because the `LpMint` PDA needs `init` codegen that
-would push `trade_positions::try_accounts` past the SBF 4 KB stack ceiling
-(same constraint that fragmented `sooth_market::initialize_market`).
+`sooth_launchpad::distribute_fees` is implemented (4-way bps split:
+b-base accumulator + LP yield vault + adjudicator fee vault + treasury
+vault). `sooth_amm::trade_positions` charges the real `fee_wad` per the
+ProtocolConfig `fee_bps`, transfers it to `fee_pool_vault`, and
+increments the per-market `fee_b_base_wad` accumulator used by the
+graduation gate (`b · ln(2)` threshold). LP minting on pre-graduation
+buys runs via the manual CPI into `sooth_launchpad::mint_lp_for_buy`
+(parent-ix introspection auth gate); seeded LP comes from
+`sooth_launchpad::seed_lp` at market creation. Post-graduation
+`sooth_launchpad::redeem_lp` burns LP for pro-rata yield from the
+singleton `lp_yield_vault`.
 
 ---
 
@@ -726,10 +711,10 @@ are the current inhabitants.
    forked Solana-only build; the EVM `apps/demo` lives in `sooth-alpha`.
 7. **LP token transferability**: SPL by default. Do we want it that way (better composability) or do we want to gate transfers like ERC20 with hooks? Token-2022 transfer hooks could enforce this.
 8. **Token-2022 vs classic SPL**: Token-2022 supports useful extensions (transfer hooks, confidential transfers, metadata pointer) but has CPI overhead and ecosystem gaps (some wallets/DEXes still flaky).
-9. **Adjudicator-CPI auth check**: §4.4 — `lock_for_resolution` /
-   `settle` use loose signer-key equality with `market.adjudicator`.
-   Production gate (sysvar introspection vs program-derived signer) is
-   deferred to the `sooth_adjudicator` design.
+9. ~~**Adjudicator-CPI auth check**~~: §4.4 — resolved. Both
+   `lock_for_resolution` and `settle` gate on parent-ix introspection of
+   the `Instructions` sysvar; the parent program-id must equal
+   `market.adjudicator` (the canonical `sooth_adjudicator` program).
 10. **`invalidate()` fallback** (§4.4): permissionless force-INVALID
     after `deadline + invalidationBuffer` is on the EVM `TruthMarket`
     but not yet ported.

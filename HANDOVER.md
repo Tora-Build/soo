@@ -5,7 +5,11 @@
 
 ## What this repo is
 
-`sooth-solana` is the Solana-side of the Sooth Protocol — a prediction market protocol whose EVM implementation lives at [`Tora-Build/sooth-alpha`](https://github.com/Tora-Build/sooth-alpha) (private). This repo houses three layers:
+`sooth-solana` is the Solana-side of the Sooth Protocol — a prediction market protocol whose EVM implementation lives at [`Tora-Build/sooth-alpha`](https://github.com/Tora-Build/sooth-alpha) (private).
+
+**Status (2026-05-08)**: protocol layer feature-complete for the AMM lifecycle (buy → sell → claim → graduate → settle/dismiss → redeem/refund/LP-redeem). 175 cargo tests across the four programs, 49 SDK vitest specs, 19/19 Playwright e2e specs green on a fresh Surfpool boot. Only `sooth_book` (the on-chain orderbook) remains, gated on P1.
+
+This repo houses three layers:
 
 - **`packages/programs-core/`** — Anchor programs (Rust). Mirrors `sooth-alpha/packages/contracts-core/` (Solidity).
 - **`packages/sdk-solana/`** — `@sooth/sdk-solana` TypeScript adapter. Implements the vendored `ChainAdapter` interface; consumed directly by the demo (no umbrella SDK dependency under the current Solana-only scoping).
@@ -79,7 +83,7 @@ sooth-solana/
 │   └── sdk-solana/
 │       ├── README.md
 │       ├── src/                             # adapter, pdas, math/lmsr, anchor IDLs, types
-│       ├── tests/                           # litesvm-backed; 44 specs across 11 files
+│       ├── tests/                           # litesvm-backed; 49 specs across 15 files
 │       └── docs/
 │           ├── integrator-contract.md       # CANONICAL — third-party API frozen surface
 │           └── implementation-guide.md      # ChainAdapter + Phase A migration plan

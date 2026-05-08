@@ -2,11 +2,11 @@
 
 > What's left, in priority order. Refresh when items resolve.
 
-The dapp works locally end-to-end with a real Phantom wallet (verified 2026-05-07). All four implementable production programs (`sooth_amm`, `sooth_market`, `sooth_launchpad`, `sooth_adjudicator`) are FULLY implemented incl. previously-flagged-stub paths (redeem, dispute, LP-mint hook). Demo dapp surfaces every program write that matters: buy / sell / mint / merge / redeem / claim-unlocked / create-market / faucet / request-lock / attest-outcome.
+The dapp works locally end-to-end with 19/19 Playwright e2e specs green on a fresh Surfpool boot (verified 2026-05-08). All four implementable production programs (`sooth_amm`, `sooth_market`, `sooth_launchpad`, `sooth_adjudicator`) are FULLY implemented including the previously-blocked trade-to-graduate / dismiss-market / claim-refund / LP-redeem flows. Demo dapp surfaces every program write that matters: buy / sell / mint / merge / redeem / claim-unlocked / create-market / faucet / request-lock / attest-outcome / dismiss-market / claim-refund / redeem-LP.
 
 ## Active
 
-1. **Founder decision on P1.** All evidence is in `docs/research/monaco-investigation-week-01.md`. Once approved (or rejected), `sooth_book` becomes scaffold-able. Until then `/orderbook/:market` renders an "unavailable" card directly (no inner-hook crash).
+1. **Founder decision on P1.** All evidence is in `docs/research/monaco-investigation-week-01.md`. Once approved (or rejected), `sooth_book` becomes scaffold-able. Until then `/orderbook/:market` renders an "unavailable" card directly (covered by spec 18).
 2. **Finish the AMM devnet deploy.** Get ~3 SOL into `apps/demo/.deploy-payer.json` (fresh airdrop or out-of-band funding) and run
 
    ```
@@ -18,9 +18,7 @@ The dapp works locally end-to-end with a real Phantom wallet (verified 2026-05-0
    Then `node apps/demo/scripts/seed-devnet.mjs --keypair apps/demo/.deploy-payer.json --with-market` to seed the demo market.
 
 3. **Founder decision on P3** (indexer namespace strategy). Until then the demo footer pill renders "Indexer pending (P3)" and `useIndexerStatus` short-circuits on Solana chain IDs. The status shape reserves `solanaMainnet/Devnet/Localnet` slots so a future indexer drops in cleanly.
-4. **Run the wall-clock-gated e2e specs against Surfpool.** Specs 08 (claim_unlocked) and 09 (trading-window) self-skip on stock test-validator and run real round-trips on Surfpool via `surfnet_timeTravel`. Boot via `pnpm -F @sooth/demo dev:surfpool`, then `pnpm -F @sooth/demo test:e2e -- 08 09`. Requires `surfpool` on PATH (`curl -sL https://run.surfpool.run/ | bash`).
-5. **UI smoke pass for the deferred flows.** mint / merge / redeem / request_lock / attest_outcome CTAs are wired through the SDK + chain-shim, exercised by the SDK round-trip tests and the cargo CPI suite. Real-Phantom click-verify deferred until Chrome DevTools session is back online.
-6. **Performance / observability.** No structured indexer integration yet — see #3. Decide on Helius / Triton / custom Postgres ingest before broader user testing.
+4. **Performance / observability.** No structured indexer integration yet — see #3. Decide on Helius / Triton / custom Postgres ingest before broader user testing.
 
 ## Pending decisions (`docs/decision-log.md`)
 
