@@ -32,12 +32,21 @@ VALIDATOR_LOG="$LOCALNET_DIR/validator.log"
 LEDGER_DIR="$LOCALNET_DIR/ledger"
 USDC_DUMP="$LOCALNET_DIR/usdc-mint-account.json"
 
-SOOTH_AMM_ID="SoothAMM11111111111111111111111111111111111"
-SOOTH_MARKET_ID="SoothMkt11111111111111111111111111111111111"
+# Production declare_id! pubkeys (locked in commit d0db9fb; same across
+# devnet/localnet/mainnet per docs/decision-log.md D6). The seed script
+# reads program IDs from each IDL.address, so the validator must deploy
+# at the matching pubkeys or seed-init's first Sooth-program ix will
+# fail with "Attempt to load a program that does not exist."
+SOOTH_AMM_ID="67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k"
+SOOTH_MARKET_ID="ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+SOOTH_LAUNCHPAD_ID="HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3"
+SOOTH_ADJUDICATOR_ID="4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8"
 USDC_MINT_ADDR="4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 
 AMM_SO="$REPO_ROOT/target/deploy/sooth_amm.so"
 MARKET_SO="$REPO_ROOT/target/deploy/sooth_market.so"
+LAUNCHPAD_SO="$REPO_ROOT/target/deploy/sooth_launchpad.so"
+ADJUDICATOR_SO="$REPO_ROOT/target/deploy/sooth_adjudicator.so"
 
 VITE_PORT="${VITE_PORT:-5175}"
 RPC_PORT="${RPC_PORT:-8899}"
@@ -54,7 +63,7 @@ if ! command -v solana-test-validator >/dev/null 2>&1; then
   exit 1
 fi
 
-for so in "$AMM_SO" "$MARKET_SO"; do
+for so in "$AMM_SO" "$MARKET_SO" "$LAUNCHPAD_SO" "$ADJUDICATOR_SO"; do
   if [[ ! -f "$so" ]]; then
     err "missing $so"
     err "Run from repo root: cd packages/programs-core && cargo build-sbf"
@@ -101,7 +110,11 @@ fi
 
 # ─── Boot validator ───────────────────────────────────────────────────────
 log "phase 2: booting solana-test-validator on :$RPC_PORT"
-log "  programs: $SOOTH_AMM_ID, $SOOTH_MARKET_ID"
+log "  programs:"
+log "    sooth_amm         = $SOOTH_AMM_ID"
+log "    sooth_market      = $SOOTH_MARKET_ID"
+log "    sooth_launchpad   = $SOOTH_LAUNCHPAD_ID"
+log "    sooth_adjudicator = $SOOTH_ADJUDICATOR_ID"
 log "  preloaded mint: $USDC_MINT_ADDR (.localnet/usdc-mint-account.json)"
 log "  ledger: $LEDGER_DIR"
 log "  log:    $VALIDATOR_LOG"
@@ -116,6 +129,8 @@ solana-test-validator \
   --ledger "$LEDGER_DIR" \
   --bpf-program "$SOOTH_AMM_ID" "$AMM_SO" \
   --bpf-program "$SOOTH_MARKET_ID" "$MARKET_SO" \
+  --bpf-program "$SOOTH_LAUNCHPAD_ID" "$LAUNCHPAD_SO" \
+  --bpf-program "$SOOTH_ADJUDICATOR_ID" "$ADJUDICATOR_SO" \
   --account "$USDC_MINT_ADDR" "$USDC_DUMP" \
   >"$VALIDATOR_LOG" 2>&1 &
 VALIDATOR_PID=$!
