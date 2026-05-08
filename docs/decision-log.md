@@ -53,7 +53,7 @@
 - Production `trade_positions` envelope projected at ≈75–80k CU including 2× SPL token CPI, account validation, and fee-router CPI — under the 200k default per-instruction CU limit, so callers do **not** need to attach `ComputeBudgetInstruction::set_compute_unit_limit` on every trade. Document this in the SDK adapter's submit path.
 - Variant B (precomputed exp/ln lookup tables) is not needed and is dropped from the architecture spec's mitigation list. It can return as a future escape hatch if the production envelope drifts above 150k CU after fee-router and adjudicator CPI are wired in.
 - The crank-pattern mitigation (split cost calc into two TXs) and the LMSR-replacement mitigation (constant-product AMM) are both moot. `programs-core/docs/architecture.md §5` should be edited to reflect this when the architecture doc gets its next pass.
-- This unblocks `sooth_amm` as the first production program in the implementation sequence (per `HANDOVER.md` "Sequencing for actual implementation").
+- This unblocked `sooth_amm` as the first production program in the implementation sequence; subsequent waves landed all four programs (see [`docs/status.md`](status.md)).
 
 **Spike artifact**: `_spikes/lmsr-cu/` (Cargo workspace-private; bench reproducible via `cargo build-sbf && cargo test-sbf -- --nocapture`). Cargo.lock pinned because three transitive deps had to be downgraded to escape edition2024 dependencies that platform-tools v1.51's cargo 1.84.0 rejects — note for whoever ports the math into `sooth_amm`.
 
@@ -82,7 +82,7 @@ compile-time `pubkey_eq` asserts in each program's `lib.rs` keep all
 keypair is locked in but the deploy itself is pending — devnet faucet
 rate-limited the deploy payer mid-rollout. Singleton bootstrap PDAs
 (`ProtocolConfig`, `fee_pool_vault`, `AdjudicatorAllowlist`) are all
-initialised. See `HANDOVER.md > Devnet deployment status` for the
+initialised. See [`docs/status.md` § Devnet deployment status](status.md#devnet-deployment-status-2026-05-07) for the
 exact addresses and resume instructions.
 
 **Implication**: `pnpm dev` (no flag) now targets devnet by default;

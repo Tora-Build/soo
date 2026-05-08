@@ -1,7 +1,7 @@
 # Monaco Investigation Week 01 — Source Reading Report
 
 > Status: research deliverable, 2026-05-05.
-> Spike 2 per [`HANDOVER.md`](../../HANDOVER.md) §"Spike 2 — Monaco investigation week".
+> Inputs to P1 (`sooth_book` direction) per [`docs/decision-log.md`](../decision-log.md) — research complete, founder approval pending.
 > Validates / refutes [`docs/monaco-fork-analysis.md`](../monaco-fork-analysis.md) §6 against first-hand source reading.
 
 ---
