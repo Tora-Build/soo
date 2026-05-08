@@ -41,6 +41,9 @@ const FPS = 30;
 const W = 1280;
 const H = 720;
 const TITLE_DURATION_S = 2.5;
+const SUMMARY_DURATION_S = 4;
+const SUMMARY_TEXT =
+  "19/19 PASSED · 175 cargo · 49 SDK · 19 e2e · sooth-solana 2026-05-08";
 
 mkdirSync(STAGE, { recursive: true });
 
@@ -139,8 +142,40 @@ function titleHtml(num, label, badge) {
 </body></html>`;
 }
 
-console.log(`[walkthrough] rendering ${specs.length} title cards`);
+function summaryHtml() {
+  return `<!doctype html>
+<html><head><meta charset="utf-8"/><style>
+  html, body { margin: 0; padding: 0; background: #0a0a0a; }
+  body { width: ${W}px; height: ${H}px; display: flex; flex-direction: column;
+         justify-content: center; align-items: flex-start; padding: 0 96px;
+         box-sizing: border-box; font-family: -apple-system, system-ui, sans-serif;
+         color: #f1f1f1; }
+  .num { font-size: 36px; font-weight: 600; letter-spacing: 0.16em;
+         color: #4ade80; text-transform: uppercase; margin-bottom: 12px; }
+  .passed { font-size: 104px; font-weight: 700; line-height: 1;
+            max-width: 1100px; }
+  .detail { margin-top: 24px; font-size: 34px; font-weight: 600;
+            line-height: 1.18; color: #d1d5db; max-width: 1100px; }
+  .detail strong { color: #4ade80; }
+  .meta { position: absolute; bottom: 56px; left: 96px; right: 96px;
+          display: flex; justify-content: space-between;
+          font-size: 18px; letter-spacing: 0.18em; text-transform: uppercase;
+          color: #6b7280; }
+  .accent { position: absolute; top: 0; left: 0; height: 6px; width: 100%;
+            background: #4ade80; }
+</style></head>
+<body>
+  <div class="accent"></div>
+  <div class="num">SUMMARY</div>
+  <div class="passed">19/19 PASSED</div>
+  <div class="detail">175 cargo · 49 SDK · 19 e2e · <strong>sooth-solana</strong> 2026-05-08</div>
+  <div class="meta"><span>sooth-solana e2e walkthrough</span><span>${SUMMARY_TEXT}</span></div>
+</body></html>`;
+}
+
+console.log(`[walkthrough] rendering ${specs.length} title cards + summary`);
 const browser = await chromium.launch();
+let summaryPng;
 try {
   const page = await browser.newPage({ viewport: { width: W, height: H } });
   for (const s of matched) {
@@ -151,6 +186,9 @@ try {
     s.titlePng = join(STAGE, `title-${s.num}.png`);
     await page.screenshot({ path: s.titlePng, type: "png", fullPage: false });
   }
+  await page.setContent(summaryHtml(), { waitUntil: "load" });
+  summaryPng = join(STAGE, "summary.png");
+  await page.screenshot({ path: summaryPng, type: "png", fullPage: false });
 } finally {
   await browser.close();
 }
@@ -222,6 +260,31 @@ for (const s of matched) {
   ]);
   segments.push(videoSeg);
 }
+
+const summarySeg = join(STAGE, "summary.mp4");
+ffmpeg([
+  "-loop",
+  "1",
+  "-t",
+  String(SUMMARY_DURATION_S),
+  "-i",
+  summaryPng,
+  "-r",
+  String(FPS),
+  "-c:v",
+  "libx264",
+  "-pix_fmt",
+  "yuv420p",
+  "-preset",
+  "medium",
+  "-crf",
+  "23",
+  "-vf",
+  `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p`,
+  "-an",
+  summarySeg,
+]);
+segments.push(summarySeg);
 
 // ─── 5. Concat ──────────────────────────────────────────────────────────────
 
