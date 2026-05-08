@@ -1,0 +1,154 @@
+name: E2E
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  cargo-test:
+    name: Cargo tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Anchor CLI
+        run: |
+          cargo install \
+            --git https://github.com/coral-xyz/anchor \
+            --tag v0.30.1 \
+            anchor-cli \
+            --locked
+
+      - name: Cargo test
+        run: cargo test
+
+  sdk-vitest:
+    name: SDK Vitest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install
+
+      - name: Typecheck workspace
+        run: pnpm -r typecheck
+
+      - name: SDK tests
+        run: pnpm -F @sooth/sdk-solana test
+
+  e2e:
+    name: Surfpool Playwright E2E
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install
+
+      - name: Install Playwright and media tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pnpm -F @sooth/demo exec playwright install --with-deps chromium
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.13/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install Anchor CLI
+        run: |
+          cargo install \
+            --git https://github.com/coral-xyz/anchor \
+            --tag v0.30.1 \
+            anchor-cli \
+            --locked
+
+      - name: Install Surfpool
+        run: |
+          curl -sL https://run.surfpool.run/ | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build SBF programs
+        run: |
+          cargo build-sbf \
+            --manifest-path packages/programs-core/programs/sooth_amm/Cargo.toml
+          cargo build-sbf \
+            --manifest-path packages/programs-core/programs/sooth_market/Cargo.toml
+          cargo build-sbf \
+            --manifest-path packages/programs-core/programs/sooth_launchpad/Cargo.toml
+          cargo build-sbf \
+            --manifest-path packages/programs-core/programs/sooth_adjudicator/Cargo.toml
+
+      - name: Create local deploy payer
+        run: solana-keygen new -o apps/demo/.deploy-payer.json --no-bip39-passphrase --silent
+
+      - name: Boot Surfpool demo
+        run: |
+          mkdir -p apps/demo/test-results
+          pnpm -F @sooth/demo dev:surfpool > apps/demo/test-results/dev-surfpool.log 2>&1 &
+          echo "$!" > /tmp/sooth-demo.pid
+          for i in $(seq 1 120); do
+            if curl -sf http://127.0.0.1:5175 >/dev/null; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat /tmp/sooth-demo.pid)" 2>/dev/null; then
+              tail -200 apps/demo/test-results/dev-surfpool.log
+              exit 1
+            fi
+            sleep 2
+          done
+          tail -200 apps/demo/test-results/dev-surfpool.log
+          exit 1
+
+      - name: Run Playwright E2E
+        run: E2E_VIDEO=on pnpm -F @sooth/demo test:e2e
+
+      - name: Build walkthrough video
+        run: node apps/demo/scripts/build-e2e-walkthrough.mjs
+
+      - name: Upload walkthrough artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sooth-solana-19-suite-walkthrough
+          path: apps/demo/test-results/19-suite-walkthrough.mp4
+          if-no-files-found: warn
+
+      - name: Stop Surfpool demo
+        if: always()
+        run: |
+          if [ -f /tmp/sooth-demo.pid ]; then
+            kill "$(cat /tmp/sooth-demo.pid)" 2>/dev/null || true
+          fi
