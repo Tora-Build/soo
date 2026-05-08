@@ -7,6 +7,7 @@ import {
   useBalance,
   useReadContract,
   useConfig,
+  useDemo,
 } from "@/lib/chain-shim";
 import { Terminal, Wallet, Key, Download } from "lucide-react";
 import { formatUnits } from "@/lib/chain-shim";
@@ -103,6 +104,7 @@ export function Geek() {
     },
   });
 
+  const demo = useDemo();
   const sdk = useMemo(() => {
     if (!publicClient || !chainId || !isSupported) return null;
 
@@ -112,11 +114,22 @@ export function Geek() {
         publicClient,
         activeWalletClient ?? undefined,
         activeAddress ?? undefined,
+        // 5th arg is Solana-fork-only — the SDK pulls adapter + signer +
+        // market ref from here for the wired commands (balance, buyyes,
+        // buyno, mint, marketstatus). EVM upstream ignores it.
+        demo,
       );
     } catch {
       return null;
     }
-  }, [chainId, publicClient, activeWalletClient, activeAddress, isSupported]);
+  }, [
+    chainId,
+    publicClient,
+    activeWalletClient,
+    activeAddress,
+    isSupported,
+    demo,
+  ]);
 
   useEffect(() => {
     if (sdk && activeAddress) {
