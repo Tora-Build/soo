@@ -31,9 +31,7 @@ use anchor_lang::solana_program::sysvar;
 
 use crate::error::SoothMarketError;
 use crate::events::MarketLocked;
-use crate::instruction_introspection::{
-    require_adjudicator_parent_ix, REQUEST_LOCK_DISCRIMINATOR,
-};
+use crate::instruction_introspection::{require_adjudicator_parent_ix, REQUEST_LOCK_DISCRIMINATOR};
 use crate::state::{Market, MarketLifecycle};
 
 #[derive(Accounts)]

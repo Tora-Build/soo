@@ -133,7 +133,10 @@ fn dispute_with_wrong_signer_is_rejected() {
     send_ixs(&mut harness.svm, &creator, &[attest_ix]);
 
     let attacker = Keypair::new();
-    harness.svm.airdrop(&attacker.pubkey(), 1_000_000_000).unwrap();
+    harness
+        .svm
+        .airdrop(&attacker.pubkey(), 1_000_000_000)
+        .unwrap();
 
     harness.svm.expire_blockhash();
     let dispute_ix = build_dispute_ix(&pdas, attacker.pubkey(), OUTCOME_INVALID);

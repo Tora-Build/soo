@@ -57,10 +57,7 @@ fn direct_lock_for_resolution_call_is_rejected() {
     // lifecycle mutation.
     let market = fetch_market(&harness.svm, pdas.market);
     assert!(
-        matches!(
-            market.lifecycle,
-            sooth_market::state::MarketLifecycle::Open
-        ),
+        matches!(market.lifecycle, sooth_market::state::MarketLifecycle::Open),
         "lifecycle must stay Open after direct call rejection, got {:?}",
         market.lifecycle
     );

@@ -34,9 +34,7 @@ use anchor_lang::prelude::*;
 
 use crate::error::SoothMarketError;
 use crate::events::MarketInitialized;
-use crate::state::{
-    AdjudicatorAllowlist, Market, MarketLifecycle, ADJUDICATOR_ALLOWLIST_SEED,
-};
+use crate::state::{AdjudicatorAllowlist, Market, MarketLifecycle, ADJUDICATOR_ALLOWLIST_SEED};
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct InitializeMarketArgs {

@@ -75,5 +75,4 @@ pub const DISPUTE_DISCRIMINATOR: [u8; 8] = [216, 92, 128, 146, 202, 85, 135, 73]
 pub const TRANSFER_TO_LOCK_DISCRIMINATOR: [u8; 8] = [88, 66, 17, 203, 225, 33, 10, 138];
 
 /// `sooth_market::transfer_from_lock_vault`.
-pub const TRANSFER_FROM_LOCK_VAULT_DISCRIMINATOR: [u8; 8] =
-    [48, 17, 136, 127, 104, 131, 136, 169];
+pub const TRANSFER_FROM_LOCK_VAULT_DISCRIMINATOR: [u8; 8] = [48, 17, 136, 127, 104, 131, 136, 169];

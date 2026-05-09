@@ -83,7 +83,7 @@ fn lp_position_borsh_roundtrip_after_manual_init() {
     // Mirror the on-chain write path: discriminator at [0..8], Borsh
     // body at [8..]. We allocate `LpPosition::SPACE` so a drift in the
     // SPACE constant trips this test before it trips runtime.
-    let mut buf = vec![0u8; LpPosition::SPACE];
+    let mut buf = [0u8; LpPosition::SPACE];
     buf[..8].copy_from_slice(&LpPosition::DISCRIMINATOR);
     let mut writer = &mut buf[8..];
     position.serialize(&mut writer).expect("serialize");

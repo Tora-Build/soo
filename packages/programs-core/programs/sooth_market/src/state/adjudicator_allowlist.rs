@@ -90,6 +90,6 @@ impl AdjudicatorAllowlist {
         if count > ADJUDICATOR_ALLOWLIST_CAPACITY {
             return false;
         }
-        self.entries[..count].iter().any(|k| *k == candidate)
+        self.entries[..count].contains(&candidate)
     }
 }

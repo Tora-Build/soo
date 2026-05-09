@@ -70,7 +70,12 @@ fn boot_with_complete_set(
 
     // Seed user with USDC so mint_complete_set has something to pull.
     let mint_authority = clone_keypair(&harness.usdc_mint_authority);
-    mint_usdc(&mut harness.svm, &mint_authority, user_usdc_ata, MINT_AMOUNT);
+    mint_usdc(
+        &mut harness.svm,
+        &mint_authority,
+        user_usdc_ata,
+        MINT_AMOUNT,
+    );
 
     // Mint a complete set: user pays MINT_AMOUNT USDC, receives MINT_AMOUNT
     // of each side. Signed by the user.
@@ -100,7 +105,14 @@ fn boot_with_complete_set(
     assert_eq!(fetch_token_amount(&harness.svm, user_usdc_ata), 0);
     assert_eq!(fetch_token_amount(&harness.svm, pdas.vault), MINT_AMOUNT);
 
-    (harness, pdas, user, user_usdc_ata, user_yes_ata, user_no_ata)
+    (
+        harness,
+        pdas,
+        user,
+        user_usdc_ata,
+        user_yes_ata,
+        user_no_ata,
+    )
 }
 
 /// Lock + settle the market with the chosen outcome. Mirrors the two-step
@@ -157,10 +169,7 @@ fn redeem_yes_wins_burns_yes_pays_full_usdc() {
     // the source of truth — the loser's tokens are simply not redeemed).
     assert_eq!(fetch_token_amount(&harness.svm, user_yes_ata), 0);
     assert_eq!(fetch_token_amount(&harness.svm, user_no_ata), MINT_AMOUNT);
-    assert_eq!(
-        fetch_token_amount(&harness.svm, user_usdc_ata),
-        MINT_AMOUNT
-    );
+    assert_eq!(fetch_token_amount(&harness.svm, user_usdc_ata), MINT_AMOUNT);
     assert_eq!(fetch_token_amount(&harness.svm, pdas.vault), 0);
 }
 
@@ -176,10 +185,7 @@ fn redeem_no_wins_burns_no_pays_full_usdc() {
 
     assert_eq!(fetch_token_amount(&harness.svm, user_yes_ata), MINT_AMOUNT);
     assert_eq!(fetch_token_amount(&harness.svm, user_no_ata), 0);
-    assert_eq!(
-        fetch_token_amount(&harness.svm, user_usdc_ata),
-        MINT_AMOUNT
-    );
+    assert_eq!(fetch_token_amount(&harness.svm, user_usdc_ata), MINT_AMOUNT);
     assert_eq!(fetch_token_amount(&harness.svm, pdas.vault), 0);
 }
 
@@ -198,10 +204,7 @@ fn redeem_invalid_burns_both_sides_pays_half() {
     // (because `mint_complete_set` left exactly MINT_AMOUNT in the vault).
     assert_eq!(fetch_token_amount(&harness.svm, user_yes_ata), 0);
     assert_eq!(fetch_token_amount(&harness.svm, user_no_ata), 0);
-    assert_eq!(
-        fetch_token_amount(&harness.svm, user_usdc_ata),
-        MINT_AMOUNT
-    );
+    assert_eq!(fetch_token_amount(&harness.svm, user_usdc_ata), MINT_AMOUNT);
     assert_eq!(fetch_token_amount(&harness.svm, pdas.vault), 0);
 }
 

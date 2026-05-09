@@ -39,11 +39,11 @@ use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::solana_program::sysvar;
 use anchor_lang::{InstructionData, ToAccountMetas};
 use litesvm::LiteSVM;
+use solana_sdk::program_pack::Pack;
 use solana_sdk::{
     account::Account, compute_budget::ComputeBudgetInstruction, message::Message,
     signature::Keypair, signer::Signer, sysvar::clock::Clock, transaction::Transaction,
 };
-use solana_sdk::program_pack::Pack;
 use spl_associated_token_account::get_associated_token_address;
 use spl_token::state::Mint;
 
@@ -126,7 +126,8 @@ impl Harness {
         // is a real Keypair so tests that need to seed USDC into user ATAs
         // (e.g. `cpi_redeem`) can sign `spl_token::instruction::mint_to`.
         let usdc_mint_authority = Keypair::new();
-        svm.airdrop(&usdc_mint_authority.pubkey(), 1_000_000_000).unwrap();
+        svm.airdrop(&usdc_mint_authority.pubkey(), 1_000_000_000)
+            .unwrap();
         write_mint(&mut svm, USDC_MINT, usdc_mint_authority.pubkey());
 
         // Funded creator. Doubles as allowlist authority + adjudicator
@@ -233,10 +234,8 @@ impl MarketPdas {
         let (vault_authority, _) =
             Pubkey::find_program_address(&[b"vault", &market_id], &MARKET_ID);
         let (lock_authority, _) = Pubkey::find_program_address(&[b"lock", &market_id], &MARKET_ID);
-        let (yes_mint, _) =
-            Pubkey::find_program_address(&[b"mint", &market_id, b"y"], &MARKET_ID);
-        let (no_mint, _) =
-            Pubkey::find_program_address(&[b"mint", &market_id, b"n"], &MARKET_ID);
+        let (yes_mint, _) = Pubkey::find_program_address(&[b"mint", &market_id, b"y"], &MARKET_ID);
+        let (no_mint, _) = Pubkey::find_program_address(&[b"mint", &market_id, b"n"], &MARKET_ID);
         let vault = get_associated_token_address(&vault_authority, &USDC_MINT);
         let lock_vault = get_associated_token_address(&lock_authority, &USDC_MINT);
         let (amm_state, _) = Pubkey::find_program_address(&[b"amm", &market_id], &AMM_ID);
@@ -378,11 +377,7 @@ pub fn build_attest_outcome_ix(
 /// (typically `harness.creator` since v1 collapses `dispute_authority` to
 /// the same key as the attestation `authority` at register time). The
 /// `new_outcome` ∈ {NO=0, YES=1, INVALID=2}.
-pub fn build_dispute_ix(
-    pdas: &MarketPdas,
-    disputer: Pubkey,
-    new_outcome: u8,
-) -> Instruction {
+pub fn build_dispute_ix(pdas: &MarketPdas, disputer: Pubkey, new_outcome: u8) -> Instruction {
     build_ix(
         ADJ_ID,
         sooth_adjudicator::accounts::Dispute {
@@ -459,10 +454,7 @@ pub fn fetch_amm_state(svm: &LiteSVM, pda: Pubkey) -> sooth_amm::state::AmmState
     decode_anchor(&acc.data)
 }
 
-pub fn fetch_adjudicator(
-    svm: &LiteSVM,
-    pda: Pubkey,
-) -> sooth_adjudicator::state::Adjudicator {
+pub fn fetch_adjudicator(svm: &LiteSVM, pda: Pubkey) -> sooth_adjudicator::state::Adjudicator {
     let acc = svm
         .get_account(&pda)
         .expect("adjudicator pda missing from cluster");
@@ -528,12 +520,7 @@ pub fn market_id(salt: u8) -> [u8; 16] {
 /// already exist. Idempotent: cheap to call multiple times. Pays rent from
 /// `payer`. Used by tests that seed user ATAs before exercising the
 /// mint/merge/redeem flows.
-pub fn ensure_ata(
-    svm: &mut LiteSVM,
-    payer: &Keypair,
-    owner: Pubkey,
-    mint: Pubkey,
-) -> Pubkey {
+pub fn ensure_ata(svm: &mut LiteSVM, payer: &Keypair, owner: Pubkey, mint: Pubkey) -> Pubkey {
     let ata = get_associated_token_address(&owner, &mint);
     if svm.get_account(&ata).map(|a| a.data.len()).unwrap_or(0) > 0 {
         return ata;

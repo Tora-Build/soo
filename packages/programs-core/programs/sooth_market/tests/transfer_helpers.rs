@@ -189,7 +189,10 @@ fn rejects_wrong_discriminator() {
     let outer = make_ix(sooth_amm_id(), wrong_disc);
     let data = build_sysvar_data(&[outer], 0);
     let res = require_parent_ix_from_data(&data, &sooth_amm_id(), &SELL_POSITIONS_DISCRIMINATOR);
-    assert_invalid_parent(res, "sooth_amm parent with wrong discriminator must be rejected");
+    assert_invalid_parent(
+        res,
+        "sooth_amm parent with wrong discriminator must be rejected",
+    );
 }
 
 #[test]
@@ -199,7 +202,10 @@ fn rejects_claim_when_only_sell_parent() {
     let parent = make_ix(sooth_amm_id(), SELL_POSITIONS_DISCRIMINATOR.to_vec());
     let data = build_sysvar_data(&[parent], 0);
     let res = require_parent_ix_from_data(&data, &sooth_amm_id(), &CLAIM_UNLOCKED_DISCRIMINATOR);
-    assert_invalid_parent(res, "transfer_from_lock_vault gate must reject sell_positions parent");
+    assert_invalid_parent(
+        res,
+        "transfer_from_lock_vault gate must reject sell_positions parent",
+    );
 }
 
 #[test]
@@ -207,7 +213,10 @@ fn rejects_sell_when_only_claim_parent() {
     let parent = make_ix(sooth_amm_id(), CLAIM_UNLOCKED_DISCRIMINATOR.to_vec());
     let data = build_sysvar_data(&[parent], 0);
     let res = require_parent_ix_from_data(&data, &sooth_amm_id(), &SELL_POSITIONS_DISCRIMINATOR);
-    assert_invalid_parent(res, "transfer_to_lock gate must reject claim_unlocked parent");
+    assert_invalid_parent(
+        res,
+        "transfer_to_lock gate must reject claim_unlocked parent",
+    );
 }
 
 #[test]
@@ -236,5 +245,8 @@ fn rejects_when_match_is_after_current_index() {
     let later = make_ix(sooth_amm_id(), SELL_POSITIONS_DISCRIMINATOR.to_vec());
     let data = build_sysvar_data(&[unrelated, helper_pos, later], 1);
     let res = require_parent_ix_from_data(&data, &sooth_amm_id(), &SELL_POSITIONS_DISCRIMINATOR);
-    assert_invalid_parent(res, "ix at index > current_index must not satisfy the parent gate");
+    assert_invalid_parent(
+        res,
+        "ix at index > current_index must not satisfy the parent gate",
+    );
 }

@@ -113,9 +113,7 @@ pub struct Dispute<'info> {
 pub fn handler(ctx: Context<Dispute>, new_outcome: u8) -> Result<()> {
     // ── 1. Outcome shape ─────────────────────────────────────────────────
     require!(
-        new_outcome == OUTCOME_NO
-            || new_outcome == OUTCOME_YES
-            || new_outcome == OUTCOME_INVALID,
+        new_outcome == OUTCOME_NO || new_outcome == OUTCOME_YES || new_outcome == OUTCOME_INVALID,
         SoothAdjudicatorError::InvalidOutcome
     );
 

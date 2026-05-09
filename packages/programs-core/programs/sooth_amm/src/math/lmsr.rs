@@ -19,8 +19,8 @@
 //! running the Taylor series. That is what makes the 100× tail (33k CU)
 //! cheaper than the 10× imbalanced case (55k CU).
 
-use super::wad::{wad_div, wad_mul, LN2_WAD, WAD, WAD_U};
 pub use super::wad::MathError;
+use super::wad::{wad_div, wad_mul, LN2_WAD, WAD, WAD_U};
 
 /// Maximum |x| for `exp_wad`. ~133·WAD is where exp(x) approaches u128::MAX;
 /// we clamp tighter at 64·WAD because LMSR diffs past that mean a one-sided
@@ -114,7 +114,9 @@ pub fn ln_wad(y: i128) -> Result<i128, MathError> {
         sum = sum.checked_add(term / denom).ok_or(MathError::Overflow)?;
     }
     let ln_m_over_wad = sum.checked_mul(2).ok_or(MathError::Overflow)?;
-    let k_term = (k as i128).checked_mul(LN2_WAD).ok_or(MathError::Overflow)?;
+    let k_term = (k as i128)
+        .checked_mul(LN2_WAD)
+        .ok_or(MathError::Overflow)?;
     Ok(k_term + ln_m_over_wad)
 }
 
@@ -225,10 +227,13 @@ mod tests {
         let c = lmsr_cost(q, q, b).unwrap();
         // expected = q + b · ln 2
         let expected = q + (b / WAD) * LN2_WAD; // b in WAD, so multiply by ln2 then back to WAD
-        // The cleaner expected: b·ln 2 in WAD = wad_mul(b, LN2_WAD)
+                                                // The cleaner expected: b·ln 2 in WAD = wad_mul(b, LN2_WAD)
         let expected_clean = q + wad_mul(b, LN2_WAD).unwrap();
         let _ = expected;
-        assert!(close(c, expected_clean, 1_000_000_000), "got {c} vs {expected_clean}");
+        assert!(
+            close(c, expected_clean, 1_000_000_000),
+            "got {c} vs {expected_clean}"
+        );
     }
 
     #[test]

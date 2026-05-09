@@ -30,10 +30,7 @@ fn request_lock_flips_open_to_locked_via_cpi() {
     // Sanity: market starts `Open` after `create_market`'s 4-leg flow.
     let pre = fetch_market(&harness.svm, pdas.market);
     assert!(
-        matches!(
-            pre.lifecycle,
-            sooth_market::state::MarketLifecycle::Open
-        ),
+        matches!(pre.lifecycle, sooth_market::state::MarketLifecycle::Open),
         "expected Open before request_lock, got {:?}",
         pre.lifecycle
     );
@@ -51,10 +48,7 @@ fn request_lock_flips_open_to_locked_via_cpi() {
 
     let post = fetch_market(&harness.svm, pdas.market);
     assert!(
-        matches!(
-            post.lifecycle,
-            sooth_market::state::MarketLifecycle::Locked
-        ),
+        matches!(post.lifecycle, sooth_market::state::MarketLifecycle::Locked),
         "expected Locked after request_lock CPI, got {:?}",
         post.lifecycle
     );
@@ -82,10 +76,7 @@ fn second_request_lock_is_rejected_by_lifecycle_gate() {
     harness.svm.expire_blockhash();
     let ix = build_request_lock_ix(&harness, &pdas);
     let res = try_send_ixs(&mut harness.svm, &creator, &[ix]);
-    assert!(
-        res.is_err(),
-        "second request_lock must be rejected; got Ok"
-    );
+    assert!(res.is_err(), "second request_lock must be rejected; got Ok");
 
     // Lifecycle remains Locked (no progression).
     let post = fetch_market(&harness.svm, pdas.market);

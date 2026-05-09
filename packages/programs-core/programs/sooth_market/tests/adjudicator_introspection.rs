@@ -101,7 +101,10 @@ fn accepts_request_lock_parent() {
     let parent = make_ix(adj_id(), REQUEST_LOCK_DISCRIMINATOR.to_vec());
     let data = build_sysvar_data(&[parent], 0);
     let res = require_parent_ix_from_data(&data, &adj_id(), &REQUEST_LOCK_DISCRIMINATOR);
-    assert!(res.is_ok(), "request_lock CPI must be accepted; got {res:?}");
+    assert!(
+        res.is_ok(),
+        "request_lock CPI must be accepted; got {res:?}"
+    );
 }
 
 #[test]
@@ -111,7 +114,10 @@ fn accepts_attest_outcome_parent() {
     let parent = make_ix(adj_id(), ATTEST_OUTCOME_DISCRIMINATOR.to_vec());
     let data = build_sysvar_data(&[parent], 0);
     let res = require_parent_ix_from_data(&data, &adj_id(), &ATTEST_OUTCOME_DISCRIMINATOR);
-    assert!(res.is_ok(), "attest_outcome CPI must be accepted; got {res:?}");
+    assert!(
+        res.is_ok(),
+        "attest_outcome CPI must be accepted; got {res:?}"
+    );
 }
 
 #[test]
@@ -141,7 +147,10 @@ fn rejects_unrelated_program_with_matching_discriminator() {
     let attacker = make_ix(Pubkey::new_unique(), ATTEST_OUTCOME_DISCRIMINATOR.to_vec());
     let data = build_sysvar_data(&[attacker], 0);
     let res = require_parent_ix_from_data(&data, &adj_id(), &ATTEST_OUTCOME_DISCRIMINATOR);
-    assert_invalid_parent(res, "non-adjudicator program must be rejected even with matching discriminator");
+    assert_invalid_parent(
+        res,
+        "non-adjudicator program must be rejected even with matching discriminator",
+    );
 }
 
 #[test]
