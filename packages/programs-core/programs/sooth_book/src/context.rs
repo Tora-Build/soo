@@ -37,7 +37,7 @@ pub struct CreateOrderRequest<'info> {
         seeds = [b"order_request".as_ref(), market.key().as_ref()],
         bump,
     )]
-    pub order_request_queue: Account<'info, MarketOrderRequestQueue>,
+    pub order_request_queue: Box<Account<'info, MarketOrderRequestQueue>>,
 
     #[account(
         init_if_needed,
@@ -57,7 +57,7 @@ pub struct CreateOrderRequest<'info> {
         mut,
         token::mint = market.mint_account,
     )]
-    pub purchaser_token: Account<'info, TokenAccount>,
+    pub purchaser_token: Box<Account<'info, TokenAccount>>,
 
     #[account(mut)]
     pub market: Box<Account<'info, Market>>,
@@ -73,8 +73,8 @@ pub struct CreateOrderRequest<'info> {
         (market_outcome.prices.is_some() && price_ladder.is_some() && market_outcome.prices.unwrap() == price_ladder.as_ref().unwrap().key())
         @ CoreError::CreationInvalidPriceLadder
     )]
-    pub market_outcome: Account<'info, MarketOutcome>,
-    pub price_ladder: Option<Account<'info, PriceLadder>>,
+    pub market_outcome: Box<Account<'info, MarketOutcome>>,
+    pub price_ladder: Option<Box<Account<'info, PriceLadder>>>,
 
     #[account(
         mut,
@@ -83,9 +83,9 @@ pub struct CreateOrderRequest<'info> {
         seeds = [b"escrow".as_ref(), market.key().as_ref()],
         bump,
     )]
-    pub market_escrow: Account<'info, TokenAccount>,
+    pub market_escrow: Box<Account<'info, TokenAccount>>,
 
-    pub product: Option<Account<'info, Product>>,
+    pub product: Option<Box<Account<'info, Product>>>,
 
     #[account(address = system_program::ID)]
     pub system_program: Program<'info, System>,
@@ -137,7 +137,7 @@ pub struct ProcessOrderRequest<'info> {
         payer = crank_operator,
         space = Order::SIZE,
     )]
-    pub order: Account<'info, Order>,
+    pub order: Box<Account<'info, Order>>,
     #[account(
         mut,
         associated_token::mint = market.mint_account,
@@ -146,7 +146,7 @@ pub struct ProcessOrderRequest<'info> {
             .ok_or(CoreError::OrderRequestQueueIsEmpty)?
             .purchaser,
     )]
-    pub purchaser_token_account: Account<'info, TokenAccount>,
+    pub purchaser_token_account: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
         has_one = market @ CoreError::CreationMarketMismatch,
@@ -155,7 +155,7 @@ pub struct ProcessOrderRequest<'info> {
             .ok_or(CoreError::OrderRequestQueueIsEmpty)?
             .purchaser @ CoreError::CreationPurchaserMismatch
     )]
-    pub market_position: Account<'info, MarketPosition>,
+    pub market_position: Box<Account<'info, MarketPosition>>,
 
     #[account(
         init_if_needed,
@@ -188,7 +188,7 @@ pub struct ProcessOrderRequest<'info> {
         seeds = [b"order_request".as_ref(), market.key().as_ref()],
         bump,
     )]
-    pub order_request_queue: Account<'info, MarketOrderRequestQueue>,
+    pub order_request_queue: Box<Account<'info, MarketOrderRequestQueue>>,
 
     #[account(mut)]
     pub market: Box<Account<'info, Market>>,
@@ -199,17 +199,17 @@ pub struct ProcessOrderRequest<'info> {
         seeds = [b"escrow".as_ref(), market.key().as_ref()],
         bump,
     )]
-    pub market_escrow: Account<'info, TokenAccount>,
+    pub market_escrow: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
         has_one = market @ CoreError::CreationMarketMismatch,
     )]
-    pub market_liquidities: Account<'info, MarketLiquidities>,
+    pub market_liquidities: Box<Account<'info, MarketLiquidities>>,
     #[account(
         mut,
         has_one = market @ CoreError::CreationMarketMismatch,
     )]
-    pub market_matching_queue: Account<'info, MarketMatchingQueue>,
+    pub market_matching_queue: Box<Account<'info, MarketMatchingQueue>>,
 
     #[account(mut)]
     pub crank_operator: Signer<'info>,
@@ -600,7 +600,7 @@ fn maker_order_constraint(
 #[instruction(order_trade_seed: [u8; 16])]
 pub struct ProcessOrderMatchMaker<'info> {
     #[account(mut)]
-    pub market: Account<'info, Market>,
+    pub market: Box<Account<'info, Market>>,
     #[account(
         mut,
         token::mint = market.mint_account,
@@ -608,7 +608,7 @@ pub struct ProcessOrderMatchMaker<'info> {
         seeds = [b"escrow".as_ref(), market.key().as_ref()],
         bump,
     )]
-    pub market_escrow: Account<'info, TokenAccount>,
+    pub market_escrow: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
         has_one = market @ CoreError::MatchingMarketMismatch,
@@ -632,7 +632,7 @@ pub struct ProcessOrderMatchMaker<'info> {
         constraint = maker_order_constraint(&market_matching_pool, &order)
             @ CoreError::MatchingPoolHeadMismatch,
     )]
-    pub order: Account<'info, Order>,
+    pub order: Box<Account<'info, Order>>,
     #[account(
         mut,
         has_one = market @ CoreError::MatchingMarketMismatch,
@@ -691,7 +691,7 @@ pub struct MatchOrders<'info> {
         constraint = order_against.key() != order_for.key() @ CoreError::MatchingOrdersForAndAgainstAreIdentical,
         constraint = !order_against.for_outcome @ CoreError::MatchingExpectedAnAgainstOrder,
     )]
-    pub order_against: Account<'info, Order>,
+    pub order_against: Box<Account<'info, Order>>,
     #[account(
         init,
         seeds = [
@@ -729,7 +729,7 @@ pub struct MatchOrders<'info> {
         constraint = order_for.key() != order_against.key() @ CoreError::MatchingOrdersForAndAgainstAreIdentical,
         constraint = order_for.for_outcome @ CoreError::MatchingExpectedAForOrder,
     )]
-    pub order_for: Account<'info, Order>,
+    pub order_for: Box<Account<'info, Order>>,
 
     #[account(
         init,
@@ -796,7 +796,7 @@ pub struct MatchOrders<'info> {
     #[account(
         has_one = market @ CoreError::CreationMarketMismatch,
     )]
-    pub market_liquidities: Account<'info, MarketLiquidities>,
+    pub market_liquidities: Box<Account<'info, MarketLiquidities>>,
 
     #[account(address = anchor_spl::token::ID)]
     pub token_program: Program<'info, Token>,
@@ -909,7 +909,7 @@ pub struct CreateMarketType<'info> {
     market_type_value: Option<String>,
 )]
 pub struct CreateMarket<'info> {
-    pub existing_market: Option<Account<'info, Market>>,
+    pub existing_market: Option<Box<Account<'info, Market>>>,
 
     #[account(
         init,
@@ -944,7 +944,7 @@ pub struct CreateMarket<'info> {
         token::mint = mint,
         token::authority = escrow
     )]
-    pub escrow: Account<'info, TokenAccount>,
+    pub escrow: Box<Account<'info, TokenAccount>>,
 
     pub market_type: Box<Account<'info, MarketType>>,
     #[account(
@@ -963,7 +963,7 @@ pub struct CreateMarket<'info> {
     pub rent: Sysvar<'info, Rent>,
 
     // #[soteria(ignore)] used to create `escrow`
-    pub mint: Account<'info, Mint>,
+    pub mint: Box<Account<'info, Mint>>,
 
     #[account(address = system_program::ID)]
     pub system_program: Program<'info, System>,
@@ -973,7 +973,7 @@ pub struct CreateMarket<'info> {
     #[account(mut)]
     pub market_operator: Signer<'info>,
     #[account(seeds = [b"authorised_operators".as_ref(), b"MARKET".as_ref()], bump)]
-    pub authorised_operators: Account<'info, AuthorisedOperators>,
+    pub authorised_operators: Box<Account<'info, AuthorisedOperators>>,
 }
 
 #[derive(Accounts)]
@@ -1151,7 +1151,7 @@ pub struct ForceUnsettledCount<'info> {
 #[derive(Accounts)]
 pub struct OpenMarket<'info> {
     #[account(mut)]
-    pub market: Account<'info, Market>,
+    pub market: Box<Account<'info, Market>>,
 
     #[account(
         init,
@@ -1163,7 +1163,7 @@ pub struct OpenMarket<'info> {
         payer = market_operator,
         space = MarketLiquidities::SIZE
     )]
-    pub liquidities: Account<'info, MarketLiquidities>,
+    pub liquidities: Box<Account<'info, MarketLiquidities>>,
     #[account(
         init,
         seeds = [
@@ -1174,7 +1174,7 @@ pub struct OpenMarket<'info> {
         payer = market_operator,
         space = MarketMatchingQueue::SIZE
     )]
-    pub matching_queue: Account<'info, MarketMatchingQueue>,
+    pub matching_queue: Box<Account<'info, MarketMatchingQueue>>,
     #[account(
         init,
         seeds = [
@@ -1185,7 +1185,7 @@ pub struct OpenMarket<'info> {
         payer = market_operator,
         space = MarketPaymentsQueue::SIZE
     )]
-    pub commission_payment_queue: Account<'info, MarketPaymentsQueue>,
+    pub commission_payment_queue: Box<Account<'info, MarketPaymentsQueue>>,
     #[account(
         init,
         seeds = [
@@ -1201,7 +1201,7 @@ pub struct OpenMarket<'info> {
     #[account(mut)]
     pub market_operator: Signer<'info>,
     #[account(seeds = [b"authorised_operators".as_ref(), b"MARKET".as_ref()], bump)]
-    pub authorised_operators: Account<'info, AuthorisedOperators>,
+    pub authorised_operators: Box<Account<'info, AuthorisedOperators>>,
 
     pub system_program: Program<'info, System>,
 }

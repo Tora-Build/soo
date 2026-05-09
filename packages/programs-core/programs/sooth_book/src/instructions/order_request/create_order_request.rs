@@ -21,16 +21,16 @@ pub fn create_order_request(
     market: &mut Market,
     payer: &Signer,
     purchaser: &Signer,
-    product: &Option<Account<Product>>,
+    product: &Option<Box<Account<Product>>>,
     market_position: &mut MarketPosition,
     market_outcome: &MarketOutcome,
-    price_ladder: &Option<Account<PriceLadder>>,
+    price_ladder: &Option<Box<Account<PriceLadder>>>,
     order_request_queue: &mut MarketOrderRequestQueue,
     data: OrderRequestData,
 ) -> Result<u64> {
     let now: UnixTimestamp = current_timestamp();
     // unpack account optionals (works only for non-mut)
-    let price_ladder_account = price_ladder.as_ref().map(|v| v.deref());
+    let price_ladder_account = price_ladder.as_ref().map(|v| v.as_ref().deref());
     validate_order_request(market, market_outcome, &price_ladder_account, &data, now)?;
 
     // initialize market position if needed
@@ -69,7 +69,7 @@ pub fn create_order_request(
 fn initialize_order_request(
     market: &Market,
     purchaser: &Pubkey,
-    product: &Option<Account<Product>>,
+    product: &Option<Box<Account<Product>>>,
     data: OrderRequestData,
     now: UnixTimestamp,
 ) -> Result<OrderRequest> {

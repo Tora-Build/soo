@@ -542,10 +542,10 @@ fn generate_constraint_init_group(
             );
 
             quote! {
-                // Define the bump and pda variable.
-                #find_pda
+                let #field: #ty_decl = (|| -> anchor_lang::Result<#ty_decl> {
+                    // Define the bump and pda variable.
+                    #find_pda
 
-                let #field: #ty_decl = {
                     // Checks that all the required accounts for this operation are present.
                     #optional_checks
 
@@ -579,8 +579,8 @@ fn generate_constraint_init_group(
                             return Err(anchor_lang::error::Error::from(anchor_lang::error::ErrorCode::ConstraintTokenTokenProgram).with_account_name(#name_str).with_pubkeys((*owner_program, #token_program.key())));
                         }
                     }
-                    pa
-                };
+                    Ok(pa)
+                })()?;
             }
         }
         InitKind::AssociatedToken {
@@ -613,10 +613,10 @@ fn generate_constraint_init_group(
             let payer_optional_check = check_scope.generate_check(payer);
 
             quote! {
-                // Define the bump and pda variable.
-                #find_pda
+                let #field: #ty_decl = (|| -> anchor_lang::Result<#ty_decl> {
+                    // Define the bump and pda variable.
+                    #find_pda
 
-                let #field: #ty_decl = {
                     // Checks that all the required accounts for this operation are present.
                     #optional_checks
 
@@ -652,8 +652,8 @@ fn generate_constraint_init_group(
                             return Err(anchor_lang::error::Error::from(anchor_lang::error::ErrorCode::AccountNotAssociatedTokenAccount).with_account_name(#name_str));
                         }
                     }
-                    pa
-                };
+                    Ok(pa)
+                })()?;
             }
         }
         InitKind::Mint {
@@ -866,10 +866,10 @@ fn generate_constraint_init_group(
             );
 
             quote! {
-                // Define the bump and pda variable.
-                #find_pda
+                let #field: #ty_decl = (|| -> anchor_lang::Result<#ty_decl> {
+                    // Define the bump and pda variable.
+                    #find_pda
 
-                let #field: #ty_decl = {
                     // Checks that all the required accounts for this operation are present.
                     #optional_checks
 
@@ -959,8 +959,8 @@ fn generate_constraint_init_group(
                             return Err(anchor_lang::error::Error::from(anchor_lang::error::ErrorCode::ConstraintMintTokenProgram).with_account_name(#name_str).with_pubkeys((*owner_program, #token_program.key())));
                         }
                     }
-                    pa
-                };
+                    Ok(pa)
+                })()?;
             }
         }
         InitKind::Program { owner } | InitKind::Interface { owner } => {
@@ -1009,10 +1009,10 @@ fn generate_constraint_init_group(
 
             // Put it all together.
             quote! {
-                // Define the bump variable.
-                #find_pda
+                let #field: #ty_decl = (|| -> anchor_lang::Result<#ty_decl> {
+                    // Define the bump variable.
+                    #find_pda
 
-                let #field = {
                     // Checks that all the required accounts for this operation are present.
                     #optional_checks
 
@@ -1057,8 +1057,8 @@ fn generate_constraint_init_group(
                     }
 
                     // Done.
-                    pa
-                };
+                    Ok(pa)
+                })()?;
             }
         }
     }
