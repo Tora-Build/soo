@@ -1,5 +1,5 @@
 {
-  "address": "5gAMjRCaZfb4NtHmBf2RZHFJVLAAZQ1PBP6dRNPUTxkH",
+  "address": "",
   "metadata": {
     "name": "sooth_book",
     "version": "0.15.5",
@@ -1152,7 +1152,26 @@
         },
         {
           "name": "market",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "sooth_market_pda"
+              }
+            ]
+          }
         },
         {
           "name": "escrow",
@@ -1269,6 +1288,10 @@
         }
       ],
       "args": [
+        {
+          "name": "sooth_market_pda",
+          "type": "pubkey"
+        },
         {
           "name": "event_account",
           "type": "pubkey"
@@ -2576,7 +2599,143 @@
           }
         },
         {
-          "name": "market_liquidities"
+          "name": "protocol_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                248,
+                225,
+                157,
+                124,
+                75,
+                246,
+                8,
+                48,
+                24,
+                230,
+                121,
+                207,
+                88,
+                176,
+                255,
+                206,
+                222,
+                24,
+                141,
+                164,
+                128,
+                143,
+                177,
+                95,
+                53,
+                96,
+                238,
+                106,
+                8,
+                39,
+                235,
+                98
+              ]
+            }
+          }
+        },
+        {
+          "name": "fee_pool_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                248,
+                225,
+                157,
+                124,
+                75,
+                246,
+                8,
+                48,
+                24,
+                230,
+                121,
+                207,
+                88,
+                176,
+                255,
+                206,
+                222,
+                24,
+                141,
+                164,
+                128,
+                143,
+                177,
+                95,
+                53,
+                96,
+                238,
+                106,
+                8,
+                39,
+                235,
+                98
+              ]
+            }
+          }
+        },
+        {
+          "name": "fee_pool_vault",
+          "writable": true
+        },
+        {
+          "name": "market_liquidities",
+          "writable": true
         },
         {
           "name": "token_program",
@@ -2605,6 +2764,252 @@
               16
             ]
           }
+        }
+      ]
+    },
+    {
+      "name": "mint_into_book",
+      "discriminator": [
+        157,
+        174,
+        174,
+        237,
+        183,
+        157,
+        1,
+        171
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "market_pda",
+          "docs": [
+            "account-name collisions with SoothBook's own `Market`."
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_authority"
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "market_vault",
+          "writable": true
+        },
+        {
+          "name": "book_market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market_pda"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_escrow_yes",
+          "writable": true
+        },
+        {
+          "name": "market_escrow_no",
+          "writable": true
+        },
+        {
+          "name": "book_market_escrow_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "book_market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "order_yes",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  100,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "book_market"
+              },
+              {
+                "kind": "arg",
+                "path": "distinct_seed_yes"
+              }
+            ]
+          }
+        },
+        {
+          "name": "order_no",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  100,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "book_market"
+              },
+              {
+                "kind": "arg",
+                "path": "distinct_seed_no"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_liquidities",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  113,
+                  117,
+                  105,
+                  100,
+                  105,
+                  116,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "book_market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "book_market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "sooth_market_program",
+          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "price_yes",
+          "type": "u128"
+        },
+        {
+          "name": "stake",
+          "type": "u64"
+        },
+        {
+          "name": "distinct_seed_yes",
+          "type": "u64"
+        },
+        {
+          "name": "distinct_seed_no",
+          "type": "u64"
         }
       ]
     },
@@ -3239,6 +3644,141 @@
           }
         },
         {
+          "name": "protocol_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                248,
+                225,
+                157,
+                124,
+                75,
+                246,
+                8,
+                48,
+                24,
+                230,
+                121,
+                207,
+                88,
+                176,
+                255,
+                206,
+                222,
+                24,
+                141,
+                164,
+                128,
+                143,
+                177,
+                95,
+                53,
+                96,
+                238,
+                106,
+                8,
+                39,
+                235,
+                98
+              ]
+            }
+          }
+        },
+        {
+          "name": "fee_pool_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                248,
+                225,
+                157,
+                124,
+                75,
+                246,
+                8,
+                48,
+                24,
+                230,
+                121,
+                207,
+                88,
+                176,
+                255,
+                206,
+                222,
+                24,
+                141,
+                164,
+                128,
+                143,
+                177,
+                95,
+                53,
+                96,
+                238,
+                106,
+                8,
+                39,
+                235,
+                98
+              ]
+            }
+          }
+        },
+        {
+          "name": "fee_pool_vault",
+          "writable": true
+        },
+        {
           "name": "market_liquidities",
           "writable": true
         },
@@ -3853,6 +4393,132 @@
         {
           "name": "market",
           "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "settle_resting_orders",
+      "discriminator": [
+        223,
+        155,
+        29,
+        144,
+        150,
+        141,
+        253,
+        51
+      ],
+      "accounts": [
+        {
+          "name": "adjudicator"
+        },
+        {
+          "name": "sooth_market_pda",
+          "docs": [
+            "account-name collisions with SoothBook's own `Market`."
+          ],
+          "writable": true
+        },
+        {
+          "name": "book_market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "sooth_market_pda"
+              }
+            ]
+          }
+        },
+        {
+          "name": "order",
+          "writable": true
+        },
+        {
+          "name": "order_purchaser",
+          "writable": true
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "sooth_market_vault",
+          "writable": true
+        },
+        {
+          "name": "sooth_market_vault_authority"
+        },
+        {
+          "name": "market_escrow_yes",
+          "writable": true
+        },
+        {
+          "name": "market_escrow_no",
+          "writable": true
+        },
+        {
+          "name": "market_escrow_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "book_market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "purchaser_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "instructions_sysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "sooth_market_program",
+          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
@@ -5057,663 +5723,6 @@
       ]
     }
   ],
-  "events": [
-    {
-      "name": "TradeEvent",
-      "discriminator": [
-        189,
-        219,
-        127,
-        211,
-        78,
-        230,
-        97,
-        238
-      ]
-    }
-  ],
-  "errors": [
-    {
-      "code": 6000,
-      "name": "ArithmeticError",
-      "msg": "Generic: math operation has failed"
-    },
-    {
-      "code": 6001,
-      "name": "MarketLiquiditiesIsFull",
-      "msg": "MarketLiquidities: is full"
-    },
-    {
-      "code": 6002,
-      "name": "MarketLiquiditiesUpdateError",
-      "msg": "MarketLiquidities: update error"
-    },
-    {
-      "code": 6003,
-      "name": "MarketMismatch",
-      "msg": "Market: mismatch"
-    },
-    {
-      "code": 6004,
-      "name": "CreationStakeZeroOrLess",
-      "msg": "Order Creation: stake zero or less"
-    },
-    {
-      "code": 6005,
-      "name": "CreationPriceOneOrLess",
-      "msg": "Order Creation: price must be within the probability-WAD range"
-    },
-    {
-      "code": 6006,
-      "name": "CreationStakePrecisionIsTooHigh",
-      "msg": "Order Creation: decimal limit breached for market"
-    },
-    {
-      "code": 6007,
-      "name": "CreationMarketNotOpen",
-      "msg": "Order Creation: market is not in a state to create Order"
-    },
-    {
-      "code": 6008,
-      "name": "CreationMarketHasWinningOutcome",
-      "msg": "Order Creation: winning outcome already selected for market"
-    },
-    {
-      "code": 6009,
-      "name": "CreationMarketLocked",
-      "msg": "Order Creation: Failed to create Order, market has locked"
-    },
-    {
-      "code": 6010,
-      "name": "CreationMarketSuspended",
-      "msg": "Order Creation: Failed to create Order, market is currently suspended"
-    },
-    {
-      "code": 6011,
-      "name": "CreationInvalidPriceLadder",
-      "msg": "Order Creation: Failed to create Order, provided price ladder is invalid for outcome"
-    },
-    {
-      "code": 6012,
-      "name": "CreationInvalidPrice",
-      "msg": "Order Creation: Failed to create Order, selected price is invalid for outcome"
-    },
-    {
-      "code": 6013,
-      "name": "CreationTransferAmountError",
-      "msg": "Order Creation: calculating payment/refund amount error"
-    },
-    {
-      "code": 6014,
-      "name": "CreationMarketMismatch",
-      "msg": "Order Creation: market mismatch"
-    },
-    {
-      "code": 6015,
-      "name": "CreationPurchaserMismatch",
-      "msg": "Order Creation: purchaser mismatch"
-    },
-    {
-      "code": 6016,
-      "name": "CreationExpired",
-      "msg": "Order Creation: expired"
-    },
-    {
-      "code": 6017,
-      "name": "OrderRequestCreationQueueFull",
-      "msg": "Order Request Creation: request queue is full"
-    },
-    {
-      "code": 6018,
-      "name": "OrderRequestCreationDuplicateRequest",
-      "msg": "Order Request Creation: duplicate request already queued"
-    },
-    {
-      "code": 6019,
-      "name": "OrderRequestCreationInvalidPayerTokenAccount",
-      "msg": "Order Request Creation: invalid payer token account"
-    },
-    {
-      "code": 6020,
-      "name": "OrderRequestQueueIsEmpty",
-      "msg": "Order Request Processing: request queue is empty"
-    },
-    {
-      "code": 6021,
-      "name": "OrderRequestQueueIsNotEmpty",
-      "msg": "Order Request Processing: request queue is not empty"
-    },
-    {
-      "code": 6022,
-      "name": "CancelOrderNotCancellable",
-      "msg": "Order Cancelation: Order is not cancellable"
-    },
-    {
-      "code": 6023,
-      "name": "CancelationPurchaserMismatch",
-      "msg": "Core Cancelation: purchaser mismatch"
-    },
-    {
-      "code": 6024,
-      "name": "CancelationPayerMismatch",
-      "msg": "Core Cancelation: payer mismatch"
-    },
-    {
-      "code": 6025,
-      "name": "CancelationMarketMismatch",
-      "msg": "Core Cancelation: market mismatch"
-    },
-    {
-      "code": 6026,
-      "name": "CancelationMarketLiquiditiesMismatch",
-      "msg": "Core Cancelation: market liquidities mismatch"
-    },
-    {
-      "code": 6027,
-      "name": "CancelationMarketOutcomeMismatch",
-      "msg": "Core Cancelation: market outcome mismatch"
-    },
-    {
-      "code": 6028,
-      "name": "CancelationMarketStatusInvalid",
-      "msg": "Order Cancelation: market status invalid"
-    },
-    {
-      "code": 6029,
-      "name": "CancelationMarketNotLocked",
-      "msg": "Order Cancelation: market not locked"
-    },
-    {
-      "code": 6030,
-      "name": "CancelationMarketOrderBehaviourInvalid",
-      "msg": "Order Cancelation: market behaviour not valid for cancellation"
-    },
-    {
-      "code": 6031,
-      "name": "CancelationOrderStatusInvalid",
-      "msg": "Order Cancelation: order status invalid"
-    },
-    {
-      "code": 6032,
-      "name": "CancelationLowLiquidity",
-      "msg": "Order Cancelation: liquidity too low"
-    },
-    {
-      "code": 6033,
-      "name": "SettlementInvalidMarketOutcomeIndex",
-      "msg": "Core Settlement: market outcome index is not valid for market"
-    },
-    {
-      "code": 6034,
-      "name": "SettlementPayerMismatch",
-      "msg": "Core Settlement: payer mismatch"
-    },
-    {
-      "code": 6035,
-      "name": "SettlementMarketMismatch",
-      "msg": "Core Settlement: market mismatch"
-    },
-    {
-      "code": 6036,
-      "name": "SettlementMarketNotOpen",
-      "msg": "Core Settlement: market not open"
-    },
-    {
-      "code": 6037,
-      "name": "SettlementMarketNotSettled",
-      "msg": "Core Settlement: market not settled"
-    },
-    {
-      "code": 6038,
-      "name": "SettlementMarketNotReadyForSettlement",
-      "msg": "Core Settlement: market not ready for settlement"
-    },
-    {
-      "code": 6039,
-      "name": "SettlementMarketEscrowNonZero",
-      "msg": "Core Settlement: market escrow is non zero"
-    },
-    {
-      "code": 6040,
-      "name": "SettlementMarketFundingNonZero",
-      "msg": "Core Settlement: market funding is non zero"
-    },
-    {
-      "code": 6041,
-      "name": "SettlementMarketMatchingQueueNotEmpty",
-      "msg": "Core Settlement: market matching queue not empty"
-    },
-    {
-      "code": 6042,
-      "name": "SettlementPaymentCalculation",
-      "msg": "Core Settlement: error calculating settlement payment."
-    },
-    {
-      "code": 6043,
-      "name": "VoidPurchaserMismatch",
-      "msg": "Void: purchaser mismatch"
-    },
-    {
-      "code": 6044,
-      "name": "VoidMarketMismatch",
-      "msg": "Void: market mismatch"
-    },
-    {
-      "code": 6045,
-      "name": "VoidMarketNotReadyForVoid",
-      "msg": "Void: market not ready for void"
-    },
-    {
-      "code": 6046,
-      "name": "VoidPaymentCalculation",
-      "msg": "Void: error calculating void payment."
-    },
-    {
-      "code": 6047,
-      "name": "VoidOrderIsVoided",
-      "msg": "Void: order is already voided."
-    },
-    {
-      "code": 6048,
-      "name": "VoidMarketMatchingQueueNotProvided",
-      "msg": "Void: matching queue must be provided for non Initializing markets"
-    },
-    {
-      "code": 6049,
-      "name": "VoidMarketRequestQueueNotProvided",
-      "msg": "Void: request queue must be provided for non Initializing markets"
-    },
-    {
-      "code": 6050,
-      "name": "MarketUnsettledAccountsCountNonZero",
-      "msg": "Some accounts are not yet settled/voided for this market"
-    },
-    {
-      "code": 6051,
-      "name": "MarketUnclosedAccountsCountNonZero",
-      "msg": "Some accounts are not yet closed for this market"
-    },
-    {
-      "code": 6052,
-      "name": "AuthorisedOperatorListFull",
-      "msg": "Authorised operator list is full"
-    },
-    {
-      "code": 6053,
-      "name": "InvalidOperatorType",
-      "msg": "Failed to authorise operator, operator type invalid."
-    },
-    {
-      "code": 6054,
-      "name": "UnauthorisedOperator",
-      "msg": "Unauthorised operator"
-    },
-    {
-      "code": 6055,
-      "name": "UnsupportedOperation",
-      "msg": "Unsupported operation"
-    },
-    {
-      "code": 6056,
-      "name": "MatchingPurchaserMismatch",
-      "msg": "Core Matching: purchaser mismatch"
-    },
-    {
-      "code": 6057,
-      "name": "MatchingMarketMismatch",
-      "msg": "Core Matching: market mismatch"
-    },
-    {
-      "code": 6058,
-      "name": "MatchingMarketOutcomeMismatch",
-      "msg": "Core Matching: market-outcome mismatch"
-    },
-    {
-      "code": 6059,
-      "name": "MatchingExpectedAForOrder",
-      "msg": "Core Matching: expected for order"
-    },
-    {
-      "code": 6060,
-      "name": "MatchingExpectedAnAgainstOrder",
-      "msg": "Core Matching: expected against order"
-    },
-    {
-      "code": 6061,
-      "name": "MatchingOrdersForAndAgainstAreIdentical",
-      "msg": "Core Matching: for and against order should not be identical"
-    },
-    {
-      "code": 6062,
-      "name": "MatchingMarketPriceMismatch",
-      "msg": "Core Matching: market price mismatch"
-    },
-    {
-      "code": 6063,
-      "name": "MatchingMarketMatchingPoolMismatch",
-      "msg": "Core Matching: market matching pool mismatch"
-    },
-    {
-      "code": 6064,
-      "name": "MatchingQueueHeadNotTaker",
-      "msg": "Core Matching: market matching queue head is not taker"
-    },
-    {
-      "code": 6065,
-      "name": "MatchingQueueHeadNotMaker",
-      "msg": "Core Matching: market matching queue head is not maker"
-    },
-    {
-      "code": 6066,
-      "name": "MatchingQueueHeadMismatch",
-      "msg": "Core Matching: market matching queue head mismatch"
-    },
-    {
-      "code": 6067,
-      "name": "MatchingStatusClosed",
-      "msg": "Order Matching: status closed"
-    },
-    {
-      "code": 6068,
-      "name": "MatchingRemainingStakeTooSmall",
-      "msg": "Order Matching: remaining stake too small"
-    },
-    {
-      "code": 6069,
-      "name": "MatchingRemainingLiquidityTooSmall",
-      "msg": "Order Matching: remaining liquidity too small"
-    },
-    {
-      "code": 6070,
-      "name": "MatchingQueueIsFull",
-      "msg": "There was an attempt to add an item from a matching pool queue, but the queue was full."
-    },
-    {
-      "code": 6071,
-      "name": "MatchingQueueIsEmpty",
-      "msg": "There was an attempt to dequeue an item from a matching pool queue, but the queue was empty."
-    },
-    {
-      "code": 6072,
-      "name": "MatchingQueueIsNotEmpty",
-      "msg": "Matching queue is not empty."
-    },
-    {
-      "code": 6073,
-      "name": "OrderNotAtFrontOfQueue",
-      "msg": "The order to be matched is not at the front of the matching pool queue"
-    },
-    {
-      "code": 6074,
-      "name": "LockTimeInvalid",
-      "msg": "Failed to update market: invalid arguments provided."
-    },
-    {
-      "code": 6075,
-      "name": "EventStartTimeInvalid",
-      "msg": "Failed to update market: invalid arguments provided."
-    },
-    {
-      "code": 6076,
-      "name": "MarketNotOpen",
-      "msg": "matching: market is not in a state to match orders"
-    },
-    {
-      "code": 6077,
-      "name": "MarketLocked",
-      "msg": "matching: market locked"
-    },
-    {
-      "code": 6078,
-      "name": "StatusClosed",
-      "msg": "matching: status closed"
-    },
-    {
-      "code": 6079,
-      "name": "MatchingLiquidityAmountUpdateError",
-      "msg": "matching: liquidity amount update failed"
-    },
-    {
-      "code": 6080,
-      "name": "MatchingMatchedAmountUpdateError",
-      "msg": "matching: matched amount update failed"
-    },
-    {
-      "code": 6081,
-      "name": "MatchingRefundAmountError",
-      "msg": "Order Matching: calculating refund amount error"
-    },
-    {
-      "code": 6082,
-      "name": "MatchingPayoutAmountError",
-      "msg": "Order Matching: calculating payout amount error"
-    },
-    {
-      "code": 6083,
-      "name": "MatchingMarketInvalidStatus",
-      "msg": "Matching: invalid market status for operation"
-    },
-    {
-      "code": 6084,
-      "name": "MatchingMatchedStakeCalculationError",
-      "msg": "Matching: matched stake calculated incorrectly"
-    },
-    {
-      "code": 6085,
-      "name": "MatchingPoolIsEmpty",
-      "msg": "Matching: matching pool empty"
-    },
-    {
-      "code": 6086,
-      "name": "MatchingPoolHeadMismatch",
-      "msg": "Matching: matching pool head mismatch"
-    },
-    {
-      "code": 6087,
-      "name": "MarketTypeNameTooLong",
-      "msg": "format"
-    },
-    {
-      "code": 6088,
-      "name": "MarketTypeDiscriminatorUsageIncorrect",
-      "msg": "Market type discriminator usage is incorrect for this market type"
-    },
-    {
-      "code": 6089,
-      "name": "MarketTypeValueUsageIncorrect",
-      "msg": "Market type value usage is incorrect for this market type"
-    },
-    {
-      "code": 6090,
-      "name": "MarketTypeDiscriminatorContainsSeedSeparator",
-      "msg": "Market type discriminator contains seed separator character"
-    },
-    {
-      "code": 6091,
-      "name": "PriceLadderSizeCanOnlyBeIncreased",
-      "msg": "PriceLadder can only be increased in size"
-    },
-    {
-      "code": 6092,
-      "name": "PriceLadderIsFull",
-      "msg": "PriceLadder is full"
-    },
-    {
-      "code": 6093,
-      "name": "PriceOneOrLess",
-      "msg": "Price must be within the probability-WAD range"
-    },
-    {
-      "code": 6094,
-      "name": "PricePrecisionTooLarge",
-      "msg": "Price support up to 3 decimal places only"
-    },
-    {
-      "code": 6095,
-      "name": "MarketTitleTooLong",
-      "msg": "format"
-    },
-    {
-      "code": 6096,
-      "name": "MarketOutcomeTitleTooLong",
-      "msg": "format"
-    },
-    {
-      "code": 6097,
-      "name": "MarketTypeInvalid",
-      "msg": "Market: type is invalid"
-    },
-    {
-      "code": 6098,
-      "name": "MarketLockTimeNotInTheFuture",
-      "msg": "Market: lock time must be in the future"
-    },
-    {
-      "code": 6099,
-      "name": "MarketEventStartTimeNotInTheFuture",
-      "msg": "Market: event start time must be in the future"
-    },
-    {
-      "code": 6100,
-      "name": "MarketLockTimeAfterEventStartTime",
-      "msg": "Market: lock time must not be later than the event start time"
-    },
-    {
-      "code": 6101,
-      "name": "MarketInvalidStatus",
-      "msg": "Market: invalid market status for operation"
-    },
-    {
-      "code": 6102,
-      "name": "MarketPriceListIsFull",
-      "msg": "Market: price list is full"
-    },
-    {
-      "code": 6103,
-      "name": "MarketPriceOneOrLess",
-      "msg": "Market: price must be within the probability-WAD range"
-    },
-    {
-      "code": 6104,
-      "name": "MintDecimalsUnsupported",
-      "msg": "mint.decimals must be >= PRICE_SCALE (3)"
-    },
-    {
-      "code": 6105,
-      "name": "MaxDecimalsTooLarge",
-      "msg": "max_decimals is too large, must be <= mint.decimals-PRICE_SCALE (3)"
-    },
-    {
-      "code": 6106,
-      "name": "MarketOutcomeInitError",
-      "msg": "MarketOutcome: initialization failed"
-    },
-    {
-      "code": 6107,
-      "name": "MarketOutcomeMarketInvalidStatus",
-      "msg": "MarketOutcome: market status is not Initializing"
-    },
-    {
-      "code": 6108,
-      "name": "OpenMarketNotInitializing",
-      "msg": "Market: cannot open market, market not initializing"
-    },
-    {
-      "code": 6109,
-      "name": "VoidMarketInvalidStatus",
-      "msg": "Market: cannot void market, market status invalid for voiding"
-    },
-    {
-      "code": 6110,
-      "name": "VoidMarketNotInitializingOrOpen",
-      "msg": "Market: cannot void market, market not open or initializing"
-    },
-    {
-      "code": 6111,
-      "name": "OpenMarketNotEnoughOutcomes",
-      "msg": "Market: cannot open market, must have more than 1 outcome"
-    },
-    {
-      "code": 6112,
-      "name": "MarketNotSettledOrVoided",
-      "msg": "Market: market is not settled or voided"
-    },
-    {
-      "code": 6113,
-      "name": "MarketNotReadyToClose",
-      "msg": "Market: market is not ready to close"
-    },
-    {
-      "code": 6114,
-      "name": "MarketAuthorityMismatch",
-      "msg": "Market: market authority does not match operator"
-    },
-    {
-      "code": 6115,
-      "name": "MarketEventAccountMismatch",
-      "msg": "Market: cannot recreate market, provided event account does not match existing market"
-    },
-    {
-      "code": 6116,
-      "name": "MarketTypeMismatch",
-      "msg": "Market: cannot recreate market, provided market type account does not match existing market"
-    },
-    {
-      "code": 6117,
-      "name": "MarketTypeDiscriminatorMismatch",
-      "msg": "Market: cannot recreate market, provided market type discriminator does not match existing market"
-    },
-    {
-      "code": 6118,
-      "name": "MarketTypeValueMismatch",
-      "msg": "Market: cannot recreate market, provided market type value does not match existing market"
-    },
-    {
-      "code": 6119,
-      "name": "MarketMintMismatch",
-      "msg": "Market: cannot recreate market, provided mint does not match existing market"
-    },
-    {
-      "code": 6120,
-      "name": "MarketUnsettledCountDecreaseWithNonZeroEscrow",
-      "msg": "Market: attempted to decrease market unsettled count with non-zero escrow"
-    },
-    {
-      "code": 6121,
-      "name": "CloseAccountOrderNotComplete",
-      "msg": "CloseAccount: Order not complete"
-    },
-    {
-      "code": 6122,
-      "name": "CloseAccountMarketPositionNotPaid",
-      "msg": "CloseAccount: MarketPosition not paid"
-    },
-    {
-      "code": 6123,
-      "name": "CloseAccountMarketAuthorityMismatch",
-      "msg": "CloseAccount: Market authority does not match"
-    },
-    {
-      "code": 6124,
-      "name": "CloseAccountPayerMismatch",
-      "msg": "CloseAccount: Payer does not match"
-    },
-    {
-      "code": 6125,
-      "name": "CloseAccountMarketMismatch",
-      "msg": "CloseAccount: Market does not match"
-    },
-    {
-      "code": 6126,
-      "name": "CloseAccountMarketMatchingQueueNotEmpty",
-      "msg": "CloseAccount: Market matching queue is not empty"
-    },
-    {
-      "code": 6127,
-      "name": "CloseAccountOrderRequestQueueNotEmpty",
-      "msg": "CloseAccount: Market order request queue is not empty"
-    }
-  ],
   "types": [
     {
       "name": "AuthorisedOperators",
@@ -5760,6 +5769,30 @@
       }
     },
     {
+      "name": "LiquidityMintedIntoBook",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "stake",
+            "type": "u64"
+          },
+          {
+            "name": "price_yes",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
       "name": "Market",
       "type": {
         "kind": "struct",
@@ -5787,6 +5820,14 @@
           {
             "name": "market_type",
             "type": "pubkey"
+          },
+          {
+            "name": "sooth_market_pda",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_b_base_wad",
+            "type": "u128"
           },
           {
             "name": "market_type_discriminator",
@@ -6442,6 +6483,34 @@
       "type": {
         "kind": "struct",
         "fields": []
+      }
+    },
+    {
+      "name": "RestingOrderSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "order",
+            "type": "pubkey"
+          },
+          {
+            "name": "purchaser",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": "u16"
+          },
+          {
+            "name": "winning_outcome",
+            "type": "u8"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          }
+        ]
       }
     },
     {

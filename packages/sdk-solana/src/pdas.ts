@@ -23,6 +23,9 @@ export type MarketId = Uint8Array;
 export interface ProgramIds {
   soothAmm: PublicKey;
   soothMarket: PublicKey;
+  // Optional — only required by sooth_book orderbook builders. The adapter
+  // falls back to the on-chain declare_id! when omitted.
+  soothBook?: PublicKey;
   // Optional — only required by `buildCreateMarket` (the launchpad-program ix).
   // Read paths and trade/sell/claim builders don't touch the launchpad, so
   // leaving this undefined is fine in those contexts. The adapter falls back
@@ -39,6 +42,7 @@ const SEED_MARKET = enc.encode("market");
 const SEED_AMM = enc.encode("amm");
 const SEED_VAULT = enc.encode("vault");
 const SEED_LOCK = enc.encode("lock");
+const SEED_ESCROW = enc.encode("escrow");
 const SEED_LOCK_ENTRY = enc.encode("lock_entry");
 const SEED_POS = enc.encode("pos");
 const SEED_MINT = enc.encode("mint");
@@ -51,6 +55,17 @@ const SEED_LP = enc.encode("lp");
 const SEED_LP_MINT_AUTHORITY = enc.encode("lp_mint_authority");
 const SEED_LP_POSITION = enc.encode("lp_position");
 const SEED_LP_YIELD_AUTHORITY = enc.encode("lp_yield_authority");
+const SEED_BOOK_POSITION = enc.encode("position");
+const SEED_BOOK_ORDER = enc.encode("order");
+const SEED_BOOK_LIQUIDITIES = enc.encode("liquidities");
+const SEED_BOOK_MATCHING = enc.encode("matching");
+const SEED_BOOK_ORDER_REQUEST = enc.encode("order_request");
+const SEED_BOOK_FUNDING = enc.encode("funding");
+const SEED_BOOK_MARKET_TYPE = enc.encode("market_type");
+const SEED_BOOK_AUTHORISED_OPERATORS = enc.encode("authorised_operators");
+const SEED_BOOK_SEPARATOR = enc.encode("-");
+const SEED_BOOK_TRUE = enc.encode("true");
+const SEED_BOOK_FALSE = enc.encode("false");
 
 function assertMarketId(marketId: MarketId): Buffer {
   if (marketId.length !== 16) {
@@ -59,6 +74,41 @@ function assertMarketId(marketId: MarketId): Buffer {
     );
   }
   return Buffer.from(marketId);
+}
+
+function assertSoothBookProgramId(
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): PublicKey {
+  if (!programs.soothBook) {
+    throw new Error("soothBook program id is required for sooth_book PDAs");
+  }
+  return programs.soothBook;
+}
+
+function assertU64Bytes(value: bigint, name: string): Buffer {
+  if (value < 0n || value > 0xffffffffffffffffn) {
+    throw new Error(`${name} must fit in u64, got ${value.toString()}`);
+  }
+  const out = Buffer.alloc(8);
+  out.writeBigUInt64LE(value, 0);
+  return out;
+}
+
+function assertU128Bytes(value: bigint, name: string): Buffer {
+  if (value < 0n || value > 0xffffffffffffffffffffffffffffffffn) {
+    throw new Error(`${name} must fit in u128, got ${value.toString()}`);
+  }
+  const out = Buffer.alloc(16);
+  out.writeBigUInt64LE(value & 0xffffffffffffffffn, 0);
+  out.writeBigUInt64LE(value >> 64n, 8);
+  return out;
+}
+
+function assertSeed16(seed: Uint8Array, name: string): Buffer {
+  if (seed.length !== 16) {
+    throw new Error(`${name} must be exactly 16 bytes, got ${seed.length}`);
+  }
+  return Buffer.from(seed);
 }
 
 // Owned by `sooth_market`. Seeds: [b"market", market_id].
@@ -371,5 +421,189 @@ export function deriveUserLpAta(user: PublicKey, lpMint: PublicKey): PublicKey {
     /* allowOwnerOffCurve */ true,
     TOKEN_PROGRAM_ID,
     ASSOCIATED_TOKEN_PROGRAM_ID,
+  );
+}
+
+// ─── sooth_book PDA helpers ──────────────────────────────────────────────
+
+export function deriveBookMarketPda(
+  soothMarketPda: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_MARKET), soothMarketPda.toBuffer()],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+// Monaco/SoothBook uses the same `[b"escrow", market]` PDA as the USDC
+// escrow token account and as the PDA authority for W5 outcome-token escrows.
+export function deriveBookEscrowPda(
+  bookMarketPda: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_ESCROW), bookMarketPda.toBuffer()],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+export function deriveBookFundingPda(
+  bookMarketPda: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_BOOK_FUNDING), bookMarketPda.toBuffer()],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+export function deriveBookMarketLiquiditiesPda(
+  bookMarketPda: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_BOOK_LIQUIDITIES), bookMarketPda.toBuffer()],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+export function deriveBookMarketMatchingQueuePda(
+  bookMarketPda: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_BOOK_MATCHING), bookMarketPda.toBuffer()],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+export function deriveBookOrderRequestQueuePda(
+  bookMarketPda: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_BOOK_ORDER_REQUEST), bookMarketPda.toBuffer()],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+// W5 Sooth-specific MarketPosition seed for mint_into_book.
+export function deriveBookMarketPositionPda(
+  bookMarketPda: PublicKey,
+  user: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from(SEED_BOOK_POSITION),
+      bookMarketPda.toBuffer(),
+      user.toBuffer(),
+    ],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+// Legacy Monaco MarketPosition seed used by create/process/match order flows.
+export function deriveBookLegacyMarketPositionPda(
+  bookMarketPda: PublicKey,
+  purchaser: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [purchaser.toBuffer(), bookMarketPda.toBuffer()],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+export function deriveBookOrderPda(
+  bookMarketPda: PublicKey,
+  distinctSeed: bigint,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from(SEED_BOOK_ORDER),
+      bookMarketPda.toBuffer(),
+      assertU64Bytes(distinctSeed, "distinctSeed"),
+    ],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+export function deriveBookOrderRequestOrderPda(
+  bookMarketPda: PublicKey,
+  purchaser: PublicKey,
+  distinctSeed: Uint8Array,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [
+      bookMarketPda.toBuffer(),
+      purchaser.toBuffer(),
+      assertSeed16(distinctSeed, "distinctSeed"),
+    ],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+export function deriveBookMarketOutcomePda(
+  bookMarketPda: PublicKey,
+  outcomeIndex: number,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [bookMarketPda.toBuffer(), Buffer.from(String(outcomeIndex))],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+export function deriveBookMarketMatchingPoolPda(
+  bookMarketPda: PublicKey,
+  outcomeIndex: number,
+  expectedPrice: bigint,
+  forOutcome: boolean,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [
+      bookMarketPda.toBuffer(),
+      Buffer.from(String(outcomeIndex)),
+      Buffer.from(SEED_BOOK_SEPARATOR),
+      assertU128Bytes(expectedPrice, "expectedPrice"),
+      Buffer.from(forOutcome ? SEED_BOOK_TRUE : SEED_BOOK_FALSE),
+    ],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+export function deriveBookTradePda(
+  orderPda: PublicKey,
+  tradeSeed: Uint8Array,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [orderPda.toBuffer(), assertSeed16(tradeSeed, "tradeSeed")],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+export function deriveBookMarketTypePda(
+  name: string,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_BOOK_MARKET_TYPE), Buffer.from(name)],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+export function deriveBookAuthorisedOperatorsPda(
+  role: "MARKET" | "CRANK",
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_BOOK_AUTHORISED_OPERATORS), Buffer.from(role)],
+    assertSoothBookProgramId(programs),
   );
 }

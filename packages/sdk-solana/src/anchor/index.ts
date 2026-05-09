@@ -10,8 +10,15 @@ import soothAmmIdl from "./sooth_amm.json" with { type: "json" };
 import soothMarketIdl from "./sooth_market.json" with { type: "json" };
 import soothLaunchpadIdl from "./sooth_launchpad.json" with { type: "json" };
 import soothAdjudicatorIdl from "./sooth_adjudicator.json" with { type: "json" };
+import soothBookIdl from "./sooth_book.json" with { type: "json" };
 
-export { soothAmmIdl, soothMarketIdl, soothLaunchpadIdl, soothAdjudicatorIdl };
+export {
+  soothAmmIdl,
+  soothMarketIdl,
+  soothLaunchpadIdl,
+  soothAdjudicatorIdl,
+  soothBookIdl,
+};
 
 // Looser typed re-export — Anchor consumes `Idl`, the JSON-parsed shape is
 // structurally compatible.
@@ -19,3 +26,4 @@ export type SoothAmmIdl = typeof soothAmmIdl;
 export type SoothMarketIdl = typeof soothMarketIdl;
 export type SoothLaunchpadIdl = typeof soothLaunchpadIdl;
 export type SoothAdjudicatorIdl = typeof soothAdjudicatorIdl;
+export type SoothBookIdl = typeof soothBookIdl;

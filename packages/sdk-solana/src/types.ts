@@ -41,6 +41,7 @@ export interface SoothNode {
     soothAmm?: string;
     soothMarket?: string;
     usdcMint?: string;
+    soothBook?: string;
   };
 }
 
