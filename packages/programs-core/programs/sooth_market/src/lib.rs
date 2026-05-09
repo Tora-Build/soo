@@ -172,6 +172,17 @@ pub mod sooth_market {
         instructions::redeem::handler(ctx)
     }
 
+    /// Split-destination redemption for CPI escrow flows — burn requested
+    /// YES/NO amounts from a burn authority and pay USDC to an arbitrary
+    /// token account.
+    pub fn redeem_from_program_owned(
+        ctx: Context<RedeemFromProgramOwned>,
+        amount_yes: u64,
+        amount_no: u64,
+    ) -> Result<()> {
+        instructions::redeem_from_program_owned::handler(ctx, amount_yes, amount_no)
+    }
+
     /// Refund an AMM Position on a dismissed market, then close the Position
     /// via `sooth_amm::close_dismissed_position`.
     pub fn claim_refund(ctx: Context<ClaimRefund>) -> Result<()> {
