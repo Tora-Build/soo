@@ -100,18 +100,16 @@ jobs:
           curl -sL https://run.surfpool.run/ | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Build SBF programs
-        run: |
-          cargo build-sbf \
-            --manifest-path packages/programs-core/programs/sooth_amm/Cargo.toml
-          cargo build-sbf \
-            --manifest-path packages/programs-core/programs/sooth_market/Cargo.toml
-          cargo build-sbf \
-            --manifest-path packages/programs-core/programs/sooth_launchpad/Cargo.toml
-          cargo build-sbf \
-            --manifest-path packages/programs-core/programs/sooth_adjudicator/Cargo.toml
-          cargo build-sbf \
-            --manifest-path packages/programs-core/programs/sooth_book/Cargo.toml
+      - name: Build all programs via anchor build
+        # Use anchor build (not per-program cargo build-sbf) so the
+        # full IDL-gen + SBF link pipeline runs. Per-program cargo
+        # build-sbf misses stack-offset errors that only surface
+        # during anchor's combined build. Auto-generates IDLs to
+        # packages/programs-core/target/idl/ as a side effect;
+        # dev:surfpool's pre-flight expects .so files in target/deploy.
+        # No untrusted input (static command, no github.event.* subs).
+        working-directory: packages/programs-core
+        run: anchor build
 
       - name: Create local deploy payer
         run: solana-keygen new -o apps/demo/.deploy-payer.json --no-bip39-passphrase --silent
