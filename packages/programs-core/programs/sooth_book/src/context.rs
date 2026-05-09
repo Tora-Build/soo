@@ -4,7 +4,6 @@ use anchor_spl::token::{Mint, Token, TokenAccount};
 use solana_program::rent::Rent;
 
 use crate::error::CoreError;
-use crate::sooth_book::SEED_SEPARATOR;
 use crate::state::market_liquidities::MarketLiquidities;
 use crate::state::market_matching_pool_account::MarketMatchingPool;
 use crate::state::market_matching_queue_account::MarketMatchingQueue;
@@ -810,6 +809,7 @@ pub struct CreateMarketType<'info> {
 
 #[derive(Accounts)]
 #[instruction(
+    sooth_market_pda: Pubkey,
     event_account: Pubkey,
     market_type_discriminator: Option<String>,
     market_type_value: Option<String>,
@@ -820,19 +820,8 @@ pub struct CreateMarket<'info> {
     #[account(
         init,
         seeds = [
-            event_account.as_ref(),
-            market_type.key().as_ref(),
-            market_type_discriminator.as_ref().unwrap_or(&"".to_string()).as_ref(),
-            SEED_SEPARATOR,
-            market_type_value.as_ref().unwrap_or(&"".to_string()).as_ref(),
-            SEED_SEPARATOR,
-            existing_market
-                .as_ref()
-                .map(|existing_market| existing_market.version + 1)
-                .unwrap_or(0)
-                .to_string()
-                .as_ref(),
-            mint.key().as_ref(),
+            b"market".as_ref(),
+            sooth_market_pda.as_ref(),
         ],
         bump,
         payer = market_operator,

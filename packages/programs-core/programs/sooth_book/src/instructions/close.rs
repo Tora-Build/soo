@@ -250,6 +250,7 @@ mod tests {
             mint_account: Default::default(),
             market_status: MarketStatus::Initializing,
             market_type: Default::default(),
+            sooth_market_pda: Default::default(),
             market_type_discriminator: None,
             market_type_value: None,
             version: 0,

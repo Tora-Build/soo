@@ -442,6 +442,7 @@ pub mod sooth_book {
     #[allow(clippy::too_many_arguments)]
     pub fn create_market(
         ctx: Context<CreateMarket>,
+        sooth_market_pda: Pubkey,
         event_account: Pubkey,
         market_type_discriminator: Option<String>,
         market_type_value: Option<String>,
@@ -458,6 +459,7 @@ pub mod sooth_book {
         let market_type = ctx.accounts.market_type.key();
         instructions::market::create(
             ctx,
+            sooth_market_pda,
             event_account,
             market_type,
             market_type_discriminator,

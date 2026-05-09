@@ -12,6 +12,7 @@ pub struct Market {
     pub market_status: MarketStatus,
     pub market_type: Pubkey,
     // this section cannot be moved or on-chain search will stop working
+    pub sooth_market_pda: Pubkey,
     pub market_type_discriminator: Option<String>,
     pub market_type_value: Option<String>,
     pub version: u8,
@@ -46,6 +47,7 @@ impl Market {
         + U8_SIZE // decimal_limit
         + ENUM_SIZE // market_status
         + PUB_KEY_SIZE // market_type
+        + PUB_KEY_SIZE // sooth_market_pda
         + option_size(string_size(Market::TYPE_FIELD_MAX_LENGTH)) // market_type disc.
         + option_size(string_size(Market::TYPE_FIELD_MAX_LENGTH)) // market_type value
         + U8_SIZE // version
@@ -134,6 +136,7 @@ pub enum MarketOrderBehaviour {
 #[cfg(test)]
 mod tests {
     use crate::state::market_account::{mock_market, MarketStatus};
+    use anchor_lang::prelude::Pubkey;
 
     #[test]
     fn test_increment_unsettled_accounts_count() {
@@ -186,6 +189,13 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(0, market.unclosed_accounts_count);
     }
+
+    #[test]
+    fn mock_market_exposes_sooth_market_binding() {
+        let market = mock_market(MarketStatus::Initializing);
+
+        assert_eq!(Pubkey::default(), market.sooth_market_pda);
+    }
 }
 
 #[cfg(test)]
@@ -196,6 +206,7 @@ pub fn mock_market(market_status: MarketStatus) -> Market {
         event_account: Default::default(),
         mint_account: Default::default(),
         market_type: Default::default(),
+        sooth_market_pda: Default::default(),
         market_type_discriminator: None,
         market_type_value: None,
         version: 0,

@@ -294,6 +294,7 @@ mod tests {
             market_outcomes_count: 3_u16,
             market_winning_outcome_index,
             market_type: Default::default(),
+            sooth_market_pda: Default::default(),
             market_type_discriminator: None,
             market_type_value: None,
             version: 0,

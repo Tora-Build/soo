@@ -15,6 +15,7 @@ const STATUSES_THAT_SUPPORT_MARKET_RECREATION: [MarketStatus; 2] =
 #[allow(clippy::too_many_arguments)]
 pub fn create(
     ctx: Context<CreateMarket>,
+    sooth_market_pda: Pubkey,
     event_account: Pubkey,
     market_type: Pubkey,
     market_type_discriminator: Option<String>,
@@ -94,6 +95,11 @@ pub fn create(
             ctx.accounts.mint.key(),
             CoreError::MarketMintMismatch
         );
+        require_keys_eq!(
+            existing_market.sooth_market_pda,
+            sooth_market_pda,
+            CoreError::MarketMismatch
+        );
 
         // check authority matches
         require_eq!(
@@ -107,6 +113,7 @@ pub fn create(
 
     ctx.accounts.market.authority = ctx.accounts.market_operator.key();
 
+    ctx.accounts.market.sooth_market_pda = sooth_market_pda;
     ctx.accounts.market.event_account = event_account;
     ctx.accounts.market.market_type = market_type;
     ctx.accounts.market.market_type_discriminator = market_type_discriminator;
