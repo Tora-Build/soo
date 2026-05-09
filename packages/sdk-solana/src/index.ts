@@ -3,7 +3,12 @@
 // package when `node.chainKind === "solana"` and route ChainAdapter calls
 // through `SolanaChainAdapter`.
 
-export { SolanaChainAdapter, type SolanaAdapterOptions } from "./adapter.js";
+export {
+  SolanaChainAdapter,
+  type MintCompleteSetToProgramOwnedArgs,
+  type RedeemFromProgramOwnedArgs,
+  type SolanaAdapterOptions,
+} from "./adapter.js";
 export { SoothError, notImplemented } from "./errors.js";
 export type { SoothErrorInit, SoothErrorKind } from "./errors.js";
 

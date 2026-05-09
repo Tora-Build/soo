@@ -117,6 +117,25 @@ export interface SolanaAdapterOptions {
   connection?: Connection;
 }
 
+export interface MintCompleteSetToProgramOwnedArgs {
+  market: MarketRef;
+  payer: AddressRef;
+  destinationAuthority: AddressRef;
+  destinationYesAta: AddressRef;
+  destinationNoAta: AddressRef;
+  amount: bigint;
+}
+
+export interface RedeemFromProgramOwnedArgs {
+  market: MarketRef;
+  burnAuthority: AddressRef;
+  sourceYesAta: AddressRef;
+  sourceNoAta: AddressRef;
+  usdcDestination: AddressRef;
+  amountYes: bigint;
+  amountNo: bigint;
+}
+
 // Resolved-once cache key — `Market` PDA layout is invariant across reads.
 interface ResolvedMarket {
   marketPda: PublicKey;
@@ -139,6 +158,17 @@ interface PriorityFeeCacheEntry {
 
 // Anchor's IDL types are loose; we re-narrow at the boundary.
 type AnyProgram = Program<Idl>;
+
+type AnchorIxBuilder = {
+  accounts(accounts: Record<string, PublicKey>): {
+    instruction(): Promise<TransactionInstruction>;
+  };
+};
+
+interface SoothMarketProgramOwnedMethods {
+  mintCompleteSetToProgramOwned(amount: BN): AnchorIxBuilder;
+  redeemFromProgramOwned(amountYes: BN, amountNo: BN): AnchorIxBuilder;
+}
 
 export class SolanaChainAdapter implements ChainAdapter {
   readonly node: SoothNode;
@@ -1401,6 +1431,77 @@ export class SolanaChainAdapter implements ChainAdapter {
       },
     };
   }
+
+  async buildRedeemFromProgramOwned(
+    args: RedeemFromProgramOwnedArgs,
+  ): Promise<ClaimRequest> {
+    if (args.amountYes < 0n || args.amountNo < 0n) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildRedeemFromProgramOwned: amounts must be non-negative",
+      });
+    }
+    if (args.amountYes === 0n && args.amountNo === 0n) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildRedeemFromProgramOwned: at least one amount must be positive",
+      });
+    }
+
+    const burnAuthorityPk = decodePubkeyRef(args.burnAuthority);
+    const marketPda = decodePubkeyRef(args.market);
+    const sourceYesAta = decodePubkeyRef(args.sourceYesAta);
+    const sourceNoAta = decodePubkeyRef(args.sourceNoAta);
+    const usdcDestination = decodePubkeyRef(args.usdcDestination);
+    const resolved = await this.fetchMarket(marketPda);
+
+    const [vaultAuthority] = deriveVaultAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const marketVault = deriveMarketVaultAta(
+      resolved.marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+
+    const methods = this.soothMarket
+      .methods as unknown as SoothMarketProgramOwnedMethods;
+    const ix: TransactionInstruction = await methods
+      .redeemFromProgramOwned(
+        bigIntToBn(args.amountYes),
+        bigIntToBn(args.amountNo),
+      )
+      .accounts({
+        market: marketPda,
+        vaultAuthority,
+        yesMint: resolved.yesMint,
+        noMint: resolved.noMint,
+        usdcMint: this.usdcMint,
+        marketVault,
+        sourceYesAta,
+        sourceNoAta,
+        usdcDestination,
+        burnAuthority: burnAuthorityPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "claim",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, burnAuthorityPk),
+        operation: "redeemFromProgramOwned",
+        amountYesStr: args.amountYes.toString(),
+        amountNoStr: args.amountNo.toString(),
+      },
+    };
+  }
+
   // ─── Mint / merge complete-set ─────────────────────────────────────────
   //
   // 1 USDC ↔ 1·WAD YES + 1·WAD NO at parity. No price impact, no fee.
@@ -1420,6 +1521,84 @@ export class SolanaChainAdapter implements ChainAdapter {
     args: CompleteSetArgs,
   ): Promise<TradeRequest> {
     return this.buildCompleteSetInner(market, args, "mint");
+  }
+
+  async buildMintCompleteSetToProgramOwned(
+    args: MintCompleteSetToProgramOwnedArgs,
+  ): Promise<TradeRequest> {
+    if (args.amount <= 0n) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildMintCompleteSetToProgramOwned: amount must be positive",
+      });
+    }
+
+    const payerPk = decodePubkeyRef(args.payer);
+    const destinationAuthority = decodePubkeyRef(args.destinationAuthority);
+    const destinationYesAta = decodePubkeyRef(args.destinationYesAta);
+    const destinationNoAta = decodePubkeyRef(args.destinationNoAta);
+    const marketPda = decodePubkeyRef(args.market);
+    const resolved = await this.fetchMarket(marketPda);
+
+    const [vaultAuthority] = deriveVaultAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const marketVault = deriveMarketVaultAta(
+      resolved.marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+    const payerUsdcAta = deriveUserUsdcAta(payerPk, this.usdcMint);
+
+    const methods = this.soothMarket
+      .methods as unknown as SoothMarketProgramOwnedMethods;
+    const ix: TransactionInstruction = await methods
+      .mintCompleteSetToProgramOwned(bigIntToBn(args.amount))
+      .accounts({
+        market: marketPda,
+        vaultAuthority,
+        yesMint: resolved.yesMint,
+        noMint: resolved.noMint,
+        usdcMint: this.usdcMint,
+        marketVault,
+        payerUsdcAta,
+        destinationAuthority,
+        destinationYesAta,
+        destinationNoAta,
+        payer: payerPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    const yesAtaIx = createAssociatedTokenAccountIdempotentInstruction(
+      payerPk,
+      destinationYesAta,
+      destinationAuthority,
+      resolved.yesMint,
+    );
+    const noAtaIx = createAssociatedTokenAccountIdempotentInstruction(
+      payerPk,
+      destinationNoAta,
+      destinationAuthority,
+      resolved.noMint,
+    );
+    const preIxs = [serializeIx(yesAtaIx), serializeIx(noAtaIx)];
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      costEstimateWad: args.amount * 1_000_000_000_000n,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, payerPk),
+        operation: "mintCompleteSetToProgramOwned",
+        amountStr: args.amount.toString(),
+        preIxs,
+      },
+    };
   }
 
   async buildMergeCompleteSet(
