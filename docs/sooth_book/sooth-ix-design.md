@@ -27,6 +27,95 @@ four ix that wire it into the rest of the Sooth protocol:
    `sooth_market::lock_for_resolution` and `sooth_amm::trade_positions`'s
    graduation flip.
 
+## Prerequisite: sooth_market CPI variants for program-owned escrow
+
+Codex flagged a CPI mismatch (2026-05-10): `sooth_market::mint_complete_set`
+and `sooth_market::redeem` both require ONE `user` authority that owns
+all three of {USDC ATA, YES ATA, NO ATA}. The original design here said
+sooth_book could pass its escrow PDA as the destination — but those CPIs
+need user==signer==holder of all three. Can't split payer/destination.
+
+Resolution: **add new ix variants to sooth_market that split authorities.**
+These are the ONLY changes to sooth_market for sooth_book; existing
+ix unchanged.
+
+### `sooth_market::mint_complete_set_to_program_owned`
+
+```rust
+#[derive(Accounts)]
+pub struct MintCompleteSetToProgramOwned<'info> {
+    pub payer: Signer<'info>,                         // pays USDC
+    #[account(mut, token::mint = usdc_mint, token::authority = payer)]
+    pub payer_usdc_ata: Box<Account<'info, TokenAccount>>,
+    pub usdc_mint: Box<Account<'info, Mint>>,
+
+    pub destination_authority: AccountInfo<'info>,    // PDA (e.g. sooth_book escrow)
+    #[account(mut, token::mint = yes_mint, token::authority = destination_authority)]
+    pub destination_yes_ata: Box<Account<'info, TokenAccount>>,
+    #[account(mut, token::mint = no_mint, token::authority = destination_authority)]
+    pub destination_no_ata: Box<Account<'info, TokenAccount>>,
+
+    #[account(mut)]
+    pub market: Box<Account<'info, Market>>,
+    #[account(mut, token::authority = vault_authority)]
+    pub market_vault: Box<Account<'info, TokenAccount>>,
+    pub vault_authority: AccountInfo<'info>,          // sooth_market's PDA
+
+    #[account(mut)]
+    pub yes_mint: Box<Account<'info, Mint>>,
+    #[account(mut)]
+    pub no_mint: Box<Account<'info, Mint>>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+pub fn handler(ctx: Context<MintCompleteSetToProgramOwned>, amount: u64) -> Result<()> {
+    // Same logic as mint_complete_set, but transfer USDC from payer
+    // and mint YES/NO into destination_authority's ATAs (instead of
+    // requiring all three on user).
+}
+```
+
+### `sooth_market::redeem_from_program_owned`
+
+```rust
+#[derive(Accounts)]
+pub struct RedeemFromProgramOwned<'info> {
+    pub burn_authority: Signer<'info>,                // PDA signer (sooth_book escrow)
+    #[account(mut, token::mint = yes_mint, token::authority = burn_authority)]
+    pub source_yes_ata: Box<Account<'info, TokenAccount>>,
+    #[account(mut, token::mint = no_mint, token::authority = burn_authority)]
+    pub source_no_ata: Box<Account<'info, TokenAccount>>,
+
+    #[account(mut, token::mint = usdc_mint)]
+    pub usdc_destination: Box<Account<'info, TokenAccount>>,  // any account; recipient
+
+    #[account(constraint = market.lifecycle == MarketLifecycle::Settled)]
+    pub market: Box<Account<'info, Market>>,
+    #[account(mut, token::authority = vault_authority)]
+    pub market_vault: Box<Account<'info, TokenAccount>>,
+    pub vault_authority: AccountInfo<'info>,
+    pub usdc_mint: Box<Account<'info, Mint>>,
+    pub yes_mint: Box<Account<'info, Mint>>,
+    pub no_mint: Box<Account<'info, Mint>>,
+    pub token_program: Program<'info, Token>,
+}
+
+pub fn handler(ctx: Context<RedeemFromProgramOwned>, amount_yes: u64, amount_no: u64) -> Result<()> {
+    // Same logic as redeem, but burn from burn_authority's ATAs and
+    // pay USDC to usdc_destination (no ownership tie between burn
+    // authority and USDC destination).
+}
+```
+
+These ix are call-only by sooth_book's mint_into_book / settle_resting_orders
+in practice, but the program-id is not gated — any program with a PDA
+that owns YES/NO ATAs can use them. The auth model is: holder of the
+tokens decides what to do with them.
+
+Cost: ~3h to add both ix + cargo tests + IDL regen + sdk-solana adapter
+methods updated.
+
 ## 1. `mint_into_book` instruction
 
 ### Intent
