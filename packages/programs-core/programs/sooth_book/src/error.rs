@@ -12,6 +12,10 @@ pub enum CoreError {
 
     #[msg("Market: mismatch")]
     MarketMismatch,
+    #[msg("SoothBook: stake must be greater than zero")]
+    ZeroStake,
+    #[msg("SoothBook: price must be within the probability-WAD range")]
+    PriceOutOfRange,
 
     /*
     Order Creation

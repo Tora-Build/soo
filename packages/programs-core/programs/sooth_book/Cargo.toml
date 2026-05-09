@@ -26,9 +26,16 @@ solana-program = "=1.18.26"
 spl-token = "=4.0.0"
 rust_decimal = "=1.32.0"
 protocol_product = { path = "vendor/protocol_product/programs/protocol_product", features = ["no-entrypoint"] }
+sooth_market = { path = "../sooth_market", features = ["cpi"] }
 
 [dev-dependencies]
 test-case = "3.2.1"
+litesvm = "=0.2.1"
+solana-sdk = "=1.18.26"
+spl-associated-token-account = "=2.3.0"
+sooth_amm = { path = "../sooth_amm", features = ["cpi"] }
+sooth_adjudicator = { path = "../sooth_adjudicator", features = ["cpi"] }
+sooth_launchpad = { path = "../sooth_launchpad", features = ["cpi"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "allow" }

@@ -1,6 +1,7 @@
 pub use clock::*;
 pub use close::*;
 pub use math::*;
+pub use mint_into_book::*;
 pub use operator::*;
 pub use transfer::*;
 
@@ -14,6 +15,7 @@ pub(crate) mod price_ladder;
 
 mod clock;
 mod math;
+pub mod mint_into_book;
 mod operator;
 
 pub mod market_liquidities;

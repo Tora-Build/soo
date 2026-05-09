@@ -6,6 +6,7 @@ use crate::instructions::market::verify_market_authority;
 use crate::instructions::market_position;
 use crate::instructions::transfer;
 use crate::instructions::verify_operator_authority;
+use crate::instructions::{__client_accounts_mint_into_book, MintIntoBook};
 use crate::state::market_account::{Market, MarketOrderBehaviour};
 use crate::state::market_order_request_queue::{MarketOrderRequestQueue, OrderRequestData};
 use crate::state::market_position_account::MarketPosition;
@@ -31,6 +32,22 @@ pub mod sooth_book {
     pub const PRICE_SCALE: u8 = 3_u8;
     pub const SEED_SEPARATOR_CHAR: char = '␞';
     pub const SEED_SEPARATOR: &[u8] = b"\xE2\x90\x9E"; // "␞"
+
+    pub fn mint_into_book(
+        ctx: Context<MintIntoBook>,
+        price_yes: u128,
+        stake: u64,
+        distinct_seed_yes: u64,
+        distinct_seed_no: u64,
+    ) -> Result<()> {
+        instructions::mint_into_book::handler(
+            ctx,
+            price_yes,
+            stake,
+            distinct_seed_yes,
+            distinct_seed_no,
+        )
+    }
 
     pub fn create_order_request(
         ctx: Context<CreateOrderRequest>,
