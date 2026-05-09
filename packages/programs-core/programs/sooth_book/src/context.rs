@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::system_program;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 use solana_program::rent::Rent;
+use sooth_protocol_types::SOOTH_LAUNCHPAD_PROGRAM_ID;
 
 use crate::error::CoreError;
 use crate::state::market_liquidities::MarketLiquidities;
@@ -195,6 +196,27 @@ pub struct ProcessOrderRequest<'info> {
         bump,
     )]
     pub market_escrow: Box<Account<'info, TokenAccount>>,
+    #[account(
+        seeds = [b"protocol_config"],
+        bump,
+        seeds::program = SOOTH_LAUNCHPAD_PROGRAM_ID,
+        owner = SOOTH_LAUNCHPAD_PROGRAM_ID,
+    )]
+    /// CHECK: address-pinned via launchpad PDA seeds and owner constraint.
+    pub protocol_config: UncheckedAccount<'info>,
+    #[account(
+        seeds = [b"fee_pool_authority"],
+        bump,
+        seeds::program = SOOTH_LAUNCHPAD_PROGRAM_ID,
+    )]
+    /// CHECK: launchpad signer-only PDA; used as fee_pool_vault authority.
+    pub fee_pool_authority: UncheckedAccount<'info>,
+    #[account(
+        mut,
+        token::mint = market.mint_account,
+        token::authority = fee_pool_authority,
+    )]
+    pub fee_pool_vault: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
         has_one = market @ CoreError::CreationMarketMismatch,
@@ -708,6 +730,28 @@ pub struct MatchOrders<'info> {
     )]
     pub market_escrow: Box<Account<'info, TokenAccount>>,
     #[account(
+        seeds = [b"protocol_config"],
+        bump,
+        seeds::program = SOOTH_LAUNCHPAD_PROGRAM_ID,
+        owner = SOOTH_LAUNCHPAD_PROGRAM_ID,
+    )]
+    /// CHECK: address-pinned via launchpad PDA seeds and owner constraint.
+    pub protocol_config: UncheckedAccount<'info>,
+    #[account(
+        seeds = [b"fee_pool_authority"],
+        bump,
+        seeds::program = SOOTH_LAUNCHPAD_PROGRAM_ID,
+    )]
+    /// CHECK: launchpad signer-only PDA; used as fee_pool_vault authority.
+    pub fee_pool_authority: UncheckedAccount<'info>,
+    #[account(
+        mut,
+        token::mint = market.mint_account,
+        token::authority = fee_pool_authority,
+    )]
+    pub fee_pool_vault: Box<Account<'info, TokenAccount>>,
+    #[account(
+        mut,
         has_one = market @ CoreError::CreationMarketMismatch,
     )]
     pub market_liquidities: Box<Account<'info, MarketLiquidities>>,

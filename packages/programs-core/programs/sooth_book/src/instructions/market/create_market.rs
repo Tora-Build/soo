@@ -114,6 +114,7 @@ pub fn create(
     ctx.accounts.market.authority = ctx.accounts.market_operator.key();
 
     ctx.accounts.market.sooth_market_pda = sooth_market_pda;
+    ctx.accounts.market.fee_b_base_wad = 0;
     ctx.accounts.market.event_account = event_account;
     ctx.accounts.market.market_type = market_type;
     ctx.accounts.market.market_type_discriminator = market_type_discriminator;

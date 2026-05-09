@@ -13,7 +13,7 @@ use crate::instructions::{
 use crate::state::market_account::{Market, MarketOrderBehaviour};
 use crate::state::market_order_request_queue::{MarketOrderRequestQueue, OrderRequestData};
 use crate::state::market_position_account::MarketPosition;
-use crate::state::operator_account::AuthorisedOperators;
+pub use crate::state::operator_account::AuthorisedOperators;
 use crate::state::order_account::Order;
 use crate::state::trade_account::Trade;
 
@@ -129,7 +129,7 @@ pub mod sooth_book {
     }
 
     pub fn process_order_request(ctx: Context<ProcessOrderRequest>) -> Result<()> {
-        let refund = instructions::order_request::process_order_request(
+        let (refund, order_matches) = instructions::order_request::process_order_request(
             &mut ctx.accounts.order,
             &mut ctx.accounts.market_position,
             &mut ctx.accounts.market,
@@ -139,6 +139,17 @@ pub mod sooth_book {
             &mut ctx.accounts.market_matching_pool,
             &mut ctx.accounts.order_request_queue,
         )?;
+
+        for (matched_stake, _) in order_matches {
+            instructions::fee_route::route_fill_fee(
+                &mut ctx.accounts.market,
+                &ctx.accounts.market_escrow,
+                &ctx.accounts.fee_pool_vault,
+                &ctx.accounts.protocol_config.to_account_info(),
+                &ctx.accounts.token_program,
+                matched_stake,
+            )?;
+        }
 
         transfer::order_creation_refund(
             &ctx.accounts.market_escrow,

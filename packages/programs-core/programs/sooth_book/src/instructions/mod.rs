@@ -1,5 +1,6 @@
 pub use clock::*;
 pub use close::*;
+pub use fee_route::*;
 pub use math::*;
 pub(crate) use mint_into_book::__client_accounts_mint_into_book;
 pub use mint_into_book::{LiquidityMintedIntoBook, MintIntoBook};
@@ -9,6 +10,7 @@ pub use settle_resting_orders::{RestingOrderSettled, SettleRestingOrders};
 pub use transfer::*;
 
 pub(crate) mod close;
+pub mod fee_route;
 pub(crate) mod market;
 pub(crate) mod market_type;
 pub(crate) mod matching;

@@ -27,6 +27,8 @@ spl-token = "=4.0.0"
 rust_decimal = "=1.32.0"
 protocol_product = { path = "vendor/protocol_product/programs/protocol_product", features = ["no-entrypoint"] }
 sooth_market = { path = "../sooth_market", features = ["cpi"] }
+sooth-account-offsets = { path = "../../crates/sooth-account-offsets" }
+sooth-protocol-types = { path = "../../crates/sooth-protocol-types" }
 
 [dev-dependencies]
 test-case = "3.2.1"

@@ -20,7 +20,7 @@ pub fn process_order_request<'info>(
     fee_payer: &Signer<'info>,
     matching_pool: &mut Account<MarketMatchingPool>,
     order_request_queue: &mut Account<MarketOrderRequestQueue>,
-) -> Result<u64> {
+) -> Result<(u64, Vec<(u64, u128)>)> {
     let now = current_timestamp();
     let order_request = order_request_queue
         .order_requests
@@ -35,7 +35,7 @@ pub fn process_order_request<'info>(
             )?;
             order.close(fee_payer.to_account_info())?;
 
-            return Ok(refund);
+            return Ok((refund, Vec::new()));
         }
     }
 
@@ -57,17 +57,17 @@ pub fn process_order_request<'info>(
 
     // calculate payment
     let mut total_refund = 0_u64;
-    for (matched_stake, matched_price) in order_matches {
+    for (matched_stake, matched_price) in &order_matches {
         let refund = market_position::update_on_order_match(
             market_position,
             order,
-            matched_stake,
-            matched_price,
+            *matched_stake,
+            *matched_price,
         )?;
         total_refund = total_refund
             .checked_add(refund)
             .ok_or(CoreError::CreationTransferAmountError)?;
     }
 
-    Ok(total_refund)
+    Ok((total_refund, order_matches))
 }

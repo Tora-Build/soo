@@ -13,6 +13,7 @@ pub struct Market {
     pub market_type: Pubkey,
     // this section cannot be moved or on-chain search will stop working
     pub sooth_market_pda: Pubkey,
+    pub fee_b_base_wad: u128,
     pub market_type_discriminator: Option<String>,
     pub market_type_value: Option<String>,
     pub version: u8,
@@ -48,6 +49,7 @@ impl Market {
         + ENUM_SIZE // market_status
         + PUB_KEY_SIZE // market_type
         + PUB_KEY_SIZE // sooth_market_pda
+        + U128_SIZE // fee_b_base_wad
         + option_size(string_size(Market::TYPE_FIELD_MAX_LENGTH)) // market_type disc.
         + option_size(string_size(Market::TYPE_FIELD_MAX_LENGTH)) // market_type value
         + U8_SIZE // version
@@ -207,6 +209,7 @@ pub fn mock_market(market_status: MarketStatus) -> Market {
         mint_account: Default::default(),
         market_type: Default::default(),
         sooth_market_pda: Default::default(),
+        fee_b_base_wad: 0,
         market_type_discriminator: None,
         market_type_value: None,
         version: 0,

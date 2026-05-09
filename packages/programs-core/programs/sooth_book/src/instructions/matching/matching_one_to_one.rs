@@ -4,7 +4,7 @@ use crate::context::MatchOrders;
 use crate::error::CoreError;
 use crate::events::trade::TradeEvent;
 use crate::instructions::matching::create_trade::create_trade;
-use crate::instructions::{current_timestamp, matching, order, transfer};
+use crate::instructions::{current_timestamp, fee_route, matching, order, transfer};
 use crate::state::market_account::MarketStatus::Open;
 use crate::state::market_position_account::MarketPosition;
 
@@ -117,6 +117,15 @@ pub fn match_orders(ctx: &mut Context<MatchOrders>) -> Result<()> {
     ctx.accounts
         .market_liquidities
         .update_stake_matched_total(stake_matched)?;
+
+    fee_route::route_fill_fee(
+        &mut ctx.accounts.market,
+        &ctx.accounts.market_escrow,
+        &ctx.accounts.fee_pool_vault,
+        &ctx.accounts.protocol_config.to_account_info(),
+        &ctx.accounts.token_program,
+        stake_matched,
+    )?;
 
     // 4. if any refunds are due to change in exposure, transfer them
     if change_in_exposure_refund_against > 0_u64 {

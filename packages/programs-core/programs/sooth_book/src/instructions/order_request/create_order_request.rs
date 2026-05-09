@@ -295,6 +295,7 @@ mod tests {
             market_winning_outcome_index,
             market_type: Default::default(),
             sooth_market_pda: Default::default(),
+            fee_b_base_wad: 0,
             market_type_discriminator: None,
             market_type_value: None,
             version: 0,
