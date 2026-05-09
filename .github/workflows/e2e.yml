@@ -16,12 +16,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install Anchor CLI
+        # No --locked: anchor v0.30.1's Cargo.lock pins time=0.3.29, which
+        # has a type-inference bug on rustc 1.95 (E0282 in
+        # time/src/format_description/parse/mod.rs:83). Letting cargo
+        # resolve transitive deps fresh picks up time=0.3.30+ which has
+        # the fix. Drift risk is bounded by the --tag pin.
         run: |
           cargo install \
             --git https://github.com/coral-xyz/anchor \
             --tag v0.30.1 \
-            anchor-cli \
-            --locked
+            anchor-cli
 
       - name: Cargo test
         run: cargo test
@@ -85,12 +89,16 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
       - name: Install Anchor CLI
+        # No --locked: anchor v0.30.1's Cargo.lock pins time=0.3.29, which
+        # has a type-inference bug on rustc 1.95 (E0282 in
+        # time/src/format_description/parse/mod.rs:83). Letting cargo
+        # resolve transitive deps fresh picks up time=0.3.30+ which has
+        # the fix. Drift risk is bounded by the --tag pin.
         run: |
           cargo install \
             --git https://github.com/coral-xyz/anchor \
             --tag v0.30.1 \
-            anchor-cli \
-            --locked
+            anchor-cli
 
       - name: Anchor build (catches stack-offset + IDL regressions)
         working-directory: packages/programs-core
@@ -139,12 +147,16 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
       - name: Install Anchor CLI
+        # No --locked: anchor v0.30.1's Cargo.lock pins time=0.3.29, which
+        # has a type-inference bug on rustc 1.95 (E0282 in
+        # time/src/format_description/parse/mod.rs:83). Letting cargo
+        # resolve transitive deps fresh picks up time=0.3.30+ which has
+        # the fix. Drift risk is bounded by the --tag pin.
         run: |
           cargo install \
             --git https://github.com/coral-xyz/anchor \
             --tag v0.30.1 \
-            anchor-cli \
-            --locked
+            anchor-cli
 
       - name: Install Surfpool
         run: |
