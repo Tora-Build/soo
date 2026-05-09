@@ -52,6 +52,40 @@ jobs:
       - name: SDK tests
         run: pnpm -F @sooth/sdk-solana test
 
+  anchor-build:
+    # Catches SBF stack-offset errors + IDL-gen regressions on every
+    # PR. Per-program cargo build-sbf misses 2 of the 6 stack-offset
+    # cases that surface only during anchor's combined build pipeline
+    # (e.g. CreateOrderRequest +504 / ProcessOrderRequest +1200 in
+    # sooth_book pre-W2). The full e2e job ALSO does anchor build but
+    # only runs on push-to-main, which would let regressions land
+    # before being caught. This job is the PR-time guard.
+    # No untrusted input (static commands).
+    name: Anchor build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.13/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install Anchor CLI
+        run: |
+          cargo install \
+            --git https://github.com/coral-xyz/anchor \
+            --tag v0.30.1 \
+            anchor-cli \
+            --locked
+
+      - name: Anchor build (catches stack-offset + IDL regressions)
+        working-directory: packages/programs-core
+        run: anchor build
+
   e2e:
     name: Surfpool Playwright E2E
     runs-on: ubuntu-latest
