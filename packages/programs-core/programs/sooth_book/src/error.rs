@@ -16,6 +16,10 @@ pub enum CoreError {
     ZeroStake,
     #[msg("SoothBook: price must be within the probability-WAD range")]
     PriceOutOfRange,
+    #[msg("SoothBook: unauthorized")]
+    Unauthorized,
+    #[msg("SoothBook: invalid outcome")]
+    InvalidOutcome,
 
     /*
     Order Creation

@@ -6,7 +6,10 @@ use crate::instructions::market::verify_market_authority;
 use crate::instructions::market_position;
 use crate::instructions::transfer;
 use crate::instructions::verify_operator_authority;
-use crate::instructions::{__client_accounts_mint_into_book, MintIntoBook};
+use crate::instructions::{
+    __client_accounts_mint_into_book, __client_accounts_settle_resting_orders, MintIntoBook,
+    SettleRestingOrders,
+};
 use crate::state::market_account::{Market, MarketOrderBehaviour};
 use crate::state::market_order_request_queue::{MarketOrderRequestQueue, OrderRequestData};
 use crate::state::market_position_account::MarketPosition;
@@ -47,6 +50,10 @@ pub mod sooth_book {
             distinct_seed_yes,
             distinct_seed_no,
         )
+    }
+
+    pub fn settle_resting_orders(ctx: Context<SettleRestingOrders>) -> Result<()> {
+        instructions::settle_resting_orders::handler(ctx)
     }
 
     pub fn create_order_request(
