@@ -275,8 +275,6 @@ mod tests {
             market_outcome_sums,
             unmatched_exposures,
             payer: Pubkey::new_unique(),
-            matched_risk_per_product: vec![],
-            matched_risk: 0,
         }
     }
 }

@@ -46,8 +46,6 @@ mod tests {
             market_outcome_sums: vec![10, -10, -10],
             unmatched_exposures: vec![0, 10, 10],
             payer: Default::default(),
-            matched_risk: 0,
-            matched_risk_per_product: vec![],
         };
 
         let result = dequeue_order_request(order_request_queue, market_position);
@@ -72,8 +70,6 @@ mod tests {
             market_outcome_sums: vec![10, -10, -10],
             unmatched_exposures: vec![0, 10, 10],
             payer: Default::default(),
-            matched_risk: 0,
-            matched_risk_per_product: vec![],
         };
 
         let result = dequeue_order_request(order_request_queue, market_position);
@@ -98,8 +94,6 @@ mod tests {
             market_outcome_sums: vec![10, -10, -10],
             unmatched_exposures: vec![0, 10, 10],
             payer: Default::default(),
-            matched_risk: 0,
-            matched_risk_per_product: vec![],
         };
 
         let result = dequeue_order_request(order_request_queue, market_position);

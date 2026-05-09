@@ -7,7 +7,6 @@ use crate::instructions::market_position;
 use crate::instructions::transfer;
 use crate::instructions::verify_operator_authority;
 use crate::state::market_account::{Market, MarketOrderBehaviour};
-use crate::state::market_liquidities::LiquiditySource;
 use crate::state::market_order_request_queue::{MarketOrderRequestQueue, OrderRequestData};
 use crate::state::market_position_account::MarketPosition;
 use crate::state::operator_account::AuthorisedOperators;
@@ -26,7 +25,6 @@ declare_id!("5gAMjRCaZfb4NtHmBf2RZHFJVLAAZQ1PBP6dRNPUTxkH");
 pub mod sooth_book {
     use super::*;
     use crate::instructions::current_timestamp;
-    use crate::state::market_liquidities::LiquiditySource;
     use crate::state::market_matching_queue_account::MarketMatchingQueue;
     use crate::state::order_account::OrderStatus;
 
@@ -43,7 +41,6 @@ pub mod sooth_book {
             &mut ctx.accounts.market,
             &ctx.accounts.payer,
             &ctx.accounts.purchaser,
-            &ctx.accounts.product,
             &mut ctx.accounts.market_position,
             &ctx.accounts.market_outcome,
             &ctx.accounts.price_ladder,
@@ -152,16 +149,6 @@ pub mod sooth_book {
         )
     }
 
-    pub fn move_market_matching_pool_to_inplay(
-        ctx: Context<UpdateMarketMatchingPool>,
-    ) -> Result<()> {
-        instructions::matching::move_market_matching_pool_to_inplay(
-            &ctx.accounts.market,
-            &ctx.accounts.market_matching_queue,
-            &mut ctx.accounts.market_matching_pool,
-        )
-    }
-
     pub fn cancel_order(ctx: Context<CancelOrder>) -> Result<()> {
         let refund_amount = instructions::order::cancel_order(
             &mut ctx.accounts.market,
@@ -218,35 +205,6 @@ pub mod sooth_book {
             purchaser_token,
             token_program,
             market,
-            refund_amount,
-        )?;
-
-        // if never matched, TODO close
-        if ctx.accounts.order.order_status == OrderStatus::Cancelled {
-            ctx.accounts.market.decrement_unsettled_accounts_count()?;
-        }
-
-        Ok(())
-    }
-
-    pub fn cancel_preplay_order_post_event_start(
-        ctx: Context<CancelPreplayOrderPostEventStart>,
-    ) -> Result<()> {
-        let refund_amount = instructions::order::cancel_preplay_order_post_event_start(
-            &mut ctx.accounts.market,
-            &mut ctx.accounts.market_liquidities,
-            &mut ctx.accounts.market_matching_pool,
-            &mut ctx.accounts.order,
-            &mut ctx.accounts.market_position,
-            &ctx.accounts.matching_queue,
-            &ctx.accounts.order_request_queue,
-        )?;
-
-        transfer::transfer_from_market_escrow(
-            &ctx.accounts.market_escrow,
-            &ctx.accounts.purchaser_token,
-            &ctx.accounts.token_program,
-            &ctx.accounts.market,
             refund_amount,
         )?;
 
@@ -379,21 +337,6 @@ pub mod sooth_book {
         Ok(())
     }
 
-    pub fn update_market_liquidities_with_cross_liquidity(
-        ctx: Context<UpdateMarketLiquidities>,
-        source_for_outcome: bool,
-        source_liquidities: Vec<LiquiditySource>,
-    ) -> Result<()> {
-        instructions::market_liquidities::update_market_liquidities_with_cross_liquidity(
-            &ctx.accounts.market,
-            &mut ctx.accounts.market_liquidities,
-            source_for_outcome,
-            source_liquidities,
-        )?;
-
-        Ok(())
-    }
-
     #[allow(unused_variables)]
     pub fn match_orders(
         mut ctx: Context<MatchOrders>,
@@ -506,9 +449,6 @@ pub mod sooth_book {
         max_decimals: u8,
         market_lock_timestamp: i64,
         event_start_timestamp: i64,
-        inplay_enabled: bool,
-        inplay_order_delay: u8,
-        event_start_order_behaviour: MarketOrderBehaviour,
         market_lock_order_behaviour: MarketOrderBehaviour,
     ) -> Result<()> {
         verify_operator_authority(
@@ -526,9 +466,6 @@ pub mod sooth_book {
             max_decimals,
             market_lock_timestamp,
             event_start_timestamp,
-            inplay_enabled,
-            inplay_order_delay,
-            event_start_order_behaviour,
             market_lock_order_behaviour,
         )
     }
@@ -642,14 +579,7 @@ pub mod sooth_book {
         instructions::market::update_market_event_start_time_to_now(market)
     }
 
-    pub fn move_market_to_inplay(ctx: Context<MoveMarketToInplay>) -> Result<()> {
-        instructions::market::move_market_to_inplay(
-            &mut ctx.accounts.market,
-            &mut ctx.accounts.market_liquidities,
-        )
-    }
-
-    pub fn open_market(ctx: Context<OpenMarket>, enable_cross_matching: bool) -> Result<()> {
+    pub fn open_market(ctx: Context<OpenMarket>) -> Result<()> {
         verify_operator_authority(
             ctx.accounts.market_operator.key,
             &ctx.accounts.authorised_operators,
@@ -662,10 +592,8 @@ pub mod sooth_book {
         instructions::market::open(
             &ctx.accounts.market.key(),
             &mut ctx.accounts.market,
-            enable_cross_matching,
             &mut ctx.accounts.liquidities,
             &mut ctx.accounts.matching_queue,
-            &mut ctx.accounts.commission_payment_queue,
             &mut ctx.accounts.order_request_queue,
         )
     }
@@ -691,10 +619,7 @@ pub mod sooth_book {
     }
 
     pub fn complete_market_settlement(ctx: Context<CompleteMarketSettlement>) -> Result<()> {
-        instructions::market::complete_settlement(
-            &mut ctx.accounts.market,
-            &ctx.accounts.commission_payments_queue,
-        )
+        instructions::market::complete_settlement(&mut ctx.accounts.market)
     }
 
     pub fn void_market(ctx: Context<VoidMarket>) -> Result<()> {
@@ -864,17 +789,6 @@ pub mod sooth_book {
         )
     }
 
-    pub fn process_commission_payment(ctx: Context<ProcessMarketCommissionPayment>) -> Result<()> {
-        instructions::process_commission_payment(
-            &mut ctx.accounts.commission_payments_queue.payment_queue,
-            &ctx.accounts.market_escrow,
-            &ctx.accounts.product_escrow_token,
-            &ctx.accounts.product,
-            &ctx.accounts.market,
-            &ctx.accounts.token_program,
-        )
-    }
-
     /*
     Close accounts
      */
@@ -906,7 +820,6 @@ pub mod sooth_book {
         instructions::close::close_market_queues(
             &mut ctx.accounts.market,
             &ctx.accounts.liquidities,
-            &ctx.accounts.commission_payment_queue.payment_queue,
             &ctx.accounts.matching_queue.matches,
             &ctx.accounts.order_request_queue.order_requests,
         )

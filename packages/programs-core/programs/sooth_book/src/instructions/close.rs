@@ -8,7 +8,6 @@ use crate::state::market_matching_queue_account::MatchingQueue;
 use crate::state::market_order_request_queue::OrderRequestQueue;
 use crate::state::market_position_account::MarketPosition;
 use crate::state::order_account::Order;
-use crate::state::payments_queue::PaymentQueue;
 
 pub fn close_market_child_account(market: &mut Market) -> Result<()> {
     require!(
@@ -38,17 +37,12 @@ pub fn close_market_queues(
     market: &mut Market,
     // nothing really to check or do for now for this account
     _liquidities: &MarketLiquidities,
-    payment_queue: &PaymentQueue,
     matching_queue: &MatchingQueue,
     order_requests: &OrderRequestQueue,
 ) -> Result<()> {
     require!(
         ReadyToClose.eq(&market.market_status),
         CoreError::MarketNotReadyToClose
-    );
-    require!(
-        payment_queue.is_empty(),
-        CoreError::CloseAccountMarketPaymentQueueNotEmpty
     );
     require!(
         matching_queue.is_empty(),
@@ -60,7 +54,6 @@ pub fn close_market_queues(
     );
 
     market.decrement_unclosed_accounts_count()?; // liquidities
-    market.decrement_unclosed_accounts_count()?; // payment_queue
     market.decrement_unclosed_accounts_count()?; // matching_queue
     market.decrement_unclosed_accounts_count() // order_request_queue
 }
@@ -85,7 +78,6 @@ mod tests {
     use crate::state::market_liquidities::mock_market_liquidities;
     use crate::state::market_matching_queue_account::OrderMatch;
     use crate::state::order_account::{mock_order_default, OrderStatus};
-    use crate::state::payments_queue::PaymentInfo;
 
     // generic close account validation
 
@@ -115,20 +107,13 @@ mod tests {
     fn test_close_market_queues() {
         let market = &mut test_market();
         market.market_status = ReadyToClose;
-        market.unclosed_accounts_count = 4;
+        market.unclosed_accounts_count = 3;
 
         let liquidities = mock_market_liquidities(Pubkey::default());
-        let payment_queue = PaymentQueue::new(1);
         let matching_queue = MatchingQueue::new(1);
         let request_queue = OrderRequestQueue::new(1);
 
-        let result = close_market_queues(
-            market,
-            &liquidities,
-            &payment_queue,
-            &matching_queue,
-            &request_queue,
-        );
+        let result = close_market_queues(market, &liquidities, &matching_queue, &request_queue);
         assert!(result.is_ok());
         assert_eq!(market.unclosed_accounts_count, 0);
     }
@@ -139,17 +124,10 @@ mod tests {
         market.unclosed_accounts_count = 3;
 
         let liquidities = mock_market_liquidities(Pubkey::default());
-        let payment_queue = PaymentQueue::new(1);
         let matching_queue = MatchingQueue::new(1);
         let request_queue = OrderRequestQueue::new(1);
 
-        let result = close_market_queues(
-            market,
-            &liquidities,
-            &payment_queue,
-            &matching_queue,
-            &request_queue,
-        );
+        let result = close_market_queues(market, &liquidities, &matching_queue, &request_queue);
         assert!(result.is_err());
         assert_eq!(Err(error!(CoreError::MarketNotReadyToClose)), result);
     }
@@ -158,43 +136,14 @@ mod tests {
     fn test_close_market_queues_not_empty() {
         let market = &mut test_market();
         market.market_status = ReadyToClose;
-        market.unclosed_accounts_count = 4;
+        market.unclosed_accounts_count = 3;
 
         let liquidities = mock_market_liquidities(Pubkey::default());
-
-        let payment_queue = &mut PaymentQueue::new(1);
-        payment_queue.enqueue(PaymentInfo {
-            to: Pubkey::new_unique(),
-            from: Pubkey::new_unique(),
-            amount: 0,
-        });
-
         let matching_queue = &mut MatchingQueue::new(1);
         matching_queue.enqueue(OrderMatch::maker(false, 0, 0.0, 0));
         let request_queue = OrderRequestQueue::new(1);
 
-        let result = close_market_queues(
-            market,
-            &liquidities,
-            &payment_queue,
-            &matching_queue,
-            &request_queue,
-        );
-        assert!(result.is_err());
-        assert_eq!(
-            Err(error!(CoreError::CloseAccountMarketPaymentQueueNotEmpty)),
-            result
-        );
-
-        payment_queue.dequeue();
-
-        let result = close_market_queues(
-            market,
-            &liquidities,
-            &payment_queue,
-            &matching_queue,
-            &request_queue,
-        );
+        let result = close_market_queues(market, &liquidities, &matching_queue, &request_queue);
         assert!(result.is_err());
         assert_eq!(
             Err(error!(CoreError::CloseAccountMarketMatchingQueueNotEmpty)),
@@ -203,13 +152,7 @@ mod tests {
 
         matching_queue.dequeue();
 
-        let result = close_market_queues(
-            market,
-            &liquidities,
-            &payment_queue,
-            &matching_queue,
-            &request_queue,
-        );
+        let result = close_market_queues(market, &liquidities, &matching_queue, &request_queue);
         assert!(result.is_ok());
         assert_eq!(market.unclosed_accounts_count, 0);
     }
@@ -306,8 +249,6 @@ mod tests {
             event_account: Default::default(),
             mint_account: Default::default(),
             market_status: MarketStatus::Initializing,
-            inplay_enabled: false,
-            inplay: false,
             market_type: Default::default(),
             market_type_discriminator: None,
             market_type_value: None,
@@ -319,9 +260,7 @@ mod tests {
             market_winning_outcome_index: None,
             market_lock_timestamp: 0,
             market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay_order_delay: 0,
             title: "".to_string(),
             unsettled_accounts_count: 0,
             unclosed_accounts_count: 0,
@@ -339,8 +278,6 @@ mod tests {
             market_outcome_sums: vec![],
             unmatched_exposures: vec![],
             payer: Default::default(),
-            matched_risk: 0,
-            matched_risk_per_product: vec![],
         }
     }
 }

@@ -28,8 +28,5 @@ pub fn initialize_order(
     order.stake_unmatched = order_request.stake;
     order.payout = 0_u64;
 
-    order.product = order_request.product;
-    order.product_commission_rate = order_request.product_commission_rate;
-
     Ok(())
 }

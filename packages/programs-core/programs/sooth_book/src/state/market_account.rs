@@ -1,8 +1,6 @@
 use crate::error::CoreError;
-use crate::instructions::current_timestamp;
 use crate::state::type_size::*;
 use anchor_lang::prelude::*;
-use solana_program::clock::UnixTimestamp;
 use std::string::ToString;
 
 #[account]
@@ -12,8 +10,6 @@ pub struct Market {
     pub event_account: Pubkey,
     pub mint_account: Pubkey,
     pub market_status: MarketStatus,
-    pub inplay_enabled: bool,
-    pub inplay: bool,
     pub market_type: Pubkey,
     // this section cannot be moved or on-chain search will stop working
     pub market_type_discriminator: Option<String>,
@@ -29,10 +25,7 @@ pub struct Market {
     pub market_lock_timestamp: i64,
     pub market_settle_timestamp: Option<i64>,
 
-    pub event_start_order_behaviour: MarketOrderBehaviour,
     pub market_lock_order_behaviour: MarketOrderBehaviour,
-
-    pub inplay_order_delay: u8,
 
     pub title: String,
 
@@ -52,8 +45,6 @@ impl Market {
         + (PUB_KEY_SIZE * 3) // authority, event and mint
         + U8_SIZE // decimal_limit
         + ENUM_SIZE // market_status
-        + BOOL_SIZE // inplay_enabled
-        + BOOL_SIZE // inplay
         + PUB_KEY_SIZE // market_type
         + option_size(string_size(Market::TYPE_FIELD_MAX_LENGTH)) // market_type disc.
         + option_size(string_size(Market::TYPE_FIELD_MAX_LENGTH)) // market_type value
@@ -63,10 +54,9 @@ impl Market {
         + option_size(U16_SIZE) // market_winning_outcome_index
         + I64_SIZE // market_lock_timestamp
         + option_size(I64_SIZE) // market_settle_timestamp
-        + ENUM_SIZE * 2 // event_start and market_lock _order_behaviour
-        + U8_SIZE // inplay_order_delay
+        + ENUM_SIZE // market_lock_order_behaviour
         + vec_size(CHAR_SIZE, Market::TITLE_MAX_LENGTH) // title
-        + U8_SIZE * 2// bumps
+        + U8_SIZE * 2 // bumps
         + I64_SIZE // event_start_timestamp
         + U32_SIZE * 2; // unsettled_accounts + unclosed_accounts
 
@@ -121,18 +111,6 @@ impl Market {
         self.decrement_unclosed_accounts_count()?;
         Ok(())
     }
-
-    pub fn is_inplay(&self) -> bool {
-        Market::market_is_inplay(self, current_timestamp())
-    }
-
-    pub fn market_is_inplay(market: &Market, now: UnixTimestamp) -> bool {
-        market.inplay || (market.inplay_enabled && market.event_start_timestamp <= now)
-    }
-
-    pub fn move_to_inplay(&mut self) {
-        self.inplay = true;
-    }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone, PartialEq, Eq)]
@@ -155,165 +133,7 @@ pub enum MarketOrderBehaviour {
 
 #[cfg(test)]
 mod tests {
-    use crate::state::market_account::{mock_market, Market, MarketOrderBehaviour, MarketStatus};
-    use anchor_lang::prelude::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    // Market account tests
-
-    #[test]
-    fn test_is_inplay_inplay_true() {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-        let market: Market = Market {
-            authority: Pubkey::default(),
-            event_account: Pubkey::default(),
-            mint_account: Pubkey::default(),
-            market_status: MarketStatus::Initializing,
-            inplay_enabled: true,
-            inplay: true,
-            market_type: Pubkey::default(),
-            market_type_discriminator: None,
-            market_type_value: None,
-            version: 0,
-            decimal_limit: 0,
-            published: false,
-            suspended: false,
-            market_outcomes_count: 0,
-            market_winning_outcome_index: None,
-            market_lock_timestamp: 0,
-            market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
-            market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay_order_delay: 0,
-            title: "".to_string(),
-            unsettled_accounts_count: 0,
-            unclosed_accounts_count: 0,
-            escrow_account_bump: 0,
-            funding_account_bump: 0,
-            event_start_timestamp: now + 1000,
-        };
-
-        assert!(Market::market_is_inplay(&market, now));
-    }
-
-    #[test]
-    fn test_is_inplay_inplay_false_event_not_started() {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-        let market: Market = Market {
-            authority: Pubkey::default(),
-            event_account: Pubkey::default(),
-            mint_account: Pubkey::default(),
-            market_status: MarketStatus::Initializing,
-            inplay_enabled: true,
-            inplay: false,
-            market_type: Pubkey::default(),
-            market_type_discriminator: None,
-            market_type_value: None,
-            version: 0,
-            decimal_limit: 0,
-            published: false,
-            suspended: false,
-            market_outcomes_count: 0,
-            market_winning_outcome_index: None,
-            market_lock_timestamp: 0,
-            market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
-            market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay_order_delay: 0,
-            title: "".to_string(),
-            unsettled_accounts_count: 0,
-            unclosed_accounts_count: 0,
-            escrow_account_bump: 0,
-            funding_account_bump: 0,
-            event_start_timestamp: now + 1000,
-        };
-
-        assert!(!Market::market_is_inplay(&market, now));
-    }
-
-    #[test]
-    fn test_is_inplay_inplay_false_event_started() {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-        let market: Market = Market {
-            authority: Pubkey::default(),
-            event_account: Pubkey::default(),
-            mint_account: Pubkey::default(),
-            market_status: MarketStatus::Initializing,
-            inplay_enabled: true,
-            inplay: false,
-            market_type: Pubkey::default(),
-            market_type_discriminator: None,
-            market_type_value: None,
-            version: 0,
-            decimal_limit: 0,
-            published: false,
-            suspended: false,
-            market_outcomes_count: 0,
-            market_winning_outcome_index: None,
-            market_lock_timestamp: 0,
-            market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
-            market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay_order_delay: 0,
-            title: "".to_string(),
-            unsettled_accounts_count: 0,
-            unclosed_accounts_count: 0,
-            escrow_account_bump: 0,
-            funding_account_bump: 0,
-            event_start_timestamp: now,
-        };
-
-        assert!(Market::market_is_inplay(&market, now));
-    }
-
-    #[test]
-    fn test_is_inplay_inplay_false_event_started_not_inplay_market() {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-        let market: Market = Market {
-            authority: Pubkey::default(),
-            event_account: Pubkey::default(),
-            mint_account: Pubkey::default(),
-            market_status: MarketStatus::Initializing,
-            inplay_enabled: false,
-            inplay: false,
-            market_type: Pubkey::default(),
-            market_type_discriminator: None,
-            market_type_value: None,
-            version: 0,
-            decimal_limit: 0,
-            published: false,
-            suspended: false,
-            market_outcomes_count: 0,
-            market_winning_outcome_index: None,
-            market_lock_timestamp: 0,
-            market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
-            market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay_order_delay: 0,
-            title: "".to_string(),
-            unsettled_accounts_count: 0,
-            unclosed_accounts_count: 0,
-            escrow_account_bump: 0,
-            funding_account_bump: 0,
-            event_start_timestamp: now,
-        };
-
-        assert!(!Market::market_is_inplay(&market, now))
-    }
-
-    // test account count fields
+    use crate::state::market_account::{mock_market, MarketStatus};
 
     #[test]
     fn test_increment_unsettled_accounts_count() {
@@ -375,8 +195,6 @@ pub fn mock_market(market_status: MarketStatus) -> Market {
         authority: Default::default(),
         event_account: Default::default(),
         mint_account: Default::default(),
-        inplay_enabled: false,
-        inplay: false,
         market_type: Default::default(),
         market_type_discriminator: None,
         market_type_value: None,
@@ -388,9 +206,7 @@ pub fn mock_market(market_status: MarketStatus) -> Market {
         market_winning_outcome_index: None,
         market_lock_timestamp: 0,
         market_settle_timestamp: None,
-        event_start_order_behaviour: MarketOrderBehaviour::None,
         market_lock_order_behaviour: MarketOrderBehaviour::None,
-        inplay_order_delay: 0,
         title: "".to_string(),
         unsettled_accounts_count: 0,
         unclosed_accounts_count: 0,

@@ -2,8 +2,6 @@ use crate::state::type_size::*;
 use anchor_lang::prelude::*;
 use std::string::ToString;
 
-use super::market_account::MarketOrderBehaviour;
-
 #[account]
 pub struct MarketMatchingPool {
     pub market: Pubkey,
@@ -13,7 +11,6 @@ pub struct MarketMatchingPool {
     pub payer: Pubkey,
     pub liquidity_amount: u64,
     pub matched_amount: u64,
-    pub inplay: bool,
     pub orders: Cirque,
 }
 
@@ -28,17 +25,7 @@ impl MarketMatchingPool {
         PUB_KEY_SIZE + // payer
         U64_SIZE + // liquidity_amount
         U64_SIZE + // matched_amount
-        BOOL_SIZE + // inplay
         Cirque::size_for(MarketMatchingPool::QUEUE_LENGTH); //orders
-
-    pub fn move_to_inplay(&mut self, market_event_start_order_behaviour: &MarketOrderBehaviour) {
-        self.inplay = true;
-
-        if market_event_start_order_behaviour.eq(&MarketOrderBehaviour::CancelUnmatched) {
-            self.orders.set_length_to_zero();
-            self.liquidity_amount = 0_u64;
-        }
-    }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone)]
@@ -207,7 +194,6 @@ pub fn mock_market_matching_pool(
         price,
         liquidity_amount: 0_u64,
         matched_amount: 0_u64,
-        inplay: false,
         orders: Cirque::new(1),
         payer: Pubkey::new_unique(),
     }

@@ -1,8 +1,7 @@
 use crate::error::CoreError;
 use crate::events::trade::TradeEvent;
-use crate::instructions::market_position::update_product_commission_contributions;
 use crate::instructions::matching::create_trade::create_trade;
-use crate::instructions::{calculate_risk_from_stake, current_timestamp, market_position};
+use crate::instructions::{current_timestamp, market_position};
 use crate::state::market_account::Market;
 use crate::state::market_matching_pool_account::MarketMatchingPool;
 use crate::state::market_matching_queue_account::MarketMatchingQueue;
@@ -101,16 +100,6 @@ pub fn on_order_match_maker(
                 .checked_sub(matched_stake)
                 .ok_or(CoreError::MatchingMatchedStakeCalculationError)?;
 
-            // update product commission tracking for matched risk
-            update_product_commission_contributions(
-                market_position,
-                order,
-                match order.for_outcome {
-                    true => matched_stake,
-                    false => calculate_risk_from_stake(matched_stake, matched_price),
-                },
-            )?;
-
             // store maker trade
             create_trade(
                 order_trade,
@@ -183,7 +172,6 @@ mod test {
             price: matched_price,
             liquidity_amount: 100_u64,
             matched_amount: 0_u64,
-            inplay: false,
             orders: Cirque::new(1),
             payer: payer_pk,
         };
@@ -266,7 +254,6 @@ mod test {
             price: matched_price,
             liquidity_amount: 100_u64,
             matched_amount: 0_u64,
-            inplay: false,
             orders: Cirque::new(1),
             payer: payer_pk,
         };
@@ -351,7 +338,6 @@ mod test {
             price: matched_price,
             liquidity_amount: 10_u64,
             matched_amount: 0_u64,
-            inplay: false,
             orders: Cirque::new(1),
             payer: payer_pk,
         };
@@ -427,7 +413,6 @@ mod test {
             price: matched_price,
             liquidity_amount: 100_u64,
             matched_amount: 0_u64,
-            inplay: false,
             orders: Cirque::new(1),
             payer: payer_pk,
         };
@@ -472,8 +457,6 @@ mod test {
             event_account: Default::default(),
             mint_account: Default::default(),
             market_status: MarketStatus::Open,
-            inplay_enabled: true,
-            inplay: true,
             market_type: Default::default(),
             market_type_discriminator: None,
             market_type_value: None,
@@ -485,9 +468,7 @@ mod test {
             market_winning_outcome_index: None,
             market_lock_timestamp: 0,
             market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::CancelUnmatched,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay_order_delay: 0,
             title: "".to_string(),
             unsettled_accounts_count: 0,
             unclosed_accounts_count: 0,

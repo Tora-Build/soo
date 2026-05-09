@@ -21,23 +21,20 @@ pub struct OrderRequest {
     pub purchaser: Pubkey, // wallet of user/intializer/ordertor who purchased the order
     pub market_outcome_index: u16, // market outcome on which order was made
     pub for_outcome: bool, // is order for or against the outcome
-    pub product: Option<Pubkey>, // product this order was placed on
     pub stake: u64,        // total stake amount provided by purchaser
     pub expected_price: f64, // expected price provided by purchaser
     pub delay_expiration_timestamp: i64,
-    pub product_commission_rate: f64, // product commission rate at time of order creation
-    pub distinct_seed: [u8; 16],      // used as a seed for generating a unique order pda
-    pub creation_timestamp: i64,      // timestamp when request was created
-    pub expires_on: Option<i64>,      // timestamp when request is supposed to expire if set
+    pub distinct_seed: [u8; 16], // used as a seed for generating a unique order pda
+    pub creation_timestamp: i64, // timestamp when request was created
+    pub expires_on: Option<i64>, // timestamp when request is supposed to expire if set
 }
 
 impl OrderRequest {
     pub const SIZE: usize = PUB_KEY_SIZE
     + U16_SIZE // market_outcome_index
     + BOOL_SIZE // for outcome
-    + option_size(PUB_KEY_SIZE) // product
     + U64_SIZE // stake
-    + (F64_SIZE * 2) // expected_price & product_commission_rate
+    + F64_SIZE // expected_price
     + I64_SIZE // delay_expiration_timestamp
     + U128_SIZE // distinct_seed
     + I64_SIZE // creation_timestamp
@@ -50,9 +47,7 @@ impl OrderRequest {
             for_outcome: false,
             delay_expiration_timestamp: 0,
             stake: 0,
-            product: None,
             expected_price: 0.0,
-            product_commission_rate: 0.0,
             distinct_seed: [0; 16],
             creation_timestamp: 0,
             expires_on: None,
@@ -207,8 +202,6 @@ pub fn mock_order_request(
         for_outcome,
         stake,
         expected_price: price,
-        product: None,
-        product_commission_rate: 0.0,
         delay_expiration_timestamp: 0,
         distinct_seed: [0; 16],
         creation_timestamp: 0,
@@ -376,9 +369,7 @@ mod tests {
 
             delay_expiration_timestamp: 0,
             stake: 0,
-            product: None,
             expected_price: 0.0,
-            product_commission_rate: 0.0,
             creation_timestamp: 0,
             expires_on: None,
         };
@@ -392,9 +383,7 @@ mod tests {
 
             delay_expiration_timestamp: 0,
             stake: 0,
-            product: None,
             expected_price: 0.0,
-            product_commission_rate: 0.0,
             creation_timestamp: 0,
             expires_on: None,
         };
@@ -409,9 +398,7 @@ mod tests {
 
             delay_expiration_timestamp: 0,
             stake: 0,
-            product: None,
             expected_price: 0.0,
-            product_commission_rate: 0.0,
             creation_timestamp: 0,
             expires_on: None,
         };

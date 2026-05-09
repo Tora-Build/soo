@@ -23,9 +23,6 @@ pub fn create(
     max_decimals: u8,
     market_lock_timestamp: i64,
     event_start_timestamp: i64,
-    inplay_enabled: bool,
-    inplay_order_delay: u8,
-    event_start_order_behaviour: MarketOrderBehaviour,
     market_lock_order_behaviour: MarketOrderBehaviour,
 ) -> Result<()> {
     require!(
@@ -37,7 +34,7 @@ pub fn create(
         CoreError::MarketLockTimeNotInTheFuture
     );
     require!(
-        inplay_enabled || market_lock_timestamp <= event_start_timestamp,
+        market_lock_timestamp <= event_start_timestamp,
         CoreError::MarketLockTimeAfterEventStartTime
     );
     require!(
@@ -128,19 +125,7 @@ pub fn create(
     ctx.accounts.market.published = false;
     ctx.accounts.market.suspended = false;
     ctx.accounts.market.event_start_timestamp = event_start_timestamp;
-    ctx.accounts.market.inplay_enabled = inplay_enabled;
-    ctx.accounts.market.event_start_order_behaviour = event_start_order_behaviour;
     ctx.accounts.market.market_lock_order_behaviour = market_lock_order_behaviour;
-    ctx.accounts.market.inplay_order_delay = if inplay_enabled {
-        inplay_order_delay
-    } else {
-        0
-    };
-    ctx.accounts.market.inplay = if inplay_enabled {
-        event_start_timestamp <= current_timestamp()
-    } else {
-        false
-    };
 
     Ok(())
 }
@@ -153,6 +138,10 @@ pub fn initialize_outcome(ctx: Context<InitializeMarketOutcome>, title: String) 
     require!(
         title.len() <= MarketOutcome::TITLE_MAX_LENGTH,
         CoreError::MarketOutcomeTitleTooLong
+    );
+    require!(
+        ctx.accounts.market.market_outcomes_count < 2,
+        CoreError::MarketOutcomeInitError
     );
 
     ctx.accounts.outcome.market = ctx.accounts.market.key();
@@ -200,7 +189,6 @@ pub fn initialize_market_matching_pool(
     matching_pool.liquidity_amount = 0_u64;
     matching_pool.matched_amount = 0_u64;
     matching_pool.orders = Cirque::new(MarketMatchingPool::QUEUE_LENGTH);
-    matching_pool.inplay = market.is_inplay();
     Ok(())
 }
 

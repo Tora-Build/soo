@@ -32,51 +32,6 @@ pub fn calculate_stake_from_payout(payout: u64, price: f64) -> u64 {
     Decimal::from(payout).div(price_decimal).to_u64().unwrap()
 }
 
-/// stake_cross = stake * price / price_cross
-pub fn calculate_stake_cross(stake: u64, price: f64, price_cross: f64) -> u64 {
-    let stake_matched_decimal = Decimal::from_u64(stake).unwrap();
-    let price_matched_decimal = price_to_decimal(price);
-    let price_cross_decimal = price_to_decimal(price_cross);
-
-    let stake_cross_decimal = stake_matched_decimal
-        .mul(price_matched_decimal)
-        .div(price_cross_decimal);
-
-    stake_cross_decimal.to_u64().unwrap()
-}
-
-/// 2ways: price_cross = price_a / (price_a - 1)
-/// 3ways: price_cross = price_ab / (price_ab - price_a - price_b)
-/// 4ways: price_cross = price_abc / (price_abc - price_ab - price_bc - price_ac)
-pub fn calculate_price_cross(prices: &[f64]) -> Option<f64> {
-    let mut full = Decimal::ONE;
-    let mut partials = vec![Decimal::ONE; prices.len()];
-
-    for (price_index, price) in prices.iter().enumerate() {
-        let price_decimal = price_to_decimal(*price);
-
-        full = full.mul(price_decimal);
-        for (index, partial) in partials.iter_mut().enumerate() {
-            if index != price_index {
-                *partial = partial.mul(price_decimal);
-            }
-        }
-    }
-    let mut full_sub_partials = full;
-    for partial in partials {
-        full_sub_partials = full_sub_partials.sub(partial);
-    }
-
-    let result = full.div(full_sub_partials);
-    let result_truncated = result.trunc_with_scale(3);
-
-    if result.ne(&result_truncated) {
-        None // it needs to fit in 3 decimals
-    } else {
-        result_truncated.to_f64()
-    }
-}
-
 pub fn price_precision_is_within_range(price: f64) -> Result<()> {
     let decimal = Decimal::from_f64(price).ok_or(CoreError::ArithmeticError)?;
     let decimal_with_scale = decimal.trunc_with_scale(3);
@@ -94,32 +49,6 @@ pub fn stake_precision_is_within_range(stake: u64, decimal_limit: u8) -> Result<
         CoreError::ArithmeticError
     );
     Ok(stake_decimal.fract().is_zero())
-}
-
-pub fn calculate_commission(commission_rate: f64, profit: i128) -> u64 {
-    if profit <= 0 || commission_rate == 0.0 {
-        return 0;
-    }
-
-    let commission_rate_decimal = Decimal::from_f64(commission_rate).unwrap();
-    Decimal::from(profit)
-        .mul(commission_rate_decimal)
-        .div(Decimal::ONE_HUNDRED)
-        .to_u64()
-        .unwrap()
-}
-
-pub fn calculate_post_commission_remainder(commission_rate: f64, profit: i128) -> u64 {
-    if profit <= 0 {
-        return 0;
-    }
-
-    let commission_rate_decimal = Decimal::from_f64(commission_rate).unwrap();
-    let profit_decimal = Decimal::from(profit);
-    let commission_decimal = profit_decimal
-        .mul(commission_rate_decimal)
-        .div(Decimal::ONE_HUNDRED);
-    profit_decimal.sub(commission_decimal).to_u64().unwrap()
 }
 
 #[cfg(test)]
@@ -166,53 +95,6 @@ mod tests {
     }
 
     #[test]
-    fn test_calculate_stake_cross() {
-        // 2.800, 2.800, 3.500
-        assert_eq!(calculate_stake_cross(100, 2.8, 3.5), 80);
-        assert_eq!(calculate_stake_cross(100, 3.5, 2.8), 125);
-        // 2.700, 3.000, 3.375
-        assert_eq!(calculate_stake_cross(100, 2.7, 3.0), 90);
-        assert_eq!(calculate_stake_cross(100, 2.7, 3.375), 80);
-        assert_eq!(calculate_stake_cross(90, 3.0, 2.7), 100);
-        assert_eq!(calculate_stake_cross(90, 3.0, 3.375), 80);
-        assert_eq!(calculate_stake_cross(80, 3.375, 2.7), 100);
-        assert_eq!(calculate_stake_cross(80, 3.375, 3.0), 90);
-    }
-
-    #[test]
-    fn test_calculate_price_cross() {
-        assert!(calculate_price_cross(&vec![3.1_f64]).is_none());
-
-        let cross_price_2way = calculate_price_cross(&vec![2.0_f64; 1]);
-        assert!(cross_price_2way.is_some());
-        assert_eq!(2.0_f64, cross_price_2way.unwrap());
-
-        let cross_price_3way = calculate_price_cross(&vec![3.0_f64; 2]);
-        assert!(cross_price_3way.is_some());
-        assert_eq!(3.0_f64, cross_price_3way.unwrap());
-
-        let cross_price_4way = calculate_price_cross(&vec![4.0_f64; 3]);
-        assert!(cross_price_4way.is_some());
-        assert_eq!(4.0_f64, cross_price_4way.unwrap());
-
-        let cross_price_5way = calculate_price_cross(&vec![5.0_f64; 4]);
-        assert!(cross_price_5way.is_some());
-        assert_eq!(5.0_f64, cross_price_5way.unwrap());
-
-        let cross_price_6way = calculate_price_cross(&vec![6.0_f64; 5]);
-        assert!(cross_price_6way.is_some());
-        assert_eq!(6.0_f64, cross_price_6way.unwrap());
-
-        let cross_price_7way = calculate_price_cross(&vec![7.0_f64; 6]);
-        assert!(cross_price_7way.is_some());
-        assert_eq!(7.0_f64, cross_price_7way.unwrap());
-
-        let cross_price_8way = calculate_price_cross(&vec![8.0_f64; 7]);
-        assert!(cross_price_8way.is_some());
-        assert_eq!(8.0_f64, cross_price_8way.unwrap());
-    }
-
-    #[test]
     fn test_stake_precision_is_within_range_failure() {
         assert!(!stake_precision_is_within_range(1, 3).unwrap());
         assert!(!stake_precision_is_within_range(1001, 3).unwrap());
@@ -239,29 +121,5 @@ mod tests {
         assert!(price_precision_is_within_range(1.11_f64).is_ok());
         assert!(price_precision_is_within_range(1.111_f64).is_ok());
         assert!(price_precision_is_within_range(1.1111_f64).is_err());
-    }
-
-    #[test]
-    fn test_calculate_commission() {
-        assert_eq!(calculate_commission(5.00, 100), 5);
-        assert_eq!(calculate_commission(1.5, 100), 1);
-        assert_eq!(calculate_commission(33.33, 100), 33);
-        assert_eq!(calculate_commission(0.00, 100), 0);
-        assert_eq!(calculate_commission(10.00, 1), 0);
-
-        // 1000000 = 1 @ 6 mint decimals
-        assert_eq!(calculate_commission(1.00, 1000000), 10000);
-        assert_eq!(calculate_commission(33.33, 1000000), 333300);
-    }
-
-    #[test]
-    fn calculate_post_commission_remainder_zero_protocol_commission() {
-        let profit = 100;
-        let commission_rate = 0.0;
-
-        assert_eq!(
-            profit as u64,
-            calculate_post_commission_remainder(commission_rate, profit)
-        );
     }
 }

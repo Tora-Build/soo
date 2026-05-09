@@ -2,7 +2,6 @@ pub use clock::*;
 pub use close::*;
 pub use math::*;
 pub use operator::*;
-pub use payment::*;
 pub use transfer::*;
 
 pub(crate) mod close;
@@ -16,7 +15,6 @@ pub(crate) mod price_ladder;
 mod clock;
 mod math;
 mod operator;
-mod payment;
 
 pub mod market_liquidities;
 pub mod market_position;

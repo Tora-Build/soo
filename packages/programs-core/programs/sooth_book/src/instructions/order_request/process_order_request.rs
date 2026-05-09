@@ -1,12 +1,8 @@
 use anchor_lang::prelude::*;
 
 use crate::error::CoreError;
-use crate::instructions::market::move_market_to_inplay;
-use crate::instructions::market_position::update_product_commission_contributions;
 use crate::instructions::order::initialize_order;
-use crate::instructions::{
-    calculate_risk_from_stake, current_timestamp, market, market_position, matching,
-};
+use crate::instructions::{current_timestamp, market, market_position, matching};
 use crate::state::market_account::*;
 use crate::state::market_liquidities::MarketLiquidities;
 use crate::state::market_matching_pool_account::MarketMatchingPool;
@@ -43,23 +39,6 @@ pub fn process_order_request<'info>(
         }
     }
 
-    if market.is_inplay() {
-        // if market is inplay, but the inplay flag hasn't been flipped yet, do it now
-        // and zero liquidities before processing the order request if that's
-        // what the market is configured for
-        if !market.inplay {
-            move_market_to_inplay(market, market_liquidities)?;
-        }
-
-        // if market is inplay, and order is delayed, processing requires that the delay has expired
-        if order_request.delay_expiration_timestamp > 0 {
-            require!(
-                order_request.delay_expiration_timestamp <= now,
-                CoreError::InplayDelay
-            );
-        }
-    }
-
     initialize_order(order, market, fee_payer.key(), *order_request)?;
     market.increment_account_counts()?;
 
@@ -68,14 +47,6 @@ pub fn process_order_request<'info>(
         market::initialize_market_matching_pool(matching_pool, market, order)?;
         market.increment_unclosed_accounts_count()?;
     }
-    if market.is_inplay() && !matching_pool.inplay {
-        require!(
-            market_matching_queue.matches.is_empty(),
-            CoreError::InplayTransitionMarketMatchingQueueIsNotEmpty
-        );
-        matching_pool.move_to_inplay(&market.event_start_order_behaviour);
-    }
-
     let order_matches = matching::on_order_creation(
         market_liquidities,
         market_matching_queue,
@@ -96,16 +67,6 @@ pub fn process_order_request<'info>(
         total_refund = total_refund
             .checked_add(refund)
             .ok_or(CoreError::CreationTransferAmountError)?;
-
-        // update product commission tracking for matched risk
-        update_product_commission_contributions(
-            market_position,
-            order,
-            match order.for_outcome {
-                true => matched_stake,
-                false => calculate_risk_from_stake(matched_stake, matched_price),
-            },
-        )?;
     }
 
     Ok(total_refund)

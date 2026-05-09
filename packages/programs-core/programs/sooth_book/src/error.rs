@@ -9,10 +9,6 @@ pub enum CoreError {
     MarketLiquiditiesIsFull,
     #[msg("MarketLiquidities: update error")]
     MarketLiquiditiesUpdateError,
-    #[msg("MarketLiquidities: cross matching disabled")]
-    MarketLiquiditiesCrossMatchingDisabled,
-    #[msg("MarketLiquidities: source_liquidities invalid")]
-    MarketLiquiditiesSourceLiquiditiesInvalid,
 
     #[msg("Market: mismatch")]
     MarketMismatch,
@@ -40,8 +36,6 @@ pub enum CoreError {
     CreationInvalidPrice,
     #[msg("Order Creation: calculating payment/refund amount error")]
     CreationTransferAmountError,
-    #[msg("Order Creation: market is already inplay")]
-    CreationMarketAlreadyInplay,
     #[msg("Order Creation: market mismatch")]
     CreationMarketMismatch,
     #[msg("Order Creation: purchaser mismatch")]
@@ -77,20 +71,14 @@ pub enum CoreError {
     CancelationMarketOutcomeMismatch,
     #[msg("Order Cancelation: market status invalid")]
     CancelationMarketStatusInvalid,
-    #[msg("Order Cancelation: market not inplay")]
-    CancelationMarketNotInplay,
     #[msg("Order Cancelation: market not locked")]
     CancelationMarketNotLocked,
     #[msg("Order Cancelation: market behaviour not valid for cancellation")]
     CancelationMarketOrderBehaviourInvalid,
     #[msg("Order Cancelation: order status invalid")]
     CancelationOrderStatusInvalid,
-    #[msg("Order Cancelation: order created after market event started")]
-    CancelationOrderCreatedAfterMarketEventStarted,
     #[msg("Order Cancelation: liquidity too low")]
     CancelationLowLiquidity,
-    #[msg("Order Cancelation: cannot cancel preplay orders until all preplay order requests are processed")]
-    CancelationPreplayOrderRequestsExist,
 
     /*
     Settlement
@@ -113,18 +101,8 @@ pub enum CoreError {
     SettlementMarketFundingNonZero,
     #[msg("Core Settlement: market matching queue not empty")]
     SettlementMarketMatchingQueueNotEmpty,
-    #[msg("Core Settlement: market payment queue not empty")]
-    SettlementMarketPaymentsQueueNotEmpty,
     #[msg("Core Settlement: error calculating settlement payment.")]
     SettlementPaymentCalculation,
-    #[msg("Core Settlement: failed to enqueue payment - queue full.")]
-    SettlementPaymentQueueFull,
-    #[msg("Core Settlement: from/to address incorrect when processing payment.")]
-    SettlementPaymentAddressMismatch,
-    #[msg("Core Settlement: failed to dequeue payment as queue was empty.")]
-    SettlementPaymentDequeueEmptyQueue,
-    #[msg("Core Settlement: failed to process payment, escrow product mismatch")]
-    SettlementPaymentEscrowProductMismatch,
 
     /*
     Void Markets
@@ -225,12 +203,6 @@ pub enum CoreError {
     MatchingRefundAmountError,
     #[msg("Order Matching: calculating payout amount error")]
     MatchingPayoutAmountError,
-    #[msg("Matching: market matching pool is already inplay")]
-    MatchingMarketMatchingPoolAlreadyInplay,
-    #[msg("Matching: market does not have inplay enabled")]
-    MatchingMarketInplayNotEnabled,
-    #[msg("Matching: market is not yet inplay")]
-    MatchingMarketNotYetInplay,
     #[msg("Matching: invalid market status for operation")]
     MatchingMarketInvalidStatus,
     #[msg("Matching: matched stake calculated incorrectly")]
@@ -240,14 +212,6 @@ pub enum CoreError {
     MatchingPoolIsEmpty,
     #[msg("Matching: matching pool head mismatch")]
     MatchingPoolHeadMismatch,
-
-    /*
-    Inplay
-     */
-    #[msg("The order is currently within the inplay delay period and the operation cannot be completed")]
-    InplayDelay,
-    #[msg("Operation cannot currently be completed - market matching queue is not yet empty for inplay transition")]
-    InplayTransitionMarketMatchingQueueIsNotEmpty,
 
     /*
     Market Type
@@ -286,9 +250,7 @@ pub enum CoreError {
     MarketLockTimeNotInTheFuture,
     #[msg("Market: event start time must be in the future")]
     MarketEventStartTimeNotInTheFuture,
-    #[msg(
-        "Market: lock time must not be later than the event start time unless inplay is enabled"
-    )]
+    #[msg("Market: lock time must not be later than the event start time")]
     MarketLockTimeAfterEventStartTime,
     #[msg("Market: invalid market status for operation")]
     MarketInvalidStatus,
@@ -312,23 +274,12 @@ pub enum CoreError {
     VoidMarketNotInitializingOrOpen,
     #[msg("Market: cannot open market, must have more than 1 outcome")]
     OpenMarketNotEnoughOutcomes,
-    #[msg("Market: too many outcomes for this operation")]
-    MarketTooManyOutcomes,
     #[msg("Market: market is not settled or voided")]
     MarketNotSettledOrVoided,
     #[msg("Market: market is not ready to close")]
     MarketNotReadyToClose,
     #[msg("Market: market authority does not match operator")]
     MarketAuthorityMismatch,
-    #[msg("Market: market inplay not enabled")]
-    MarketInplayNotEnabled,
-    #[msg("Market: market is already inplay")]
-    MarketAlreadyInplay,
-    #[msg("Market: market event not started")]
-    MarketEventNotStarted,
-    #[msg("Market: market not open to allow transition to inplay")]
-    MarketNotOpenForInplay,
-
     #[msg("Market: cannot recreate market, provided event account does not match existing market")]
     MarketEventAccountMismatch,
     #[msg("Market: cannot recreate market, provided market type account does not match existing market")]
@@ -358,8 +309,6 @@ pub enum CoreError {
     CloseAccountPayerMismatch,
     #[msg("CloseAccount: Market does not match")]
     CloseAccountMarketMismatch,
-    #[msg("CloseAccount: Market payment queue is not empty")]
-    CloseAccountMarketPaymentQueueNotEmpty,
     #[msg("CloseAccount: Market matching queue is not empty")]
     CloseAccountMarketMatchingQueueNotEmpty,
     #[msg("CloseAccount: Market order request queue is not empty")]

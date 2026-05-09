@@ -1,10 +1,9 @@
 use anchor_lang::prelude::*;
 
 use crate::error::CoreError;
-use crate::instructions::market::move_market_to_inplay_if_needed;
 use crate::instructions::{market_position, matching};
 use crate::state::market_account::{Market, MarketStatus};
-use crate::state::market_liquidities::{LiquiditySource, MarketLiquidities};
+use crate::state::market_liquidities::MarketLiquidities;
 use crate::state::market_matching_pool_account::MarketMatchingPool;
 use crate::state::market_matching_queue_account::MarketMatchingQueue;
 use crate::state::market_position_account::MarketPosition;
@@ -34,16 +33,7 @@ pub fn cancel_order(
         CoreError::CancelOrderNotCancellable
     );
 
-    move_market_to_inplay_if_needed(market, market_liquidities)?;
-    // move_market_matching_pool_to_inplay_if_needed
-    // !!! move_market_to_inplay_if_needed needs to be called first
-    if market.inplay && !market_matching_pool.inplay {
-        require!(
-            market_matching_queue.matches.is_empty(),
-            CoreError::InplayTransitionMarketMatchingQueueIsNotEmpty
-        );
-        market_matching_pool.move_to_inplay(&market.event_start_order_behaviour);
-    }
+    let _ = market_matching_queue;
 
     cancel_order_common(
         market_liquidities,
@@ -87,18 +77,6 @@ pub fn cancel_order_common(
         order_pk,
         order.stake_unmatched == 0_u64,
     )?;
-
-    // compute cost of this operation grows linear with the number of liquidity points,
-    // so it is disabled in production but left in for further testing
-    let update_derived_liquidity = false; // flag indicating removal of cross liquidity
-    if update_derived_liquidity {
-        let liquidity_source =
-            LiquiditySource::new(order.market_outcome_index, order.expected_price);
-        match order.for_outcome {
-            true => market_liquidities.update_all_cross_liquidity_against(&liquidity_source),
-            false => market_liquidities.update_all_cross_liquidity_for(&liquidity_source),
-        }
-    }
 
     // calculate refund
     market_position::update_on_order_cancellation(market_position, order, stake_to_void)

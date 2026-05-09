@@ -1,8 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::state::market_account::{Market, MarketStatus};
 use crate::state::market_matching_pool_account::MarketMatchingPool;
-use crate::state::market_matching_queue_account::MarketMatchingQueue;
 use crate::{CoreError, Order};
 
 pub fn update_on_match(
@@ -58,32 +56,6 @@ pub fn update_matching_pool_with_new_order(
             .ok_or(CoreError::MatchingQueueIsFull)?;
     }
 
-    Ok(())
-}
-
-pub fn move_market_matching_pool_to_inplay(
-    market: &Market,
-    market_matching_queue: &MarketMatchingQueue,
-    market_matching_pool: &mut MarketMatchingPool,
-) -> Result<()> {
-    require!(
-        market.market_status == MarketStatus::Open,
-        CoreError::MatchingMarketInvalidStatus
-    );
-    require!(
-        market.inplay_enabled,
-        CoreError::MatchingMarketInplayNotEnabled
-    );
-    require!(market.is_inplay(), CoreError::MatchingMarketNotYetInplay);
-    require!(
-        !market_matching_pool.inplay,
-        CoreError::MatchingMarketMatchingPoolAlreadyInplay
-    );
-    require!(
-        market_matching_queue.matches.is_empty(),
-        CoreError::InplayTransitionMarketMatchingQueueIsNotEmpty
-    );
-    market_matching_pool.move_to_inplay(&market.event_start_order_behaviour);
     Ok(())
 }
 

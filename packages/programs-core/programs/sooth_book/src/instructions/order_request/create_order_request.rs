@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use protocol_product::state::product::Product;
 use solana_program::clock::UnixTimestamp;
 
 use crate::error::CoreError;
@@ -21,7 +20,6 @@ pub fn create_order_request(
     market: &mut Market,
     payer: &Signer,
     purchaser: &Signer,
-    product: &Option<Box<Account<Product>>>,
     market_position: &mut MarketPosition,
     market_outcome: &MarketOutcome,
     price_ladder: &Option<Box<Account<PriceLadder>>>,
@@ -46,7 +44,7 @@ pub fn create_order_request(
     }
 
     // initialize and enqueue order request on to order_request_queue
-    let order_request = initialize_order_request(market, purchaser.key, product, data, now)?;
+    let order_request = initialize_order_request(purchaser.key, data, now);
     require!(
         !order_request_queue.order_requests.contains(&order_request),
         CoreError::OrderRequestCreationDuplicateRequest
@@ -67,12 +65,10 @@ pub fn create_order_request(
 }
 
 fn initialize_order_request(
-    market: &Market,
     purchaser: &Pubkey,
-    product: &Option<Box<Account<Product>>>,
     data: OrderRequestData,
     now: UnixTimestamp,
-) -> Result<OrderRequest> {
+) -> OrderRequest {
     let order_request = &mut OrderRequest::default();
 
     order_request.market_outcome_index = data.market_outcome_index;
@@ -80,28 +76,12 @@ fn initialize_order_request(
     order_request.purchaser = *purchaser;
     order_request.stake = data.stake;
     order_request.expected_price = data.price;
-    order_request.delay_expiration_timestamp = match market.is_inplay() {
-        true => now
-            .checked_add(market.inplay_order_delay as i64)
-            .ok_or(CoreError::ArithmeticError),
-        false => Ok(0),
-    }?;
+    order_request.delay_expiration_timestamp = 0;
     order_request.distinct_seed = data.distinct_seed;
     order_request.creation_timestamp = now;
     order_request.expires_on = data.expires_on;
 
-    match product {
-        Some(product_account) => {
-            order_request.product = Some(product_account.key());
-            order_request.product_commission_rate = product_account.commission_rate;
-        }
-        None => {
-            order_request.product = None;
-            order_request.product_commission_rate = 0_f64;
-        }
-    };
-
-    Ok(*order_request)
+    *order_request
 }
 
 fn validate_order_request(
@@ -322,10 +302,6 @@ mod tests {
             published: true,
             suspended,
             event_start_timestamp: 0,
-            inplay_enabled: false,
-            inplay: false,
-            inplay_order_delay: 0,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
             unclosed_accounts_count: 0,
             unsettled_accounts_count: 0,

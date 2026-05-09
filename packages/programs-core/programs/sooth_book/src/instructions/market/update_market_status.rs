@@ -9,15 +9,12 @@ use crate::state::market_account::MarketStatus::*;
 use crate::state::market_liquidities::MarketLiquidities;
 use crate::state::market_matching_queue_account::{MarketMatchingQueue, MatchingQueue};
 use crate::state::market_order_request_queue::{MarketOrderRequestQueue, OrderRequestQueue};
-use crate::state::payments_queue::{MarketPaymentsQueue, PaymentQueue};
 
 pub fn open(
     market_pk: &Pubkey,
     market: &mut Market,
-    enable_cross_matching: bool,
     liquidities: &mut MarketLiquidities,
     matching_queue: &mut MarketMatchingQueue,
-    commission_payment_queue: &mut MarketPaymentsQueue,
     order_request_queue: &mut MarketOrderRequestQueue,
 ) -> Result<()> {
     require!(
@@ -25,23 +22,14 @@ pub fn open(
         CoreError::OpenMarketNotInitializing
     );
     require!(
-        market.market_outcomes_count > 1,
+        market.market_outcomes_count == 2,
         CoreError::OpenMarketNotEnoughOutcomes
     );
-    if enable_cross_matching {
-        require!(
-            market.market_outcomes_count < 6,
-            CoreError::MarketTooManyOutcomes
-        );
-    }
 
-    intialize_liquidities(liquidities, market_pk, enable_cross_matching)?;
+    intialize_liquidities(liquidities, market_pk)?;
     market.increment_unclosed_accounts_count()?;
 
     intialize_matching_queue(matching_queue, market_pk)?;
-    market.increment_unclosed_accounts_count()?;
-
-    intialize_commission_payments_queue(commission_payment_queue, market_pk)?;
     market.increment_unclosed_accounts_count()?;
 
     intialize_order_request_queue(order_request_queue, market_pk)?;
@@ -51,13 +39,8 @@ pub fn open(
     Ok(())
 }
 
-fn intialize_liquidities(
-    liquidities: &mut MarketLiquidities,
-    market_pk: &Pubkey,
-    enable_cross_matching: bool,
-) -> Result<()> {
+fn intialize_liquidities(liquidities: &mut MarketLiquidities, market_pk: &Pubkey) -> Result<()> {
     liquidities.market = *market_pk;
-    liquidities.enable_cross_matching = enable_cross_matching;
     liquidities.liquidities_for = Vec::new();
     liquidities.liquidities_against = Vec::new();
     Ok(())
@@ -69,15 +52,6 @@ fn intialize_matching_queue(
 ) -> Result<()> {
     matching_queue.market = *market_pk;
     matching_queue.matches = MatchingQueue::new(MarketMatchingQueue::QUEUE_LENGTH);
-    Ok(())
-}
-
-fn intialize_commission_payments_queue(
-    payments_queue: &mut MarketPaymentsQueue,
-    market_pk: &Pubkey,
-) -> Result<()> {
-    payments_queue.market = *market_pk;
-    payments_queue.payment_queue = PaymentQueue::new(MarketPaymentsQueue::QUEUE_LENGTH);
     Ok(())
 }
 
@@ -230,10 +204,7 @@ pub fn settle(
     Ok(())
 }
 
-pub fn complete_settlement(
-    market: &mut Market,
-    commission_payments_queue: &MarketPaymentsQueue,
-) -> Result<()> {
+pub fn complete_settlement(market: &mut Market) -> Result<()> {
     require!(
         ReadyForSettlement.eq(&market.market_status),
         CoreError::SettlementMarketNotReadyForSettlement
@@ -241,10 +212,6 @@ pub fn complete_settlement(
     require!(
         market.unsettled_accounts_count == 0_u32,
         CoreError::MarketUnsettledAccountsCountNonZero,
-    );
-    require!(
-        commission_payments_queue.payment_queue.is_empty(),
-        CoreError::SettlementMarketPaymentsQueueNotEmpty
     );
     market.market_status = Settled;
     Ok(())
@@ -431,27 +398,21 @@ mod complete_settlement_tests {
     use crate::error::CoreError;
     use crate::instructions::market::complete_settlement;
     use crate::state::market_account::{mock_market, MarketStatus};
-    use crate::state::payments_queue::{mock_market_payments_queue, PaymentInfo};
     use anchor_lang::error;
-    use solana_program::pubkey::Pubkey;
 
     #[test]
     fn success() {
-        let market_pk = Pubkey::new_unique();
         let mut market = mock_market(MarketStatus::ReadyForSettlement);
-        let market_payment_queue = mock_market_payments_queue(market_pk);
 
-        let result = complete_settlement(&mut market, &market_payment_queue);
+        let result = complete_settlement(&mut market);
         assert!(result.is_ok());
     }
 
     #[test]
     fn not_ready_for_settlement() {
-        let market_pk = Pubkey::new_unique();
         let mut market = mock_market(MarketStatus::Settled);
-        let market_payment_queue = mock_market_payments_queue(market_pk);
 
-        let result = complete_settlement(&mut market, &market_payment_queue);
+        let result = complete_settlement(&mut market);
         assert!(result.is_err());
         assert_eq!(
             error!(CoreError::SettlementMarketNotReadyForSettlement),
@@ -461,34 +422,13 @@ mod complete_settlement_tests {
 
     #[test]
     fn unsettled_account_count_non_zero() {
-        let market_pk = Pubkey::new_unique();
         let mut market = mock_market(MarketStatus::ReadyForSettlement);
         market.unsettled_accounts_count = 1;
-        let market_payment_queue = mock_market_payments_queue(market_pk);
 
-        let result = complete_settlement(&mut market, &market_payment_queue);
+        let result = complete_settlement(&mut market);
         assert!(result.is_err());
         assert_eq!(
             error!(CoreError::MarketUnsettledAccountsCountNonZero),
-            result.err().unwrap()
-        );
-    }
-
-    #[test]
-    fn payments_queue_not_empty() {
-        let market_pk = Pubkey::new_unique();
-        let mut market = mock_market(MarketStatus::ReadyForSettlement);
-        let mut market_payment_queue = mock_market_payments_queue(market_pk);
-        market_payment_queue.payment_queue.enqueue(PaymentInfo {
-            to: Default::default(),
-            from: Default::default(),
-            amount: 1,
-        });
-
-        let result = complete_settlement(&mut market, &market_payment_queue);
-        assert!(result.is_err());
-        assert_eq!(
-            error!(CoreError::SettlementMarketPaymentsQueueNotEmpty),
             result.err().unwrap()
         );
     }
@@ -504,7 +444,6 @@ mod open_market_tests {
     use crate::state::market_order_request_queue::{
         mock_order_request_queue, MarketOrderRequestQueue, OrderRequestQueue,
     };
-    use crate::state::payments_queue::{MarketPaymentsQueue, PaymentQueue};
     use crate::Market;
     use anchor_lang::error;
     use solana_program::pubkey::Pubkey;
@@ -534,20 +473,12 @@ mod open_market_tests {
             escrow_account_bump: 0,
             funding_account_bump: 0,
             event_start_timestamp: 0,
-            inplay_enabled: false,
-            inplay: false,
-            inplay_order_delay: 0,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
         };
         let liquidities = &mut mock_market_liquidities(market_pk);
         let matching_queue = &mut MarketMatchingQueue {
             market: Pubkey::default(),
             matches: MatchingQueue::new(1),
-        };
-        let payments_queue = &mut MarketPaymentsQueue {
-            market: Pubkey::default(),
-            payment_queue: PaymentQueue::new(1),
         };
         let order_request_queue = &mut MarketOrderRequestQueue {
             market: Pubkey::default(),
@@ -557,10 +488,8 @@ mod open_market_tests {
         let result = open(
             &market_pk,
             &mut market,
-            false,
             liquidities,
             matching_queue,
-            payments_queue,
             order_request_queue,
         );
 
@@ -568,16 +497,11 @@ mod open_market_tests {
         assert_eq!(MarketStatus::Open, market.market_status);
 
         assert_eq!(matching_queue.market, market_pk);
-        assert_eq!(payments_queue.market, market_pk);
         assert_eq!(order_request_queue.market, market_pk);
 
         assert_eq!(
             matching_queue.matches.size(),
             MarketMatchingQueue::QUEUE_LENGTH as u32
-        );
-        assert_eq!(
-            payments_queue.payment_queue.size(),
-            MarketPaymentsQueue::QUEUE_LENGTH as u32
         );
         assert_eq!(
             order_request_queue.order_requests.capacity(),
@@ -610,20 +534,12 @@ mod open_market_tests {
             escrow_account_bump: 0,
             funding_account_bump: 0,
             event_start_timestamp: 0,
-            inplay_enabled: false,
-            inplay: false,
-            inplay_order_delay: 0,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
         };
         let liquidities = &mut mock_market_liquidities(market_pk);
         let matching_queue = &mut MarketMatchingQueue {
             market: market_pk,
             matches: MatchingQueue::new(1),
-        };
-        let payments_queue = &mut MarketPaymentsQueue {
-            market: market_pk,
-            payment_queue: PaymentQueue::new(1),
         };
         let order_request_queue = &mut MarketOrderRequestQueue {
             market: Pubkey::default(),
@@ -633,10 +549,8 @@ mod open_market_tests {
         let result = open(
             &market_pk,
             &mut market,
-            false,
             liquidities,
             matching_queue,
-            payments_queue,
             order_request_queue,
         );
 
@@ -670,10 +584,6 @@ mod open_market_tests {
             escrow_account_bump: 0,
             funding_account_bump: 0,
             event_start_timestamp: 0,
-            inplay_enabled: false,
-            inplay: false,
-            inplay_order_delay: 0,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
         };
         let liquidities = &mut mock_market_liquidities(market_pk);
@@ -681,19 +591,13 @@ mod open_market_tests {
             market: market_pk,
             matches: MatchingQueue::new(1),
         };
-        let payments_queue = &mut MarketPaymentsQueue {
-            market: market_pk,
-            payment_queue: PaymentQueue::new(1),
-        };
         let order_request_queue = &mut mock_order_request_queue(Pubkey::new_unique());
 
         let result = open(
             &market_pk,
             &mut market,
-            false,
             liquidities,
             matching_queue,
-            payments_queue,
             order_request_queue,
         );
 
@@ -722,7 +626,6 @@ mod void_market_tests {
             event_account: Default::default(),
             mint_account: Default::default(),
             market_status: MarketStatus::Initializing,
-            inplay_enabled: false,
             market_type: Default::default(),
             market_type_discriminator: None,
             market_type_value: None,
@@ -734,10 +637,7 @@ mod void_market_tests {
             market_winning_outcome_index: None,
             market_lock_timestamp: 0,
             market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay: false,
-            inplay_order_delay: 0,
             title: "".to_string(),
             unsettled_accounts_count: 0,
             unclosed_accounts_count: 0,
@@ -768,7 +668,6 @@ mod void_market_tests {
             event_account: Default::default(),
             mint_account: Default::default(),
             market_status: MarketStatus::Initializing,
-            inplay_enabled: false,
             market_type: Default::default(),
             market_type_discriminator: None,
             market_type_value: None,
@@ -780,10 +679,7 @@ mod void_market_tests {
             market_winning_outcome_index: None,
             market_lock_timestamp: 0,
             market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay: false,
-            inplay_order_delay: 0,
             title: "".to_string(),
             unsettled_accounts_count: 0,
             unclosed_accounts_count: 0,
@@ -808,7 +704,6 @@ mod void_market_tests {
             event_account: Default::default(),
             mint_account: Default::default(),
             market_status: MarketStatus::Open,
-            inplay_enabled: false,
             market_type: Default::default(),
             market_type_discriminator: None,
             market_type_value: None,
@@ -820,10 +715,7 @@ mod void_market_tests {
             market_winning_outcome_index: None,
             market_lock_timestamp: 0,
             market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay: false,
-            inplay_order_delay: 0,
             title: "".to_string(),
             unsettled_accounts_count: 0,
             unclosed_accounts_count: 0,
@@ -855,7 +747,6 @@ mod void_market_tests {
             event_account: Default::default(),
             mint_account: Default::default(),
             market_status: MarketStatus::Settled,
-            inplay_enabled: false,
             market_type: Default::default(),
             market_type_discriminator: None,
             market_type_value: None,
@@ -867,10 +758,7 @@ mod void_market_tests {
             market_winning_outcome_index: None,
             market_lock_timestamp: 0,
             market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay: false,
-            inplay_order_delay: 0,
             title: "".to_string(),
             unsettled_accounts_count: 0,
             unclosed_accounts_count: 0,
@@ -903,7 +791,6 @@ mod void_market_tests {
             event_account: Default::default(),
             mint_account: Default::default(),
             market_status: MarketStatus::Open,
-            inplay_enabled: false,
             market_type: Default::default(),
             market_type_discriminator: None,
             market_type_value: None,
@@ -915,10 +802,7 @@ mod void_market_tests {
             market_winning_outcome_index: None,
             market_lock_timestamp: 0,
             market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay: false,
-            inplay_order_delay: 0,
             title: "".to_string(),
             unsettled_accounts_count: 0,
             unclosed_accounts_count: 0,
@@ -954,7 +838,6 @@ mod void_market_tests {
             event_account: Default::default(),
             mint_account: Default::default(),
             market_status: MarketStatus::Open,
-            inplay_enabled: false,
             market_type: Default::default(),
             market_type_discriminator: None,
             market_type_value: None,
@@ -966,10 +849,7 @@ mod void_market_tests {
             market_winning_outcome_index: None,
             market_lock_timestamp: 0,
             market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay: false,
-            inplay_order_delay: 0,
             title: "".to_string(),
             unsettled_accounts_count: 0,
             unclosed_accounts_count: 0,
@@ -1005,7 +885,6 @@ mod void_market_tests {
             event_account: Default::default(),
             mint_account: Default::default(),
             market_status: MarketStatus::Open,
-            inplay_enabled: false,
             market_type: Default::default(),
             market_type_discriminator: None,
             market_type_value: None,
@@ -1017,10 +896,7 @@ mod void_market_tests {
             market_winning_outcome_index: None,
             market_lock_timestamp: 0,
             market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay: false,
-            inplay_order_delay: 0,
             title: "".to_string(),
             unsettled_accounts_count: 0,
             unclosed_accounts_count: 0,
@@ -1052,7 +928,6 @@ mod void_market_tests {
             event_account: Default::default(),
             mint_account: Default::default(),
             market_status: MarketStatus::Open,
-            inplay_enabled: false,
             market_type: Default::default(),
             market_type_discriminator: None,
             market_type_value: None,
@@ -1064,10 +939,7 @@ mod void_market_tests {
             market_winning_outcome_index: None,
             market_lock_timestamp: 0,
             market_settle_timestamp: None,
-            event_start_order_behaviour: MarketOrderBehaviour::None,
             market_lock_order_behaviour: MarketOrderBehaviour::None,
-            inplay: false,
-            inplay_order_delay: 0,
             title: "".to_string(),
             unsettled_accounts_count: 0,
             unclosed_accounts_count: 0,
