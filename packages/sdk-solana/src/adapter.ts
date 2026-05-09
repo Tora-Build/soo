@@ -59,12 +59,19 @@ import {
   deriveBookAuthorisedOperatorsPda,
   deriveBookEscrowPda,
   deriveBookFundingPda,
+  deriveBookLegacyMarketPositionPda,
   deriveBookMarketLiquiditiesPda,
+  deriveBookMarketMatchingPoolPda,
+  deriveBookMarketMatchingQueuePda,
+  deriveBookMarketOutcomePda,
   deriveBookMarketPositionPda,
   deriveBookMarketPda,
   deriveBookMarketTypePda,
   deriveBookOrderPda,
+  deriveBookOrderRequestOrderPda,
   deriveBookOrderRequestQueuePda,
+  deriveBookTradePda,
+  deriveFeePoolAuthorityPda,
   deriveFeePoolVaultAta,
   deriveLockAuthorityPda,
   deriveAdjudicatorPda,
@@ -183,6 +190,30 @@ export interface CreateBookMarketArgs {
   mint?: AddressRef;
 }
 
+export interface ProcessOrderRequestArgs {
+  crankOperator: AddressRef;
+  bookMarketPda: AddressRef;
+  purchaser: AddressRef;
+  distinctSeed: Uint8Array;
+  marketOutcomeIndex: number;
+  expectedPrice: bigint;
+  forOutcome: boolean;
+}
+
+export interface MatchOrdersArgs {
+  crankOperator: AddressRef;
+  bookMarketPda: AddressRef;
+  orderForPda: AddressRef;
+  orderAgainstPda: AddressRef;
+  orderForPurchaser: AddressRef;
+  orderAgainstPurchaser: AddressRef;
+  marketOutcomeIndex: number;
+  orderForExpectedPrice: bigint;
+  orderAgainstExpectedPrice: bigint;
+  tradeForSeed: Uint8Array;
+  tradeAgainstSeed: Uint8Array;
+}
+
 // Resolved-once cache key — `Market` PDA layout is invariant across reads.
 interface ResolvedMarket {
   marketPda: PublicKey;
@@ -241,6 +272,8 @@ interface SoothBookMethods {
     eventStartTimestamp: BN,
     marketLockOrderBehaviour: BookMarketOrderBehaviourWire,
   ): AnchorIxBuilder;
+  processOrderRequest(): AnchorIxBuilder;
+  matchOrders(tradeForSeed: number[], tradeAgainstSeed: number[]): AnchorIxBuilder;
 }
 
 const SOOTH_BOOK_DEFAULT_PROGRAM_ID = new PublicKey(
@@ -2268,6 +2301,252 @@ export class SolanaChainAdapter implements ChainAdapter {
         maxDecimals,
         marketLockTimestampStr: args.marketLockTimestamp.toString(),
         eventStartTimestampStr: args.eventStartTimestamp.toString(),
+      },
+    };
+  }
+
+  async buildProcessOrderRequest(
+    args: ProcessOrderRequestArgs,
+  ): Promise<OrderbookRequest> {
+    assertSeed16(args.distinctSeed, "buildProcessOrderRequest: distinctSeed");
+    assertU128(args.expectedPrice, "buildProcessOrderRequest: expectedPrice");
+    const launchpadProgramId = this.requireLaunchpadProgramId(
+      "buildProcessOrderRequest",
+    );
+    const bookPrograms = this.bookProgramIds();
+    const crankOperator = decodePubkeyRef(args.crankOperator);
+    const bookMarketPda = decodePubkeyRef(args.bookMarketPda);
+    const purchaser = decodePubkeyRef(args.purchaser);
+    const [order] = deriveBookOrderRequestOrderPda(
+      bookMarketPda,
+      purchaser,
+      args.distinctSeed,
+      bookPrograms,
+    );
+    const purchaserTokenAccount = getAssociatedTokenAddressSync(
+      this.usdcMint,
+      purchaser,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const [marketPosition] = deriveBookLegacyMarketPositionPda(
+      bookMarketPda,
+      purchaser,
+      bookPrograms,
+    );
+    const [marketMatchingPool] = deriveBookMarketMatchingPoolPda(
+      bookMarketPda,
+      args.marketOutcomeIndex,
+      args.expectedPrice,
+      args.forOutcome,
+      bookPrograms,
+    );
+    const [orderRequestQueue] = deriveBookOrderRequestQueuePda(
+      bookMarketPda,
+      bookPrograms,
+    );
+    const [marketEscrow] = deriveBookEscrowPda(bookMarketPda, bookPrograms);
+    const [protocolConfig] = deriveProtocolConfigPda({
+      soothLaunchpad: launchpadProgramId,
+    });
+    const [feePoolAuthority] = deriveFeePoolAuthorityPda({
+      soothLaunchpad: launchpadProgramId,
+    });
+    const feePoolVault = deriveFeePoolVaultAta(this.usdcMint, {
+      soothLaunchpad: launchpadProgramId,
+    });
+    const [marketLiquidities] = deriveBookMarketLiquiditiesPda(
+      bookMarketPda,
+      bookPrograms,
+    );
+    const [marketMatchingQueue] = deriveBookMarketMatchingQueuePda(
+      bookMarketPda,
+      bookPrograms,
+    );
+
+    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const ix: TransactionInstruction = await methods
+      .processOrderRequest()
+      .accounts({
+        order,
+        purchaserTokenAccount,
+        marketPosition,
+        marketMatchingPool,
+        orderRequestQueue,
+        market: bookMarketPda,
+        marketEscrow,
+        protocolConfig,
+        feePoolAuthority,
+        feePoolVault,
+        marketLiquidities,
+        marketMatchingQueue,
+        crankOperator,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "orderbook",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: bookMarketPda.toBase58(),
+        bookMarketPda: bookMarketPda.toBase58(),
+        ...buildIxMeta(ix, crankOperator),
+        operation: "processOrderRequest",
+        order: order.toBase58(),
+        marketPosition: marketPosition.toBase58(),
+        marketMatchingPool: marketMatchingPool.toBase58(),
+        orderRequestQueue: orderRequestQueue.toBase58(),
+        marketEscrow: marketEscrow.toBase58(),
+        protocolConfig: protocolConfig.toBase58(),
+        feePoolAuthority: feePoolAuthority.toBase58(),
+        feePoolVault: feePoolVault.toBase58(),
+      },
+    };
+  }
+
+  async buildMatchOrders(args: MatchOrdersArgs): Promise<OrderbookRequest> {
+    assertSeed16(args.tradeForSeed, "buildMatchOrders: tradeForSeed");
+    assertSeed16(args.tradeAgainstSeed, "buildMatchOrders: tradeAgainstSeed");
+    assertU128(
+      args.orderForExpectedPrice,
+      "buildMatchOrders: orderForExpectedPrice",
+    );
+    assertU128(
+      args.orderAgainstExpectedPrice,
+      "buildMatchOrders: orderAgainstExpectedPrice",
+    );
+    const launchpadProgramId =
+      this.requireLaunchpadProgramId("buildMatchOrders");
+    const bookPrograms = this.bookProgramIds();
+    const crankOperator = decodePubkeyRef(args.crankOperator);
+    const bookMarketPda = decodePubkeyRef(args.bookMarketPda);
+    const orderFor = decodePubkeyRef(args.orderForPda);
+    const orderAgainst = decodePubkeyRef(args.orderAgainstPda);
+    const orderForPurchaser = decodePubkeyRef(args.orderForPurchaser);
+    const orderAgainstPurchaser = decodePubkeyRef(args.orderAgainstPurchaser);
+    const [tradeFor] = deriveBookTradePda(
+      orderFor,
+      args.tradeForSeed,
+      bookPrograms,
+    );
+    const [tradeAgainst] = deriveBookTradePda(
+      orderAgainst,
+      args.tradeAgainstSeed,
+      bookPrograms,
+    );
+    const [marketPositionFor] = deriveBookLegacyMarketPositionPda(
+      bookMarketPda,
+      orderForPurchaser,
+      bookPrograms,
+    );
+    const [marketPositionAgainst] = deriveBookLegacyMarketPositionPda(
+      bookMarketPda,
+      orderAgainstPurchaser,
+      bookPrograms,
+    );
+    const [marketMatchingPoolFor] = deriveBookMarketMatchingPoolPda(
+      bookMarketPda,
+      args.marketOutcomeIndex,
+      args.orderForExpectedPrice,
+      true,
+      bookPrograms,
+    );
+    const [marketMatchingPoolAgainst] = deriveBookMarketMatchingPoolPda(
+      bookMarketPda,
+      args.marketOutcomeIndex,
+      args.orderAgainstExpectedPrice,
+      false,
+      bookPrograms,
+    );
+    const [marketOutcome] = deriveBookMarketOutcomePda(
+      bookMarketPda,
+      args.marketOutcomeIndex,
+      bookPrograms,
+    );
+    const [authorisedOperators] = deriveBookAuthorisedOperatorsPda(
+      "CRANK",
+      bookPrograms,
+    );
+    const purchaserTokenAccountFor = getAssociatedTokenAddressSync(
+      this.usdcMint,
+      orderForPurchaser,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const purchaserTokenAccountAgainst = getAssociatedTokenAddressSync(
+      this.usdcMint,
+      orderAgainstPurchaser,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const [marketEscrow] = deriveBookEscrowPda(bookMarketPda, bookPrograms);
+    const [protocolConfig] = deriveProtocolConfigPda({
+      soothLaunchpad: launchpadProgramId,
+    });
+    const [feePoolAuthority] = deriveFeePoolAuthorityPda({
+      soothLaunchpad: launchpadProgramId,
+    });
+    const feePoolVault = deriveFeePoolVaultAta(this.usdcMint, {
+      soothLaunchpad: launchpadProgramId,
+    });
+    const [marketLiquidities] = deriveBookMarketLiquiditiesPda(
+      bookMarketPda,
+      bookPrograms,
+    );
+
+    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const ix: TransactionInstruction = await methods
+      .matchOrders(
+        Array.from(args.tradeForSeed),
+        Array.from(args.tradeAgainstSeed),
+      )
+      .accounts({
+        orderAgainst,
+        tradeAgainst,
+        marketPositionAgainst,
+        marketMatchingPoolAgainst,
+        orderFor,
+        tradeFor,
+        marketPositionFor,
+        marketMatchingPoolFor,
+        market: bookMarketPda,
+        marketOutcome,
+        crankOperator,
+        authorisedOperators,
+        purchaserTokenAccountFor,
+        purchaserTokenAccountAgainst,
+        marketEscrow,
+        protocolConfig,
+        feePoolAuthority,
+        feePoolVault,
+        marketLiquidities,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "orderbook",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: bookMarketPda.toBase58(),
+        bookMarketPda: bookMarketPda.toBase58(),
+        ...buildIxMeta(ix, crankOperator),
+        operation: "matchOrders",
+        tradeFor: tradeFor.toBase58(),
+        tradeAgainst: tradeAgainst.toBase58(),
+        protocolConfig: protocolConfig.toBase58(),
+        feePoolAuthority: feePoolAuthority.toBase58(),
+        feePoolVault: feePoolVault.toBase58(),
       },
     };
   }
