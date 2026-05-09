@@ -11,6 +11,9 @@ members = [
     # Future members (uncomment as the crates land):
     #   "packages/programs-core/crates/sooth-book-matcher",
 ]
+exclude = [
+    "vendor/anchor-syn-0.30.1-fork",
+]
 
 [workspace.package]
 version = "0.0.0"
@@ -22,3 +25,6 @@ repository = "https://github.com/Tora-Build/sooth-solana"
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
+
+[patch.crates-io]
+anchor-syn = { path = "vendor/anchor-syn-0.30.1-fork" }
