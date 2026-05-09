@@ -133,6 +133,16 @@ pub mod sooth_market {
         instructions::mint_complete_set::handler(ctx, amount)
     }
 
+    /// Split-authority complete-set mint for CPI escrow flows — pull
+    /// `amount` USDC from a payer and mint YES + NO into token accounts owned
+    /// by a separate destination authority.
+    pub fn mint_complete_set_to_program_owned(
+        ctx: Context<MintCompleteSetToProgramOwned>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::mint_complete_set_to_program_owned::handler(ctx, amount)
+    }
+
     /// Merge a complete set — burn `amount` YES + `amount` NO, return
     /// `amount` USDC to the user. EVM analogue: `OrderEngine._merge`
     /// (`OrderEngine.sol:696-712`).
