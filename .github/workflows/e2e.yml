@@ -9,23 +9,21 @@ jobs:
   cargo-test:
     name: Cargo tests
     runs-on: ubuntu-latest
+    needs: anchor-build
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Anchor CLI
-        # No --locked: anchor v0.30.1's Cargo.lock pins time=0.3.29, which
-        # has a type-inference bug on rustc 1.95 (E0282 in
-        # time/src/format_description/parse/mod.rs:83). Letting cargo
-        # resolve transitive deps fresh picks up time=0.3.30+ which has
-        # the fix. Drift risk is bounded by the --tag pin.
-        run: |
-          cargo install \
-            --git https://github.com/coral-xyz/anchor \
-            --tag v0.30.1 \
-            anchor-cli
+      - name: Download .so binaries from anchor-build job
+        # Cargo tests use LiteSVM and load target/deploy/*.so at runtime
+        # (see programs/sooth_amm/tests/common/mod.rs:593). Without this
+        # download the LiteSVM tests panic with "target/deploy not found".
+        uses: actions/download-artifact@v4
+        with:
+          name: target-deploy
+          path: target/deploy/
 
       - name: Cargo test
         run: cargo test
