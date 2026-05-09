@@ -30,8 +30,14 @@ mod tests {
     #[test]
     fn dequeue_order_request_ok() {
         let purchaser = Pubkey::new_unique();
-        let order_request = mock_order_request(purchaser, true, 0, 10_u64, 3.0_f64);
-        let expected_refund = order_request.stake;
+        let order_request = mock_order_request(
+            purchaser,
+            true,
+            0,
+            10_u64,
+            333 * crate::instructions::PRICE_TICK,
+        );
+        let expected_refund = 3_u64;
 
         let order_request_queue = &mut MarketOrderRequestQueue {
             market: Pubkey::new_unique(),
@@ -55,7 +61,13 @@ mod tests {
 
     #[test]
     fn dequeue_order_request_purchaser_mismatch() {
-        let order_request = mock_order_request(Pubkey::new_unique(), true, 0, 10_u64, 3.0_f64);
+        let order_request = mock_order_request(
+            Pubkey::new_unique(),
+            true,
+            0,
+            10_u64,
+            333 * crate::instructions::PRICE_TICK,
+        );
 
         let order_request_queue = &mut MarketOrderRequestQueue {
             market: Pubkey::new_unique(),

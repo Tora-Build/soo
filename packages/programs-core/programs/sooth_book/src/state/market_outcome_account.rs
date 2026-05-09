@@ -8,7 +8,7 @@ pub struct MarketOutcome {
     pub index: u16,
     pub title: String,
     pub prices: Option<Pubkey>,
-    pub price_ladder: Vec<f64>,
+    pub price_ladder: Vec<u128>,
 }
 
 impl MarketOutcome {
@@ -20,7 +20,7 @@ impl MarketOutcome {
         + U16_SIZE // index
         + vec_size(CHAR_SIZE, MarketOutcome::TITLE_MAX_LENGTH) // title
         + option_size(PUB_KEY_SIZE) // price ladder account
-        + vec_size(F64_SIZE, MarketOutcome::PRICE_LADDER_LENGTH); // price_ladder
+        + vec_size(U128_SIZE, MarketOutcome::PRICE_LADDER_LENGTH); // price_ladder
 }
 
 #[cfg(test)]

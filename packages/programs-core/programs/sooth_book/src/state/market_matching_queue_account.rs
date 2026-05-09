@@ -124,7 +124,7 @@ pub struct OrderMatch {
 
     pub for_outcome: bool,
     pub outcome_index: u16,
-    pub price: f64,
+    pub price: u128,
     pub stake: u64,
 }
 
@@ -132,14 +132,14 @@ impl OrderMatch {
     pub const SIZE: usize = option_size(PUB_KEY_SIZE) +  // pk
         BOOL_SIZE + // for_outcome
         U16_SIZE + // outcome_index
-        F64_SIZE + // price
+        U128_SIZE + // price
         U64_SIZE; // stake
 
     pub fn taker(
         pk: Pubkey,
         for_outcome: bool,
         outcome_index: u16,
-        price: f64,
+        price: u128,
         stake: u64,
     ) -> Self {
         OrderMatch {
@@ -151,7 +151,7 @@ impl OrderMatch {
         }
     }
 
-    pub fn maker(for_outcome: bool, outcome_index: u16, price: f64, stake: u64) -> Self {
+    pub fn maker(for_outcome: bool, outcome_index: u16, price: u128, stake: u64) -> Self {
         OrderMatch {
             pk: Option::None,
             for_outcome,

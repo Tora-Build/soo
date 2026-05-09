@@ -1,5 +1,5 @@
 use crate::error::CoreError;
-use crate::instructions::calculate_risk_from_stake;
+use crate::instructions::{calculate_for_cost_from_stake, calculate_risk_from_stake};
 use crate::state::market_order_request_queue::OrderRequest;
 use crate::state::market_position_account::MarketPosition;
 use crate::state::order_account::*;
@@ -13,7 +13,7 @@ pub fn update_on_order_cancellation(
     let outcome_index = order.market_outcome_index as usize;
     let for_outcome = order.for_outcome;
     let order_exposure = match for_outcome {
-        true => stake_to_void,
+        true => calculate_for_cost_from_stake(stake_to_void, order.expected_price),
         false => calculate_risk_from_stake(stake_to_void, order.expected_price),
     };
 
@@ -27,7 +27,7 @@ pub fn update_on_order_request_cancellation(
     let outcome_index = order_request.market_outcome_index as usize;
     let for_outcome = order_request.for_outcome;
     let order_request_exposure = match for_outcome {
-        true => order_request.stake,
+        true => calculate_for_cost_from_stake(order_request.stake, order_request.expected_price),
         false => calculate_risk_from_stake(order_request.stake, order_request.expected_price),
     };
 

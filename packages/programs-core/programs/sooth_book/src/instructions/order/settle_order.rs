@@ -77,12 +77,12 @@ mod tests {
             Pubkey::new_unique(),
             1,
             true,
-            2.10,
+            476 * crate::instructions::PRICE_TICK,
             100_000_000,
             Pubkey::new_unique(),
         );
         order
-            .match_stake_unmatched(100_000_000, 2.10)
+            .match_stake_unmatched(100_000_000, 476 * crate::instructions::PRICE_TICK)
             .expect("test setup");
         let market = Market {
             authority: Pubkey::new_unique(),
@@ -120,12 +120,12 @@ mod tests {
             Pubkey::new_unique(),
             1,
             true,
-            2.10,
+            476 * crate::instructions::PRICE_TICK,
             100_000_000,
             Pubkey::new_unique(),
         );
         order
-            .match_stake_unmatched(100_000_000, 2.10)
+            .match_stake_unmatched(100_000_000, 476 * crate::instructions::PRICE_TICK)
             .expect("test setup");
         let market = Market {
             authority: Pubkey::new_unique(),
@@ -163,12 +163,12 @@ mod tests {
             Pubkey::new_unique(),
             1,
             false,
-            2.10,
+            476 * crate::instructions::PRICE_TICK,
             100000000,
             Pubkey::new_unique(),
         );
         order
-            .match_stake_unmatched(100_000_000, 2.10)
+            .match_stake_unmatched(100_000_000, 476 * crate::instructions::PRICE_TICK)
             .expect("test setup");
         let market = Market {
             authority: Pubkey::new_unique(),
@@ -206,12 +206,12 @@ mod tests {
             Pubkey::new_unique(),
             1,
             false,
-            2.10,
+            476 * crate::instructions::PRICE_TICK,
             100000000,
             Pubkey::new_unique(),
         );
         order
-            .match_stake_unmatched(100_000_000, 2.10)
+            .match_stake_unmatched(100_000_000, 476 * crate::instructions::PRICE_TICK)
             .expect("test setup");
         let market = Market {
             authority: Pubkey::new_unique(),

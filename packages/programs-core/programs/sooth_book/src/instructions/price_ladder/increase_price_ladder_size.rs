@@ -17,6 +17,7 @@ pub fn increase_price_ladder_size(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::instructions::PRICE_TICK;
     use anchor_lang::error;
     use solana_program::pubkey::Pubkey;
 
@@ -54,7 +55,7 @@ mod tests {
 
     fn price_ladder() -> PriceLadder {
         PriceLadder {
-            prices: vec![2.0, 3.0, 4.0],
+            prices: vec![200 * PRICE_TICK, 300 * PRICE_TICK, 400 * PRICE_TICK],
             max_number_of_prices: 3,
             authority: Pubkey::new_unique(),
         }

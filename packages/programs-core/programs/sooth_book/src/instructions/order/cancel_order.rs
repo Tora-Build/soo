@@ -93,7 +93,7 @@ mod test_cancel_order_common {
     fn cancellation_full() {
         let market_outcome_index = 1;
         let for_outcome = true;
-        let price = 3.0_f64;
+        let price = 333 * crate::instructions::PRICE_TICK;
         let stake = 10_u64;
         let payer_pk = Pubkey::new_unique();
 
@@ -123,7 +123,7 @@ mod test_cancel_order_common {
             price,
         )
         .expect("");
-        assert_eq!(vec!(10, 0, 10), market_position.unmatched_exposures);
+        assert_eq!(vec!(3, 0, 3), market_position.unmatched_exposures);
 
         // add order to market matching pool
         market_matching_pool.orders.enqueue(order_pk);
@@ -134,7 +134,7 @@ mod test_cancel_order_common {
             .add_liquidity_for(market_outcome_index, price, stake)
             .expect("");
         assert_eq!(
-            vec!((1, 3.0, 10)),
+            vec!((1, 333 * crate::instructions::PRICE_TICK, 10)),
             liquidities(&market_liquidities.liquidities_for)
         );
 
@@ -149,7 +149,7 @@ mod test_cancel_order_common {
 
         // then
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 10);
+        assert_eq!(result.unwrap(), 3);
         assert_eq!(0, order.stake_unmatched);
         assert_eq!(10, order.voided_stake);
         assert_eq!(vec!(0, 0, 0), market_position.unmatched_exposures);
@@ -161,7 +161,7 @@ mod test_cancel_order_common {
     fn cancellation_partial() {
         let market_outcome_index = 1;
         let for_outcome = true;
-        let price = 3.0_f64;
+        let price = 333 * crate::instructions::PRICE_TICK;
         let stake = 10_u64;
         let payer_pk = Pubkey::new_unique();
 
@@ -191,7 +191,7 @@ mod test_cancel_order_common {
             price,
         )
         .expect("");
-        assert_eq!(vec!(10, 0, 10), market_position.unmatched_exposures);
+        assert_eq!(vec!(3, 0, 3), market_position.unmatched_exposures);
 
         // add order to market matching pool
         market_matching_pool.orders.enqueue(order_pk);
@@ -202,7 +202,7 @@ mod test_cancel_order_common {
             .add_liquidity_for(market_outcome_index, price, stake - 1) // less than unmatched stake
             .expect("");
         assert_eq!(
-            vec!((1, 3.0, 9)),
+            vec!((1, 333 * crate::instructions::PRICE_TICK, 9)),
             liquidities(&market_liquidities.liquidities_for)
         );
 
@@ -217,7 +217,7 @@ mod test_cancel_order_common {
 
         // then
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 9);
+        assert_eq!(result.unwrap(), 2);
         assert_eq!(1, order.stake_unmatched);
         assert_eq!(9, order.voided_stake);
         assert_eq!(vec!(1, 0, 1), market_position.unmatched_exposures);
@@ -229,7 +229,7 @@ mod test_cancel_order_common {
     fn cancellation_none() {
         let market_outcome_index = 1;
         let for_outcome = true;
-        let price = 3.0_f64;
+        let price = 333 * crate::instructions::PRICE_TICK;
         let stake = 10_u64;
         let payer_pk = Pubkey::new_unique();
 
@@ -259,7 +259,7 @@ mod test_cancel_order_common {
             price,
         )
         .expect("");
-        assert_eq!(vec!(10, 0, 10), market_position.unmatched_exposures);
+        assert_eq!(vec!(3, 0, 3), market_position.unmatched_exposures);
 
         // add order to market matching pool
         market_matching_pool.orders.enqueue(order_pk);
@@ -285,16 +285,16 @@ mod test_cancel_order_common {
         );
         assert_eq!(10, order.stake_unmatched);
         assert_eq!(0, order.voided_stake);
-        assert_eq!(vec!(10, 0, 10), market_position.unmatched_exposures);
+        assert_eq!(vec!(3, 0, 3), market_position.unmatched_exposures);
         assert_eq!(0, market_liquidities.liquidities_for.len());
         assert_eq!(1, market_matching_pool.orders.len());
     }
 
-    fn liquidities(liquidities: &Vec<MarketOutcomePriceLiquidity>) -> Vec<(u16, f64, u64)> {
+    fn liquidities(liquidities: &Vec<MarketOutcomePriceLiquidity>) -> Vec<(u16, u128, u64)> {
         liquidities
             .iter()
             .map(|v| (v.outcome, v.price, v.liquidity))
-            .collect::<Vec<(u16, f64, u64)>>()
+            .collect::<Vec<(u16, u128, u64)>>()
     }
 }
 
@@ -400,7 +400,7 @@ mod test {
             &mut market_matching_pool,
         );
         assert!(result.is_ok());
-        assert_eq!(14, result.unwrap());
+        assert_eq!(5, result.unwrap());
         assert_eq!(10, order.voided_stake);
         assert_eq!(0, order.stake_unmatched);
         assert_eq!(OrderStatus::Matched, order.order_status);
@@ -428,7 +428,7 @@ mod test {
     ) -> (
         u16,
         bool,
-        f64,
+        u128,
         Market,
         Pubkey,
         Order,
@@ -439,7 +439,7 @@ mod test {
     ) {
         let market_outcome_index = 1;
         let for_outcome = false;
-        let price = 2.4_f64;
+        let price = 417 * crate::instructions::PRICE_TICK;
 
         let market_pk = Pubkey::new_unique();
         let mut market = mock_market(MarketStatus::Open);

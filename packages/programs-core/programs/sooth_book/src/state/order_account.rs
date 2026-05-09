@@ -19,7 +19,7 @@ pub struct Order {
     pub order_status: OrderStatus, // status
     pub stake: u64,        // total stake amount provided by purchaser
     pub voided_stake: u64, // stake amount returned to purchaser due to cancelation or settlement for partially matched orders
-    pub expected_price: f64, // expected price provided by purchaser
+    pub expected_price: u128, // expected price provided by purchaser
     pub creation_timestamp: i64,
     // matching data
     pub stake_unmatched: u64, // stake amount available for matching
@@ -34,7 +34,7 @@ impl Order {
         + BOOL_SIZE // for outcome
         + ENUM_SIZE // order_status
         + (U64_SIZE * 4) // stake, payout, stake_unmatched, voided_stake
-        + F64_SIZE // expected_price
+        + U128_SIZE // expected_price
         + I64_SIZE // creation_timestamp
         + PUB_KEY_SIZE; // payer
 
@@ -45,7 +45,7 @@ impl Order {
             || self.order_status == OrderStatus::Voided
     }
 
-    pub fn match_stake_unmatched(&mut self, stake_matched: u64, price_matched: f64) -> Result<()> {
+    pub fn match_stake_unmatched(&mut self, stake_matched: u64, price_matched: u128) -> Result<()> {
         self.stake_unmatched = self
             .stake_unmatched
             .checked_sub(stake_matched)
@@ -95,7 +95,7 @@ use crate::state::market_order_request_queue::OrderRequest;
 
 #[cfg(test)]
 pub fn mock_order_default() -> Order {
-    mock_order(Pubkey::new_unique(), 0, true, 0.0, 0, Pubkey::new_unique())
+    mock_order(Pubkey::new_unique(), 0, true, 0, 0, Pubkey::new_unique())
 }
 
 #[cfg(test)]
@@ -125,7 +125,7 @@ pub fn mock_order(
     market: Pubkey,
     market_outcome_index: u16,
     for_outcome: bool,
-    expected_price: f64,
+    expected_price: u128,
     stake: u64,
     payer: Pubkey,
 ) -> Order {
@@ -158,13 +158,13 @@ mod tests {
             Pubkey::new_unique(),
             1,
             true,
-            2.10,
+            476 * crate::instructions::PRICE_TICK,
             1000,
             Pubkey::new_unique(),
         );
 
         // when
-        let result = order.match_stake_unmatched(1001, 2.10);
+        let result = order.match_stake_unmatched(1001, 476 * crate::instructions::PRICE_TICK);
 
         // then
         assert!(result.is_err());
@@ -180,20 +180,21 @@ mod tests {
             Pubkey::new_unique(),
             1,
             true,
-            2.10,
+            476 * crate::instructions::PRICE_TICK,
             1000,
             Pubkey::new_unique(),
         );
         let stake_matched = order.stake_unmatched - 10;
 
         // when
-        let result = order.match_stake_unmatched(stake_matched, 2.10);
+        let result =
+            order.match_stake_unmatched(stake_matched, 476 * crate::instructions::PRICE_TICK);
 
         // then
         assert!(result.is_ok());
         assert_eq!(order.order_status, OrderStatus::Matched);
         assert_eq!(order.stake_unmatched, 10);
-        assert_eq!(order.payout, 2079);
+        assert_eq!(order.payout, 990);
     }
 
     #[test]
@@ -203,20 +204,21 @@ mod tests {
             Pubkey::new_unique(),
             1,
             true,
-            2.10,
+            476 * crate::instructions::PRICE_TICK,
             1000,
             Pubkey::new_unique(),
         );
         let stake_matched = order.stake_unmatched;
 
         // when
-        let result = order.match_stake_unmatched(stake_matched, 2.10);
+        let result =
+            order.match_stake_unmatched(stake_matched, 476 * crate::instructions::PRICE_TICK);
 
         // then
         assert!(result.is_ok());
         assert_eq!(order.order_status, OrderStatus::Matched);
         assert_eq!(order.stake_unmatched, 0);
-        assert_eq!(order.payout, 2100);
+        assert_eq!(order.payout, 1000);
     }
 
     #[test]
@@ -226,7 +228,7 @@ mod tests {
             Pubkey::new_unique(),
             1,
             true,
-            2.10,
+            476 * crate::instructions::PRICE_TICK,
             1000,
             Pubkey::new_unique(),
         );
@@ -245,7 +247,7 @@ mod tests {
             Pubkey::new_unique(),
             1,
             true,
-            2.10,
+            476 * crate::instructions::PRICE_TICK,
             1000,
             Pubkey::new_unique(),
         );

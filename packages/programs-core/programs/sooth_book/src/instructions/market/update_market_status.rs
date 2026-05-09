@@ -861,7 +861,7 @@ mod void_market_tests {
         let order_request_queue = mock_order_request_queue(market_pk);
         market_matching_queue
             .matches
-            .enqueue(OrderMatch::maker(true, 0, 0.0, 0));
+            .enqueue(OrderMatch::maker(true, 0, 0, 0));
 
         let settle_time = 1665483869;
 

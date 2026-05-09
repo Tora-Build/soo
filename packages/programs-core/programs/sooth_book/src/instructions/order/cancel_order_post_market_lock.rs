@@ -276,7 +276,7 @@ mod test {
             &market_order_request_queue,
         );
         assert!(result.is_ok());
-        assert_eq!(14, result.unwrap());
+        assert_eq!(5, result.unwrap());
         assert_eq!(10, order.voided_stake);
         assert_eq!(0, order.stake_unmatched);
         assert_eq!(OrderStatus::Matched, order.order_status);
@@ -324,7 +324,7 @@ mod test {
             &market_order_request_queue,
         );
         assert!(result.is_ok());
-        assert_eq!(140, result.unwrap());
+        assert_eq!(58, result.unwrap());
         assert_eq!(100, order.voided_stake);
         assert_eq!(0, order.stake_unmatched);
         assert_eq!(OrderStatus::Cancelled, order.order_status);
@@ -351,7 +351,7 @@ mod test {
     ) -> (
         u16,
         bool,
-        f64,
+        u128,
         Market,
         Pubkey,
         Order,
@@ -362,7 +362,7 @@ mod test {
     ) {
         let market_outcome_index = 1;
         let for_outcome = false;
-        let price = 2.4_f64;
+        let price = 417 * crate::instructions::PRICE_TICK;
 
         let market_pk = Pubkey::new_unique();
         let mut market = mock_market(MarketStatus::Open);

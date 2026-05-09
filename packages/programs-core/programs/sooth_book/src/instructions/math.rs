@@ -2,43 +2,31 @@ use crate::error::CoreError;
 use anchor_lang::{require, Result};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
-use std::ops::{Div, Mul, Sub};
 
-/// Converts at most precision 3 float to an equivalent Decimal - e.g., converting price (f64) to Decimal
-fn price_to_decimal(price: f64) -> Decimal {
-    let mut decimal = Decimal::from_f64(price).unwrap();
-    decimal.rescale(3);
-    decimal
+pub const PRICE_WAD: u128 = 1_000_000_000_000_000_000;
+pub const PRICE_TICK: u128 = 1_000_000_000_000_000;
+
+/// Cost for a YES share at a probability-WAD price.
+pub fn calculate_for_cost_from_stake(stake: u64, price: u128) -> u64 {
+    ((stake as u128) * price / PRICE_WAD) as u64
 }
 
-/// risk = stake * (price - 1)
-pub fn calculate_risk_from_stake(stake: u64, price: f64) -> u64 {
-    let price_decimal = price_to_decimal(price);
-    Decimal::from(stake)
-        .mul(price_decimal.sub(Decimal::one()))
-        .to_u64()
-        .unwrap()
+/// Risk for a NO/against share at a probability-WAD YES price.
+pub fn calculate_risk_from_stake(stake: u64, price: u128) -> u64 {
+    ((stake as u128) * (PRICE_WAD - price) / PRICE_WAD) as u64
 }
 
-/// payout = stake * price
-pub fn calculate_for_payout(stake: u64, price: f64) -> u64 {
-    let price_decimal = price_to_decimal(price);
-    Decimal::from(stake).mul(price_decimal).to_u64().unwrap()
+/// A matched share pays one unit if its side wins.
+pub fn calculate_for_payout(stake: u64, _price: u128) -> u64 {
+    stake
 }
 
-/// stake = payout / price
-pub fn calculate_stake_from_payout(payout: u64, price: f64) -> u64 {
-    let price_decimal = price_to_decimal(price);
-    Decimal::from(payout).div(price_decimal).to_u64().unwrap()
+pub fn calculate_stake_from_payout(payout: u64, _price: u128) -> u64 {
+    payout
 }
 
-pub fn price_precision_is_within_range(price: f64) -> Result<()> {
-    let decimal = Decimal::from_f64(price).ok_or(CoreError::ArithmeticError)?;
-    let decimal_with_scale = decimal.trunc_with_scale(3);
-    require!(
-        decimal.eq(&decimal_with_scale),
-        CoreError::PricePrecisionTooLarge
-    );
+pub fn price_precision_is_within_range(price: u128) -> Result<()> {
+    require!(price % PRICE_TICK == 0, CoreError::PricePrecisionTooLarge);
     Ok(())
 }
 
@@ -52,46 +40,49 @@ pub fn stake_precision_is_within_range(stake: u64, decimal_limit: u8) -> Result<
 }
 
 #[cfg(test)]
+pub const fn odds_to_probability_wad(odds_scaled: u128, scale: u128) -> u128 {
+    PRICE_WAD * scale / odds_scaled
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_price_to_decimal() {
-        let floats = vec![
-            1.001, 1.002, 1.003, 1.004, 1.005, 1.006, 1.007, 1.008, 1.009, 1.01, 1.02, 1.03, 1.04,
-            1.05, 1.06, 1.07, 1.08, 1.09, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5, 1.55,
-            1.6, 1.65, 1.7, 1.75, 1.8, 1.85, 1.9, 1.95, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7,
-            2.8, 2.9, 3.0, 3.1, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 15.0, 20.0, 30.0, 40.0, 50.0,
-            60.0, 70.0, 80.0, 90.0, 100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0, 900.0,
-            1000.0,
-        ];
-        for x in floats {
-            assert_eq!(price_to_decimal(x).to_string(), format!("{:.3}", x));
-        }
+    fn test_price_precision_is_within_range() {
+        assert!(price_precision_is_within_range(PRICE_TICK).is_ok());
+        assert!(price_precision_is_within_range(400 * PRICE_TICK).is_ok());
+        assert!(price_precision_is_within_range(999 * PRICE_TICK).is_ok());
+        assert!(price_precision_is_within_range(PRICE_TICK + 1).is_err());
+    }
+
+    #[test]
+    fn test_decimal_odds_fixture_translation() {
+        assert_eq!(odds_to_probability_wad(25, 10), 400 * PRICE_TICK);
+    }
+
+    #[test]
+    fn test_calculate_for_cost_from_stake() {
+        assert_eq!(calculate_for_cost_from_stake(100, 400 * PRICE_TICK), 40);
+        assert_eq!(calculate_for_cost_from_stake(1000, 250 * PRICE_TICK), 250);
+    }
+
+    #[test]
+    fn test_calculate_against_risk_from_stake() {
+        assert_eq!(calculate_risk_from_stake(100, 400 * PRICE_TICK), 60);
+        assert_eq!(calculate_risk_from_stake(1000, 250 * PRICE_TICK), 750);
     }
 
     #[test]
     fn test_calculate_for_payout() {
-        assert_eq!(calculate_for_payout(100, 3.00), 300);
-        assert_eq!(calculate_for_payout(100, 3.22), 322);
-        assert_eq!(calculate_for_payout(100, 3.44), 344);
-        assert_eq!(calculate_for_payout(100, 3.66), 366);
-        assert_eq!(calculate_for_payout(1000, 3.00), 3000);
-        assert_eq!(calculate_for_payout(1000, 3.22), 3220);
-        assert_eq!(calculate_for_payout(1000, 3.44), 3440);
-        assert_eq!(calculate_for_payout(1000, 3.66), 3660);
-        assert_eq!(calculate_for_payout(10000, 3.00), 30000);
-        assert_eq!(calculate_for_payout(10000, 3.22), 32200);
-        assert_eq!(calculate_for_payout(10000, 3.44), 34400);
-        assert_eq!(calculate_for_payout(10000, 3.66), 36600);
+        assert_eq!(calculate_for_payout(100, 400 * PRICE_TICK), 100);
+        assert_eq!(calculate_for_payout(1000, 250 * PRICE_TICK), 1000);
     }
 
     #[test]
     fn test_calculate_stake_from_payout() {
-        assert_eq!(calculate_stake_from_payout(300, 3.00), 100);
-        assert_eq!(calculate_stake_from_payout(322, 3.22), 100);
-        assert_eq!(calculate_stake_from_payout(344, 3.44), 100);
-        assert_eq!(calculate_stake_from_payout(366, 3.66), 100);
+        assert_eq!(calculate_stake_from_payout(300, 400 * PRICE_TICK), 300);
+        assert_eq!(calculate_stake_from_payout(322, 250 * PRICE_TICK), 322);
     }
 
     #[test]
@@ -112,14 +103,5 @@ mod tests {
 
         let test_case = (u64::MAX / 1000) * 1000;
         assert!(stake_precision_is_within_range(test_case, 3).unwrap());
-    }
-
-    #[test]
-    fn test_price_precision_is_within_range() {
-        assert!(price_precision_is_within_range(1_f64).is_ok());
-        assert!(price_precision_is_within_range(1.1_f64).is_ok());
-        assert!(price_precision_is_within_range(1.11_f64).is_ok());
-        assert!(price_precision_is_within_range(1.111_f64).is_ok());
-        assert!(price_precision_is_within_range(1.1111_f64).is_err());
     }
 }

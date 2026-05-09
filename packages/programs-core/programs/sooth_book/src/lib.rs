@@ -407,7 +407,7 @@ pub mod sooth_book {
 
     pub fn add_prices_to_price_ladder(
         ctx: Context<UpdatePriceLadder>,
-        prices_to_add: Vec<f64>,
+        prices_to_add: Vec<u128>,
     ) -> Result<()> {
         instructions::price_ladder::add_prices_to_price_ladder(
             &mut ctx.accounts.price_ladder,
@@ -417,7 +417,7 @@ pub mod sooth_book {
 
     pub fn remove_prices_from_price_ladder(
         ctx: Context<UpdatePriceLadder>,
-        prices_to_remove: Vec<f64>,
+        prices_to_remove: Vec<u128>,
     ) -> Result<()> {
         instructions::price_ladder::remove_prices_from_price_ladder(
             &mut ctx.accounts.price_ladder,
@@ -492,7 +492,7 @@ pub mod sooth_book {
     pub fn add_prices_to_market_outcome(
         ctx: Context<UpdateMarketOutcome>,
         _outcome_index: u16,
-        new_prices: Vec<f64>,
+        new_prices: Vec<u128>,
     ) -> Result<()> {
         verify_operator_authority(
             ctx.accounts.market_operator.key,

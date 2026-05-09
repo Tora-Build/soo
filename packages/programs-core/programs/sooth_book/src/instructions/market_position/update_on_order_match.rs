@@ -1,5 +1,5 @@
 use crate::error::CoreError;
-use crate::instructions::calculate_risk_from_stake;
+use crate::instructions::{calculate_for_cost_from_stake, calculate_risk_from_stake};
 use crate::state::market_position_account::MarketPosition;
 use crate::state::order_account::*;
 use anchor_lang::prelude::*;
@@ -8,7 +8,7 @@ pub fn update_on_order_match(
     market_position: &mut MarketPosition,
     order: &Order,
     stake_matched: u64,
-    price_matched: f64,
+    price_matched: u128,
 ) -> Result<u64> {
     let total_exposure_before = market_position.total_exposure();
 
@@ -16,21 +16,30 @@ pub fn update_on_order_match(
     let for_outcome = order.for_outcome;
     let price_unmatched = order.expected_price;
 
-    let unmatched_risk = calculate_risk_from_stake(stake_matched, price_unmatched);
-    let matched_risk = calculate_risk_from_stake(stake_matched, price_matched);
+    let unmatched_cost = match for_outcome {
+        true => calculate_for_cost_from_stake(stake_matched, price_unmatched),
+        false => calculate_risk_from_stake(stake_matched, price_unmatched),
+    };
+    let matched_cost = match for_outcome {
+        true => calculate_for_cost_from_stake(stake_matched, price_matched),
+        false => calculate_risk_from_stake(stake_matched, price_matched),
+    };
+    let matched_profit = stake_matched
+        .checked_sub(matched_cost)
+        .ok_or(CoreError::ArithmeticError)?;
 
     // update chosen outcome position
     match for_outcome {
         true => {
             market_position.market_outcome_sums[outcome_index] = market_position
                 .market_outcome_sums[outcome_index]
-                .checked_add(matched_risk as i128)
+                .checked_add(matched_profit as i128)
                 .ok_or(CoreError::ArithmeticError)?;
         }
         false => {
             market_position.market_outcome_sums[outcome_index] = market_position
                 .market_outcome_sums[outcome_index]
-                .checked_sub(matched_risk as i128)
+                .checked_sub(matched_cost as i128)
                 .ok_or(CoreError::ArithmeticError)?;
         }
     }
@@ -46,13 +55,13 @@ pub fn update_on_order_match(
             true => {
                 market_position.market_outcome_sums[index] = market_position.market_outcome_sums
                     [index]
-                    .checked_sub(stake_matched as i128)
+                    .checked_sub(matched_cost as i128)
                     .ok_or(CoreError::ArithmeticError)?;
             }
             false => {
                 market_position.market_outcome_sums[index] = market_position.market_outcome_sums
                     [index]
-                    .checked_add(stake_matched as i128)
+                    .checked_add(matched_profit as i128)
                     .ok_or(CoreError::ArithmeticError)?;
             }
         }
@@ -68,14 +77,14 @@ pub fn update_on_order_match(
                 }
                 market_position.unmatched_exposures[index] = market_position.unmatched_exposures
                     [index]
-                    .checked_sub(stake_matched)
+                    .checked_sub(unmatched_cost)
                     .ok_or(CoreError::ArithmeticError)?;
             }
         }
         false => {
             market_position.unmatched_exposures[outcome_index] = market_position
                 .unmatched_exposures[outcome_index]
-                .checked_sub(unmatched_risk)
+                .checked_sub(unmatched_cost)
                 .ok_or(CoreError::ArithmeticError)?;
         }
     }
@@ -97,7 +106,7 @@ mod tests {
 
     struct OrderData {
         outcome_index: usize,
-        price: f64,
+        price: u128,
         stake: u64,
         for_outcome: bool,
     }
@@ -106,123 +115,123 @@ mod tests {
     // Matching orders of the same outcome
     //
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 3.05, stake: 100, for_outcome: true},
-    OrderData{outcome_index: 0, price: 3.05, stake: 100, for_outcome: false}
-    ]), vec![0,0,0] ; "For-Against: Same price and stakes")]
+    OrderData{outcome_index: 0, price: 328 * crate::instructions::PRICE_TICK, stake: 100, for_outcome: true},
+    OrderData{outcome_index: 0, price: 328 * crate::instructions::PRICE_TICK, stake: 100, for_outcome: false}
+    ]), vec![1,1,1] ; "For-Against: Same price and stakes")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 3.05, stake: 100, for_outcome: false},
-    OrderData{outcome_index: 0, price: 3.05, stake: 100, for_outcome: true}
-    ]), vec![0,0,0] ; "Against-For: Same price and stakes")]
+    OrderData{outcome_index: 0, price: 328 * crate::instructions::PRICE_TICK, stake: 100, for_outcome: false},
+    OrderData{outcome_index: 0, price: 328 * crate::instructions::PRICE_TICK, stake: 100, for_outcome: true}
+    ]), vec![1,1,1] ; "Against-For: Same price and stakes")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 2.0, stake: 100, for_outcome: true},
-    OrderData{outcome_index: 0, price: 2.0, stake:  50, for_outcome: false}
-    ]), vec![50,-50,-50] ; "For-Against: Same price, against stake is half")]
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 100, for_outcome: true},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake:  50, for_outcome: false}
+    ]), vec![25,-25,-25] ; "For-Against: Same price, against stake is half")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 2.0, stake:  50, for_outcome: false},
-    OrderData{outcome_index: 0, price: 2.0, stake: 100, for_outcome: true}
-    ]), vec![50,-50,-50] ; "Against-For: Same price, against stake is half")]
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake:  50, for_outcome: false},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 100, for_outcome: true}
+    ]), vec![25,-25,-25] ; "Against-For: Same price, against stake is half")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 2.0, stake:  50, for_outcome: true},
-    OrderData{outcome_index: 0, price: 2.0, stake: 100, for_outcome: false}
-    ]), vec![-50,50,50] ; "For-Against: Same price, for stake is half")]
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake:  50, for_outcome: true},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 100, for_outcome: false}
+    ]), vec![-25,25,25] ; "For-Against: Same price, for stake is half")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 2.0, stake: 100, for_outcome: false},
-    OrderData{outcome_index: 0, price: 2.0, stake:  50, for_outcome: true}
-    ]), vec![-50,50,50] ; "Against-For: Same price, for stake is half")]
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 100, for_outcome: false},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake:  50, for_outcome: true}
+    ]), vec![-25,25,25] ; "Against-For: Same price, for stake is half")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 11.0, stake:  10, for_outcome: true},
-    OrderData{outcome_index: 0, price: 2.0,  stake: 100, for_outcome: false}
-    ]), vec![0,90,90] ; "For-Against: Diff price, same stake")]
+    OrderData{outcome_index: 0, price: 91 * crate::instructions::PRICE_TICK, stake:  10, for_outcome: true},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK,  stake: 100, for_outcome: false}
+    ]), vec![-40,50,50] ; "For-Against: Diff price, same stake")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 2.0,  stake: 100, for_outcome: false},
-    OrderData{outcome_index: 0, price: 11.0, stake:  10, for_outcome: true}
-    ]), vec![0,90,90] ; "Against-For: Diff price, same stake")]
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK,  stake: 100, for_outcome: false},
+    OrderData{outcome_index: 0, price: 91 * crate::instructions::PRICE_TICK, stake:  10, for_outcome: true}
+    ]), vec![-40,50,50] ; "Against-For: Diff price, same stake")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 11.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 0, price: 2.0,  stake: 10, for_outcome: false},
-    OrderData{outcome_index: 0, price: 2.0,  stake: 20, for_outcome: false},
-    OrderData{outcome_index: 0, price: 2.0,  stake: 30, for_outcome: false},
-    OrderData{outcome_index: 0, price: 2.0,  stake: 40, for_outcome: false}
-    ]), vec![0,90,90] ; "For-Against: Diff price, same stake but split")]
+    OrderData{outcome_index: 0, price: 91 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK,  stake: 10, for_outcome: false},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK,  stake: 20, for_outcome: false},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK,  stake: 30, for_outcome: false},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK,  stake: 40, for_outcome: false}
+    ]), vec![-40,50,50] ; "For-Against: Diff price, same stake but split")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 2.0,  stake: 10, for_outcome: false},
-    OrderData{outcome_index: 0, price: 2.0,  stake: 20, for_outcome: false},
-    OrderData{outcome_index: 0, price: 2.0,  stake: 30, for_outcome: false},
-    OrderData{outcome_index: 0, price: 2.0,  stake: 40, for_outcome: false},
-    OrderData{outcome_index: 0, price: 11.0, stake: 10, for_outcome: true}
-    ]), vec![0,90,90] ; "Against-For: Diff price, same stake but split")]
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK,  stake: 10, for_outcome: false},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK,  stake: 20, for_outcome: false},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK,  stake: 30, for_outcome: false},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK,  stake: 40, for_outcome: false},
+    OrderData{outcome_index: 0, price: 91 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![-40,50,50] ; "Against-For: Diff price, same stake but split")]
     //
     // Matching orders of different outcomes
     //
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 1, price: 2.0, stake: 10, for_outcome: true}
-    ]), vec![0,0,-20] ; "Same price (2.0), same stake, 2 different outcomes (0,1)")]
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![0,0,-10] ; "Same price (0.500 WAD), same stake, 2 different outcomes (0,1)")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 1, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 0, price: 2.0, stake: 10, for_outcome: true}
-    ]), vec![0,0,-20] ; "Same price (2.0), same stake, 2 different outcomes (1,0)")]
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![0,0,-10] ; "Same price (0.500 WAD), same stake, 2 different outcomes (1,0)")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 1, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 2, price: 2.0, stake: 10, for_outcome: true}
-    ]), vec![-20,0,0] ; "Same price (2.0), same stake, 2 different outcomes (1,2)")]
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![-10,0,0] ; "Same price (0.500 WAD), same stake, 2 different outcomes (1,2)")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 2, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 1, price: 2.0, stake: 10, for_outcome: true}
-    ]), vec![-20,0,0] ; "Same price (2.0), same stake, 2 different outcomes (2,1)")]
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![-10,0,0] ; "Same price (0.500 WAD), same stake, 2 different outcomes (2,1)")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 2, price: 2.0, stake: 10, for_outcome: true}
-    ]), vec![0,-20,0] ; "Same price (2.0), same stake, 2 different outcomes (0,2)")]
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![0,-10,0] ; "Same price (0.500 WAD), same stake, 2 different outcomes (0,2)")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 2, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 0, price: 2.0, stake: 10, for_outcome: true}
-    ]), vec![0,-20,0] ; "Same price (2.0), same stake, 2 different outcomes (2,0)")]
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![0,-10,0] ; "Same price (0.500 WAD), same stake, 2 different outcomes (2,0)")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 1, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 2, price: 2.0, stake: 10, for_outcome: true}
-    ]), vec![-10,-10,-10] ; "Same price (2.0), same stake, 3 different outcomes (0,1,2)")]
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![-5,-5,-5] ; "Same price (0.500 WAD), same stake, 3 different outcomes (0,1,2)")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 2, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 1, price: 2.0, stake: 10, for_outcome: true}
-    ]), vec![-10,-10,-10] ; "Same price (2.0), same stake, 3 different outcomes (0,2,1)")]
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![-5,-5,-5] ; "Same price (0.500 WAD), same stake, 3 different outcomes (0,2,1)")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 1, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 0, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 2, price: 2.0, stake: 10, for_outcome: true}
-    ]), vec![-10,-10,-10] ; "Same price (2.0), same stake, 3 different outcomes (1,0,2)")]
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![-5,-5,-5] ; "Same price (0.500 WAD), same stake, 3 different outcomes (1,0,2)")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 1, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 2, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 0, price: 2.0, stake: 10, for_outcome: true}
-    ]), vec![-10,-10,-10] ; "Same price (2.0), same stake, 3 different outcomes (1,2,0)")]
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![-5,-5,-5] ; "Same price (0.500 WAD), same stake, 3 different outcomes (1,2,0)")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 2, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 0, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 1, price: 2.0, stake: 10, for_outcome: true}
-    ]), vec![-10,-10,-10] ; "Same price (2.0), same stake, 3 different outcomes (2,0,1)")]
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![-5,-5,-5] ; "Same price (0.500 WAD), same stake, 3 different outcomes (2,0,1)")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 2, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 1, price: 2.0, stake: 10, for_outcome: true},
-    OrderData{outcome_index: 0, price: 2.0, stake: 10, for_outcome: true}
-    ]), vec![-10,-10,-10] ; "Same price (2.0), same stake, 3 different outcomes (2,1,0)")]
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 10, for_outcome: true}
+    ]), vec![-5,-5,-5] ; "Same price (0.500 WAD), same stake, 3 different outcomes (2,1,0)")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 2.0, stake: 1000000, for_outcome: true},
-    OrderData{outcome_index: 1, price: 2.0, stake: 1000000, for_outcome: true},
-    OrderData{outcome_index: 2, price: 2.0, stake: 1000000, for_outcome: true},
-    OrderData{outcome_index: 0, price: 2.0, stake: 1000000, for_outcome: false},
-    OrderData{outcome_index: 1, price: 2.0, stake: 1000000, for_outcome: false},
-    OrderData{outcome_index: 2, price: 2.0, stake: 1000000, for_outcome: false}
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 1000000, for_outcome: true},
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 1000000, for_outcome: true},
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 1000000, for_outcome: true},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 1000000, for_outcome: false},
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 1000000, for_outcome: false},
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 1000000, for_outcome: false}
     ]), vec![0,0,0] ; "Same price, same stake, 3 different outcomes, then against them all to end up neutral")]
     #[test_case(Box::new([
-    OrderData{outcome_index: 0, price: 2.0, stake: 1000000, for_outcome: true},
-    OrderData{outcome_index: 0, price: 2.0, stake: 1000000, for_outcome: false},
-    OrderData{outcome_index: 1, price: 2.0, stake: 1000000, for_outcome: true},
-    OrderData{outcome_index: 1, price: 2.0, stake: 1000000, for_outcome: false},
-    OrderData{outcome_index: 2, price: 2.0, stake: 1000000, for_outcome: true},
-    OrderData{outcome_index: 2, price: 2.0, stake: 1000000, for_outcome: false}
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 1000000, for_outcome: true},
+    OrderData{outcome_index: 0, price: 500 * crate::instructions::PRICE_TICK, stake: 1000000, for_outcome: false},
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 1000000, for_outcome: true},
+    OrderData{outcome_index: 1, price: 500 * crate::instructions::PRICE_TICK, stake: 1000000, for_outcome: false},
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 1000000, for_outcome: true},
+    OrderData{outcome_index: 2, price: 500 * crate::instructions::PRICE_TICK, stake: 1000000, for_outcome: false}
     ]), vec![0,0,0] ; "Same price, same stake, 3 different outcomes, for and against them in order to end up neutral")]
     fn test_update_on_match(orders: Box<[OrderData]>, expected_position: Vec<i128>) {
         let mut market_position = market_position(vec![0_i128; 3], vec![0_u64; 3]);

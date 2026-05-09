@@ -16,6 +16,7 @@ pub fn create_price_ladder(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::instructions::PRICE_TICK;
 
     #[test]
     fn test_create_price_ladder() {
@@ -25,12 +26,12 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(price_ladder.authority, authority);
         assert_eq!(price_ladder.max_number_of_prices, 3);
-        assert_eq!(price_ladder.prices, vec![] as Vec<f64>);
+        assert_eq!(price_ladder.prices, vec![] as Vec<u128>);
     }
 
     fn price_ladder() -> PriceLadder {
         PriceLadder {
-            prices: vec![1.0],
+            prices: vec![PRICE_TICK],
             max_number_of_prices: 0,
             authority: Pubkey::new_unique(),
         }

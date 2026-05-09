@@ -141,7 +141,7 @@ mod test {
         let market_pk = Pubkey::new_unique();
         let mut market = mock_market();
         let market_outcome_index = 1;
-        let matched_price = 2.2_f64;
+        let matched_price = 455 * crate::instructions::PRICE_TICK;
         let payer_pk = Pubkey::new_unique();
 
         let order_request = mock_order_request(
@@ -149,7 +149,7 @@ mod test {
             false,
             market_outcome_index,
             100_u64,
-            2.4_f64,
+            417 * crate::instructions::PRICE_TICK,
         );
         let order_pk = Pubkey::new_unique();
         let mut order = mock_order_from_order_request(market_pk, order_request, payer_pk);
@@ -163,7 +163,7 @@ mod test {
             order_request.expected_price,
         );
         assert!(update_on_order_creation.is_ok());
-        assert_eq!(vec!(0, 140, 0), market_position.unmatched_exposures);
+        assert_eq!(vec!(0, 58, 0), market_position.unmatched_exposures);
 
         let mut market_matching_pool = MarketMatchingPool {
             market: market_pk,
@@ -203,9 +203,9 @@ mod test {
 
         assert_eq!(100_u64, order.stake_unmatched);
         assert_eq!(0_u64, order.payout);
-        assert_eq!(2.4_f64, order.expected_price);
+        assert_eq!(417 * crate::instructions::PRICE_TICK, order.expected_price);
 
-        assert_eq!(vec!(0, 140, 0), market_position.unmatched_exposures);
+        assert_eq!(vec!(0, 58, 0), market_position.unmatched_exposures);
         assert_eq!(vec!(0, 0, 0), market_position.market_outcome_sums);
 
         assert_eq!(100_u64, market_matching_pool.liquidity_amount);
@@ -214,7 +214,7 @@ mod test {
 
         assert_eq!(false, maker_order_trade.for_outcome); // default value
         assert_eq!(0_u64, maker_order_trade.stake); // default value
-        assert_eq!(0.0_f64, maker_order_trade.price); // default value
+        assert_eq!(0, maker_order_trade.price); // default value
     }
 
     #[test]
@@ -222,7 +222,7 @@ mod test {
         let market_pk = Pubkey::new_unique();
         let mut market = mock_market();
         let market_outcome_index = 1;
-        let matched_price = 2.2_f64;
+        let matched_price = 455 * crate::instructions::PRICE_TICK;
         let matched_stake = 10_u64;
         let payer_pk = Pubkey::new_unique();
 
@@ -231,7 +231,7 @@ mod test {
             false,
             market_outcome_index,
             100_u64,
-            2.4_f64,
+            417 * crate::instructions::PRICE_TICK,
         );
         let order_pk = Pubkey::new_unique();
         let mut order = mock_order_from_order_request(market_pk, order_request, payer_pk);
@@ -245,7 +245,7 @@ mod test {
             order_request.expected_price,
         );
         assert!(update_on_order_creation.is_ok());
-        assert_eq!(vec!(0, 140, 0), market_position.unmatched_exposures);
+        assert_eq!(vec!(0, 58, 0), market_position.unmatched_exposures);
 
         let mut market_matching_pool = MarketMatchingPool {
             market: market_pk,
@@ -286,11 +286,11 @@ mod test {
         assert!(on_order_match_testable_result.is_ok());
 
         assert_eq!(90_u64, order.stake_unmatched);
-        assert_eq!(22_u64, order.payout);
-        assert_eq!(2.4_f64, order.expected_price);
+        assert_eq!(10_u64, order.payout);
+        assert_eq!(417 * crate::instructions::PRICE_TICK, order.expected_price);
 
-        assert_eq!(vec!(0, 126, 0), market_position.unmatched_exposures);
-        assert_eq!(vec!(10, -12, 10), market_position.market_outcome_sums);
+        assert_eq!(vec!(0, 53, 0), market_position.unmatched_exposures);
+        assert_eq!(vec!(5, -5, 5), market_position.market_outcome_sums);
 
         assert_eq!(90_u64, market_matching_pool.liquidity_amount);
         assert_eq!(10_u64, market_matching_pool.matched_amount);
@@ -298,7 +298,10 @@ mod test {
 
         assert_eq!(false, maker_order_trade.for_outcome);
         assert_eq!(10_u64, maker_order_trade.stake);
-        assert_eq!(2.2_f64, maker_order_trade.price);
+        assert_eq!(
+            455 * crate::instructions::PRICE_TICK,
+            maker_order_trade.price
+        );
     }
 
     #[test]
@@ -306,7 +309,7 @@ mod test {
         let market_pk = Pubkey::new_unique();
         let mut market = mock_market();
         let market_outcome_index = 1;
-        let matched_price = 2.2_f64;
+        let matched_price = 455 * crate::instructions::PRICE_TICK;
         let matched_stake = 100_u64;
         let payer_pk = Pubkey::new_unique();
 
@@ -315,7 +318,7 @@ mod test {
             false,
             market_outcome_index,
             10_u64,
-            2.4_f64,
+            417 * crate::instructions::PRICE_TICK,
         );
         let order_pk = Pubkey::new_unique();
         let mut order = mock_order_from_order_request(market_pk, order_request, payer_pk);
@@ -329,7 +332,7 @@ mod test {
             order_request.expected_price,
         );
         assert!(update_on_order_creation.is_ok());
-        assert_eq!(vec!(0, 14, 0), market_position.unmatched_exposures);
+        assert_eq!(vec!(0, 5, 0), market_position.unmatched_exposures);
 
         let mut market_matching_pool = MarketMatchingPool {
             market: market_pk,
@@ -370,11 +373,11 @@ mod test {
         assert!(on_order_match_testable_result.is_ok());
 
         assert_eq!(0_u64, order.stake_unmatched);
-        assert_eq!(22_u64, order.payout);
-        assert_eq!(2.4_f64, order.expected_price);
+        assert_eq!(10_u64, order.payout);
+        assert_eq!(417 * crate::instructions::PRICE_TICK, order.expected_price);
 
         assert_eq!(vec!(0, 0, 0), market_position.unmatched_exposures);
-        assert_eq!(vec!(10, -12, 10), market_position.market_outcome_sums);
+        assert_eq!(vec!(5, -5, 5), market_position.market_outcome_sums);
 
         assert_eq!(0_u64, market_matching_pool.liquidity_amount);
         assert_eq!(10_u64, market_matching_pool.matched_amount);
@@ -382,7 +385,10 @@ mod test {
 
         assert_eq!(false, maker_order_trade.for_outcome);
         assert_eq!(10_u64, maker_order_trade.stake);
-        assert_eq!(2.2_f64, maker_order_trade.price);
+        assert_eq!(
+            455 * crate::instructions::PRICE_TICK,
+            maker_order_trade.price
+        );
     }
 
     #[test]
@@ -390,7 +396,7 @@ mod test {
         let market_pk = Pubkey::new_unique();
         let mut market = mock_market();
         let market_outcome_index = 1;
-        let matched_price = 2.2_f64;
+        let matched_price = 455 * crate::instructions::PRICE_TICK;
         let payer_pk = Pubkey::new_unique();
 
         let order_request = mock_order_request(
@@ -398,7 +404,7 @@ mod test {
             false,
             market_outcome_index,
             100_u64,
-            2.4_f64,
+            417 * crate::instructions::PRICE_TICK,
         );
         let order_pk = Pubkey::new_unique();
         let mut order = mock_order_from_order_request(market_pk, order_request, payer_pk);

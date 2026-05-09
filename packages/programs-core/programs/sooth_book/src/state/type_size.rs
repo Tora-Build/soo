@@ -5,7 +5,6 @@ pub const CHAR_SIZE: usize = 4;
 pub const DISCRIMINATOR_SIZE: usize = 8;
 pub const ENUM_SIZE: usize = 1; // for data/field-less enums
 pub const F32_SIZE: usize = 4;
-pub const F64_SIZE: usize = 8;
 pub const I64_SIZE: usize = 8;
 pub const I128_SIZE: usize = 16;
 pub const PUB_KEY_SIZE: usize = 32;

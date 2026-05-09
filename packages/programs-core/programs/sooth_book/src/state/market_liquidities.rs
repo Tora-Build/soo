@@ -29,7 +29,7 @@ impl MarketLiquidities {
     pub fn get_liquidity_for(
         &self,
         outcome: u16,
-        price: f64,
+        price: u128,
     ) -> Option<&MarketOutcomePriceLiquidity> {
         self.liquidities_for
             .binary_search_by(Self::sorter_for(outcome, price))
@@ -40,7 +40,7 @@ impl MarketLiquidities {
     pub fn get_liquidity_against(
         &self,
         outcome: u16,
-        price: f64,
+        price: u128,
     ) -> Option<&MarketOutcomePriceLiquidity> {
         self.liquidities_against
             .binary_search_by(Self::sorter_against(outcome, price))
@@ -48,7 +48,7 @@ impl MarketLiquidities {
             .map(|index| &self.liquidities_against[index])
     }
 
-    pub fn add_liquidity_for(&mut self, outcome: u16, price: f64, liquidity: u64) -> Result<()> {
+    pub fn add_liquidity_for(&mut self, outcome: u16, price: u128, liquidity: u64) -> Result<()> {
         let is_full = self.is_full();
         Self::add_liquidity(
             &mut self.liquidities_for,
@@ -63,7 +63,7 @@ impl MarketLiquidities {
     pub fn add_liquidity_against(
         &mut self,
         outcome: u16,
-        price: f64,
+        price: u128,
         liquidity: u64,
     ) -> Result<()> {
         let is_full = self.is_full();
@@ -81,7 +81,7 @@ impl MarketLiquidities {
         liquidities: &mut Vec<MarketOutcomePriceLiquidity>,
         search_function: impl FnMut(&MarketOutcomePriceLiquidity) -> Ordering,
         outcome: u16,
-        price: f64,
+        price: u128,
         liquidity: u64,
         is_full: bool,
     ) -> Result<()> {
@@ -114,7 +114,7 @@ impl MarketLiquidities {
     pub fn remove_liquidity_for(
         &mut self,
         outcome: u16,
-        price: f64,
+        price: u128,
         liquidity: u64,
     ) -> Result<u64> {
         Self::remove_liquidity(
@@ -127,7 +127,7 @@ impl MarketLiquidities {
     pub fn remove_liquidity_against(
         &mut self,
         outcome: u16,
-        price: f64,
+        price: u128,
         liquidity: u64,
     ) -> Result<u64> {
         Self::remove_liquidity(
@@ -161,7 +161,7 @@ impl MarketLiquidities {
 
     fn sorter_for(
         outcome: u16,
-        price: f64,
+        price: u128,
     ) -> impl FnMut(&MarketOutcomePriceLiquidity) -> Ordering {
         move |liquidity| {
             #[allow(clippy::comparison_chain)]
@@ -183,7 +183,7 @@ impl MarketLiquidities {
 
     fn sorter_against(
         outcome: u16,
-        price: f64,
+        price: u128,
     ) -> impl FnMut(&MarketOutcomePriceLiquidity) -> Ordering {
         move |liquidity| {
             #[allow(clippy::comparison_chain)]
@@ -222,13 +222,13 @@ impl MarketLiquidities {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default, PartialEq)]
 pub struct MarketOutcomePriceLiquidity {
     pub outcome: u16,
-    pub price: f64,
+    pub price: u128,
     pub liquidity: u64,
 }
 
 impl MarketOutcomePriceLiquidity {
     pub const SIZE: usize = U16_SIZE // outcome
-        + F64_SIZE // price
+        + U128_SIZE // price
         + U64_SIZE; // liquidity
 }
 
@@ -243,7 +243,7 @@ pub fn mock_market_liquidities(market_pk: Pubkey) -> MarketLiquidities {
 }
 
 #[cfg(test)]
-pub fn mock_liquidity(outcome: u16, price: f64, liquidity: u64) -> MarketOutcomePriceLiquidity {
+pub fn mock_liquidity(outcome: u16, price: u128, liquidity: u64) -> MarketOutcomePriceLiquidity {
     MarketOutcomePriceLiquidity {
         outcome,
         price,
@@ -254,43 +254,50 @@ pub fn mock_liquidity(outcome: u16, price: f64, liquidity: u64) -> MarketOutcome
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::instructions::PRICE_TICK;
+
+    const P20: u128 = 500 * PRICE_TICK;
+    const P28: u128 = 357 * PRICE_TICK;
+    const P29: u128 = 345 * PRICE_TICK;
+    const P30: u128 = 333 * PRICE_TICK;
+    const P35: u128 = 286 * PRICE_TICK;
 
     #[test]
     fn test_add_liquidity() {
         let mut mls = mock_market_liquidities(Pubkey::default());
 
-        mls.add_liquidity_for(0, 2.8, 5_000).unwrap();
-        mls.add_liquidity_for(0, 2.8, 5_000).unwrap();
-        mls.add_liquidity_for(0, 2.9, 15_000).unwrap();
-        mls.add_liquidity_for(1, 2.8, 20_000).unwrap();
-        mls.add_liquidity_for(2, 2.8, 25_000).unwrap();
-        mls.add_liquidity_for(2, 3.5, 30_000).unwrap();
+        mls.add_liquidity_for(0, P28, 5_000).unwrap();
+        mls.add_liquidity_for(0, P28, 5_000).unwrap();
+        mls.add_liquidity_for(0, P29, 15_000).unwrap();
+        mls.add_liquidity_for(1, P28, 20_000).unwrap();
+        mls.add_liquidity_for(2, P28, 25_000).unwrap();
+        mls.add_liquidity_for(2, P35, 30_000).unwrap();
 
         assert_eq!(
             vec![
-                mock_liquidity(0, 2.8, 10_000),
-                mock_liquidity(0, 2.9, 15_000),
-                mock_liquidity(1, 2.8, 20_000),
-                mock_liquidity(2, 2.8, 25_000),
-                mock_liquidity(2, 3.5, 30_000),
+                mock_liquidity(0, P29, 15_000),
+                mock_liquidity(0, P28, 10_000),
+                mock_liquidity(1, P28, 20_000),
+                mock_liquidity(2, P35, 30_000),
+                mock_liquidity(2, P28, 25_000),
             ],
             mls.liquidities_for
         );
 
-        mls.add_liquidity_against(0, 2.8, 5_000).unwrap();
-        mls.add_liquidity_against(0, 2.8, 5_000).unwrap();
-        mls.add_liquidity_against(0, 2.9, 15_000).unwrap();
-        mls.add_liquidity_against(1, 2.8, 20_000).unwrap();
-        mls.add_liquidity_against(2, 2.8, 25_000).unwrap();
-        mls.add_liquidity_against(2, 3.5, 30_000).unwrap();
+        mls.add_liquidity_against(0, P28, 5_000).unwrap();
+        mls.add_liquidity_against(0, P28, 5_000).unwrap();
+        mls.add_liquidity_against(0, P29, 15_000).unwrap();
+        mls.add_liquidity_against(1, P28, 20_000).unwrap();
+        mls.add_liquidity_against(2, P28, 25_000).unwrap();
+        mls.add_liquidity_against(2, P35, 30_000).unwrap();
 
         assert_eq!(
             vec![
-                mock_liquidity(2, 3.5, 30_000),
-                mock_liquidity(2, 2.8, 25_000),
-                mock_liquidity(1, 2.8, 20_000),
-                mock_liquidity(0, 2.9, 15_000),
-                mock_liquidity(0, 2.8, 10_000),
+                mock_liquidity(2, P28, 25_000),
+                mock_liquidity(2, P35, 30_000),
+                mock_liquidity(1, P28, 20_000),
+                mock_liquidity(0, P28, 10_000),
+                mock_liquidity(0, P29, 15_000),
             ],
             mls.liquidities_against
         );
@@ -299,56 +306,56 @@ mod tests {
     #[test]
     fn test_get_liquidity_for() {
         let mut mls = mock_market_liquidities(Pubkey::default());
-        mls.add_liquidity_for(1, 2.8, 10).unwrap();
-        mls.add_liquidity_for(1, 3.0, 20).unwrap();
+        mls.add_liquidity_for(1, P28, 10).unwrap();
+        mls.add_liquidity_for(1, P30, 20).unwrap();
 
         assert_eq!(
-            Some(&mock_liquidity(1, 2.8, 10)),
-            mls.get_liquidity_for(1, 2.8)
+            Some(&mock_liquidity(1, P28, 10)),
+            mls.get_liquidity_for(1, P28)
         );
-        assert!(mls.get_liquidity_for(1, 2.9).is_none());
+        assert!(mls.get_liquidity_for(1, P29).is_none());
     }
 
     #[test]
     fn test_get_liquidity_against() {
         let mut mls = mock_market_liquidities(Pubkey::default());
-        mls.add_liquidity_against(1, 2.8, 10).unwrap();
-        mls.add_liquidity_against(1, 3.0, 20).unwrap();
+        mls.add_liquidity_against(1, P28, 10).unwrap();
+        mls.add_liquidity_against(1, P30, 20).unwrap();
 
         assert_eq!(
-            Some(&mock_liquidity(1, 3.0, 20)),
-            mls.get_liquidity_against(1, 3.0)
+            Some(&mock_liquidity(1, P30, 20)),
+            mls.get_liquidity_against(1, P30)
         );
-        assert!(mls.get_liquidity_against(1, 2.9).is_none());
+        assert!(mls.get_liquidity_against(1, P29).is_none());
     }
 
     #[test]
     fn test_remove_liquidity() {
         let mut mls = mock_market_liquidities(Pubkey::default());
-        mls.add_liquidity_for(1, 2.8, 10).unwrap();
+        mls.add_liquidity_for(1, P28, 10).unwrap();
 
-        assert_eq!(4, mls.remove_liquidity_for(1, 2.8, 4).unwrap());
+        assert_eq!(4, mls.remove_liquidity_for(1, P28, 4).unwrap());
         assert_eq!(
-            Some(&mock_liquidity(1, 2.8, 6)),
-            mls.get_liquidity_for(1, 2.8)
+            Some(&mock_liquidity(1, P28, 6)),
+            mls.get_liquidity_for(1, P28)
         );
-        assert_eq!(6, mls.remove_liquidity_for(1, 2.8, 10).unwrap());
-        assert!(mls.get_liquidity_for(1, 2.8).is_none());
+        assert_eq!(6, mls.remove_liquidity_for(1, P28, 10).unwrap());
+        assert!(mls.get_liquidity_for(1, P28).is_none());
     }
 
     #[test]
     fn test_add_liquidity_when_full() {
         let mut mls = mock_market_liquidities(Pubkey::default());
         for i in 0..MarketLiquidities::LIQUIDITIES_VEC_LENGTH {
-            mls.add_liquidity_for(i as u16, 2.0, 10).unwrap();
-            mls.add_liquidity_against(i as u16, 2.0, 10).unwrap();
+            mls.add_liquidity_for(i as u16, P20, 10).unwrap();
+            mls.add_liquidity_against(i as u16, P20, 10).unwrap();
         }
 
         assert_eq!(
             Err(error!(CoreError::MarketLiquiditiesIsFull)),
-            mls.add_liquidity_for(0, 3.0, 10)
+            mls.add_liquidity_for(0, P30, 10)
         );
-        assert!(mls.add_liquidity_for(0, 2.0, 10).is_ok());
+        assert!(mls.add_liquidity_for(0, P20, 10).is_ok());
     }
 
     #[test]

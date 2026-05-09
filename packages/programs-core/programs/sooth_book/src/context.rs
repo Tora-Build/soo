@@ -162,12 +162,12 @@ pub struct ProcessOrderRequest<'info> {
                 .ok_or(CoreError::OrderRequestQueueIsEmpty)?
                 .market_outcome_index.to_string().as_ref(),
             b"-".as_ref(),
-            format!("{:.3}",
-                order_request_queue.order_requests
-                    .peek_front()
-                    .ok_or(CoreError::OrderRequestQueueIsEmpty)?
-                    .expected_price
-            ).as_ref(),
+            order_request_queue.order_requests
+                .peek_front()
+                .ok_or(CoreError::OrderRequestQueueIsEmpty)?
+                .expected_price
+                .to_le_bytes()
+                .as_ref(),
             order_request_queue.order_requests
                 .peek_front()
                 .ok_or(CoreError::OrderRequestQueueIsEmpty)?
@@ -295,7 +295,7 @@ pub struct CancelOrder<'info> {
             market.key().as_ref(),
             order.market_outcome_index.to_string().as_ref(),
             b"-".as_ref(),
-            format!("{:.3}", order.expected_price).as_ref(),
+            order.expected_price.to_le_bytes().as_ref(),
             order.for_outcome.to_string().as_ref(),
         ],
         bump,
@@ -363,7 +363,7 @@ pub struct CancelOrderPostMarketLock<'info> {
             market.key().as_ref(),
             order.market_outcome_index.to_string().as_ref(),
             b"-".as_ref(),
-            format!("{:.3}", order.expected_price).as_ref(),
+            order.expected_price.to_le_bytes().as_ref(),
             order.for_outcome.to_string().as_ref(),
         ],
         bump,
@@ -631,7 +631,7 @@ pub struct MatchOrders<'info> {
             market.key().as_ref(),
             order_against.market_outcome_index.to_string().as_ref(),
             b"-".as_ref(),
-            format!("{:.3}", order_against.expected_price).as_ref(),
+            order_against.expected_price.to_le_bytes().as_ref(),
             b"false".as_ref(),
         ],
         bump,
@@ -670,7 +670,7 @@ pub struct MatchOrders<'info> {
             market.key().as_ref(),
             order_for.market_outcome_index.to_string().as_ref(),
             b"-".as_ref(),
-            format!("{:.3}", order_for.expected_price).as_ref(),
+            order_for.expected_price.to_le_bytes().as_ref(),
             b"true".as_ref(),
         ],
         bump,

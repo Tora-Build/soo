@@ -9,7 +9,7 @@ pub fn match_order(
     order: &mut Account<Order>,
     market_position: &mut MarketPosition,
     stake_matched: u64,
-    price_matched: f64,
+    price_matched: u128,
 ) -> Result<u64> {
     // validate that status is open or matched (for partial matches)
     if order.order_status != OrderStatus::Open && order.order_status != OrderStatus::Matched {

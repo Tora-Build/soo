@@ -16,7 +16,7 @@ pub fn on_order_creation(
     market_matching_queue: &mut MarketMatchingQueue,
     order_pk: &Pubkey,
     order: &mut Order,
-) -> Result<Vec<(u64, f64)>> {
+) -> Result<Vec<(u64, u128)>> {
     match order.for_outcome {
         true => match_for_order(market_liquidities, market_matching_queue, order_pk, order),
         false => match_against_order(market_liquidities, market_matching_queue, order_pk, order),
@@ -28,7 +28,7 @@ fn match_for_order(
     market_matching_queue: &mut MarketMatchingQueue,
     order_pk: &Pubkey,
     order: &mut Order,
-) -> Result<Vec<(u64, f64)>> {
+) -> Result<Vec<(u64, u128)>> {
     let mut order_matches = Vec::with_capacity(MATCH_CAPACITY);
     let order_outcome = order.market_outcome_index;
 
@@ -109,7 +109,7 @@ fn match_against_order(
     market_matching_queue: &mut MarketMatchingQueue,
     order_pk: &Pubkey,
     order: &mut Order,
-) -> Result<Vec<(u64, f64)>> {
+) -> Result<Vec<(u64, u128)>> {
     let mut order_matches = Vec::with_capacity(MATCH_CAPACITY);
     let order_outcome = order.market_outcome_index;
 
@@ -198,13 +198,20 @@ mod tests {
         let market_pk = Pubkey::new_unique();
         let payer_pk = Pubkey::new_unique();
         let order_pk = Pubkey::new_unique();
-        let mut order = mock_order(market_pk, 1, true, 2.8, 100_000, payer_pk);
+        let mut order = mock_order(
+            market_pk,
+            1,
+            true,
+            357 * crate::instructions::PRICE_TICK,
+            100_000,
+            payer_pk,
+        );
         let mut market_liquidities = mock_market_liquidities(market_pk);
         market_liquidities
-            .add_liquidity_against(1, 2.8, 125_000)
+            .add_liquidity_against(1, 357 * crate::instructions::PRICE_TICK, 125_000)
             .unwrap();
         market_liquidities
-            .add_liquidity_against(2, 2.8, 125_000)
+            .add_liquidity_against(2, 357 * crate::instructions::PRICE_TICK, 125_000)
             .unwrap();
 
         let mut market_matching_queue = MarketMatchingQueue {
@@ -221,19 +228,25 @@ mod tests {
         .expect("match_for_order");
 
         assert_eq!(
-            Vec::<(f64, u64)>::new(),
+            Vec::<(u128, u64)>::new(),
             liquidities(&market_liquidities.liquidities_for)
         );
         assert_eq!(
-            vec!((2.8, 125_000), (2.8, 25_000)),
+            vec!(
+                (357 * crate::instructions::PRICE_TICK, 125_000),
+                (357 * crate::instructions::PRICE_TICK, 25_000)
+            ),
             liquidities(&market_liquidities.liquidities_against)
         );
         assert_eq!(
-            vec![(false, 2.8, 100_000), (true, 2.8, 100_000)],
+            vec![
+                (false, 357 * crate::instructions::PRICE_TICK, 100_000),
+                (true, 357 * crate::instructions::PRICE_TICK, 100_000)
+            ],
             matches(&market_matching_queue.matches)
         );
         assert_eq!(0_u64, order.stake_unmatched);
-        assert_eq!(280_000_u64, order.payout);
+        assert_eq!(100_000_u64, order.payout);
     }
 
     #[test]
@@ -241,13 +254,20 @@ mod tests {
         let market_pk = Pubkey::new_unique();
         let payer_pk = Pubkey::new_unique();
         let order_pk = Pubkey::new_unique();
-        let mut order = mock_order(market_pk, 1, false, 2.8, 100_000, payer_pk);
+        let mut order = mock_order(
+            market_pk,
+            1,
+            false,
+            357 * crate::instructions::PRICE_TICK,
+            100_000,
+            payer_pk,
+        );
         let mut market_liquidities = mock_market_liquidities(market_pk);
         market_liquidities
-            .add_liquidity_for(1, 2.8, 125_000)
+            .add_liquidity_for(1, 357 * crate::instructions::PRICE_TICK, 125_000)
             .unwrap();
         market_liquidities
-            .add_liquidity_for(2, 2.8, 125_000)
+            .add_liquidity_for(2, 357 * crate::instructions::PRICE_TICK, 125_000)
             .unwrap();
 
         let mut market_matching_queue = MarketMatchingQueue {
@@ -264,19 +284,25 @@ mod tests {
         .expect("match_against_order");
 
         assert_eq!(
-            vec!((2.8, 25_000), (2.8, 125_000)),
+            vec!(
+                (357 * crate::instructions::PRICE_TICK, 25_000),
+                (357 * crate::instructions::PRICE_TICK, 125_000)
+            ),
             liquidities(&market_liquidities.liquidities_for)
         );
         assert_eq!(
-            Vec::<(f64, u64)>::new(),
+            Vec::<(u128, u64)>::new(),
             liquidities(&market_liquidities.liquidities_against)
         );
         assert_eq!(
-            vec![(true, 2.8, 100_000), (false, 2.8, 100_000)],
+            vec![
+                (true, 357 * crate::instructions::PRICE_TICK, 100_000),
+                (false, 357 * crate::instructions::PRICE_TICK, 100_000)
+            ],
             matches(&market_matching_queue.matches)
         );
         assert_eq!(0_u64, order.stake_unmatched);
-        assert_eq!(280_000_u64, order.payout);
+        assert_eq!(100_000_u64, order.payout);
     }
 
     #[test]
@@ -284,10 +310,17 @@ mod tests {
         let market_pk = Pubkey::new_unique();
         let payer_pk = Pubkey::new_unique();
         let order_pk = Pubkey::new_unique();
-        let mut order = mock_order(market_pk, 1, true, 2.8, 100_000, payer_pk);
+        let mut order = mock_order(
+            market_pk,
+            1,
+            true,
+            357 * crate::instructions::PRICE_TICK,
+            100_000,
+            payer_pk,
+        );
         let mut market_liquidities = mock_market_liquidities(market_pk);
         market_liquidities
-            .add_liquidity_against(1, 2.8, 25_000)
+            .add_liquidity_against(1, 357 * crate::instructions::PRICE_TICK, 25_000)
             .unwrap();
 
         let mut market_matching_queue = MarketMatchingQueue {
@@ -304,31 +337,31 @@ mod tests {
         .expect("match_for_order");
 
         assert_eq!(
-            vec!((2.8, 75_000)),
+            vec!((357 * crate::instructions::PRICE_TICK, 75_000)),
             liquidities(&market_liquidities.liquidities_for)
         );
         assert_eq!(
-            Vec::<(f64, u64)>::new(),
+            Vec::<(u128, u64)>::new(),
             liquidities(&market_liquidities.liquidities_against)
         );
         assert_eq!(75_000_u64, order.stake_unmatched);
-        assert_eq!(70_000_u64, order.payout);
+        assert_eq!(25_000_u64, order.payout);
     }
 }
 
 #[cfg(test)]
-fn liquidities(liquidities: &Vec<MarketOutcomePriceLiquidity>) -> Vec<(f64, u64)> {
+fn liquidities(liquidities: &Vec<MarketOutcomePriceLiquidity>) -> Vec<(u128, u64)> {
     liquidities
         .iter()
         .map(|v| (v.price, v.liquidity))
-        .collect::<Vec<(f64, u64)>>()
+        .collect::<Vec<(u128, u64)>>()
 }
 
 #[cfg(test)]
-fn matches(matches: &MatchingQueue) -> Vec<(bool, f64, u64)> {
+fn matches(matches: &MatchingQueue) -> Vec<(bool, u128, u64)> {
     matches
         .to_vec()
         .iter()
         .map(|v| (v.for_outcome, v.price, v.stake))
-        .collect::<Vec<(bool, f64, u64)>>()
+        .collect::<Vec<(bool, u128, u64)>>()
 }

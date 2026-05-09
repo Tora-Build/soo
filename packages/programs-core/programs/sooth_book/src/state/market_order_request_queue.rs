@@ -22,7 +22,7 @@ pub struct OrderRequest {
     pub market_outcome_index: u16, // market outcome on which order was made
     pub for_outcome: bool, // is order for or against the outcome
     pub stake: u64,        // total stake amount provided by purchaser
-    pub expected_price: f64, // expected price provided by purchaser
+    pub expected_price: u128, // expected price provided by purchaser
     pub delay_expiration_timestamp: i64,
     pub distinct_seed: [u8; 16], // used as a seed for generating a unique order pda
     pub creation_timestamp: i64, // timestamp when request was created
@@ -34,7 +34,7 @@ impl OrderRequest {
     + U16_SIZE // market_outcome_index
     + BOOL_SIZE // for outcome
     + U64_SIZE // stake
-    + F64_SIZE // expected_price
+    + U128_SIZE // expected_price
     + I64_SIZE // delay_expiration_timestamp
     + U128_SIZE // distinct_seed
     + I64_SIZE // creation_timestamp
@@ -47,7 +47,7 @@ impl OrderRequest {
             for_outcome: false,
             delay_expiration_timestamp: 0,
             stake: 0,
-            expected_price: 0.0,
+            expected_price: 0,
             distinct_seed: [0; 16],
             creation_timestamp: 0,
             expires_on: None,
@@ -60,7 +60,7 @@ pub struct OrderRequestData {
     pub market_outcome_index: u16,
     pub for_outcome: bool,
     pub stake: u64,
-    pub price: f64,
+    pub price: u128,
     pub distinct_seed: [u8; 16],
     pub expires_on: Option<i64>,
 }
@@ -194,7 +194,7 @@ pub fn mock_order_request(
     for_outcome: bool,
     outcome: u16,
     stake: u64,
-    price: f64,
+    price: u128,
 ) -> OrderRequest {
     OrderRequest {
         purchaser,
@@ -369,7 +369,7 @@ mod tests {
 
             delay_expiration_timestamp: 0,
             stake: 0,
-            expected_price: 0.0,
+            expected_price: 0,
             creation_timestamp: 0,
             expires_on: None,
         };
@@ -383,7 +383,7 @@ mod tests {
 
             delay_expiration_timestamp: 0,
             stake: 0,
-            expected_price: 0.0,
+            expected_price: 0,
             creation_timestamp: 0,
             expires_on: None,
         };
@@ -398,7 +398,7 @@ mod tests {
 
             delay_expiration_timestamp: 0,
             stake: 0,
-            expected_price: 0.0,
+            expected_price: 0,
             creation_timestamp: 0,
             expires_on: None,
         };

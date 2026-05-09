@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::error::CoreError;
-use crate::instructions::calculate_risk_from_stake;
+use crate::instructions::{calculate_for_cost_from_stake, calculate_risk_from_stake};
 use crate::state::market_position_account::MarketPosition;
 
 pub fn update_on_order_request_creation(
@@ -9,11 +9,11 @@ pub fn update_on_order_request_creation(
     market_outcome_index: u16,
     for_outcome: bool,
     stake: u64,
-    expected_price: f64,
+    expected_price: u128,
 ) -> Result<u64> {
     let outcome_index = market_outcome_index as usize;
     let order_exposure = match for_outcome {
-        true => stake,
+        true => calculate_for_cost_from_stake(stake, expected_price),
         false => calculate_risk_from_stake(stake, expected_price),
     };
 

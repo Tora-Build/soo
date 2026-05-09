@@ -18,7 +18,7 @@ pub enum CoreError {
      */
     #[msg("Order Creation: stake zero or less")]
     CreationStakeZeroOrLess,
-    #[msg("Order Creation: price cannot be 1.0 or less")]
+    #[msg("Order Creation: price must be within the probability-WAD range")]
     CreationPriceOneOrLess,
     #[msg("Order Creation: decimal limit breached for market")]
     CreationStakePrecisionIsTooHigh,
@@ -232,7 +232,7 @@ pub enum CoreError {
     PriceLadderSizeCanOnlyBeIncreased,
     #[msg("PriceLadder is full")]
     PriceLadderIsFull,
-    #[msg("Price cannot be 1.0 or less")]
+    #[msg("Price must be within the probability-WAD range")]
     PriceOneOrLess,
     #[msg("Price support up to 3 decimal places only")]
     PricePrecisionTooLarge,
@@ -256,7 +256,7 @@ pub enum CoreError {
     MarketInvalidStatus,
     #[msg("Market: price list is full")]
     MarketPriceListIsFull,
-    #[msg("Market: price cannot be 1.0 or less")]
+    #[msg("Market: price must be within the probability-WAD range")]
     MarketPriceOneOrLess,
     #[msg("mint.decimals must be >= PRICE_SCALE (3)")]
     MintDecimalsUnsupported,

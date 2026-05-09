@@ -7,7 +7,7 @@ pub struct MarketMatchingPool {
     pub market: Pubkey,
     pub market_outcome_index: u16,
     pub for_outcome: bool,
-    pub price: f64,
+    pub price: u128,
     pub payer: Pubkey,
     pub liquidity_amount: u64,
     pub matched_amount: u64,
@@ -21,7 +21,7 @@ impl MarketMatchingPool {
         PUB_KEY_SIZE + // market
         U16_SIZE + // market_outcome_index
         BOOL_SIZE + // for_outcome
-        F64_SIZE + // price
+        U128_SIZE + // price
         PUB_KEY_SIZE + // payer
         U64_SIZE + // liquidity_amount
         U64_SIZE + // matched_amount
@@ -185,7 +185,7 @@ pub fn mock_market_matching_pool(
     market_pk: Pubkey,
     market_outcome_index: u16,
     for_outcome: bool,
-    price: f64,
+    price: u128,
 ) -> MarketMatchingPool {
     MarketMatchingPool {
         market: market_pk,

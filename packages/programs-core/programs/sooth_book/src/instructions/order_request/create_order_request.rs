@@ -4,7 +4,7 @@ use solana_program::clock::UnixTimestamp;
 use crate::error::CoreError;
 use crate::instructions::{
     current_timestamp, market_position, price_precision_is_within_range,
-    stake_precision_is_within_range,
+    stake_precision_is_within_range, PRICE_WAD,
 };
 use crate::state::market_account::{Market, MarketStatus};
 use crate::state::market_order_request_queue::{
@@ -97,7 +97,10 @@ fn validate_order_request(
         require!(expires_on > now, CoreError::CreationExpired);
     }
     require!(data.stake > 0_u64, CoreError::CreationStakeZeroOrLess);
-    require!(data.price > 1_f64, CoreError::CreationPriceOneOrLess);
+    require!(
+        data.price > 0 && data.price < PRICE_WAD,
+        CoreError::CreationPriceOneOrLess
+    );
     let stake_precision_check_result =
         stake_precision_is_within_range(data.stake, market.decimal_limit)?;
     require!(
@@ -188,7 +191,7 @@ mod tests {
             market_outcome_index: 0,
             for_outcome: true,
             stake: 100000_u64,
-            price: 2.1111_f64,
+            price: crate::instructions::PRICE_TICK + 1,
             distinct_seed: [0_u8; 16],
             expires_on: None,
         };

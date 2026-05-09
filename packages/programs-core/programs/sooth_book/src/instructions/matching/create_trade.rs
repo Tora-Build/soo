@@ -10,7 +10,7 @@ pub fn create_trade(
     outcome_index: u16,
     for_outcome: bool,
     stake: u64,
-    price: f64,
+    price: u128,
     creation_timestamp: i64,
     payer: Pubkey,
 ) {

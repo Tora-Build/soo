@@ -10,7 +10,7 @@ pub struct Trade {
     pub market_outcome_index: u16,
     pub for_outcome: bool,
     pub stake: u64,
-    pub price: f64,
+    pub price: u128,
     pub creation_timestamp: i64,
 
     pub payer: Pubkey,
@@ -22,7 +22,7 @@ impl Trade {
         + U16_SIZE // market_outcome_index
         + BOOL_SIZE // for outcome
         + U64_SIZE // stake
-        + F64_SIZE // price
+        + U128_SIZE // price
         + I64_SIZE // creation_timestamp
         + PUB_KEY_SIZE; // payer
 }

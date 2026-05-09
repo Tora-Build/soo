@@ -140,7 +140,7 @@ mod tests {
 
         let liquidities = mock_market_liquidities(Pubkey::default());
         let matching_queue = &mut MatchingQueue::new(1);
-        matching_queue.enqueue(OrderMatch::maker(false, 0, 0.0, 0));
+        matching_queue.enqueue(OrderMatch::maker(false, 0, 0, 0));
         let request_queue = OrderRequestQueue::new(1);
 
         let result = close_market_queues(market, &liquidities, &matching_queue, &request_queue);
