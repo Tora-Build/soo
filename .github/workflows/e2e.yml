@@ -46,6 +46,9 @@ jobs:
       - name: Install
         run: pnpm install
 
+      - name: Build SDK (required for apps/demo typecheck to resolve @sooth/sdk-solana)
+        run: pnpm -F @sooth/sdk-solana build
+
       - name: Typecheck workspace
         run: pnpm -r typecheck
 
