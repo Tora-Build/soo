@@ -134,13 +134,18 @@ test.describe("orderbook roundtrip (UI + adapter, sooth_book)", () => {
     ).toBeGreaterThanOrEqual(1);
 
     // 4. Navigate to the /orderbook/:market page and verify it loads.
-    //    Today the page renders the "gated state" placeholder for Solana
-    //    (chain-shim orderbook dispatchers are phase 2). The mount + no
-    //    crash is the bar this spec asserts.
+    //    The chain-shim now mounts the real SoothBookTerminal — assert the
+    //    submit button (or the secondary gate) renders without an app error.
+    //    Don't wait for networkidle: the indexer poller fires on a dead URL
+    //    and never settles.
     await page.goto(`/orderbook/${ob.bookMarketPda.toBase58()}`);
-    await page.waitForLoadState("networkidle");
-    // Either the gated placeholder or a real terminal should render —
-    // both are acceptable; what's not acceptable is an unhandled error.
+    await page.waitForLoadState("domcontentloaded");
+    await page
+      .locator('[data-testid="ob-submit-button"]')
+      .or(page.locator("text=/Market not yet on SoothBook/i"))
+      .or(page.locator("text=/sooth_book program is not deployed/i"))
+      .first()
+      .waitFor({ state: "visible", timeout: 30_000 });
     const errorText = await page.locator("text=/Application error/i").count();
     expect(errorText).toBe(0);
 
