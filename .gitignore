@@ -20,6 +20,12 @@ packages/programs-core/target/idl/
 *.so
 *.wasm
 
+# Pre-rotation deploy keypair backups (snapshot dirs created when
+# target/deploy/*-keypair.json get rotated; the rotation pubkeys are
+# documented in commit messages, the backup files contain private
+# keys and must never be committed).
+.deploy-keypair-backup-*/
+
 # Editor
 .vscode/
 .idea/
