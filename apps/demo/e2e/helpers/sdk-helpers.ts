@@ -53,11 +53,13 @@ export const ammIdl = loadIdl("sooth_amm");
 export const marketIdl = loadIdl("sooth_market");
 export const launchpadIdl = loadIdl("sooth_launchpad");
 export const adjudicatorIdl = loadIdl("sooth_adjudicator");
+export const bookIdl = loadIdl("sooth_book");
 
 export const ammProgramId = new PublicKey(ammIdl.address);
 export const marketProgramId = new PublicKey(marketIdl.address);
 export const launchpadProgramId = new PublicKey(launchpadIdl.address);
 export const adjudicatorProgramId = new PublicKey(adjudicatorIdl.address);
+export const bookProgramId = new PublicKey(bookIdl.address);
 
 // ─── Test wallet keypair ────────────────────────────────────────────────
 //
@@ -119,6 +121,7 @@ export interface ProgramHandles {
   market: anchor.Program;
   launchpad: anchor.Program;
   adjudicator: anchor.Program;
+  book: anchor.Program;
 }
 
 export function makePrograms(
@@ -131,6 +134,7 @@ export function makePrograms(
     market: new anchor.Program(marketIdl, provider),
     launchpad: new anchor.Program(launchpadIdl, provider),
     adjudicator: new anchor.Program(adjudicatorIdl, provider),
+    book: new anchor.Program(bookIdl, provider),
   };
 }
 
@@ -917,10 +921,7 @@ export async function createMarketViaAdapter(args: {
   });
 
   const lpMint = deriveLpMintPda(marketId);
-  const creatorLpAta = getAssociatedTokenAddressSync(
-    lpMint,
-    creator.publicKey,
-  );
+  const creatorLpAta = getAssociatedTokenAddressSync(lpMint, creator.publicKey);
   return { marketId, marketPda, ammStatePda, lpMint, creatorLpAta };
 }
 
