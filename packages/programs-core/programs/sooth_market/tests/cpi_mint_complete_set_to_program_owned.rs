@@ -167,10 +167,7 @@ fn mint_to_program_owned_rejects_insufficient_usdc() {
     );
     let res = try_send_ixs(&mut harness.svm, &payer, &[ix]);
     assert!(res.is_err(), "insufficient payer USDC must be rejected");
-    assert_eq!(
-        fetch_token_amount(&harness.svm, destination_yes_ata),
-        0
-    );
+    assert_eq!(fetch_token_amount(&harness.svm, destination_yes_ata), 0);
     assert_eq!(fetch_token_amount(&harness.svm, destination_no_ata), 0);
 }
 

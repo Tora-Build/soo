@@ -95,8 +95,14 @@ fn boot_with_program_owned_complete_set(salt: u8) -> ProgramOwnedRedeemFixture {
     );
     send_ixs(&mut harness.svm, &payer, &[mint_ix]);
 
-    assert_eq!(fetch_token_amount(&harness.svm, source_yes_ata), REDEEM_AMOUNT);
-    assert_eq!(fetch_token_amount(&harness.svm, source_no_ata), REDEEM_AMOUNT);
+    assert_eq!(
+        fetch_token_amount(&harness.svm, source_yes_ata),
+        REDEEM_AMOUNT
+    );
+    assert_eq!(
+        fetch_token_amount(&harness.svm, source_no_ata),
+        REDEEM_AMOUNT
+    );
     assert_eq!(fetch_token_amount(&harness.svm, pdas.vault), REDEEM_AMOUNT);
 
     ProgramOwnedRedeemFixture {
@@ -175,7 +181,10 @@ fn redeem_from_program_owned_yes_winner_burns_yes_and_pays_full() {
     send_ixs(&mut harness.svm, &burn_authority, &[ix]);
 
     assert_eq!(fetch_token_amount(&harness.svm, source_yes_ata), 0);
-    assert_eq!(fetch_token_amount(&harness.svm, source_no_ata), REDEEM_AMOUNT);
+    assert_eq!(
+        fetch_token_amount(&harness.svm, source_no_ata),
+        REDEEM_AMOUNT
+    );
     assert_eq!(
         fetch_token_amount(&harness.svm, usdc_destination),
         REDEEM_AMOUNT
@@ -207,7 +216,10 @@ fn redeem_from_program_owned_loser_burns_no_and_pays_zero_when_yes_wins() {
     );
     send_ixs(&mut harness.svm, &burn_authority, &[ix]);
 
-    assert_eq!(fetch_token_amount(&harness.svm, source_yes_ata), REDEEM_AMOUNT);
+    assert_eq!(
+        fetch_token_amount(&harness.svm, source_yes_ata),
+        REDEEM_AMOUNT
+    );
     assert_eq!(fetch_token_amount(&harness.svm, source_no_ata), 0);
     assert_eq!(fetch_token_amount(&harness.svm, usdc_destination), 0);
     assert_eq!(fetch_token_amount(&harness.svm, pdas.vault), REDEEM_AMOUNT);
@@ -238,7 +250,10 @@ fn redeem_from_program_owned_invalid_burns_yes_and_pays_half() {
     send_ixs(&mut harness.svm, &burn_authority, &[ix]);
 
     assert_eq!(fetch_token_amount(&harness.svm, source_yes_ata), 0);
-    assert_eq!(fetch_token_amount(&harness.svm, source_no_ata), REDEEM_AMOUNT);
+    assert_eq!(
+        fetch_token_amount(&harness.svm, source_no_ata),
+        REDEEM_AMOUNT
+    );
     assert_eq!(
         fetch_token_amount(&harness.svm, usdc_destination),
         REDEEM_AMOUNT / 2
@@ -273,7 +288,10 @@ fn redeem_from_program_owned_invalid_burns_no_and_pays_half() {
     );
     send_ixs(&mut harness.svm, &burn_authority, &[ix]);
 
-    assert_eq!(fetch_token_amount(&harness.svm, source_yes_ata), REDEEM_AMOUNT);
+    assert_eq!(
+        fetch_token_amount(&harness.svm, source_yes_ata),
+        REDEEM_AMOUNT
+    );
     assert_eq!(fetch_token_amount(&harness.svm, source_no_ata), 0);
     assert_eq!(
         fetch_token_amount(&harness.svm, usdc_destination),

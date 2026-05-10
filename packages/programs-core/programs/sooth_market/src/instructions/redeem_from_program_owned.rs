@@ -65,7 +65,11 @@ pub struct RedeemFromProgramOwned<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handler(ctx: Context<RedeemFromProgramOwned>, amount_yes: u64, amount_no: u64) -> Result<()> {
+pub fn handler(
+    ctx: Context<RedeemFromProgramOwned>,
+    amount_yes: u64,
+    amount_no: u64,
+) -> Result<()> {
     require!(
         ctx.accounts.market.is_settled(),
         SoothMarketError::MarketNotSettled
@@ -75,10 +79,12 @@ pub fn handler(ctx: Context<RedeemFromProgramOwned>, amount_yes: u64, amount_no:
     let usdc_payout = match outcome {
         OUTCOME_YES => amount_yes,
         OUTCOME_NO => amount_no,
-        OUTCOME_INVALID => amount_yes
-            .checked_add(amount_no)
-            .ok_or(SoothMarketError::MathOverflow)?
-            / 2,
+        OUTCOME_INVALID => {
+            amount_yes
+                .checked_add(amount_no)
+                .ok_or(SoothMarketError::MathOverflow)?
+                / 2
+        }
         _ => return err!(SoothMarketError::InvalidOutcome),
     };
 
