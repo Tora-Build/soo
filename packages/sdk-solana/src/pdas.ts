@@ -66,6 +66,7 @@ const SEED_BOOK_AUTHORISED_OPERATORS = enc.encode("authorised_operators");
 const SEED_BOOK_SEPARATOR = enc.encode("-");
 const SEED_BOOK_TRUE = enc.encode("true");
 const SEED_BOOK_FALSE = enc.encode("false");
+const SEED_BOOK_PRICE_LADDER = enc.encode("price_ladder");
 
 function assertMarketId(marketId: MarketId): Buffer {
   if (marketId.length !== 16) {
@@ -604,6 +605,26 @@ export function deriveBookAuthorisedOperatorsPda(
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_BOOK_AUTHORISED_OPERATORS), Buffer.from(role)],
+    assertSoothBookProgramId(programs),
+  );
+}
+
+// PriceLadder PDA — Monaco-fork seed `[b"price_ladder", authority, distinctSeed]`.
+// `seed-localnet.mjs` initialises the protocol-default ladder under
+// `(seedAuthority, "sooth-default")`. Callers building order-request ixs
+// pass the resolved ladder PDA directly; this helper centralises the
+// derivation so SDK consumers don't have to repeat the seed bytes.
+export function deriveBookPriceLadderPda(
+  authority: PublicKey,
+  distinctSeed: string,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from(SEED_BOOK_PRICE_LADDER),
+      authority.toBuffer(),
+      Buffer.from(distinctSeed),
+    ],
     assertSoothBookProgramId(programs),
   );
 }
