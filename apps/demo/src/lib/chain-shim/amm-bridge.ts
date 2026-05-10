@@ -293,6 +293,108 @@ export async function dispatchAmmRead(
       return USDC_DECIMALS;
     }
 
+    case "isMarketRegistered": {
+      // SoothBookTerminal gates the trade form on this read.
+      // EVM contract: SoothBook.isMarketRegistered(market) → bool. On Solana
+      // a "registered" book market means the bookMarketPda account exists.
+      // The URL path is `/orderbook/<addr>`; spec 19's convention uses the
+      // bookMarketPda directly, while spec 18 / TradingContextBar links use
+      // the soothMarketPda. Be tolerant of both: try args[0] as bookMarketPda
+      // first (most direct), then fall back to deriving bookMarketPda from
+      // args[0] interpreted as soothMarketPda.
+      const raw = call.args?.[0];
+      if (typeof raw !== "string" || !raw) return false;
+      const tail = raw.startsWith("0x")
+        ? raw.slice(2)
+        : raw.startsWith("sol:")
+          ? raw.slice(4)
+          : raw;
+      let candidate: PublicKey;
+      try {
+        candidate = new PublicKey(tail);
+      } catch {
+        return false;
+      }
+      try {
+        // Path 1: candidate is already the bookMarketPda.
+        const direct = await ctx.connection.getAccountInfo(candidate);
+        if (direct) return true;
+        // Path 2: candidate is the soothMarketPda; derive bookMarketPda.
+        const programIds = ctx.adapter.programIds;
+        const [bookMarketPda] = deriveBookMarketPda(candidate, programIds);
+        const derived = await ctx.connection.getAccountInfo(bookMarketPda);
+        return Boolean(derived);
+      } catch {
+        return false;
+      }
+    }
+
+    case "getBalance": {
+      // SoothBook.getBalance(marketKey, user) → (yesShares, noShares) in WAD.
+      // `marketKey` is the FNV hash of `marketAddress` produced by viem-shim
+      // (see useOrderbookTrade.ts:259) — not invertible to a Solana PDA.
+      // Resolve the market via `ctx.marketRef` (the active market on the
+      // demo page), fetch the on-chain Market account to learn yes/no mint
+      // pubkeys, then read the user's outcome ATA balances.
+      //
+      // Returns 0n on each side for users with no ATA (never traded) — that
+      // matches the empty-state semantics upstream's hooks expect.
+      if (!ctx.marketRef) return [0n, 0n] as const;
+      const userRef = toAddressRef(call.args?.[1]);
+      if (!userRef) return [0n, 0n] as const;
+      const userTail = userRef.replace(/^sol:/, "");
+      let userPk: PublicKey;
+      try {
+        userPk = new PublicKey(userTail);
+      } catch {
+        return [0n, 0n] as const;
+      }
+      let soothMarketPda: PublicKey;
+      try {
+        soothMarketPda = decodeSolMarketRef(ctx.marketRef);
+      } catch {
+        return [0n, 0n] as const;
+      }
+      try {
+        // Fetch the Market account to recover yesMint / noMint. The adapter
+        // doesn't expose a public read for this, so we re-derive the
+        // soothMarket Anchor program inline (same minimal AnchorProvider
+        // shape dispatchAddAdjudicator uses).
+        const stubWallet = {
+          publicKey: userPk,
+          signTransaction: async <T>(tx: T): Promise<T> => tx,
+          signAllTransactions: async <T>(txs: T[]): Promise<T[]> => txs,
+        };
+        const provider = new AnchorProvider(
+          ctx.connection,
+          stubWallet as never,
+          { commitment: "confirmed", preflightCommitment: "confirmed" },
+        );
+        const programIdl = {
+          ...soothMarketIdl,
+          address: ctx.adapter.programIds.soothMarket.toBase58(),
+        };
+        const program = new Program(programIdl as Idl, provider);
+        const market = (await (program.account as any).market.fetchNullable(
+          soothMarketPda,
+        )) as { yesMint?: PublicKey; noMint?: PublicKey } | null;
+        if (!market?.yesMint || !market?.noMint) return [0n, 0n] as const;
+        const yesAta = getAssociatedTokenAddressSync(market.yesMint, userPk);
+        const noAta = getAssociatedTokenAddressSync(market.noMint, userPk);
+        const [yesShares, noShares] = await Promise.all([
+          getAccount(ctx.connection, yesAta)
+            .then((a) => a.amount)
+            .catch(() => 0n),
+          getAccount(ctx.connection, noAta)
+            .then((a) => a.amount)
+            .catch(() => 0n),
+        ]);
+        return [yesShares, noShares] as const;
+      } catch {
+        return [0n, 0n] as const;
+      }
+    }
+
     default:
       return NOT_HANDLED;
   }
