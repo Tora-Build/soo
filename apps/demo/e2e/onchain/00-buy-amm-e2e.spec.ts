@@ -285,6 +285,15 @@ test.describe("AMM buy-yes (real e2e against solana-test-validator)", () => {
       )
       .toMatch(new RegExp(`${expectedTotalShares}[\\s.]+YES`));
 
+    // UI health invariants — fail if the visible page contradicts on-chain
+    // truth. The on-chain assertion above catches protocol bugs; these
+    // catch chain-shim / hooks / React Query bugs that leave the page in
+    // a stale or error state. See PR #3 + memory feedback_e2e_must_assert_ui_health.
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
+    await expect(page.locator("text=/Application error/i")).toHaveCount(0);
+
     // eslint-disable-next-line no-console
     console.log(
       `[spec] after yesShares=${yesAfter} usdc=${usdcAfter} delta=${usdcDelta}`,

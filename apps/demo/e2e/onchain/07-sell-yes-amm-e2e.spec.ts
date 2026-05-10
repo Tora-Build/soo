@@ -220,6 +220,12 @@ test.describe("AMM sell-yes (UI-driven, adapter-direct buy as setup)", () => {
         : expectedUnlock - lockEntry!.unlockAt;
     expect(skew).toBeLessThanOrEqual(60n);
 
+    // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
+    await expect(page.locator("text=/Application error/i")).toHaveCount(0);
+
     // eslint-disable-next-line no-console
     console.log(
       `[spec-07] sold 5 YES; locked=${lockEntry!.amountUsdc} unlock_at=${lockEntry!.unlockAt}` +

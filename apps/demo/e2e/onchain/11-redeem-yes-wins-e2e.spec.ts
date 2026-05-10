@@ -153,5 +153,11 @@ test.describe("Redeem (YES wins) — UI-driven", () => {
     // YES winner: only the winning side is burned + paid 1:1; NO untouched.
     expect(noAfter).toBe(noBefore);
     expect(usdcAfter - usdcBefore).toBe(yesBefore);
+
+    // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
+    await expect(page.locator("text=/Application error/i")).toHaveCount(0);
   });
 });

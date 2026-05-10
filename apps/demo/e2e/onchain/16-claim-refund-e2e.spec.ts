@@ -93,10 +93,7 @@ test.describe("claim refund (UI-driven, Surfpool-gated)", () => {
       60_000,
     );
 
-    const userUsdcAta = getAssociatedTokenAddressSync(
-      usdcMint,
-      user.publicKey,
-    );
+    const userUsdcAta = getAssociatedTokenAddressSync(usdcMint, user.publicKey);
     const userUsdcBefore = (await getAccount(conn, userUsdcAta)).amount;
 
     await page.goto(`/portfolio?market=${fresh.marketPda.toBase58()}`);
@@ -125,5 +122,11 @@ test.describe("claim refund (UI-driven, Surfpool-gated)", () => {
       .toBeNull();
     const userUsdcAfter = (await getAccount(conn, userUsdcAta)).amount;
     expect(userUsdcAfter - userUsdcBefore).toBe(lockedCost);
+
+    // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
+    await expect(page.locator("text=/Application error/i")).toHaveCount(0);
   });
 });
