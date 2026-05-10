@@ -140,14 +140,36 @@ test.describe("orderbook roundtrip (UI + adapter, sooth_book)", () => {
     //    and never settles.
     await page.goto(`/orderbook/${ob.bookMarketPda.toBase58()}`);
     await page.waitForLoadState("domcontentloaded");
-    await page
-      .locator('[data-testid="ob-submit-button"]')
+    // Connect the test wallet so the page renders in its real "connected"
+    // state (USDC balance, BUY button enabled, no insufficient-funds toast).
+    // Without this the video walkthrough shows red validation errors that
+    // read as failure even when the spec's on-chain assertion passes.
+    await page.evaluate(async () => {
+      const w = window as unknown as {
+        _connectTestWallet?: () => Promise<void>;
+      };
+      await w._connectTestWallet?.();
+    });
+    const submitBtn = page.locator('[data-testid="ob-submit-button"]');
+    await submitBtn
       .or(page.locator("text=/Market not yet on SoothBook/i"))
       .or(page.locator("text=/sooth_book program is not deployed/i"))
       .first()
       .waitFor({ state: "visible", timeout: 30_000 });
     const errorText = await page.locator("text=/Application error/i").count();
     expect(errorText).toBe(0);
+
+    // UI health invariants — fail if the visible state looks broken,
+    // not just because the page mounted. The on-chain assertion further
+    // down catches protocol bugs; these catch UI/chain-shim bugs that
+    // leave the page rendering in a stale or error state.
+    await expect(submitBtn).toBeEnabled({ timeout: 15_000 });
+    await expect(page.locator("text=/Insufficient USDC/i")).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
 
     // 5. Cancel the order via adapter. Cancel processes the
     //    OrderRequestQueue entry; once empty the queue length drops.

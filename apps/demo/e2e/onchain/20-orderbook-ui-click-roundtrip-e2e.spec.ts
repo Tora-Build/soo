@@ -153,5 +153,15 @@ test.describe("orderbook UI-click round-trip (sooth_book)", () => {
     });
 
     expect(finalLen).toBeGreaterThan(lenBefore);
+
+    // UI health invariant — fail if the post-submit toast lies. The
+    // chain-shim's synthetic receipt must claim status="success" so
+    // useOrderbookTrade.executeWrite doesn't throw "Transaction reverted
+    // on-chain" on a tx that actually landed. Without this assert, every
+    // orderbook submit could show a red error toast and the on-chain
+    // assertion would still pass (silent UI failure).
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
   });
 });

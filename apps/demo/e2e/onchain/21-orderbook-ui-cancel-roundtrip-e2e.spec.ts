@@ -283,6 +283,11 @@ test.describe("orderbook UI-click cancel round-trip (sooth_book)", () => {
     //    after `useOrderbookTrade.cancelOrder` finishes (it calls
     //    `refresh()` from useIndexerOrders).
     await expect(orderRow).toHaveCount(0, { timeout: 30_000 });
+
+    // UI health invariant — the cancel toast must not show "reverted".
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
   });
 });
 
