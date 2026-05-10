@@ -109,5 +109,11 @@ test.describe("trade to graduation (UI-driven)", () => {
 
     const post = await fetchAmmState(conn, ammStatePda);
     expect(post?.isGraduated).toBe(true);
+
+    // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
+    await expect(page.locator("text=/Application error/i")).toHaveCount(0);
   });
 });

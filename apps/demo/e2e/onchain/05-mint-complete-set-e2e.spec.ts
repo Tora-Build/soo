@@ -78,5 +78,11 @@ test.describe("mint complete-set (UI-driven)", () => {
     const usdcAfter = await getTokenBalance(conn, usdcMint, TEST_PUBKEY);
     expect(noAfter - noBefore).toBe(TEN_USDC);
     expect(usdcBefore - usdcAfter).toBe(TEN_USDC);
+
+    // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
+    await expect(page.locator("text=/Application error/i")).toHaveCount(0);
   });
 });

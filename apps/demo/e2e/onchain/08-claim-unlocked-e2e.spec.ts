@@ -145,5 +145,11 @@ test.describe("AMM claim_unlocked (UI-driven, Surfpool-gated)", () => {
     const lockVaultAfter = await readBalance(lockVault);
     expect(userUsdcAfter - userUsdcBefore).toBe(lockedAmount);
     expect(lockVaultBefore - lockVaultAfter).toBe(lockedAmount);
+
+    // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
+    await expect(page.locator("text=/Application error/i")).toHaveCount(0);
   });
 });

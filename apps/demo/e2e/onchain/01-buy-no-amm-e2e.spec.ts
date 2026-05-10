@@ -124,5 +124,11 @@ test.describe("AMM buy-no (real e2e against solana-test-validator)", () => {
     // gross fee miscalculation.
     expect(usdcDelta).toBeGreaterThanOrEqual(4_900_000n);
     expect(usdcDelta).toBeLessThan(5_500_000n);
+
+    // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
+    await expect(page.locator("text=/Application error/i")).toHaveCount(0);
   });
 });

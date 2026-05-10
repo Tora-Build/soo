@@ -165,6 +165,15 @@ test.describe("attest + settle (UI-driven via OperatorActionsPanel)", () => {
     expect(adjAfter).not.toBeNull();
     expect(adjAfter!.attestedOutcome).toBe(WINNING_YES);
 
+    // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.
+    // Asserted before the cleanup wallet swap so any error toast surfaced
+    // by the operator-panel actions is captured against the creator-bound
+    // page state.
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
+    await expect(page.locator("text=/Application error/i")).toHaveCount(0);
+
     // Cleanup: swap back to the user wallet so spec 11 sees the
     // standard authority.
     const userBytes = readKeypairBytes("user-keypair.json");

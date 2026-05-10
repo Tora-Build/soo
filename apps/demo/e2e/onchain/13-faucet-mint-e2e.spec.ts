@@ -45,5 +45,11 @@ test.describe("faucet mint (UI-driven)", () => {
         timeout: 60_000,
       })
       .toBe(before + FAUCET_AMOUNT);
+
+    // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
+    await expect(page.locator("text=/Application error/i")).toHaveCount(0);
   });
 });

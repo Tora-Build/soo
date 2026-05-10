@@ -73,5 +73,14 @@ test.describe("AMM page without wallet connect", () => {
       () => (window as unknown as { __lastSig: string | null }).__lastSig,
     );
     expect(lastSig).toBeNull();
+
+    // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.
+    // No tx fired so "Transaction reverted on-chain" should never appear; an
+    // unhandled exception in the unconnected render path would leak as
+    // "Application error". Both must be absent.
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
+    await expect(page.locator("text=/Application error/i")).toHaveCount(0);
   });
 });
