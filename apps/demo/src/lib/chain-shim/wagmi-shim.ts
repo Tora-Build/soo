@@ -13,7 +13,13 @@
 // or `any` so upstream call sites compile without modification. The Solana
 // fork doesn't actually decode any of these — they're inputs to a sentinel.
 
-import { useEffect, useContext, useState, type ContextType } from "react";
+import {
+  useEffect,
+  useContext,
+  useMemo,
+  useState,
+  type ContextType,
+} from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import type { Address, Chain, Hash, TransactionReceipt } from "./viem-shim";
 import {
@@ -315,33 +321,48 @@ export function usePublicClient(_args?: unknown): ShimPublicClient {
   // with a bankrun-backed shim, and balance reads need to flow through
   // *that* connection (not the wallet-adapter ConnectionProvider's).
   const effectiveConnection = demo?.adapter?.connection ?? connection;
-  // Build the bridge contexts lazily — when DemoProvider isn't mounted
-  // (e.g. some early-render paths) both are null and reads fall through
-  // to `undefined` like before.
-  const bridge: AmmBridgeCtx | null = demo
-    ? {
-        adapter: demo.adapter,
-        connection: effectiveConnection as never,
-        userBase58: demo.userRef
-          ? demo.userRef.replace(/^sol:/, "")
-          : undefined,
-        signer: demo.signer,
-        marketRef: demo.marketRef,
-      }
-    : null;
-  const portfolio: PortfolioBridgeCtx | null = demo
-    ? {
-        adapter: demo.adapter,
-        knownMarkets: demo.marketRef ? [demo.marketRef] : [],
-      }
-    : null;
-  const markets: MarketsBridgeCtx | null = demo
-    ? {
-        adapter: demo.adapter,
-        knownMarkets: demo.marketRef ? [demo.marketRef] : [],
-      }
-    : null;
-  return makeShimPublicClient(effectiveConnection, bridge, portfolio, markets);
+  // Memoize on the actual identity inputs. Without this the function
+  // returns a NEW ShimPublicClient on every render, which thrashes any
+  // useEffect/useCallback in upstream hooks that take publicClient as
+  // a dep (notably useOrderbook.fetchOrderbook → setIsLoading(true)
+  // re-fires every render → panelLoading never resolves to false).
+  return useMemo(() => {
+    const bridge: AmmBridgeCtx | null = demo
+      ? {
+          adapter: demo.adapter,
+          connection: effectiveConnection as never,
+          userBase58: demo.userRef
+            ? demo.userRef.replace(/^sol:/, "")
+            : undefined,
+          signer: demo.signer,
+          marketRef: demo.marketRef,
+        }
+      : null;
+    const portfolio: PortfolioBridgeCtx | null = demo
+      ? {
+          adapter: demo.adapter,
+          knownMarkets: demo.marketRef ? [demo.marketRef] : [],
+        }
+      : null;
+    const markets: MarketsBridgeCtx | null = demo
+      ? {
+          adapter: demo.adapter,
+          knownMarkets: demo.marketRef ? [demo.marketRef] : [],
+        }
+      : null;
+    return makeShimPublicClient(
+      effectiveConnection,
+      bridge,
+      portfolio,
+      markets,
+    );
+  }, [
+    effectiveConnection,
+    demo?.adapter,
+    demo?.userRef,
+    demo?.marketRef,
+    demo?.signer,
+  ]);
 }
 
 export function useWalletClient(_args?: unknown) {

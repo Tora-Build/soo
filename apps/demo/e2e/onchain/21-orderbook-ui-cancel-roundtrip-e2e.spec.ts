@@ -58,20 +58,7 @@ import {
 const PRICE_YES_TICK = 400; // matches spec 20 (BUY YES @ 40¢ = tick 400)
 
 test.describe("orderbook UI-click cancel round-trip (sooth_book)", () => {
-  // BLOCKED: UserOrdersPanel `panelLoading` (= obLoading || isIndexerLoading)
-  // never resolves to false on the Solana fork after the order is placed and
-  // process_order_request lands. Synth getLogs returns the right OrderPlaced
-  // shape (verified via console probe — orders found: 1 with side=1, tick=400),
-  // but useIndexerOrders.openOrders never propagates to a row and the panel's
-  // "No open orders" empty-state never appears either. Root cause not isolated;
-  // hypothesis: useOrderbook.fetchOrderbook's scanTickDepth (~2160 multicall
-  // dispatchRead legs through the chain-shim) may starve the React Query
-  // resolver in this run path. See commit 1763b1f for full debugging notes.
-  //
-  // Cancel path itself is wired and tested via the `cancelById` shape in
-  // dispatchOrderbookWrite (amm-bridge.ts ~line 993). Once the panel renders
-  // a row, this spec should pass with no further chain-shim changes.
-  test.fixme("UI place → process_order_request → UI cancel → Order PDA closes", async ({
+  test("UI place → process_order_request → UI cancel → Order PDA closes", async ({
     page,
   }) => {
     test.setTimeout(240_000);

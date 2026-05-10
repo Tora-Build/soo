@@ -34,7 +34,9 @@ sooth-protocol-types = { path = "../../crates/sooth-protocol-types" }
 test-case = "3.2.1"
 litesvm = "=0.2.1"
 solana-sdk = "=1.18.26"
-spl-associated-token-account = "=2.3.0"
+spl-associated-token-account = { version = "=2.3.0", features = [
+  "no-entrypoint",
+] }
 sooth_amm = { path = "../sooth_amm", features = ["cpi"] }
 sooth_adjudicator = { path = "../sooth_adjudicator", features = ["cpi"] }
 sooth_launchpad = { path = "../sooth_launchpad", features = ["cpi"] }
