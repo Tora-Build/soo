@@ -134,7 +134,7 @@ const SOOTH_LAUNCHPAD_ID = new PublicKey(soothLaunchpadIdl.address);
 const SOOTH_ADJUDICATOR_ID = new PublicKey(soothAdjudicatorIdl.address);
 const SOOTH_BOOK_ID = programIdOrFallback(
   soothBookIdl.address,
-  new PublicKey("5gAMjRCaZfb4NtHmBf2RZHFJVLAAZQ1PBP6dRNPUTxkH"),
+  new PublicKey("DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X"),
 );
 const soothBookProgramIdl = {
   ...soothBookIdl,

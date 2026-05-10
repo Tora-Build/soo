@@ -1,5 +1,5 @@
 {
-  "address": "67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k",
+  "address": "JsDen5joP97Jo6qBQyzDncD9ZbaFAMdaXeUMrZ7udyr",
   "metadata": {
     "name": "sooth_amm",
     "version": "0.0.0",
@@ -627,7 +627,7 @@
             "on the pre-graduation buy path. Address-pinned to the canonical",
             "launchpad ID."
           ],
-          "address": "HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3"
+          "address": "8pHPMF1U86iDQTB5ig1xyjbcDMfS1PXi8LLD4EiqNqm8"
         },
         {
           "name": "instruction_sysvar",
@@ -994,7 +994,7 @@
             "`sooth_market` program — CPI'd into for the PDA-signed",
             "`vault → lock_vault` transfer. Mandatory after the Wave 1B fix."
           ],
-          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+          "address": "5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH"
         },
         {
           "name": "instruction_sysvar",
@@ -1241,7 +1241,7 @@
             "`lock_vault → user_usdc_ata` transfer. Mandatory after the Wave",
             "1B fix (the `lock_authority` PDA is owned by `sooth_market`)."
           ],
-          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+          "address": "5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH"
         },
         {
           "name": "instruction_sysvar",

@@ -22,24 +22,24 @@ use anchor_lang::prelude::Pubkey;
 /// the legitimate AMM program, and by parent-ix introspection on those
 /// helpers.
 pub const SOOTH_AMM_PROGRAM_ID: Pubkey =
-    anchor_lang::pubkey!("67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k");
+    anchor_lang::pubkey!("JsDen5joP97Jo6qBQyzDncD9ZbaFAMdaXeUMrZ7udyr");
 
 /// `sooth_market` program ID. Mirrors `sooth_market::declare_id!`.
 pub const SOOTH_MARKET_PROGRAM_ID: Pubkey =
-    anchor_lang::pubkey!("ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n");
+    anchor_lang::pubkey!("5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH");
 
 /// `sooth_launchpad` program ID. Mirrors `sooth_launchpad::declare_id!`.
 /// Used by `sooth_amm::trade_positions` to bind the `protocol_config` PDA's
 /// owner + derivation to the canonical launchpad singleton (see the
 /// `seeds::program` / `owner` constraints there).
 pub const SOOTH_LAUNCHPAD_PROGRAM_ID: Pubkey =
-    anchor_lang::pubkey!("HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3");
+    anchor_lang::pubkey!("8pHPMF1U86iDQTB5ig1xyjbcDMfS1PXi8LLD4EiqNqm8");
 
 /// `sooth_adjudicator` program ID. Mirrors `sooth_adjudicator::declare_id!`.
 /// Used by `sooth_market::lock_for_resolution` / `settle` for the parent-ix
 /// introspection auth path (the call-time half of Codex's C2 mitigation).
 pub const SOOTH_ADJUDICATOR_PROGRAM_ID: Pubkey =
-    anchor_lang::pubkey!("4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8");
+    anchor_lang::pubkey!("H8DtUDKvaJZVj2Vt2RZW9FmUCjpJAQunffGFcCTbctos");
 
 /// Canonical devnet USDC mint, pinned on every `usdc_mint` Accounts entry
 /// across the AMM/market/launchpad. Mainnet uses `EPjFW...`; the SDK swaps

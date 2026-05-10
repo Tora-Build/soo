@@ -56,7 +56,7 @@ export const adjudicatorIdl = loadIdl("sooth_adjudicator");
 export const bookIdl = loadIdl("sooth_book");
 
 const SOOTH_BOOK_DEFAULT_PROGRAM_ID = new PublicKey(
-  "5gAMjRCaZfb4NtHmBf2RZHFJVLAAZQ1PBP6dRNPUTxkH",
+  "DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X",
 );
 
 function programIdOrFallback(idlAddress: unknown, fallback: PublicKey): PublicKey {

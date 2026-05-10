@@ -1,5 +1,5 @@
 {
-  "address": "4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8",
+  "address": "H8DtUDKvaJZVj2Vt2RZW9FmUCjpJAQunffGFcCTbctos",
   "metadata": {
     "name": "sooth_adjudicator",
     "version": "0.0.0",
@@ -121,7 +121,7 @@
         },
         {
           "name": "sooth_market_program",
-          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+          "address": "5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH"
         },
         {
           "name": "instruction_sysvar",
@@ -255,7 +255,7 @@
         },
         {
           "name": "sooth_market_program",
-          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+          "address": "5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH"
         },
         {
           "name": "instruction_sysvar",
@@ -516,7 +516,7 @@
         },
         {
           "name": "sooth_market_program",
-          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+          "address": "5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH"
         },
         {
           "name": "instruction_sysvar",

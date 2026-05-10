@@ -23,7 +23,7 @@ pub mod events;
 pub mod instructions;
 pub mod state;
 
-declare_id!("5gAMjRCaZfb4NtHmBf2RZHFJVLAAZQ1PBP6dRNPUTxkH");
+declare_id!("DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X");
 
 #[program]
 pub mod sooth_book {

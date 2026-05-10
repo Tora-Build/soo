@@ -1,5 +1,5 @@
 {
-  "address": "5gAMjRCaZfb4NtHmBf2RZHFJVLAAZQ1PBP6dRNPUTxkH",
+  "address": "DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X",
   "metadata": {
     "name": "sooth_book",
     "version": "0.15.5",
@@ -2979,7 +2979,7 @@
         },
         {
           "name": "sooth_market_program",
-          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+          "address": "5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH"
         },
         {
           "name": "token_program",
@@ -4510,7 +4510,7 @@
         },
         {
           "name": "sooth_market_program",
-          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+          "address": "5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH"
         },
         {
           "name": "token_program",

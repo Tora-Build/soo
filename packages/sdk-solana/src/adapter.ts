@@ -277,7 +277,7 @@ interface SoothBookMethods {
 }
 
 const SOOTH_BOOK_DEFAULT_PROGRAM_ID = new PublicKey(
-  "5gAMjRCaZfb4NtHmBf2RZHFJVLAAZQ1PBP6dRNPUTxkH",
+  "DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X",
 );
 
 export class SolanaChainAdapter implements ChainAdapter {

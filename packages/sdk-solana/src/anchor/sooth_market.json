@@ -1,5 +1,5 @@
 {
-  "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n",
+  "address": "5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH",
   "metadata": {
     "name": "sooth_market",
     "version": "0.0.0",
@@ -231,7 +231,7 @@
           "docs": [
             "AMM program, invoked manually to avoid a Cargo cycle."
           ],
-          "address": "67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k"
+          "address": "JsDen5joP97Jo6qBQyzDncD9ZbaFAMdaXeUMrZ7udyr"
         },
         {
           "name": "instruction_sysvar",
