@@ -140,6 +140,16 @@ test.describe("orderbook roundtrip (UI + adapter, sooth_book)", () => {
     //    and never settles.
     await page.goto(`/orderbook/${ob.bookMarketPda.toBase58()}`);
     await page.waitForLoadState("domcontentloaded");
+    // Connect the test wallet so the page renders in its real "connected"
+    // state (USDC balance, BUY button enabled, no insufficient-funds toast).
+    // Without this the video walkthrough shows red validation errors that
+    // read as failure even when the spec's on-chain assertion passes.
+    await page.evaluate(async () => {
+      const w = window as unknown as {
+        _connectTestWallet?: () => Promise<void>;
+      };
+      await w._connectTestWallet?.();
+    });
     await page
       .locator('[data-testid="ob-submit-button"]')
       .or(page.locator("text=/Market not yet on SoothBook/i"))
