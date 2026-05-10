@@ -42,8 +42,7 @@ use crate::SOOTH_AMM_PROGRAM_ID;
 // `sooth_amm::state::lock_entry` ties `LOCK_ENTRY_TOTAL_LEN` to the live
 // `LockEntry::SPACE`, so any drift here trips the build of `sooth_amm`.
 use sooth_account_offsets::{
-    LOCK_ENTRY_MARKET_OFFSET, LOCK_ENTRY_TOTAL_LEN as LOCK_ENTRY_MIN_LEN,
-    LOCK_ENTRY_USER_OFFSET,
+    LOCK_ENTRY_MARKET_OFFSET, LOCK_ENTRY_TOTAL_LEN as LOCK_ENTRY_MIN_LEN, LOCK_ENTRY_USER_OFFSET,
 };
 
 #[derive(Accounts)]

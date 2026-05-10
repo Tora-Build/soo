@@ -6,10 +6,10 @@
 import { describe, expect, it } from "vitest";
 import { __testing } from "../src/adapter.js";
 
-const AMM_ID = "67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k";
-const MARKET_ID = "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n";
-const LAUNCHPAD_ID = "HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3";
-const ADJUDICATOR_ID = "4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8";
+const AMM_ID = "JsDen5joP97Jo6qBQyzDncD9ZbaFAMdaXeUMrZ7udyr";
+const MARKET_ID = "5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH";
+const LAUNCHPAD_ID = "8pHPMF1U86iDQTB5ig1xyjbcDMfS1PXi8LLD4EiqNqm8";
+const ADJUDICATOR_ID = "H8DtUDKvaJZVj2Vt2RZW9FmUCjpJAQunffGFcCTbctos";
 
 const lookup = new Map([
   [AMM_ID, __testing.SOOTH_AMM_ERROR_TABLE],

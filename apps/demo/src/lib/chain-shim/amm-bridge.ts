@@ -47,6 +47,8 @@ import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
+  deriveBookMarketPda,
+  deriveBookPriceLadderPda,
   deriveUserUsdcAta,
   yesPriceWad,
   LN2_WAD,
@@ -58,6 +60,7 @@ import {
   type SoothRequest,
 } from "@sooth/sdk-solana";
 import { AnchorProvider, Program, type Idl } from "@coral-xyz/anchor";
+import { findUserOpenOrderAtLevel } from "./orderbook-reads";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -70,6 +73,12 @@ export interface AmmBridgeCtx {
   // The signer hooked up at the wallet-adapter layer (production) or
   // injected via DemoProvider override (tests).
   signer?: SignerRef | null;
+  // Active market ref (`sol:<soothMarketPda>`) — orderbook dispatchers need
+  // it to resolve the real market PDA, since upstream's orderbook hook
+  // hashes `marketAddress` into a `marketKey` (FNV-1a in our shim) that's
+  // useless on Solana. Sourced from `DemoContext.marketRef`. May be null on
+  // pages where no single market is active.
+  marketRef?: string | null;
 }
 
 // USDC mint decimals are fixed at 6 across all Sooth deployments. Centralize
@@ -285,6 +294,121 @@ export async function dispatchAmmRead(
       return USDC_DECIMALS;
     }
 
+    case "getOrdersAtTick": {
+      // EVM SoothBook.getOrdersAtTick(marketKey, side, tick) →
+      // (totalAmount: u128, makers: Order[]). The Solana fork doesn't
+      // surface a per-tick aggregator on-chain; the demo reads this to
+      // populate the order-book depth panel, which we leave empty
+      // (depth view shows "no liquidity"). The non-empty tuple shape is
+      // load-bearing — `useOrderbook.scanTickDepth` destructures
+      // `[totalAmount] = result.result`, and a bare `undefined` would
+      // throw "Cannot destructure undefined" inside the multicall loop,
+      // leaving `useOrderbook.isLoading` stuck on the first poll.
+      return [0n, [] as readonly unknown[]] as const;
+    }
+
+    case "isMarketRegistered": {
+      // SoothBookTerminal gates the trade form on this read.
+      // EVM contract: SoothBook.isMarketRegistered(market) → bool. On Solana
+      // a "registered" book market means the bookMarketPda account exists.
+      // The URL path is `/orderbook/<addr>`; spec 19's convention uses the
+      // bookMarketPda directly, while spec 18 / TradingContextBar links use
+      // the soothMarketPda. Be tolerant of both: try args[0] as bookMarketPda
+      // first (most direct), then fall back to deriving bookMarketPda from
+      // args[0] interpreted as soothMarketPda.
+      const raw = call.args?.[0];
+      if (typeof raw !== "string" || !raw) return false;
+      const tail = raw.startsWith("0x")
+        ? raw.slice(2)
+        : raw.startsWith("sol:")
+          ? raw.slice(4)
+          : raw;
+      let candidate: PublicKey;
+      try {
+        candidate = new PublicKey(tail);
+      } catch {
+        return false;
+      }
+      try {
+        // Path 1: candidate is already the bookMarketPda.
+        const direct = await ctx.connection.getAccountInfo(candidate);
+        if (direct) return true;
+        // Path 2: candidate is the soothMarketPda; derive bookMarketPda.
+        const programIds = ctx.adapter.programIds;
+        const [bookMarketPda] = deriveBookMarketPda(candidate, programIds);
+        const derived = await ctx.connection.getAccountInfo(bookMarketPda);
+        return Boolean(derived);
+      } catch {
+        return false;
+      }
+    }
+
+    case "getBalance": {
+      // SoothBook.getBalance(marketKey, user) → (yesShares, noShares) in WAD.
+      // `marketKey` is the FNV hash of `marketAddress` produced by viem-shim
+      // (see useOrderbookTrade.ts:259) — not invertible to a Solana PDA.
+      // Resolve the market via `ctx.marketRef` (the active market on the
+      // demo page), fetch the on-chain Market account to learn yes/no mint
+      // pubkeys, then read the user's outcome ATA balances.
+      //
+      // Returns 0n on each side for users with no ATA (never traded) — that
+      // matches the empty-state semantics upstream's hooks expect.
+      if (!ctx.marketRef) return [0n, 0n] as const;
+      const userRef = toAddressRef(call.args?.[1]);
+      if (!userRef) return [0n, 0n] as const;
+      const userTail = userRef.replace(/^sol:/, "");
+      let userPk: PublicKey;
+      try {
+        userPk = new PublicKey(userTail);
+      } catch {
+        return [0n, 0n] as const;
+      }
+      let soothMarketPda: PublicKey;
+      try {
+        soothMarketPda = decodeSolMarketRef(ctx.marketRef);
+      } catch {
+        return [0n, 0n] as const;
+      }
+      try {
+        // Fetch the Market account to recover yesMint / noMint. The adapter
+        // doesn't expose a public read for this, so we re-derive the
+        // soothMarket Anchor program inline (same minimal AnchorProvider
+        // shape dispatchAddAdjudicator uses).
+        const stubWallet = {
+          publicKey: userPk,
+          signTransaction: async <T>(tx: T): Promise<T> => tx,
+          signAllTransactions: async <T>(txs: T[]): Promise<T[]> => txs,
+        };
+        const provider = new AnchorProvider(
+          ctx.connection,
+          stubWallet as never,
+          { commitment: "confirmed", preflightCommitment: "confirmed" },
+        );
+        const programIdl = {
+          ...soothMarketIdl,
+          address: ctx.adapter.programIds.soothMarket.toBase58(),
+        };
+        const program = new Program(programIdl as Idl, provider);
+        const market = (await (program.account as any).market.fetchNullable(
+          soothMarketPda,
+        )) as { yesMint?: PublicKey; noMint?: PublicKey } | null;
+        if (!market?.yesMint || !market?.noMint) return [0n, 0n] as const;
+        const yesAta = getAssociatedTokenAddressSync(market.yesMint, userPk);
+        const noAta = getAssociatedTokenAddressSync(market.noMint, userPk);
+        const [yesShares, noShares] = await Promise.all([
+          getAccount(ctx.connection, yesAta)
+            .then((a) => a.amount)
+            .catch(() => 0n),
+          getAccount(ctx.connection, noAta)
+            .then((a) => a.amount)
+            .catch(() => 0n),
+        ]);
+        return [yesShares, noShares] as const;
+      } catch {
+        return [0n, 0n] as const;
+      }
+    }
+
     default:
       return NOT_HANDLED;
   }
@@ -354,6 +478,14 @@ export async function dispatchAmmWrite(
   }
   if (call.functionName === "redeemLp") {
     return dispatchRedeemLp(call, ctx);
+  }
+  if (
+    call.functionName === "buyYes" ||
+    call.functionName === "buyNo" ||
+    call.functionName === "cancel" ||
+    call.functionName === "cancelById"
+  ) {
+    return dispatchOrderbookWrite(call, ctx);
   }
   return NOT_HANDLED;
 }
@@ -917,6 +1049,246 @@ async function dispatchRedeemLp(
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+// ─── sooth_book orderbook dispatch ──────────────────────────────────────────
+//
+// Upstream's `useOrderbookTrade.placeOrder` calls `writeContractAsync` with
+// EVM ABI signatures that pre-date the Solana fork:
+//
+//   buyYes(marketKey, tick, shares, escrow, matchLimit)
+//   buyNo (marketKey, tick, shares, escrow, matchLimit)
+//   cancel(marketKey, side, tick)
+//   cancelById(orderId)
+//
+// `marketKey` is the FNV-1a folding of `marketAddress` produced by
+// `viem-shim.keccak256` — it's a deterministic identifier, but not invertible
+// to the underlying sooth_market PDA. We therefore source the active market
+// from `ctx.marketRef` (set by `DemoContext.marketRef` during page mount) and
+// derive `bookMarketPda = deriveBookMarketPda(soothMarketPda, programIds)` at
+// dispatch time.
+//
+// Outcome encoding:
+//   - The hook inverts EVM's outcome convention internally
+//     (see useOrderbookTrade.ts:482-485 — outcome===0 calls buyYes,
+//     outcome===1 calls buyNo). The hook never exposes the raw outcome
+//     enum to the shim layer.
+//   - `buyYes` therefore means "place an order requesting YES shares"
+//     → on Solana, sooth_book seeds `MarketOutcome` index 0 = YES,
+//       so we pass `side=1` (BuyArgs convention: 1=YES) and the SDK
+//       adapter maps that to outcomeIndex=0.
+//   - `buyNo`  → `side=0` (BuyArgs: 0=NO) → adapter outcomeIndex=1.
+//
+// Tick → priceWad: PRICE_TICK_WAD = 10^15 (W4 default ladder step). The
+// adapter performs the multiplication; we pass `tick` through unchanged.
+//
+// Sell path: upstream's hook collapses sell-YES into "buyNo at oppositeTick"
+// (and sell-NO into "buyYes at oppositeTick") by submitting the inverted-side
+// purchase against the resting ask. The Solana sooth_book ix is the same
+// `create_order_request` either way — we route through `buildOrderbookBuy` for
+// both buyYes and buyNo because the on-chain side is determined by the
+// outcome+`for_outcome=true` combination, not by an "isBuy" flag at this level.
+async function dispatchOrderbookWrite(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const fn = call.functionName ?? "";
+  const { signer, userBase58 } = requireWallet(ctx, fn);
+
+  if (!ctx.marketRef) {
+    throw new Error(
+      `${fn}: no active marketRef on chain-shim ctx — orderbook writes need DemoContext.marketRef`,
+    );
+  }
+  const soothMarketPda = decodeSolMarketRef(ctx.marketRef);
+  const programIds = ctx.adapter.programIds;
+  const [bookMarketPda] = deriveBookMarketPda(soothMarketPda, programIds);
+  const bookMarketRef = `sol:${bookMarketPda.toBase58()}`;
+
+  const args = (call.args ?? []) as readonly unknown[];
+
+  if (fn === "cancelById") {
+    // EVM args: `[orderId: bigint | string]`. On Solana there is no
+    // monotonic order id — Order PDAs are addressed by their pubkey. Two
+    // shapes are accepted:
+    //
+    //   1. base58 / `sol:<base58>` — tunneled through by Solana-aware
+    //      callers (e.g. our synthetic `OrderPlaced.args.orderId` from
+    //      orderbook-reads.synthOrderPlacedLogs). Used directly.
+    //   2. numeric `bigint` (the EVM convention) — unreachable on the
+    //      Solana fork because the chain-shim's getLogs only ever emits
+    //      base58 orderIds. We still surface a descriptive error so a
+    //      stale upstream cache (e.g. the deprecated useOrderStore) that
+    //      replays a numeric id fails fast.
+    const raw = args[0];
+    let orderRef: string;
+    if (typeof raw === "string") {
+      orderRef = raw.startsWith("sol:")
+        ? raw
+        : raw.startsWith("0x")
+          ? `sol:${raw.slice(2)}`
+          : `sol:${raw}`;
+    } else {
+      throw new Error(
+        "cancelById: Solana orderbook expects a base58 Order PDA, got numeric id (no EVM↔Solana order-id mapping)",
+      );
+    }
+    const req = await ctx.adapter.buildOrderbookCancel(bookMarketRef, orderRef);
+    return submitAndSynth(ctx.adapter, req, signer);
+  }
+
+  if (fn === "cancel") {
+    // EVM args: `[marketKey, side, tick]` — collapses into an iter-cancel
+    // over every Order at a (side, tick) level. Solana has no bulk-by-
+    // level cancel ix, but the upstream `parseOrderId` produces this
+    // shape whenever the order id stored locally is `${side}:${tick}`
+    // (e.g. UserOrdersPanel rows synthesized via the shim's `getLogs`
+    // RPC fallback). We resolve the on-chain Order PDA at that level by
+    // querying `program.account.order.all` filtered by
+    // `(market, purchaser)` and matching `(forOutcome, expectedPrice)`.
+    //
+    // If no Order PDA matches the level (most common: the OrderRequest
+    // hasn't been processed into an Order yet — `process_order_request`
+    // must run first via the off-chain crank or an adapter-direct call),
+    // surface a descriptive error so the upstream toast pipeline tells
+    // the user to retry.
+    const sideRaw = args[1];
+    const tickRaw = args[2];
+    const side = (Number(sideRaw) === 1 ? 1 : 0) as 0 | 1;
+    const tickArg =
+      typeof tickRaw === "number" ? tickRaw : Number(tickRaw ?? 0);
+    if (!Number.isFinite(tickArg) || tickArg < 1 || tickArg > 999) {
+      throw new Error(
+        `cancel: invalid tick ${String(tickRaw)} (expected 1..999)`,
+      );
+    }
+    const order = await findUserOpenOrderAtLevel(
+      ctx.connection,
+      ctx.adapter,
+      ctx.marketRef,
+      userBase58,
+      side,
+      tickArg,
+    );
+    if (!order) {
+      throw new Error(
+        `cancel: no open Order PDA found at side=${side} tick=${tickArg} for ${userBase58}. ` +
+          "If a place tx just confirmed, the OrderRequest may not have been processed yet — " +
+          "run process_order_request and retry.",
+      );
+    }
+    const req = await ctx.adapter.buildOrderbookCancel(
+      bookMarketRef,
+      order.pda.toBase58(),
+    );
+    return submitAndSynth(ctx.adapter, req, signer);
+  }
+
+  // buyYes / buyNo path. EVM args: `[marketKey, tick, shares, escrow, matchLimit]`.
+  const tickRaw = args[1];
+  const sharesRaw = args[2];
+  const tick = typeof tickRaw === "number" ? tickRaw : Number(tickRaw ?? 0);
+  if (!Number.isFinite(tick) || tick < 1 || tick > 999) {
+    throw new Error(`${fn}: invalid tick ${String(tickRaw)} (expected 1..999)`);
+  }
+  // Upstream packs shares as 18-decimal WAD (`parseUnits(amount, 18)`); the
+  // Solana stake is u64 USDC base units (6 decimals). Translate at the
+  // boundary by floor-dividing out 12 decimals.
+  const sharesWad =
+    typeof sharesRaw === "bigint"
+      ? sharesRaw
+      : BigInt((sharesRaw as { toString(): string })?.toString() ?? "0");
+  if (sharesWad <= 0n) {
+    throw new Error(`${fn}: shares must be positive`);
+  }
+  const stakeUsdc = sharesWad / 10n ** 12n;
+  if (stakeUsdc <= 0n) {
+    throw new Error(`${fn}: shares too small after WAD→USDC truncation`);
+  }
+
+  // Resolve the protocol-default price ladder PDA. The bridge reads the
+  // seed-localnet output from `import.meta.env.VITE_SOOTH_BOOK_PRICE_LADDER_PDA`;
+  // if missing we fall back to deriving from
+  // `(VITE_SOOTH_BOOK_SEED_AUTHORITY, "sooth-default")`. Tests + production
+  // can override via either env var.
+  const priceLadderPda = resolvePriceLadderPda(ctx);
+  if (!priceLadderPda) {
+    throw new Error(
+      `${fn}: no resolved price-ladder PDA — set VITE_SOOTH_BOOK_PRICE_LADDER_PDA (or VITE_SOOTH_BOOK_SEED_AUTHORITY) via seed-localnet`,
+    );
+  }
+
+  // Outcome encoding (see header comment for the full rationale).
+  // BuyArgs.side: 0=NO, 1=YES.
+  const side: 0 | 1 = fn === "buyYes" ? 1 : 0;
+
+  // 16-byte fresh distinguisher per call.
+  const distinctSeed = new Uint8Array(16);
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.getRandomValues === "function"
+  ) {
+    crypto.getRandomValues(distinctSeed);
+  } else {
+    for (let i = 0; i < 16; i++)
+      distinctSeed[i] = Math.floor(Math.random() * 256);
+  }
+
+  // BuyArgs is the umbrella shape; the Solana-only meta channel
+  // (`user`, `priceLadder`, `distinctSeed`) is surfaced via the ext
+  // interface. TypeScript's `BuyArgs` doesn't include those slots — we
+  // augment locally and the adapter narrows back at the boundary.
+  const req = await ctx.adapter.buildOrderbookBuy(bookMarketRef, {
+    side,
+    tick,
+    amount: stakeUsdc,
+    escrow: typeof args[3] === "boolean" ? args[3] : false,
+    matchLimit:
+      typeof args[4] === "number"
+        ? args[4]
+        : Number((args[4] as { toString(): string })?.toString() ?? 100),
+    // Solana-only meta extensions. Cast: BuyArgs is intentionally narrow on
+    // the umbrella surface — the adapter pulls these via OrderbookOrderArgsExt.
+    user: `sol:${userBase58}`,
+    priceLadder: `sol:${priceLadderPda.toBase58()}`,
+    distinctSeed,
+  } as never);
+
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+function decodeSolMarketRef(ref: string): PublicKey {
+  const stripped = ref.startsWith("sol:") ? ref.slice(4) : ref;
+  return new PublicKey(stripped);
+}
+
+function resolvePriceLadderPda(ctx: AmmBridgeCtx): PublicKey | null {
+  const env =
+    (import.meta as unknown as { env?: Record<string, string | undefined> })
+      .env ?? {};
+
+  const direct = env.VITE_SOOTH_BOOK_PRICE_LADDER_PDA;
+  if (direct) {
+    try {
+      return new PublicKey(direct);
+    } catch {
+      // fallthrough to authority-based derivation
+    }
+  }
+  const authorityBase58 = env.VITE_SOOTH_BOOK_SEED_AUTHORITY;
+  const ladderSeed = env.VITE_SOOTH_BOOK_PRICE_LADDER_SEED ?? "sooth-default";
+  if (!authorityBase58) return null;
+  try {
+    const authority = new PublicKey(authorityBase58);
+    const [pda] = deriveBookPriceLadderPda(
+      authority,
+      ladderSeed,
+      ctx.adapter.programIds,
+    );
+    return pda;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Coerce one of the address-shaped values upstream code passes through the

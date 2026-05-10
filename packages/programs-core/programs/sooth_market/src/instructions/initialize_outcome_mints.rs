@@ -7,15 +7,15 @@
 //!
 //! ## Accounts created
 //!
-//! - `yes_mint`  SPL Mint   seeds = `[b"mint", market_id, b"y"]`,
-//!                          mint_authority = `vault_authority` PDA, decimals = 6
-//! - `no_mint`   SPL Mint   seeds = `[b"mint", market_id, b"n"]`,
-//!                          mint_authority = `vault_authority` PDA, decimals = 6
+//! - `yes_mint` — SPL Mint, seeds `[b"mint", market_id, b"y"]`,
+//!   mint_authority = `vault_authority` PDA, decimals = 6.
+//! - `no_mint` — SPL Mint, seeds `[b"mint", market_id, b"n"]`,
+//!   mint_authority = `vault_authority` PDA, decimals = 6.
 //!
 //! Pre-existing:
-//! - `market`    Market PDA — must be in `Initializing` and the mints must
-//!                            not yet have been created (yes_mint == default
-//!                            on the Market record per the leg-1 contract).
+//! - `market` — must be in `Initializing` and the mints must not yet have
+//!   been created (yes_mint == default on the Market record per the leg-1
+//!   contract).
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token};

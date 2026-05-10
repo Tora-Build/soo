@@ -20,11 +20,23 @@ packages/programs-core/target/idl/
 *.so
 *.wasm
 
+# Pre-rotation deploy keypair backups (snapshot dirs created when
+# target/deploy/*-keypair.json get rotated; the rotation pubkeys are
+# documented in commit messages, the backup files contain private
+# keys and must never be committed).
+.deploy-keypair-backup-*/
+
 # Editor
 .vscode/
 .idea/
 *.swp
 .DS_Store
+
+# Per-user agent state (Claude Code skills, hooks, scratch). Not
+# shared — different developers run different tooling, and
+# project-scoped agent state causes merge churn. Pattern follows
+# `.cursor/`, `.aider/`, etc.
+.claude/
 
 # Env
 .env

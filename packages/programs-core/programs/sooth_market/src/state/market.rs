@@ -101,7 +101,7 @@ impl Market {
         + 8                        // deadline
         + MarketLifecycle::SPACE   // lifecycle
         + 1                        // winning_outcome
-        + 1 + 1 + 1 + 1 + 1;       // 5 bumps
+        + 1 + 1 + 1 + 1 + 1; // 5 bumps
 
     pub fn is_open(&self) -> bool {
         matches!(self.lifecycle, MarketLifecycle::Open)

@@ -42,6 +42,7 @@ import {
 import {
   soothAdjudicatorIdl,
   soothAmmIdl,
+  soothBookIdl,
   soothLaunchpadIdl,
   soothMarketIdl,
 } from "./anchor/index.js";
@@ -55,6 +56,23 @@ import {
 import {
   deriveAdjudicatorAllowlistPda,
   deriveAmmStatePda,
+  deriveBookAuthorisedOperatorsPda,
+  deriveBookEscrowPda,
+  deriveBookFundingPda,
+  deriveBookLegacyMarketPositionPda,
+  deriveBookMarketLiquiditiesPda,
+  deriveBookMarketMatchingPoolPda,
+  deriveBookMarketMatchingQueuePda,
+  deriveBookMarketOutcomePda,
+  deriveBookMarketPositionPda,
+  deriveBookMarketPda,
+  deriveBookMarketTypePda,
+  deriveBookOrderPda,
+  deriveBookOrderRequestOrderPda,
+  deriveBookOrderRequestQueuePda,
+  deriveBookPriceLadderPda,
+  deriveBookTradePda,
+  deriveFeePoolAuthorityPda,
   deriveFeePoolVaultAta,
   deriveLockAuthorityPda,
   deriveAdjudicatorPda,
@@ -117,11 +135,117 @@ export interface SolanaAdapterOptions {
   connection?: Connection;
 }
 
+export interface MintCompleteSetToProgramOwnedArgs {
+  market: MarketRef;
+  payer: AddressRef;
+  destinationAuthority: AddressRef;
+  destinationYesAta: AddressRef;
+  destinationNoAta: AddressRef;
+  amount: bigint;
+}
+
+export interface RedeemFromProgramOwnedArgs {
+  market: MarketRef;
+  burnAuthority: AddressRef;
+  sourceYesAta: AddressRef;
+  sourceNoAta: AddressRef;
+  usdcDestination: AddressRef;
+  amountYes: bigint;
+  amountNo: bigint;
+}
+
+export interface MintIntoBookArgs {
+  user: AddressRef;
+  bookMarketPda: AddressRef;
+  soothMarketPda: AddressRef;
+  priceYes: bigint;
+  stake: bigint;
+  distinctSeedYes: bigint;
+  distinctSeedNo: bigint;
+}
+
+export interface SettleRestingOrdersArgs {
+  caller: AddressRef;
+  bookMarketPda: AddressRef;
+  soothMarketPda: AddressRef;
+  orderPda: AddressRef;
+  // Optional test/operator fast path. When omitted, the adapter fetches the
+  // Order account and reads its purchaser field.
+  orderPurchaser?: AddressRef;
+}
+
+export interface CreateBookMarketArgs {
+  creator: AddressRef;
+  soothMarketPda: AddressRef;
+  eventAccount?: AddressRef;
+  marketType?: AddressRef;
+  marketTypeName?: string;
+  marketTypeDiscriminator?: string | null;
+  marketTypeValue?: string | null;
+  title: string;
+  maxDecimals?: number;
+  marketLockTimestamp: bigint;
+  eventStartTimestamp: bigint;
+  marketLockOrderBehaviour?: "none" | "cancelUnmatched";
+  existingBookMarketPda?: AddressRef;
+  mint?: AddressRef;
+}
+
+export interface ProcessOrderRequestArgs {
+  crankOperator: AddressRef;
+  bookMarketPda: AddressRef;
+  purchaser: AddressRef;
+  distinctSeed: Uint8Array;
+  marketOutcomeIndex: number;
+  expectedPrice: bigint;
+  forOutcome: boolean;
+}
+
+export interface MatchOrdersArgs {
+  crankOperator: AddressRef;
+  bookMarketPda: AddressRef;
+  orderForPda: AddressRef;
+  orderAgainstPda: AddressRef;
+  orderForPurchaser: AddressRef;
+  orderAgainstPurchaser: AddressRef;
+  marketOutcomeIndex: number;
+  orderForExpectedPrice: bigint;
+  orderAgainstExpectedPrice: bigint;
+  tradeForSeed: Uint8Array;
+  tradeAgainstSeed: Uint8Array;
+}
+
+// Solana-only meta channel for `buildOrderbookBuy` / `buildOrderbookSell`.
+// The umbrella `BuyArgs` shape is intentionally narrow (chain-agnostic
+// tick + amount), so Solana-specific inputs (purchaser, price-ladder PDA,
+// distinct seed, expiry) are surfaced here as optional extensions —
+// same convention as `TradeArgs.user`.
+export interface OrderbookOrderArgsExt {
+  // Purchaser pubkey (also payer + signer). Required — the umbrella
+  // `BuyArgs` doesn't carry a wallet identity, so callers must thread it
+  // through this meta channel.
+  user: AddressRef;
+  // Resolved PriceLadder PDA. Required — there is no canonical default the
+  // SDK can derive without knowing the protocol authority and seed. The
+  // localnet seed is `[b"price_ladder", seedAuthority, "sooth-default"]`
+  // (see `apps/demo/scripts/seed-localnet.mjs`), but production deployments
+  // pick their own. Use `deriveBookPriceLadderPda` if you have the
+  // authority + seed pair.
+  priceLadder: AddressRef;
+  // 16-byte order distinguisher. Defaults to fresh random bytes; supply
+  // for deterministic tests.
+  distinctSeed?: Uint8Array;
+  // Optional unix-seconds expiry for the order request. `null`/omitted →
+  // never expires (matches the on-chain `expires_on: Option<i64>`).
+  expiresOn?: bigint | null;
+}
+
 // Resolved-once cache key — `Market` PDA layout is invariant across reads.
 interface ResolvedMarket {
   marketPda: PublicKey;
   marketId: Uint8Array; // 16 bytes
   creator: PublicKey;
+  adjudicator: PublicKey;
   questionHash: Uint8Array; // 32 bytes (raw — we don't have the original question on-chain)
   yesMint: PublicKey;
   noMint: PublicKey;
@@ -140,6 +264,63 @@ interface PriorityFeeCacheEntry {
 // Anchor's IDL types are loose; we re-narrow at the boundary.
 type AnyProgram = Program<Idl>;
 
+type AnchorIxBuilder = {
+  accounts(accounts: Record<string, PublicKey | null>): {
+    instruction(): Promise<TransactionInstruction>;
+  };
+};
+
+interface SoothMarketProgramOwnedMethods {
+  mintCompleteSetToProgramOwned(amount: BN): AnchorIxBuilder;
+  redeemFromProgramOwned(amountYes: BN, amountNo: BN): AnchorIxBuilder;
+}
+
+type BookMarketOrderBehaviourWire =
+  | { none: Record<string, never> }
+  | { cancelUnmatched: Record<string, never> };
+
+interface SoothBookMethods {
+  mintIntoBook(
+    priceYes: BN,
+    stake: BN,
+    distinctSeedYes: BN,
+    distinctSeedNo: BN,
+  ): AnchorIxBuilder;
+  settleRestingOrders(): AnchorIxBuilder;
+  createMarket(
+    soothMarketPda: PublicKey,
+    eventAccount: PublicKey,
+    marketTypeDiscriminator: string | null,
+    marketTypeValue: string | null,
+    title: string,
+    maxDecimals: number,
+    marketLockTimestamp: BN,
+    eventStartTimestamp: BN,
+    marketLockOrderBehaviour: BookMarketOrderBehaviourWire,
+  ): AnchorIxBuilder;
+  processOrderRequest(): AnchorIxBuilder;
+  matchOrders(
+    tradeForSeed: number[],
+    tradeAgainstSeed: number[],
+  ): AnchorIxBuilder;
+  // `create_order_request` takes a single `OrderRequestData` struct arg.
+  // Anchor auto-camelCases the struct fields (`market_outcome_index` →
+  // `marketOutcomeIndex`, etc.) on the JS side.
+  createOrderRequest(data: {
+    marketOutcomeIndex: number;
+    forOutcome: boolean;
+    stake: BN;
+    price: BN;
+    distinctSeed: number[]; // 16 bytes
+    expiresOn: BN | null;
+  }): AnchorIxBuilder;
+  cancelOrder(): AnchorIxBuilder;
+}
+
+const SOOTH_BOOK_DEFAULT_PROGRAM_ID = new PublicKey(
+  "DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X",
+);
+
 export class SolanaChainAdapter implements ChainAdapter {
   readonly node: SoothNode;
   readonly chainKind = "solana" as const;
@@ -154,6 +335,7 @@ export class SolanaChainAdapter implements ChainAdapter {
   private readonly soothMarket: AnyProgram;
   private readonly soothLaunchpad: AnyProgram;
   private readonly soothAdjudicator: AnyProgram;
+  private readonly soothBook: AnyProgram;
 
   // Failing-program-ID → error code table. Populated at construction from the
   // resolved program IDs. Decoders use this to disambiguate Anchor codes
@@ -181,10 +363,19 @@ export class SolanaChainAdapter implements ChainAdapter {
         soothAdjudicator:
           opts.programIds.soothAdjudicator ??
           new PublicKey(soothAdjudicatorIdl.address),
+        soothBook:
+          opts.programIds.soothBook ??
+          programIdOrFallback(
+            (soothBookIdl as { address?: string }).address,
+            SOOTH_BOOK_DEFAULT_PROGRAM_ID,
+          ),
       };
     } else {
       const ammStr = opts.node.programs?.soothAmm ?? soothAmmIdl.address;
       const mktStr = opts.node.programs?.soothMarket ?? soothMarketIdl.address;
+      const bookStr =
+        (opts.node.programs as { soothBook?: string } | undefined)?.soothBook ??
+        (soothBookIdl as { address?: string }).address;
       const lpStr =
         (opts.node.programs as { soothLaunchpad?: string } | undefined)
           ?.soothLaunchpad ?? soothLaunchpadIdl.address;
@@ -194,6 +385,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       this.programIds = {
         soothAmm: new PublicKey(ammStr),
         soothMarket: new PublicKey(mktStr),
+        soothBook: programIdOrFallback(bookStr, SOOTH_BOOK_DEFAULT_PROGRAM_ID),
         soothLaunchpad: new PublicKey(lpStr),
         soothAdjudicator: new PublicKey(adjStr),
       };
@@ -257,10 +449,17 @@ export class SolanaChainAdapter implements ChainAdapter {
         new PublicKey(soothAdjudicatorIdl.address)
       ).toBase58(),
     };
+    const bookIdl = {
+      ...soothBookIdl,
+      address: (
+        this.programIds.soothBook ?? SOOTH_BOOK_DEFAULT_PROGRAM_ID
+      ).toBase58(),
+    };
     this.soothAmm = new Program(ammIdl as Idl, provider);
     this.soothMarket = new Program(marketIdl as Idl, provider);
     this.soothLaunchpad = new Program(launchpadIdl as Idl, provider);
     this.soothAdjudicator = new Program(adjudicatorIdl as Idl, provider);
+    this.soothBook = new Program(bookIdl as Idl, provider);
 
     // Build the program-ID → error-table lookup. sooth_adjudicator isn't
     // exposed as a separate `programIds` field today (the SDK doesn't build
@@ -1401,6 +1600,77 @@ export class SolanaChainAdapter implements ChainAdapter {
       },
     };
   }
+
+  async buildRedeemFromProgramOwned(
+    args: RedeemFromProgramOwnedArgs,
+  ): Promise<ClaimRequest> {
+    if (args.amountYes < 0n || args.amountNo < 0n) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildRedeemFromProgramOwned: amounts must be non-negative",
+      });
+    }
+    if (args.amountYes === 0n && args.amountNo === 0n) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildRedeemFromProgramOwned: at least one amount must be positive",
+      });
+    }
+
+    const burnAuthorityPk = decodePubkeyRef(args.burnAuthority);
+    const marketPda = decodePubkeyRef(args.market);
+    const sourceYesAta = decodePubkeyRef(args.sourceYesAta);
+    const sourceNoAta = decodePubkeyRef(args.sourceNoAta);
+    const usdcDestination = decodePubkeyRef(args.usdcDestination);
+    const resolved = await this.fetchMarket(marketPda);
+
+    const [vaultAuthority] = deriveVaultAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const marketVault = deriveMarketVaultAta(
+      resolved.marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+
+    const methods = this.soothMarket
+      .methods as unknown as SoothMarketProgramOwnedMethods;
+    const ix: TransactionInstruction = await methods
+      .redeemFromProgramOwned(
+        bigIntToBn(args.amountYes),
+        bigIntToBn(args.amountNo),
+      )
+      .accounts({
+        market: marketPda,
+        vaultAuthority,
+        yesMint: resolved.yesMint,
+        noMint: resolved.noMint,
+        usdcMint: this.usdcMint,
+        marketVault,
+        sourceYesAta,
+        sourceNoAta,
+        usdcDestination,
+        burnAuthority: burnAuthorityPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "claim",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, burnAuthorityPk),
+        operation: "redeemFromProgramOwned",
+        amountYesStr: args.amountYes.toString(),
+        amountNoStr: args.amountNo.toString(),
+      },
+    };
+  }
+
   // ─── Mint / merge complete-set ─────────────────────────────────────────
   //
   // 1 USDC ↔ 1·WAD YES + 1·WAD NO at parity. No price impact, no fee.
@@ -1420,6 +1690,84 @@ export class SolanaChainAdapter implements ChainAdapter {
     args: CompleteSetArgs,
   ): Promise<TradeRequest> {
     return this.buildCompleteSetInner(market, args, "mint");
+  }
+
+  async buildMintCompleteSetToProgramOwned(
+    args: MintCompleteSetToProgramOwnedArgs,
+  ): Promise<TradeRequest> {
+    if (args.amount <= 0n) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildMintCompleteSetToProgramOwned: amount must be positive",
+      });
+    }
+
+    const payerPk = decodePubkeyRef(args.payer);
+    const destinationAuthority = decodePubkeyRef(args.destinationAuthority);
+    const destinationYesAta = decodePubkeyRef(args.destinationYesAta);
+    const destinationNoAta = decodePubkeyRef(args.destinationNoAta);
+    const marketPda = decodePubkeyRef(args.market);
+    const resolved = await this.fetchMarket(marketPda);
+
+    const [vaultAuthority] = deriveVaultAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const marketVault = deriveMarketVaultAta(
+      resolved.marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+    const payerUsdcAta = deriveUserUsdcAta(payerPk, this.usdcMint);
+
+    const methods = this.soothMarket
+      .methods as unknown as SoothMarketProgramOwnedMethods;
+    const ix: TransactionInstruction = await methods
+      .mintCompleteSetToProgramOwned(bigIntToBn(args.amount))
+      .accounts({
+        market: marketPda,
+        vaultAuthority,
+        yesMint: resolved.yesMint,
+        noMint: resolved.noMint,
+        usdcMint: this.usdcMint,
+        marketVault,
+        payerUsdcAta,
+        destinationAuthority,
+        destinationYesAta,
+        destinationNoAta,
+        payer: payerPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    const yesAtaIx = createAssociatedTokenAccountIdempotentInstruction(
+      payerPk,
+      destinationYesAta,
+      destinationAuthority,
+      resolved.yesMint,
+    );
+    const noAtaIx = createAssociatedTokenAccountIdempotentInstruction(
+      payerPk,
+      destinationNoAta,
+      destinationAuthority,
+      resolved.noMint,
+    );
+    const preIxs = [serializeIx(yesAtaIx), serializeIx(noAtaIx)];
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      costEstimateWad: args.amount * 1_000_000_000_000n,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, payerPk),
+        operation: "mintCompleteSetToProgramOwned",
+        amountStr: args.amount.toString(),
+        preIxs,
+      },
+    };
   }
 
   async buildMergeCompleteSet(
@@ -1652,23 +2000,906 @@ export class SolanaChainAdapter implements ChainAdapter {
     };
   }
 
+  // ─── sooth_book order lifecycle builders ──────────────────────────────
+
+  async buildMintIntoBook(args: MintIntoBookArgs): Promise<TradeRequest> {
+    assertU128(args.priceYes, "buildMintIntoBook: priceYes");
+    assertU64(args.stake, "buildMintIntoBook: stake");
+    assertU64(args.distinctSeedYes, "buildMintIntoBook: distinctSeedYes");
+    assertU64(args.distinctSeedNo, "buildMintIntoBook: distinctSeedNo");
+    if (args.stake <= 0n) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildMintIntoBook: stake must be positive",
+      });
+    }
+
+    const bookPrograms = this.bookProgramIds();
+    const userPk = decodePubkeyRef(args.user);
+    const soothMarketPda = decodePubkeyRef(args.soothMarketPda);
+    const bookMarketPda = decodePubkeyRef(args.bookMarketPda);
+    const [expectedBookMarket] = deriveBookMarketPda(
+      soothMarketPda,
+      bookPrograms,
+    );
+    assertPublicKeyEquals(
+      bookMarketPda,
+      expectedBookMarket,
+      "buildMintIntoBook: bookMarketPda",
+    );
+
+    const resolved = await this.fetchMarket(soothMarketPda);
+    const [vaultAuthority] = deriveVaultAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const userUsdcAta = deriveUserUsdcAta(userPk, this.usdcMint);
+    const marketVault = deriveMarketVaultAta(
+      resolved.marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+    const [bookEscrowAuthority] = deriveBookEscrowPda(
+      bookMarketPda,
+      bookPrograms,
+    );
+    const marketEscrowYes = getAssociatedTokenAddressSync(
+      resolved.yesMint,
+      bookEscrowAuthority,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const marketEscrowNo = getAssociatedTokenAddressSync(
+      resolved.noMint,
+      bookEscrowAuthority,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const [orderYes] = deriveBookOrderPda(
+      bookMarketPda,
+      args.distinctSeedYes,
+      bookPrograms,
+    );
+    const [orderNo] = deriveBookOrderPda(
+      bookMarketPda,
+      args.distinctSeedNo,
+      bookPrograms,
+    );
+    const [marketLiquidities] = deriveBookMarketLiquiditiesPda(
+      bookMarketPda,
+      bookPrograms,
+    );
+    const [marketPosition] = deriveBookMarketPositionPda(
+      bookMarketPda,
+      userPk,
+      bookPrograms,
+    );
+    const [orderRequestQueue] = deriveBookOrderRequestQueuePda(
+      bookMarketPda,
+      bookPrograms,
+    );
+
+    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const ix: TransactionInstruction = await methods
+      .mintIntoBook(
+        bigIntToBn(args.priceYes),
+        bigIntToBn(args.stake),
+        bigIntToBn(args.distinctSeedYes),
+        bigIntToBn(args.distinctSeedNo),
+      )
+      .accounts({
+        user: userPk,
+        userUsdcAta,
+        usdcMint: this.usdcMint,
+        marketPda: soothMarketPda,
+        vaultAuthority,
+        yesMint: resolved.yesMint,
+        noMint: resolved.noMint,
+        marketVault,
+        bookMarket: bookMarketPda,
+        marketEscrowYes,
+        marketEscrowNo,
+        bookMarketEscrowAuthority: bookEscrowAuthority,
+        orderYes,
+        orderNo,
+        marketLiquidities,
+        marketPosition,
+        soothMarketProgram: this.programIds.soothMarket,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: SYSVAR_RENT_PUBKEY,
+      })
+      .instruction();
+
+    const yesAtaIx = createAssociatedTokenAccountIdempotentInstruction(
+      userPk,
+      marketEscrowYes,
+      bookEscrowAuthority,
+      resolved.yesMint,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const noAtaIx = createAssociatedTokenAccountIdempotentInstruction(
+      userPk,
+      marketEscrowNo,
+      bookEscrowAuthority,
+      resolved.noMint,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      costEstimateWad: args.stake * 1_000_000_000_000n,
+      accounts,
+      meta: {
+        marketPda: soothMarketPda.toBase58(),
+        bookMarketPda: bookMarketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "mintIntoBook",
+        priceYesStr: args.priceYes.toString(),
+        stakeStr: args.stake.toString(),
+        distinctSeedYesStr: args.distinctSeedYes.toString(),
+        distinctSeedNoStr: args.distinctSeedNo.toString(),
+        marketEscrowYes: marketEscrowYes.toBase58(),
+        marketEscrowNo: marketEscrowNo.toBase58(),
+        bookMarketEscrowAuthority: bookEscrowAuthority.toBase58(),
+        orderYes: orderYes.toBase58(),
+        orderNo: orderNo.toBase58(),
+        marketLiquidities: marketLiquidities.toBase58(),
+        marketPosition: marketPosition.toBase58(),
+        orderRequestQueue: orderRequestQueue.toBase58(),
+        preIxs: [serializeIx(yesAtaIx), serializeIx(noAtaIx)],
+      },
+    };
+  }
+
+  async buildSettleRestingOrders(
+    args: SettleRestingOrdersArgs,
+  ): Promise<ClaimRequest> {
+    const bookPrograms = this.bookProgramIds();
+    const callerPk = decodePubkeyRef(args.caller);
+    const soothMarketPda = decodePubkeyRef(args.soothMarketPda);
+    const bookMarketPda = decodePubkeyRef(args.bookMarketPda);
+    const orderPda = decodePubkeyRef(args.orderPda);
+    const [expectedBookMarket] = deriveBookMarketPda(
+      soothMarketPda,
+      bookPrograms,
+    );
+    assertPublicKeyEquals(
+      bookMarketPda,
+      expectedBookMarket,
+      "buildSettleRestingOrders: bookMarketPda",
+    );
+
+    const resolved = await this.fetchMarket(soothMarketPda);
+    const orderPurchaser = args.orderPurchaser
+      ? decodePubkeyRef(args.orderPurchaser)
+      : await this.fetchBookOrderPurchaser(orderPda);
+    const [soothMarketVaultAuthority] = deriveVaultAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const soothMarketVault = deriveMarketVaultAta(
+      resolved.marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+    const [marketEscrowAuthority] = deriveBookEscrowPda(
+      bookMarketPda,
+      bookPrograms,
+    );
+    const marketEscrowYes = getAssociatedTokenAddressSync(
+      resolved.yesMint,
+      marketEscrowAuthority,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const marketEscrowNo = getAssociatedTokenAddressSync(
+      resolved.noMint,
+      marketEscrowAuthority,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const purchaserUsdcAta = deriveUserUsdcAta(orderPurchaser, this.usdcMint);
+
+    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const ix: TransactionInstruction = await methods
+      .settleRestingOrders()
+      .accounts({
+        adjudicator: resolved.adjudicator,
+        soothMarketPda,
+        bookMarket: bookMarketPda,
+        order: orderPda,
+        orderPurchaser,
+        yesMint: resolved.yesMint,
+        noMint: resolved.noMint,
+        usdcMint: this.usdcMint,
+        soothMarketVault,
+        soothMarketVaultAuthority,
+        marketEscrowYes,
+        marketEscrowNo,
+        marketEscrowAuthority,
+        purchaserUsdcAta,
+        instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+        soothMarketProgram: this.programIds.soothMarket,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "claim",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: soothMarketPda.toBase58(),
+        bookMarketPda: bookMarketPda.toBase58(),
+        ...buildIxMeta(ix, callerPk),
+        operation: "settleRestingOrders",
+        orderPda: orderPda.toBase58(),
+        orderPurchaser: orderPurchaser.toBase58(),
+        purchaserUsdcAta: purchaserUsdcAta.toBase58(),
+        soothMarketVault: soothMarketVault.toBase58(),
+        marketEscrowYes: marketEscrowYes.toBase58(),
+        marketEscrowNo: marketEscrowNo.toBase58(),
+      },
+    };
+  }
+
+  async buildCreateBookMarket(
+    args: CreateBookMarketArgs,
+  ): Promise<CreateMarketRequest> {
+    assertI64(
+      args.marketLockTimestamp,
+      "buildCreateBookMarket: marketLockTimestamp",
+    );
+    assertI64(
+      args.eventStartTimestamp,
+      "buildCreateBookMarket: eventStartTimestamp",
+    );
+
+    const bookPrograms = this.bookProgramIds();
+    const creatorPk = decodePubkeyRef(args.creator);
+    const soothMarketPda = decodePubkeyRef(args.soothMarketPda);
+    const eventAccount = args.eventAccount
+      ? decodePubkeyRef(args.eventAccount)
+      : soothMarketPda;
+    const marketType = args.marketType
+      ? decodePubkeyRef(args.marketType)
+      : args.marketTypeName
+        ? deriveBookMarketTypePda(args.marketTypeName, bookPrograms)[0]
+        : undefined;
+    if (!marketType) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method:
+          "buildCreateBookMarket — either marketType or marketTypeName is required",
+      });
+    }
+    const [bookMarketPda] = deriveBookMarketPda(soothMarketPda, bookPrograms);
+    const [escrow] = deriveBookEscrowPda(bookMarketPda, bookPrograms);
+    const [funding] = deriveBookFundingPda(bookMarketPda, bookPrograms);
+    const [authorisedOperators] = deriveBookAuthorisedOperatorsPda(
+      "MARKET",
+      bookPrograms,
+    );
+    const mint = args.mint ? decodePubkeyRef(args.mint) : this.usdcMint;
+    const existingMarket = args.existingBookMarketPda
+      ? decodePubkeyRef(args.existingBookMarketPda)
+      : null;
+    const maxDecimals = args.maxDecimals ?? 3;
+    const behaviour = bookMarketOrderBehaviour(
+      args.marketLockOrderBehaviour ?? "none",
+    );
+
+    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const ix: TransactionInstruction = await methods
+      .createMarket(
+        soothMarketPda,
+        eventAccount,
+        args.marketTypeDiscriminator ?? null,
+        args.marketTypeValue ?? null,
+        args.title,
+        maxDecimals,
+        bigIntToBn(args.marketLockTimestamp),
+        bigIntToBn(args.eventStartTimestamp),
+        behaviour,
+      )
+      .accounts({
+        existingMarket,
+        market: bookMarketPda,
+        escrow,
+        marketType,
+        funding,
+        rent: SYSVAR_RENT_PUBKEY,
+        mint,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        marketOperator: creatorPk,
+        authorisedOperators,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "createMarket",
+      serializedTx: undefined,
+      costEstimateWad: 0n,
+      accounts,
+      meta: {
+        marketPda: bookMarketPda.toBase58(),
+        bookMarketPda: bookMarketPda.toBase58(),
+        soothMarketPda: soothMarketPda.toBase58(),
+        ...buildIxMeta(ix, creatorPk),
+        operation: "createBookMarket",
+        eventAccount: eventAccount.toBase58(),
+        marketType: marketType.toBase58(),
+        escrow: escrow.toBase58(),
+        funding: funding.toBase58(),
+        authorisedOperators: authorisedOperators.toBase58(),
+        maxDecimals,
+        marketLockTimestampStr: args.marketLockTimestamp.toString(),
+        eventStartTimestampStr: args.eventStartTimestamp.toString(),
+      },
+    };
+  }
+
+  async buildProcessOrderRequest(
+    args: ProcessOrderRequestArgs,
+  ): Promise<OrderbookRequest> {
+    assertSeed16(args.distinctSeed, "buildProcessOrderRequest: distinctSeed");
+    assertU128(args.expectedPrice, "buildProcessOrderRequest: expectedPrice");
+    const launchpadProgramId = this.requireLaunchpadProgramId(
+      "buildProcessOrderRequest",
+    );
+    const bookPrograms = this.bookProgramIds();
+    const crankOperator = decodePubkeyRef(args.crankOperator);
+    const bookMarketPda = decodePubkeyRef(args.bookMarketPda);
+    const purchaser = decodePubkeyRef(args.purchaser);
+    const [order] = deriveBookOrderRequestOrderPda(
+      bookMarketPda,
+      purchaser,
+      args.distinctSeed,
+      bookPrograms,
+    );
+    const purchaserTokenAccount = getAssociatedTokenAddressSync(
+      this.usdcMint,
+      purchaser,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const [marketPosition] = deriveBookLegacyMarketPositionPda(
+      bookMarketPda,
+      purchaser,
+      bookPrograms,
+    );
+    const [marketMatchingPool] = deriveBookMarketMatchingPoolPda(
+      bookMarketPda,
+      args.marketOutcomeIndex,
+      args.expectedPrice,
+      args.forOutcome,
+      bookPrograms,
+    );
+    const [orderRequestQueue] = deriveBookOrderRequestQueuePda(
+      bookMarketPda,
+      bookPrograms,
+    );
+    const [marketEscrow] = deriveBookEscrowPda(bookMarketPda, bookPrograms);
+    const [protocolConfig] = deriveProtocolConfigPda({
+      soothLaunchpad: launchpadProgramId,
+    });
+    const [feePoolAuthority] = deriveFeePoolAuthorityPda({
+      soothLaunchpad: launchpadProgramId,
+    });
+    const feePoolVault = deriveFeePoolVaultAta(this.usdcMint, {
+      soothLaunchpad: launchpadProgramId,
+    });
+    const [marketLiquidities] = deriveBookMarketLiquiditiesPda(
+      bookMarketPda,
+      bookPrograms,
+    );
+    const [marketMatchingQueue] = deriveBookMarketMatchingQueuePda(
+      bookMarketPda,
+      bookPrograms,
+    );
+
+    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const ix: TransactionInstruction = await methods
+      .processOrderRequest()
+      .accounts({
+        order,
+        purchaserTokenAccount,
+        marketPosition,
+        marketMatchingPool,
+        orderRequestQueue,
+        market: bookMarketPda,
+        marketEscrow,
+        protocolConfig,
+        feePoolAuthority,
+        feePoolVault,
+        marketLiquidities,
+        marketMatchingQueue,
+        crankOperator,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "orderbook",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: bookMarketPda.toBase58(),
+        bookMarketPda: bookMarketPda.toBase58(),
+        ...buildIxMeta(ix, crankOperator),
+        operation: "processOrderRequest",
+        order: order.toBase58(),
+        marketPosition: marketPosition.toBase58(),
+        marketMatchingPool: marketMatchingPool.toBase58(),
+        orderRequestQueue: orderRequestQueue.toBase58(),
+        marketEscrow: marketEscrow.toBase58(),
+        protocolConfig: protocolConfig.toBase58(),
+        feePoolAuthority: feePoolAuthority.toBase58(),
+        feePoolVault: feePoolVault.toBase58(),
+      },
+    };
+  }
+
+  async buildMatchOrders(args: MatchOrdersArgs): Promise<OrderbookRequest> {
+    assertSeed16(args.tradeForSeed, "buildMatchOrders: tradeForSeed");
+    assertSeed16(args.tradeAgainstSeed, "buildMatchOrders: tradeAgainstSeed");
+    assertU128(
+      args.orderForExpectedPrice,
+      "buildMatchOrders: orderForExpectedPrice",
+    );
+    assertU128(
+      args.orderAgainstExpectedPrice,
+      "buildMatchOrders: orderAgainstExpectedPrice",
+    );
+    const launchpadProgramId =
+      this.requireLaunchpadProgramId("buildMatchOrders");
+    const bookPrograms = this.bookProgramIds();
+    const crankOperator = decodePubkeyRef(args.crankOperator);
+    const bookMarketPda = decodePubkeyRef(args.bookMarketPda);
+    const orderFor = decodePubkeyRef(args.orderForPda);
+    const orderAgainst = decodePubkeyRef(args.orderAgainstPda);
+    const orderForPurchaser = decodePubkeyRef(args.orderForPurchaser);
+    const orderAgainstPurchaser = decodePubkeyRef(args.orderAgainstPurchaser);
+    const [tradeFor] = deriveBookTradePda(
+      orderFor,
+      args.tradeForSeed,
+      bookPrograms,
+    );
+    const [tradeAgainst] = deriveBookTradePda(
+      orderAgainst,
+      args.tradeAgainstSeed,
+      bookPrograms,
+    );
+    const [marketPositionFor] = deriveBookLegacyMarketPositionPda(
+      bookMarketPda,
+      orderForPurchaser,
+      bookPrograms,
+    );
+    const [marketPositionAgainst] = deriveBookLegacyMarketPositionPda(
+      bookMarketPda,
+      orderAgainstPurchaser,
+      bookPrograms,
+    );
+    const [marketMatchingPoolFor] = deriveBookMarketMatchingPoolPda(
+      bookMarketPda,
+      args.marketOutcomeIndex,
+      args.orderForExpectedPrice,
+      true,
+      bookPrograms,
+    );
+    const [marketMatchingPoolAgainst] = deriveBookMarketMatchingPoolPda(
+      bookMarketPda,
+      args.marketOutcomeIndex,
+      args.orderAgainstExpectedPrice,
+      false,
+      bookPrograms,
+    );
+    const [marketOutcome] = deriveBookMarketOutcomePda(
+      bookMarketPda,
+      args.marketOutcomeIndex,
+      bookPrograms,
+    );
+    const [authorisedOperators] = deriveBookAuthorisedOperatorsPda(
+      "CRANK",
+      bookPrograms,
+    );
+    const purchaserTokenAccountFor = getAssociatedTokenAddressSync(
+      this.usdcMint,
+      orderForPurchaser,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const purchaserTokenAccountAgainst = getAssociatedTokenAddressSync(
+      this.usdcMint,
+      orderAgainstPurchaser,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const [marketEscrow] = deriveBookEscrowPda(bookMarketPda, bookPrograms);
+    const [protocolConfig] = deriveProtocolConfigPda({
+      soothLaunchpad: launchpadProgramId,
+    });
+    const [feePoolAuthority] = deriveFeePoolAuthorityPda({
+      soothLaunchpad: launchpadProgramId,
+    });
+    const feePoolVault = deriveFeePoolVaultAta(this.usdcMint, {
+      soothLaunchpad: launchpadProgramId,
+    });
+    const [marketLiquidities] = deriveBookMarketLiquiditiesPda(
+      bookMarketPda,
+      bookPrograms,
+    );
+
+    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const ix: TransactionInstruction = await methods
+      .matchOrders(
+        Array.from(args.tradeForSeed),
+        Array.from(args.tradeAgainstSeed),
+      )
+      .accounts({
+        orderAgainst,
+        tradeAgainst,
+        marketPositionAgainst,
+        marketMatchingPoolAgainst,
+        orderFor,
+        tradeFor,
+        marketPositionFor,
+        marketMatchingPoolFor,
+        market: bookMarketPda,
+        marketOutcome,
+        crankOperator,
+        authorisedOperators,
+        purchaserTokenAccountFor,
+        purchaserTokenAccountAgainst,
+        marketEscrow,
+        protocolConfig,
+        feePoolAuthority,
+        feePoolVault,
+        marketLiquidities,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "orderbook",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: bookMarketPda.toBase58(),
+        bookMarketPda: bookMarketPda.toBase58(),
+        ...buildIxMeta(ix, crankOperator),
+        operation: "matchOrders",
+        tradeFor: tradeFor.toBase58(),
+        tradeAgainst: tradeAgainst.toBase58(),
+        protocolConfig: protocolConfig.toBase58(),
+        feePoolAuthority: feePoolAuthority.toBase58(),
+        feePoolVault: feePoolVault.toBase58(),
+      },
+    };
+  }
+
+  // The Monaco-fork `sooth_book::create_order_request` ix backs both the
+  // buy (`for_outcome=true`) and sell (`for_outcome=false`) lifecycle entries.
+  // The umbrella `BuyArgs`/`SellArgs` are intentionally chain-agnostic (just
+  // tick + amount + side), so Solana-specific fields — purchaser, price
+  // ladder PDA, distinct seed, optional expiry — are surfaced through the
+  // `OrderbookOrderArgsExt` meta channel (same convention as
+  // `TradeArgs.user`).
+  //
+  // Tick → price mapping uses the W4 default ladder step
+  // (0.001·WAD = 10^15 base units): `priceWad = tick * 10^15`. This matches
+  // the localnet ladder seeded by `seed-localnet.mjs` and the e2e roundtrip
+  // spec (`apps/demo/e2e/onchain/19-orderbook-roundtrip-e2e.spec.ts`).
+  //
+  // The umbrella `BuyArgs.side` is `0=NO, 1=YES` (mirroring `TradeArgs.outcome`).
+  // The on-chain `MarketOutcome` index seeded by sooth_book is `0=YES, 1=NO`.
+  // We translate at the boundary: `side===1 → outcomeIndex=0`, etc.
   async buildOrderbookBuy(
-    _market: MarketRef,
-    _args: BuyArgs,
+    market: MarketRef,
+    args: BuyArgs,
   ): Promise<OrderbookRequest> {
-    notImplemented("buildOrderbookBuy");
+    return this.buildCreateOrderRequest(
+      market,
+      args,
+      true,
+      "buildOrderbookBuy",
+    );
   }
+
   async buildOrderbookSell(
-    _market: MarketRef,
-    _args: SellArgs,
+    market: MarketRef,
+    args: SellArgs,
   ): Promise<OrderbookRequest> {
-    notImplemented("buildOrderbookSell");
+    return this.buildCreateOrderRequest(
+      market,
+      args,
+      false,
+      "buildOrderbookSell",
+    );
   }
+
+  // Cancel an open Order PDA. `orderId` is the Order account address — accept
+  // both the chain-prefixed `sol:<base58>` ref and a bare base58 string for
+  // ergonomics (the umbrella interface types it as `string`, not `AddressRef`).
+  // The sooth_book `cancel_order` ix expects the matching pool PDA derived
+  // from the order's `(outcome_index, expected_price, for_outcome)` fields,
+  // so we read the Order account on-chain to recover those.
   async buildOrderbookCancel(
-    _market: MarketRef,
-    _orderId: string,
+    market: MarketRef,
+    orderId: string,
   ): Promise<OrderbookRequest> {
-    notImplemented("buildOrderbookCancel");
+    const bookPrograms = this.bookProgramIds();
+    const bookMarketPda = decodePubkeyRef(market);
+    const orderPda = decodeMaybePubkeyRef(orderId);
+
+    // Read Order to recover pool seeds + purchaser. We cannot derive these
+    // from `(market, orderId)` alone — the Order PDA is keyed by a 16-byte
+    // distinct seed and the matching pool by `(outcome, price, for_outcome)`.
+    const orderAccount = await (
+      this.soothBook.account as unknown as {
+        order: {
+          fetchNullable(pda: PublicKey): Promise<{
+            purchaser: PublicKey;
+            market: PublicKey;
+            marketOutcomeIndex: number;
+            forOutcome: boolean;
+            expectedPrice: BN;
+            payer: PublicKey;
+          } | null>;
+        };
+      }
+    ).order.fetchNullable(orderPda);
+    if (!orderAccount) {
+      throw new SoothError({
+        kind: "AccountNotFound",
+        msg: `buildOrderbookCancel: Order PDA not found at ${orderPda.toBase58()}`,
+      });
+    }
+    if (!orderAccount.market.equals(bookMarketPda)) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildOrderbookCancel: order.market (${orderAccount.market.toBase58()}) does not match market arg (${bookMarketPda.toBase58()})`,
+      });
+    }
+
+    const purchaser = orderAccount.purchaser;
+    const purchaserTokenAccount = getAssociatedTokenAddressSync(
+      this.usdcMint,
+      purchaser,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    const [marketPosition] = deriveBookLegacyMarketPositionPda(
+      bookMarketPda,
+      purchaser,
+      bookPrograms,
+    );
+    const [marketOutcome] = deriveBookMarketOutcomePda(
+      bookMarketPda,
+      orderAccount.marketOutcomeIndex,
+      bookPrograms,
+    );
+    const [marketLiquidities] = deriveBookMarketLiquiditiesPda(
+      bookMarketPda,
+      bookPrograms,
+    );
+    const [marketMatchingQueue] = deriveBookMarketMatchingQueuePda(
+      bookMarketPda,
+      bookPrograms,
+    );
+    const expectedPrice = bnToBigInt(orderAccount.expectedPrice);
+    const [marketMatchingPool] = deriveBookMarketMatchingPoolPda(
+      bookMarketPda,
+      orderAccount.marketOutcomeIndex,
+      expectedPrice,
+      orderAccount.forOutcome,
+      bookPrograms,
+    );
+    const [marketEscrow] = deriveBookEscrowPda(bookMarketPda, bookPrograms);
+
+    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const ix: TransactionInstruction = await methods
+      .cancelOrder()
+      .accounts({
+        order: orderPda,
+        purchaser,
+        purchaserTokenAccount,
+        payer: orderAccount.payer,
+        market: bookMarketPda,
+        marketLiquidities,
+        marketOutcome,
+        marketMatchingQueue,
+        marketMatchingPool,
+        marketEscrow,
+        marketPosition,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "orderbook",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: bookMarketPda.toBase58(),
+        bookMarketPda: bookMarketPda.toBase58(),
+        ...buildIxMeta(ix, purchaser),
+        operation: "cancelOrder",
+        order: orderPda.toBase58(),
+        purchaser: purchaser.toBase58(),
+        purchaserTokenAccount: purchaserTokenAccount.toBase58(),
+        marketPosition: marketPosition.toBase58(),
+        marketOutcome: marketOutcome.toBase58(),
+        marketLiquidities: marketLiquidities.toBase58(),
+        marketMatchingQueue: marketMatchingQueue.toBase58(),
+        marketMatchingPool: marketMatchingPool.toBase58(),
+        marketEscrow: marketEscrow.toBase58(),
+        marketOutcomeIndex: orderAccount.marketOutcomeIndex,
+        forOutcome: orderAccount.forOutcome,
+        expectedPriceStr: expectedPrice.toString(),
+      },
+    };
+  }
+
+  // Shared body for `buildOrderbookBuy` / `buildOrderbookSell` — both go
+  // through the same on-chain `create_order_request` ix; only the
+  // `for_outcome` flag differs.
+  private async buildCreateOrderRequest(
+    market: MarketRef,
+    args: BuyArgs,
+    forOutcome: boolean,
+    method: string,
+  ): Promise<OrderbookRequest> {
+    const ext = args as BuyArgs & Partial<OrderbookOrderArgsExt>;
+    if (!ext.user) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `${method}: args.user (Solana-only meta) is required at build time`,
+      });
+    }
+    if (!ext.priceLadder) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `${method}: args.priceLadder (Solana-only meta) is required — no canonical default ladder`,
+      });
+    }
+    if (args.tick == null || !Number.isFinite(args.tick) || args.tick < 0) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `${method}: args.tick must be a non-negative integer`,
+      });
+    }
+    if (args.amount <= 0n) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `${method}: args.amount must be positive`,
+      });
+    }
+
+    // `BuyArgs.side` is `0=NO, 1=YES`; sooth_book `MarketOutcome` index is
+    // `0=YES, 1=NO`. Translate at the boundary.
+    const marketOutcomeIndex = args.side === 1 ? 0 : 1;
+    // W4 ladder step is 0.001·WAD per tick.
+    const PRICE_TICK_WAD = 10n ** 15n;
+    const priceWad = BigInt(args.tick) * PRICE_TICK_WAD;
+    assertU128(priceWad, `${method}: price`);
+    assertU64(args.amount, `${method}: amount`);
+
+    const distinctSeed = ext.distinctSeed ?? randomSeed16();
+    assertSeed16(distinctSeed, `${method}: distinctSeed`);
+    const expiresOn = ext.expiresOn ?? null;
+    if (expiresOn != null) assertI64(expiresOn, `${method}: expiresOn`);
+
+    const bookPrograms = this.bookProgramIds();
+    const purchaser = decodePubkeyRef(ext.user);
+    const bookMarketPda = decodePubkeyRef(market);
+    const priceLadder = decodePubkeyRef(ext.priceLadder);
+
+    const [reservedOrder] = deriveBookOrderRequestOrderPda(
+      bookMarketPda,
+      purchaser,
+      distinctSeed,
+      bookPrograms,
+    );
+    const [orderRequestQueue] = deriveBookOrderRequestQueuePda(
+      bookMarketPda,
+      bookPrograms,
+    );
+    const [marketPosition] = deriveBookLegacyMarketPositionPda(
+      bookMarketPda,
+      purchaser,
+      bookPrograms,
+    );
+    const [marketOutcome] = deriveBookMarketOutcomePda(
+      bookMarketPda,
+      marketOutcomeIndex,
+      bookPrograms,
+    );
+    const [marketEscrow] = deriveBookEscrowPda(bookMarketPda, bookPrograms);
+    const purchaserToken = getAssociatedTokenAddressSync(
+      this.usdcMint,
+      purchaser,
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+
+    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const ix: TransactionInstruction = await methods
+      .createOrderRequest({
+        marketOutcomeIndex,
+        forOutcome,
+        stake: bigIntToBn(args.amount),
+        price: bigIntToBn(priceWad),
+        distinctSeed: Array.from(distinctSeed),
+        expiresOn: expiresOn == null ? null : bigIntToBn(expiresOn),
+      })
+      .accounts({
+        reservedOrder,
+        orderRequestQueue,
+        marketPosition,
+        payer: purchaser,
+        purchaser,
+        purchaserToken,
+        market: bookMarketPda,
+        marketOutcome,
+        priceLadder,
+        marketEscrow,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "orderbook",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: bookMarketPda.toBase58(),
+        bookMarketPda: bookMarketPda.toBase58(),
+        ...buildIxMeta(ix, purchaser),
+        operation: forOutcome
+          ? "createOrderRequest:buy"
+          : "createOrderRequest:sell",
+        forOutcome,
+        marketOutcomeIndex,
+        priceWadStr: priceWad.toString(),
+        stakeStr: args.amount.toString(),
+        distinctSeed: Buffer.from(distinctSeed).toString("hex"),
+        reservedOrder: reservedOrder.toBase58(),
+        orderRequestQueue: orderRequestQueue.toBase58(),
+        marketPosition: marketPosition.toBase58(),
+        marketOutcome: marketOutcome.toBase58(),
+        marketEscrow: marketEscrow.toBase58(),
+        priceLadder: priceLadder.toBase58(),
+        purchaserToken: purchaserToken.toBase58(),
+        tickInt: args.tick,
+        expiresOn: expiresOn == null ? null : expiresOn.toString(),
+      },
+    };
   }
   async buildCreateMarket(
     args: CreateMarketArgs,
@@ -1898,10 +3129,9 @@ export class SolanaChainAdapter implements ChainAdapter {
       // Each attempt re-fetches the blockhash and re-signs — the blockhash
       // is part of the message, so the previous signature is invalid for
       // the new send. The signer is invoked once per attempt.
-      const microLamports =
-        await this.nextSubmitComputeUnitPriceMicroLamports(
-          parseOptionalPublicKey(meta.marketPda),
-        );
+      const microLamports = await this.nextSubmitComputeUnitPriceMicroLamports(
+        parseOptionalPublicKey(meta.marketPda),
+      );
       const tx = new Transaction();
       tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
       // Priority fee = recent p50 for this market's locked writable account
@@ -2213,6 +3443,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       marketPda,
       marketId: new Uint8Array(raw.marketId),
       creator: raw.creator,
+      adjudicator: raw.adjudicator,
       questionHash: new Uint8Array(raw.questionHash),
       yesMint: raw.yesMint,
       noMint: raw.noMint,
@@ -2235,6 +3466,40 @@ export class SolanaChainAdapter implements ChainAdapter {
       deriveMarketVaultAta(resolved.marketId, this.usdcMint, this.programIds),
     );
     return acc.amount;
+  }
+
+  private bookProgramIds(): { soothBook: PublicKey } {
+    return {
+      soothBook: this.programIds.soothBook ?? SOOTH_BOOK_DEFAULT_PROGRAM_ID,
+    };
+  }
+
+  private requireLaunchpadProgramId(method: string): PublicKey {
+    if (!this.programIds.soothLaunchpad) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `${method}: programIds.soothLaunchpad is missing`,
+      });
+    }
+    return this.programIds.soothLaunchpad;
+  }
+
+  private async fetchBookOrderPurchaser(
+    orderPda: PublicKey,
+  ): Promise<PublicKey> {
+    const accounts = this.soothBook.account as unknown as {
+      order: {
+        fetchNullable(pda: PublicKey): Promise<{ purchaser: PublicKey } | null>;
+      };
+    };
+    const order = await accounts.order.fetchNullable(orderPda);
+    if (!order) {
+      throw new SoothError({
+        kind: "AccountNotFound",
+        msg: `Order PDA not found at ${orderPda.toBase58()}`,
+      });
+    }
+    return order.purchaser;
   }
 }
 
@@ -2270,7 +3535,9 @@ function nextSubmitComputeUnitPrice(percentileMicroLamports = 0): number {
   );
 }
 
-function nextSubmitComputeUnitPriceSalt(percentileMicroLamports: number): number {
+function nextSubmitComputeUnitPriceSalt(
+  percentileMicroLamports: number,
+): number {
   __submitCuPriceSalt =
     (__submitCuPriceSalt % PRIORITY_FEE_SALT_HEADROOM_MICROLAMPORTS) + 1;
   const baseline = Math.min(
@@ -2336,6 +3603,68 @@ function bigIntToBn(v: bigint): BN {
   return new BN(v.toString());
 }
 
+function programIdOrFallback(
+  value: string | undefined,
+  fallback: PublicKey,
+): PublicKey {
+  return value && value.length > 0 ? new PublicKey(value) : fallback;
+}
+
+function assertU64(v: bigint, name: string): void {
+  if (v < 0n || v > 0xffffffffffffffffn) {
+    throw new SoothError({
+      kind: "ProgramError",
+      msg: `${name} must fit in u64, got ${v.toString()}`,
+    });
+  }
+}
+
+function assertU128(v: bigint, name: string): void {
+  if (v < 0n || v > 0xffffffffffffffffffffffffffffffffn) {
+    throw new SoothError({
+      kind: "ProgramError",
+      msg: `${name} must fit in u128, got ${v.toString()}`,
+    });
+  }
+}
+
+function assertI64(v: bigint, name: string): void {
+  if (v < -0x8000000000000000n || v > 0x7fffffffffffffffn) {
+    throw new SoothError({
+      kind: "ProgramError",
+      msg: `${name} must fit in i64, got ${v.toString()}`,
+    });
+  }
+}
+
+function assertSeed16(seed: Uint8Array, name: string): void {
+  if (seed.length !== 16) {
+    throw new SoothError({
+      kind: "ProgramError",
+      msg: `${name} must be exactly 16 bytes, got ${seed.length}`,
+    });
+  }
+}
+
+function assertPublicKeyEquals(
+  actual: PublicKey,
+  expected: PublicKey,
+  name: string,
+): void {
+  if (!actual.equals(expected)) {
+    throw new SoothError({
+      kind: "ProgramError",
+      msg: `${name} mismatch: expected ${expected.toBase58()}, got ${actual.toBase58()}`,
+    });
+  }
+}
+
+function bookMarketOrderBehaviour(
+  value: CreateBookMarketArgs["marketLockOrderBehaviour"],
+): BookMarketOrderBehaviourWire {
+  return value === "cancelUnmatched" ? { cancelUnmatched: {} } : { none: {} };
+}
+
 // Generate a 16-byte random market id. Architecture §2.2 specifies this as
 // the truncated keccak256 of `question || creator || nonce`; the SDK
 // surfaces a permissive default (random bytes) so callers without a
@@ -2348,6 +3677,23 @@ function randomMarketId(): Uint8Array {
   // requirement of this package) and every modern browser.
   globalThis.crypto.getRandomValues(bytes);
   return bytes;
+}
+
+// Same shape as `randomMarketId`, separate name to make call sites read
+// cleanly. Used as the default `distinctSeed` for `create_order_request`
+// when the caller doesn't pin one (tests do; UIs typically don't).
+function randomSeed16(): Uint8Array {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return bytes;
+}
+
+// `buildOrderbookCancel(market, orderId)` is typed as `string` on the
+// umbrella interface — not the chain-prefixed `AddressRef`. Accept either
+// form here for ergonomics: a `sol:<base58>` ref OR a bare base58 pubkey.
+function decodeMaybePubkeyRef(input: string): PublicKey {
+  if (input.startsWith("sol:")) return decodePubkeyRef(input);
+  return new PublicKey(input);
 }
 
 // SHA-256 of the input string (UTF-8 encoded). 32-byte output. Used as a

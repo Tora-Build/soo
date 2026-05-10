@@ -1,0 +1,26 @@
+[package]
+name = "protocol_product"
+version = "0.2.0"
+description = "Vendored protocol product dependency for the SoothBook fork"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "protocol_product"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+dev = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "0.30.1"
+solana-program = "=1.18.26"
+rust_decimal = "=1.32.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "allow" }

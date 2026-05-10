@@ -59,7 +59,7 @@ pub use state::AdjudicatorKind;
 // then update this and the matching entry in `Anchor.toml`. The 32-byte
 // base58 below decodes to a valid (non-curve) pubkey usable as a placeholder
 // — same convention as `sooth_amm`, `sooth_market`, and `sooth_launchpad`.
-declare_id!("4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8");
+declare_id!("H8DtUDKvaJZVj2Vt2RZW9FmUCjpJAQunffGFcCTbctos");
 
 /// Compile-time assert that `declare_id!` matches
 /// `sooth_protocol_types::SOOTH_ADJUDICATOR_PROGRAM_ID`. The shared

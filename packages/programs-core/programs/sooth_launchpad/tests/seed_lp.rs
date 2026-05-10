@@ -83,7 +83,7 @@ fn lp_position_borsh_roundtrip_after_manual_init() {
     // Mirror the on-chain write path: discriminator at [0..8], Borsh
     // body at [8..]. We allocate `LpPosition::SPACE` so a drift in the
     // SPACE constant trips this test before it trips runtime.
-    let mut buf = vec![0u8; LpPosition::SPACE];
+    let mut buf = [0u8; LpPosition::SPACE];
     buf[..8].copy_from_slice(&LpPosition::DISCRIMINATOR);
     let mut writer = &mut buf[8..];
     position.serialize(&mut writer).expect("serialize");
@@ -143,7 +143,7 @@ fn lp_mint_authority_seed_string_is_stable() {
     // devnet deploy.)
     let market_id = [0u8; 16];
     let placeholder_program_id =
-        anchor_lang::pubkey!("HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3");
+        anchor_lang::pubkey!("8pHPMF1U86iDQTB5ig1xyjbcDMfS1PXi8LLD4EiqNqm8");
     let (_, bump) = Pubkey::find_program_address(&[SEED, &market_id], &placeholder_program_id);
     let _ = bump; // bump is u8 by type, so range is automatic.
 }
@@ -156,7 +156,7 @@ fn lp_mint_seed_string_is_stable() {
     assert_eq!(SEED.len(), 2);
     let market_id = [0u8; 16];
     let placeholder_program_id =
-        anchor_lang::pubkey!("HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3");
+        anchor_lang::pubkey!("8pHPMF1U86iDQTB5ig1xyjbcDMfS1PXi8LLD4EiqNqm8");
     let (_, _bump) = Pubkey::find_program_address(&[SEED, &market_id], &placeholder_program_id);
 }
 
@@ -170,7 +170,7 @@ fn lp_position_seed_string_is_stable() {
     let market_id = [0u8; 16];
     let creator = Pubkey::new_unique();
     let placeholder_program_id =
-        anchor_lang::pubkey!("HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3");
+        anchor_lang::pubkey!("8pHPMF1U86iDQTB5ig1xyjbcDMfS1PXi8LLD4EiqNqm8");
     let (_, _bump) = Pubkey::find_program_address(
         &[SEED, &market_id, creator.as_ref()],
         &placeholder_program_id,

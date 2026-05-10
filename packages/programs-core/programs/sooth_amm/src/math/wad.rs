@@ -64,7 +64,7 @@ pub fn wad_mul(a: i128, b: i128) -> Result<i128, MathError> {
         let chunk = (prod_lo >> (chunk_idx * 32)) & 0xFFFF_FFFF;
         rem = (rem << 32) | chunk;
         let q_chunk = rem / WAD_U;
-        rem = rem % WAD_U;
+        rem %= WAD_U;
         q_lo = (q_lo << 32) | q_chunk;
     }
     if q_hi != 0 {
@@ -104,7 +104,7 @@ pub fn wad_div(a: i128, b: i128) -> Result<i128, MathError> {
         let chunk = (num_low >> (chunk_idx * 32)) & 0xFFFF_FFFF;
         rem = (rem << 32) | chunk;
         let qc = rem / bu;
-        rem = rem % bu;
+        rem %= bu;
         q = (q << 32) | qc;
     }
     let qi: i128 = q.try_into().map_err(|_| MathError::Overflow)?;
@@ -122,9 +122,7 @@ pub fn wad_to_usdc_ceil(wad: u128) -> Result<u64, MathError> {
     // ceil(wad / 1e12) without overflowing: (wad + scalar - 1) / scalar.
     // wad < 2^128 - 1e12 always for our domain (USDC supply ≪ 2^128).
     let s = WAD_TO_USDC_SCALAR;
-    let num = wad
-        .checked_add(s - 1)
-        .ok_or(MathError::Overflow)?;
+    let num = wad.checked_add(s - 1).ok_or(MathError::Overflow)?;
     let q = num / s;
     q.try_into().map_err(|_| MathError::Overflow)
 }

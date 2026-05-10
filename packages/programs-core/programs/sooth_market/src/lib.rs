@@ -46,7 +46,7 @@ pub use instructions::*;
 //   `solana-keygen new --no-bip39-passphrase -o target/deploy/sooth_market-keypair.json`
 // then update this and the matching entry in `Anchor.toml`. Mirrors the
 // placeholder pattern in `sooth_amm::lib.rs`.
-declare_id!("ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n");
+declare_id!("5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH");
 
 // `SOOTH_AMM_PROGRAM_ID`, `SOOTH_ADJUDICATOR_PROGRAM_ID`, and
 // `USDC_MINT_DEVNET` previously lived as hand-pinned literals here. They
@@ -133,6 +133,16 @@ pub mod sooth_market {
         instructions::mint_complete_set::handler(ctx, amount)
     }
 
+    /// Split-authority complete-set mint for CPI escrow flows — pull
+    /// `amount` USDC from a payer and mint YES + NO into token accounts owned
+    /// by a separate destination authority.
+    pub fn mint_complete_set_to_program_owned(
+        ctx: Context<MintCompleteSetToProgramOwned>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::mint_complete_set_to_program_owned::handler(ctx, amount)
+    }
+
     /// Merge a complete set — burn `amount` YES + `amount` NO, return
     /// `amount` USDC to the user. EVM analogue: `OrderEngine._merge`
     /// (`OrderEngine.sol:696-712`).
@@ -160,6 +170,17 @@ pub mod sooth_market {
     /// 0.5 for both on INVALID).
     pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
         instructions::redeem::handler(ctx)
+    }
+
+    /// Split-destination redemption for CPI escrow flows — burn requested
+    /// YES/NO amounts from a burn authority and pay USDC to an arbitrary
+    /// token account.
+    pub fn redeem_from_program_owned(
+        ctx: Context<RedeemFromProgramOwned>,
+        amount_yes: u64,
+        amount_no: u64,
+    ) -> Result<()> {
+        instructions::redeem_from_program_owned::handler(ctx, amount_yes, amount_no)
     }
 
     /// Refund an AMM Position on a dismissed market, then close the Position

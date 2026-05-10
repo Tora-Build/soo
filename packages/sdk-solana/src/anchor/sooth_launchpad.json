@@ -1,5 +1,5 @@
 {
-  "address": "HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3",
+  "address": "8pHPMF1U86iDQTB5ig1xyjbcDMfS1PXi8LLD4EiqNqm8",
   "metadata": {
     "name": "sooth_launchpad",
     "version": "0.0.0",
@@ -535,11 +535,11 @@
         },
         {
           "name": "sooth_market_program",
-          "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
+          "address": "5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH"
         },
         {
           "name": "sooth_amm_program",
-          "address": "67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k"
+          "address": "JsDen5joP97Jo6qBQyzDncD9ZbaFAMdaXeUMrZ7udyr"
         },
         {
           "name": "token_program",

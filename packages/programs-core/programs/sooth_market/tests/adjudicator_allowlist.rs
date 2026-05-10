@@ -91,8 +91,7 @@ fn space_constant_is_self_consistent() {
     // Recompute SPACE from first principles and ensure it matches the
     // declared constant. Anchor's rent calc trusts SPACE, so a mismatch
     // would silently under-rent the account.
-    let expected =
-        8 + 32 + 32 * ADJUDICATOR_ALLOWLIST_CAPACITY + 1 + 1;
+    let expected = 8 + 32 + 32 * ADJUDICATOR_ALLOWLIST_CAPACITY + 1 + 1;
     assert_eq!(AdjudicatorAllowlist::SPACE, expected);
 }
 
@@ -157,7 +156,10 @@ fn add_to_full_rejected() {
     }
     let err = add(&mut allowlist, Pubkey::new_unique()).unwrap_err();
     assert_eq!(err, "AllowlistFull");
-    assert_eq!(allowlist.entry_count as usize, ADJUDICATOR_ALLOWLIST_CAPACITY);
+    assert_eq!(
+        allowlist.entry_count as usize,
+        ADJUDICATOR_ALLOWLIST_CAPACITY
+    );
 }
 
 #[test]

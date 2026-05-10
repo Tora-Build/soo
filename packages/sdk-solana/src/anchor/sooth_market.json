@@ -1,5 +1,5 @@
 {
-  "address": "ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n",
+  "address": "5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH",
   "metadata": {
     "name": "sooth_market",
     "version": "0.0.0",
@@ -70,6 +70,178 @@
           "type": "pubkey"
         }
       ]
+    },
+    {
+      "name": "claim_refund",
+      "docs": [
+        "Refund an AMM Position on a dismissed market, then close the Position",
+        "via `sooth_amm::close_dismissed_position`."
+      ],
+      "discriminator": [
+        15,
+        16,
+        30,
+        161,
+        255,
+        228,
+        97,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "amm_state",
+          "docs": [
+            "AMM state is owned by `sooth_amm`; this program validates owner, PDA,",
+            "backlink, and the raw `is_dismissed` byte before moving funds."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                76,
+                20,
+                220,
+                3,
+                211,
+                31,
+                238,
+                209,
+                13,
+                132,
+                198,
+                135,
+                176,
+                46,
+                196,
+                110,
+                64,
+                41,
+                167,
+                36,
+                255,
+                140,
+                75,
+                248,
+                57,
+                177,
+                116,
+                245,
+                16,
+                43,
+                5,
+                51
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority signer-only PDA owned by this program."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "docs": [
+            "AMM Position account. The account is owner/seed/raw-field checked in",
+            "this handler, then closed by the AMM CPI."
+          ],
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "sooth_amm_program",
+          "docs": [
+            "AMM program, invoked manually to avoid a Cargo cycle."
+          ],
+          "address": "JsDen5joP97Jo6qBQyzDncD9ZbaFAMdaXeUMrZ7udyr"
+        },
+        {
+          "name": "instruction_sysvar",
+          "docs": [
+            "Instructions sysvar forwarded to the AMM close helper."
+          ],
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "initialize_adjudicator_allowlist",
@@ -739,10 +911,7 @@
       "name": "lock_for_resolution",
       "docs": [
         "Lock the market for resolution (LIVE → LOCKED). EVM analogue:",
-        "`TruthMarket.resolve` (`TruthMarket.sol:90-106`).",
-        "Auth: parent-ix introspection requires the calling top-level ix to be",
-        "`sooth_adjudicator::request_lock`. Closes the deferred half of Codex's",
-        "C2 finding."
+        "`TruthMarket.resolve` (`TruthMarket.sol:90-106`)."
       ],
       "discriminator": [
         218,
@@ -782,19 +951,22 @@
         {
           "name": "adjudicator_pda",
           "docs": [
-            "`sooth_adjudicator::Adjudicator` PDA. Read-only here; pinned to the",
-            "adjudicator program via the owner constraint. The introspection",
-            "check is the load-bearing auth gate; this account is forwarded",
-            "from `sooth_adjudicator::request_lock` for indexer parity with",
-            "`settle`."
+            "`sooth_adjudicator::Adjudicator` PDA — read-only here. Forwarded by",
+            "the CPI from `sooth_adjudicator::request_lock`. Pinned to the",
+            "matching adjudicator-program seed via the `owner` constraint so a",
+            "caller cannot substitute a forged Adjudicator account from another",
+            "program. CHECK: ownership-pinned; the contents are not parsed here",
+            "(the introspection check is the load-bearing auth gate; this account",
+            "is along for the ride to keep the CPI account-list shape parallel",
+            "to `settle` and to give indexers a stable reference)."
           ]
         },
         {
           "name": "instruction_sysvar",
           "docs": [
             "Instructions sysvar — read by the parent-ix introspection check.",
-            "Pinned to the canonical sysvar pubkey so a malicious caller cannot",
-            "substitute a forged sysvar account with a fabricated instruction list."
+            "Pinned to the canonical sysvar pubkey via the `address` constraint",
+            "so a malicious caller cannot substitute a forged sysvar account."
           ],
           "address": "Sysvar1nstructions1111111111111111111111111"
         }
@@ -1046,6 +1218,135 @@
       ]
     },
     {
+      "name": "mint_complete_set_to_program_owned",
+      "docs": [
+        "Split-authority complete-set mint for CPI escrow flows — pull",
+        "`amount` USDC from a payer and mint YES + NO into token accounts owned",
+        "by a separate destination authority."
+      ],
+      "discriminator": [
+        127,
+        243,
+        231,
+        31,
+        136,
+        240,
+        184,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority PDA — signs the mint_to CPIs."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "market_vault",
+          "docs": [
+            "Market USDC vault — credited from the payer."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payer_usdc_ata",
+          "docs": [
+            "Payer's USDC ATA — debited."
+          ],
+          "writable": true
+        },
+        {
+          "name": "destination_authority",
+          "docs": [
+            "Destination authority for the YES/NO token accounts."
+          ]
+        },
+        {
+          "name": "destination_yes_ata",
+          "docs": [
+            "Destination YES outcome-token ATA — credited."
+          ],
+          "writable": true
+        },
+        {
+          "name": "destination_no_ata",
+          "docs": [
+            "Destination NO outcome-token ATA — credited."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "redeem",
       "docs": [
         "Redeem winning shares for USDC. EVM analogue:",
@@ -1122,9 +1423,11 @@
         {
           "name": "vault",
           "docs": [
-            "Market USDC vault. Pinned to `market.vault` and constrained to",
-            "`USDC_MINT_DEVNET` (same defense-in-depth chain documented on",
-            "`mint_complete_set`/`merge_complete_set`)."
+            "Market USDC vault. The canonical-USDC pin is transitive via",
+            "`initialize_market_vaults` (same chain documented on",
+            "`mint_complete_set`/`merge_complete_set`); the explicit",
+            "`vault.mint == USDC_MINT_DEVNET` constraint here is cheap defense-",
+            "in-depth and keeps the IDL self-documenting."
           ],
           "writable": true
         },
@@ -1134,20 +1437,10 @@
         },
         {
           "name": "user_yes_ata",
-          "docs": [
-            "User's YES outcome-token ATA — burned from when YES wins or on",
-            "INVALID. Required even if the user holds zero YES; the handler",
-            "skips the burn when `amount == 0`."
-          ],
           "writable": true
         },
         {
           "name": "user_no_ata",
-          "docs": [
-            "User's NO outcome-token ATA — burned from when NO wins or on",
-            "INVALID. Required even if the user holds zero NO; the handler",
-            "skips the burn when `amount == 0`."
-          ],
           "writable": true
         },
         {
@@ -1160,6 +1453,118 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "redeem_from_program_owned",
+      "docs": [
+        "Split-destination redemption for CPI escrow flows — burn requested",
+        "YES/NO amounts from a burn authority and pay USDC to an arbitrary",
+        "token account."
+      ],
+      "discriminator": [
+        100,
+        53,
+        160,
+        75,
+        188,
+        201,
+        91,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "market_vault",
+          "writable": true
+        },
+        {
+          "name": "source_yes_ata",
+          "writable": true
+        },
+        {
+          "name": "source_no_ata",
+          "writable": true
+        },
+        {
+          "name": "usdc_destination",
+          "writable": true
+        },
+        {
+          "name": "burn_authority",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_yes",
+          "type": "u64"
+        },
+        {
+          "name": "amount_no",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "remove_adjudicator",
@@ -1229,10 +1634,7 @@
       "docs": [
         "Settle the market with the adjudicator's winning outcome",
         "(LOCKED → SETTLED). EVM analogue: `TruthMarket.attest` +",
-        "`TruthMarket.settle` collapsed (`TruthMarket.sol:112-131`).",
-        "Auth: parent-ix introspection requires the calling top-level ix to be",
-        "`sooth_adjudicator::attest_outcome`. Closes the deferred half of",
-        "Codex's C2 finding."
+        "`TruthMarket.settle` collapsed (`TruthMarket.sol:112-131`)."
       ],
       "discriminator": [
         175,
@@ -1272,17 +1674,16 @@
         {
           "name": "adjudicator_pda",
           "docs": [
-            "`sooth_adjudicator::Adjudicator` PDA. Read-only here; pinned to the",
-            "adjudicator program via the owner constraint. The introspection",
-            "check is the load-bearing auth gate."
+            "`sooth_adjudicator::Adjudicator` PDA — read-only here. Forwarded by",
+            "the CPI from `sooth_adjudicator::attest_outcome`. Pinned via owner",
+            "constraint (same rationale as `lock_for_resolution`). CHECK:",
+            "ownership-pinned; introspection is the load-bearing auth gate."
           ]
         },
         {
           "name": "instruction_sysvar",
           "docs": [
-            "Instructions sysvar — read by the parent-ix introspection check.",
-            "Pinned to the canonical sysvar pubkey so a malicious caller cannot",
-            "substitute a forged sysvar account with a fabricated instruction list."
+            "Instructions sysvar for parent-ix introspection. Address-pinned."
           ],
           "address": "Sysvar1nstructions1111111111111111111111111"
         }
@@ -1314,6 +1715,9 @@
       "accounts": [
         {
           "name": "market",
+          "docs": [
+            "Market PDA — read-only. Used to seed the lock_authority signer."
+          ],
           "pda": {
             "seeds": [
               {
@@ -1337,6 +1741,9 @@
         },
         {
           "name": "lock_authority",
+          "docs": [
+            "Lock-authority signer-only PDA owned by `sooth_market`. CHECK: derived."
+          ],
           "pda": {
             "seeds": [
               {
@@ -1358,17 +1765,30 @@
         },
         {
           "name": "lock_vault",
+          "docs": [
+            "AMM lock-on-sell escrow vault — debited."
+          ],
           "writable": true
         },
         {
           "name": "recipient",
+          "docs": [
+            "Recipient USDC ATA (the user's token account)."
+          ],
           "writable": true
         },
         {
-          "name": "lock_entry"
+          "name": "lock_entry",
+          "docs": [
+            "LockEntry account from `sooth_amm`. Owner + field validation runs in",
+            "the handler (see module docstring). CHECK: hand-validated."
+          ]
         },
         {
           "name": "usdc_mint",
+          "docs": [
+            "USDC mint reference. Pinned to canonical USDC."
+          ],
           "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
         },
         {
@@ -1382,9 +1802,12 @@
         {
           "name": "instruction_sysvar",
           "docs": [
-            "Instructions sysvar — read by the parent-ix introspection check.",
-            "Pinned to the canonical sysvar pubkey so a malicious caller cannot",
-            "substitute a forged sysvar account with a fabricated instruction list."
+            "Instructions sysvar — read by the parent-ix introspection check",
+            "(see module docstring §\"Auth model\" and",
+            "`instruction_introspection::require_parent_ix`). Pinned to the",
+            "canonical sysvar pubkey via the `address` constraint so a malicious",
+            "caller cannot substitute a forged sysvar account with a fabricated",
+            "instruction list. CHECK: address-pinned."
           ],
           "address": "Sysvar1nstructions1111111111111111111111111"
         }
@@ -1417,6 +1840,10 @@
       "accounts": [
         {
           "name": "market",
+          "docs": [
+            "Market PDA — read-only. Used to seed the vault_authority signer and",
+            "to validate position.market binding."
+          ],
           "pda": {
             "seeds": [
               {
@@ -1440,6 +1867,10 @@
         },
         {
           "name": "vault_authority",
+          "docs": [
+            "Vault authority signer-only PDA owned by `sooth_market`. We sign with",
+            "it here on behalf of the AMM. CHECK: derived via seeds."
+          ],
           "pda": {
             "seeds": [
               {
@@ -1462,21 +1893,40 @@
         },
         {
           "name": "vault",
+          "docs": [
+            "Market USDC vault — debited."
+          ],
           "writable": true
         },
         {
           "name": "lock_vault",
+          "docs": [
+            "AMM lock-on-sell escrow vault — credited."
+          ],
           "writable": true
         },
         {
-          "name": "position"
+          "name": "position",
+          "docs": [
+            "Per-(user, market) Position from `sooth_amm`. We can't type this as",
+            "`Account<'info, sooth_amm::Position>` without a circular path-dep",
+            "(sooth_amm already depends on sooth_market via the `cpi` feature).",
+            "The handler verifies owner + parses `user`/`market` from raw bytes."
+          ]
         },
         {
           "name": "usdc_mint",
+          "docs": [
+            "USDC mint reference. Pinned to canonical USDC."
+          ],
           "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
         },
         {
           "name": "user",
+          "docs": [
+            "User signature is the auth gate (the outer `sell_positions` ix",
+            "requires a user signature; that flows down through the CPI)."
+          ],
           "signer": true
         },
         {
@@ -1486,9 +1936,12 @@
         {
           "name": "instruction_sysvar",
           "docs": [
-            "Instructions sysvar — read by the parent-ix introspection check.",
-            "Pinned to the canonical sysvar pubkey so a malicious caller cannot",
-            "substitute a forged sysvar account with a fabricated instruction list."
+            "Instructions sysvar — read by the parent-ix introspection check",
+            "(see module docstring §\"Auth model\" and",
+            "`instruction_introspection::require_parent_ix`). Pinned to the",
+            "canonical sysvar pubkey via the `address` constraint so a malicious",
+            "caller cannot substitute a forged sysvar account with a fabricated",
+            "instruction list. CHECK: address-pinned."
           ],
           "address": "Sysvar1nstructions1111111111111111111111111"
         }
@@ -1499,67 +1952,6 @@
           "type": "u64"
         }
       ]
-    },
-    {
-      "name": "claim_refund",
-      "docs": [
-        "Refund an AMM Position on a dismissed market, then close the Position via sooth_amm::close_dismissed_position."
-      ],
-      "discriminator": [
-        15,
-        16,
-        30,
-        161,
-        255,
-        228,
-        97,
-        60
-      ],
-      "accounts": [
-        {
-          "name": "user",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "market"
-        },
-        {
-          "name": "amm_state"
-        },
-        {
-          "name": "vault_authority"
-        },
-        {
-          "name": "market_vault",
-          "writable": true
-        },
-        {
-          "name": "user_usdc_ata",
-          "writable": true
-        },
-        {
-          "name": "position",
-          "writable": true
-        },
-        {
-          "name": "usdc_mint",
-          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "sooth_amm_program",
-          "address": "67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k"
-        },
-        {
-          "name": "instruction_sysvar",
-          "address": "Sysvar1nstructions1111111111111111111111111"
-        }
-      ],
-      "args": []
     }
   ],
   "accounts": [
@@ -1590,196 +1982,6 @@
       ]
     }
   ],
-  "events": [
-    {
-      "name": "CompleteSetMerged",
-      "discriminator": [
-        191,
-        93,
-        106,
-        227,
-        82,
-        141,
-        252,
-        156
-      ]
-    },
-    {
-      "name": "CompleteSetMinted",
-      "discriminator": [
-        138,
-        100,
-        135,
-        145,
-        242,
-        178,
-        224,
-        155
-      ]
-    },
-    {
-      "name": "MarketInitialized",
-      "discriminator": [
-        134,
-        160,
-        122,
-        87,
-        50,
-        3,
-        255,
-        81
-      ]
-    },
-    {
-      "name": "MarketLocked",
-      "discriminator": [
-        57,
-        30,
-        242,
-        116,
-        238,
-        156,
-        185,
-        189
-      ]
-    },
-    {
-      "name": "MarketSettled",
-      "discriminator": [
-        237,
-        212,
-        22,
-        175,
-        201,
-        117,
-        215,
-        99
-      ]
-    },
-    {
-      "name": "Redeemed",
-      "discriminator": [
-        14,
-        29,
-        183,
-        71,
-        31,
-        165,
-        107,
-        38
-      ]
-    },
-    {
-      "name": "RefundClaimed",
-      "discriminator": [
-        136,
-        64,
-        242,
-        99,
-        4,
-        244,
-        208,
-        130
-      ]
-    }
-  ],
-  "errors": [
-    {
-      "code": 6000,
-      "name": "MarketNotOpen",
-      "msg": "Market is not in the Open lifecycle state"
-    },
-    {
-      "code": 6001,
-      "name": "MarketNotLocked",
-      "msg": "Market is not in the Locked lifecycle state"
-    },
-    {
-      "code": 6002,
-      "name": "MarketNotSettled",
-      "msg": "Market is not Settled"
-    },
-    {
-      "code": 6003,
-      "name": "InvalidLifecycleTransition",
-      "msg": "Lifecycle transition not permitted from current state"
-    },
-    {
-      "code": 6004,
-      "name": "NotAdjudicator",
-      "msg": "Caller is not the registered adjudicator for this market"
-    },
-    {
-      "code": 6005,
-      "name": "InvalidOutcome",
-      "msg": "Invalid outcome (must be NO=0, YES=1, or INVALID=2)"
-    },
-    {
-      "code": 6006,
-      "name": "ZeroAmount",
-      "msg": "Amount must be non-zero"
-    },
-    {
-      "code": 6007,
-      "name": "InsufficientOutcomeShares",
-      "msg": "Insufficient outcome-token balance"
-    },
-    {
-      "code": 6008,
-      "name": "MathOverflow",
-      "msg": "Math overflow"
-    },
-    {
-      "code": 6009,
-      "name": "VaultAuthorityMismatch",
-      "msg": "Vault / mint authority mismatch"
-    },
-    {
-      "code": 6010,
-      "name": "InvalidDeadline",
-      "msg": "Deadline must be greater than start_time"
-    },
-    {
-      "code": 6011,
-      "name": "AdjudicatorIsDefault",
-      "msg": "Adjudicator pubkey must not be the default (all-zero) key"
-    },
-    {
-      "code": 6012,
-      "name": "AdjudicatorNotAllowlisted",
-      "msg": "Adjudicator pubkey is not present on the on-chain allowlist"
-    },
-    {
-      "code": 6013,
-      "name": "AllowlistAuthorityMismatch",
-      "msg": "Caller is not the registered allowlist authority"
-    },
-    {
-      "code": 6014,
-      "name": "AllowlistFull",
-      "msg": "Adjudicator allowlist is full (capacity exhausted)"
-    },
-    {
-      "code": 6015,
-      "name": "AdjudicatorAlreadyAllowlisted",
-      "msg": "Adjudicator pubkey is already present on the allowlist"
-    },
-    {
-      "code": 6016,
-      "name": "AdjudicatorNotPresent",
-      "msg": "Adjudicator pubkey is not present on the allowlist"
-    },
-    {
-      "code": 6017,
-      "name": "InvalidParentInstruction",
-      "msg": "Helper ixs must be CPI'd from sooth_amm; direct calls are rejected."
-    },
-    {
-      "code": 6018,
-      "name": "MarketNotDismissed",
-      "msg": "Market is not dismissed"
-    }
-  ],
   "types": [
     {
       "name": "AdjudicatorAllowlist",
@@ -1789,7 +1991,9 @@
           {
             "name": "authority",
             "docs": [
-              "Authority permitted to call `add_adjudicator` / `remove_adjudicator`."
+              "Authority permitted to call `add_adjudicator` / `remove_adjudicator`.",
+              "Set once at `initialize_adjudicator_allowlist` time. Intended to be",
+              "the protocol multisig."
             ],
             "type": "pubkey"
           },
@@ -1797,7 +2001,8 @@
             "name": "entries",
             "docs": [
               "Fixed-size pubkey table. Slots beyond `entry_count` are guaranteed",
-              "zero (we never leave stale data behind on remove)."
+              "zero (we never leave stale data behind on remove — see",
+              "`remove_adjudicator`)."
             ],
             "type": {
               "array": [

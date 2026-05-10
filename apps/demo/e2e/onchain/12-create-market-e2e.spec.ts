@@ -77,7 +77,15 @@ test.describe("create-market (UI-driven via /launchpad)", () => {
 
     // On-chain assertions: the Market account exists, owned by
     // sooth_market, lifecycle = Open (1).
-    const market = await fetchMarket(conn, newMarketPda);
+    // The chain-shim stashes the PDA *before* tx confirmation so the
+    // dapp UX can navigate immediately. Poll until the on-chain account
+    // materializes (typical Surfpool latency is sub-second).
+    let market = await fetchMarket(conn, newMarketPda);
+    const pollDeadline = Date.now() + 30_000;
+    while (market === null && Date.now() < pollDeadline) {
+      await new Promise((r) => setTimeout(r, 500));
+      market = await fetchMarket(conn, newMarketPda);
+    }
     expect(market).not.toBeNull();
     expect(market!.lifecycle).toBe(1);
 

@@ -107,8 +107,17 @@ export function getAddress(addr: string): Address {
 export function parseAbi(_strings: readonly string[]): Abi {
   return [];
 }
-export function parseAbiItem(_s: string): AbiFunction {
-  return {} as AbiFunction;
+export function parseAbiItem(s: string): AbiFunction {
+  // Real viem parses the human-readable signature (e.g. "event Foo(uint256
+  // bar)") into a structured ABI item. The chain-shim only consumes the
+  // event name (via `args.event.name` in the shim's `getLogs`) — extract
+  // it with a tolerant regex so OrderPlaced / OrderCancelled / OrderFilled
+  // can be distinguished. Other fields are unused by the Solana fork.
+  const match = s.match(
+    /^\s*(?:event|function|error)\s+([A-Za-z_][A-Za-z0-9_]*)/i,
+  );
+  const name = match?.[1];
+  return (name ? { type: "event", name } : {}) as AbiFunction;
 }
 export function parseAbiParameters(_s: string): readonly AbiParameter[] {
   return [];

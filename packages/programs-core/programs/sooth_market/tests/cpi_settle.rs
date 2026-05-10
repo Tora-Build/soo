@@ -122,8 +122,5 @@ fn attest_outcome_writes_adjudicator_state() {
 
     let adj = fetch_adjudicator(&harness.svm, pdas.adjudicator_pda);
     assert_eq!(adj.attested_outcome, Some(OUTCOME_YES));
-    assert!(
-        adj.attested_at.is_some(),
-        "attested_at should be populated"
-    );
+    assert!(adj.attested_at.is_some(), "attested_at should be populated");
 }

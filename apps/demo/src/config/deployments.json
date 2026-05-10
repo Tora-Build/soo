@@ -8,13 +8,14 @@
       "contracts": {
         "MockUSDC": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
         "baseTokenDecimals": 6,
-        "_comment": "Synthetic 0x… placeholders for upstream EVM hooks that gate on !!engineAddress. The Solana chain-shim ignores `address` for AMM reads (routes by functionName), so any non-empty hex unblocks the gate. Real PDAs live in @sooth/sdk-solana.",
+        "_comment": "Synthetic 0x… placeholders for upstream EVM hooks that gate on !!engineAddress. The Solana chain-shim ignores `address` for AMM reads (routes by functionName), so any non-empty hex unblocks the gate. Real PDAs live in @sooth/sdk-solana. SoothBook is a placeholder that satisfies SoothBookTerminal's `!contracts.SoothBook` gate; the chain-shim resolves the real sooth_book program-id from the SDK adapter (DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X).",
         "AMMEngine": "0x0000000000000000000000000000000000000a01",
         "LaunchpadEngine": "0x0000000000000000000000000000000000000a02",
         "OrderEngine": "0x0000000000000000000000000000000000000a04",
         "TruthMarket": "0x0000000000000000000000000000000000000a05",
         "FeeRouter": "0x0000000000000000000000000000000000000a06",
-        "AdjudicatorRegistry": "0x0000000000000000000000000000000000000a07"
+        "AdjudicatorRegistry": "0x0000000000000000000000000000000000000a07",
+        "SoothBook": "0x0000000000000000000000000000000000000a08"
       },
       "markets": [],
       "startBlock": 0
@@ -32,7 +33,8 @@
         "OrderEngine": "0x0000000000000000000000000000000000000a04",
         "TruthMarket": "0x0000000000000000000000000000000000000a05",
         "FeeRouter": "0x0000000000000000000000000000000000000a06",
-        "AdjudicatorRegistry": "0x0000000000000000000000000000000000000a07"
+        "AdjudicatorRegistry": "0x0000000000000000000000000000000000000a07",
+        "SoothBook": "0x0000000000000000000000000000000000000a08"
       },
       "markets": [],
       "startBlock": 0

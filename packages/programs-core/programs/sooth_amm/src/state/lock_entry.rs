@@ -63,7 +63,7 @@ impl LockEntry {
         + 8                      // amount_usdc
         + 8                      // unlock_at
         + 8                      // nonce
-        + 1;                     // bump
+        + 1; // bump
 }
 
 // ── Cross-crate layout sync ──────────────────────────────────────────────

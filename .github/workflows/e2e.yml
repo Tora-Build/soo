@@ -9,19 +9,21 @@ jobs:
   cargo-test:
     name: Cargo tests
     runs-on: ubuntu-latest
+    needs: anchor-build
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Anchor CLI
-        run: |
-          cargo install \
-            --git https://github.com/coral-xyz/anchor \
-            --tag v0.30.1 \
-            anchor-cli \
-            --locked
+      - name: Download .so binaries from anchor-build job
+        # Cargo tests use LiteSVM and load target/deploy/*.so at runtime
+        # (see programs/sooth_amm/tests/common/mod.rs:593). Without this
+        # download the LiteSVM tests panic with "target/deploy not found".
+        uses: actions/download-artifact@v4
+        with:
+          name: target-deploy
+          path: target/deploy/
 
       - name: Cargo test
         run: cargo test
@@ -29,13 +31,14 @@ jobs:
   sdk-vitest:
     name: SDK Vitest
     runs-on: ubuntu-latest
+    needs: anchor-build
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
+        # Version is read from package.json's packageManager field
+        # (pnpm@9.0.0). Specifying it twice causes ERR_PNPM_BAD_PM_VERSION.
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -46,11 +49,65 @@ jobs:
       - name: Install
         run: pnpm install
 
+      - name: Download .so binaries from anchor-build job
+        uses: actions/download-artifact@v4
+        with:
+          name: target-deploy
+          path: target/deploy/
+
+      - name: Build SDK (required for apps/demo typecheck to resolve @sooth/sdk-solana)
+        run: pnpm -F @sooth/sdk-solana build
+
       - name: Typecheck workspace
         run: pnpm -r typecheck
 
       - name: SDK tests
         run: pnpm -F @sooth/sdk-solana test
+
+  anchor-build:
+    # Catches SBF stack-offset errors + IDL-gen regressions on every
+    # PR. Per-program cargo build-sbf misses 2 of the 6 stack-offset
+    # cases that surface only during anchor's combined build pipeline
+    # (e.g. CreateOrderRequest +504 / ProcessOrderRequest +1200 in
+    # sooth_book pre-W2). The full e2e job ALSO does anchor build but
+    # only runs on push-to-main, which would let regressions land
+    # before being caught. This job is the PR-time guard.
+    # No untrusted input (static commands).
+    name: Anchor build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.1.14/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install Anchor CLI
+        # No --locked: anchor v0.30.1's Cargo.lock pins time=0.3.29, which
+        # has a type-inference bug on rustc 1.95 (E0282 in
+        # time/src/format_description/parse/mod.rs:83). Letting cargo
+        # resolve transitive deps fresh picks up time=0.3.30+ which has
+        # the fix. Drift risk is bounded by the --tag pin.
+        run: |
+          cargo install \
+            --git https://github.com/coral-xyz/anchor \
+            --tag v0.30.1 \
+            anchor-cli
+
+      - name: Anchor build (catches stack-offset + IDL regressions)
+        working-directory: packages/programs-core
+        run: anchor build
+
+      - name: Upload .so binaries for downstream jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: target-deploy
+          path: target/deploy/*.so
+          retention-days: 1
 
   e2e:
     name: Surfpool Playwright E2E
@@ -64,8 +121,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
+        # Version is read from package.json's packageManager field
+        # (pnpm@9.0.0). Specifying it twice causes ERR_PNPM_BAD_PM_VERSION.
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -84,34 +141,36 @@ jobs:
 
       - name: Install Solana CLI
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.13/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.1.14/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
       - name: Install Anchor CLI
+        # No --locked: anchor v0.30.1's Cargo.lock pins time=0.3.29, which
+        # has a type-inference bug on rustc 1.95 (E0282 in
+        # time/src/format_description/parse/mod.rs:83). Letting cargo
+        # resolve transitive deps fresh picks up time=0.3.30+ which has
+        # the fix. Drift risk is bounded by the --tag pin.
         run: |
           cargo install \
             --git https://github.com/coral-xyz/anchor \
             --tag v0.30.1 \
-            anchor-cli \
-            --locked
+            anchor-cli
 
       - name: Install Surfpool
         run: |
           curl -sL https://run.surfpool.run/ | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Build SBF programs
-        run: |
-          cargo build-sbf \
-            --manifest-path packages/programs-core/programs/sooth_amm/Cargo.toml
-          cargo build-sbf \
-            --manifest-path packages/programs-core/programs/sooth_market/Cargo.toml
-          cargo build-sbf \
-            --manifest-path packages/programs-core/programs/sooth_launchpad/Cargo.toml
-          cargo build-sbf \
-            --manifest-path packages/programs-core/programs/sooth_adjudicator/Cargo.toml
-          cargo build-sbf \
-            --manifest-path packages/programs-core/programs/sooth_book/Cargo.toml
+      - name: Build all programs via anchor build
+        # Use anchor build (not per-program cargo build-sbf) so the
+        # full IDL-gen + SBF link pipeline runs. Per-program cargo
+        # build-sbf misses stack-offset errors that only surface
+        # during anchor's combined build. Auto-generates IDLs to
+        # packages/programs-core/target/idl/ as a side effect;
+        # dev:surfpool's pre-flight expects .so files in target/deploy.
+        # No untrusted input (static command, no github.event.* subs).
+        working-directory: packages/programs-core
+        run: anchor build
 
       - name: Create local deploy payer
         run: solana-keygen new -o apps/demo/.deploy-payer.json --no-bip39-passphrase --silent

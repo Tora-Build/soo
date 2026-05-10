@@ -101,8 +101,13 @@ const LOCALNET_DIR = resolve(DEMO_ROOT, ".localnet");
 const SDK_DIST = resolve(REPO_ROOT, "packages", "sdk-solana", "dist");
 const sdkUrl = (rel) => new URL(`file://${SDK_DIST}/${rel}`).href;
 
-const { soothAdjudicatorIdl, soothAmmIdl, soothLaunchpadIdl, soothMarketIdl } =
-  await import(sdkUrl("anchor/index.js"));
+const {
+  soothAdjudicatorIdl,
+  soothAmmIdl,
+  soothBookIdl,
+  soothLaunchpadIdl,
+  soothMarketIdl,
+} = await import(sdkUrl("anchor/index.js"));
 const {
   deriveAdjudicatorAllowlistPda,
   deriveAmmStatePda,
@@ -119,15 +124,28 @@ const {
 } = await import(sdkUrl("pdas.js"));
 const { WAD } = await import(sdkUrl("math/lmsr.js"));
 
+function programIdOrFallback(idlAddress, fallback) {
+  return idlAddress ? new PublicKey(idlAddress) : fallback;
+}
+
 const SOOTH_AMM_ID = new PublicKey(soothAmmIdl.address);
 const SOOTH_MARKET_ID = new PublicKey(soothMarketIdl.address);
 const SOOTH_LAUNCHPAD_ID = new PublicKey(soothLaunchpadIdl.address);
 const SOOTH_ADJUDICATOR_ID = new PublicKey(soothAdjudicatorIdl.address);
+const SOOTH_BOOK_ID = programIdOrFallback(
+  soothBookIdl.address,
+  new PublicKey("DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X"),
+);
+const soothBookProgramIdl = {
+  ...soothBookIdl,
+  address: SOOTH_BOOK_ID.toBase58(),
+};
 const PROGRAMS = {
   soothAmm: SOOTH_AMM_ID,
   soothMarket: SOOTH_MARKET_ID,
   soothLaunchpad: SOOTH_LAUNCHPAD_ID,
   soothAdjudicator: SOOTH_ADJUDICATOR_ID,
+  soothBook: SOOTH_BOOK_ID,
 };
 
 // Canonical USDC mint baked into the on-chain programs' `address = ...`
@@ -141,9 +159,30 @@ const MINT_AUTHORITY_PATH = resolve(LOCALNET_DIR, "mint-authority.json");
 const USER_KEYPAIR_PATH = resolve(LOCALNET_DIR, "user-keypair.json");
 const CREATOR_KEYPAIR_PATH = resolve(LOCALNET_DIR, "creator-keypair.json");
 const USDC_MINT_DUMP_PATH = resolve(LOCALNET_DIR, "usdc-mint-account.json");
+const LOCALNET_ENV_PATH = resolve(LOCALNET_DIR, ".env.local");
 const ENV_LOCAL_PATH = resolve(DEMO_ROOT, ".env.local");
 
 const RPC_URL = process.env.SOLANA_RPC_URL ?? "http://127.0.0.1:8899";
+const BOOK_PRICE_LADDER_SEED = "sooth-default";
+// SBF heap is 32KB total and Anchor's account-loading framework eats a
+// chunk of it. Empirically, AddPricesToPriceLadder fails with OOM at
+// 600 prices (account ~9.6KB). 100 prices = 1.6KB account fits cleanly.
+// Smaller ladder = coarser tick spacing; spec uses 0.4·WAD which still
+// hits the 0.001-WAD-spaced default ladder cleanly (price = tick 400 in
+// a 1000-cap world; with 100 prices we instead use 0.01·WAD spacing).
+// See seed-localnet's bookDefaultPriceStrings for the actual tick values.
+const BOOK_PRICE_LADDER_MAX_PRICES = 100;
+const BOOK_MARKET_TYPE_NAME = "sooth-binary";
+// Must be <= BOOK_PRICE_LADDER_MAX_PRICES; capped here to fit the
+// PriceLadder account's 10KB SystemProgram::create_account limit.
+const BOOK_DEFAULT_PRICE_COUNT = BOOK_PRICE_LADDER_MAX_PRICES;
+const BOOK_PRICE_TICK_WAD = 1_000_000_000_000_000n;
+// Smaller chunk size to fit Solana's 32KB SBF heap. add_prices_to_price_ladder
+// deserializes the existing Vec<u128>, decodes new prices, merges, and
+// re-serializes — heap usage scales with (existing + new) entries. 10 per
+// chunk keeps each tx well under the heap cap even when the ladder is near
+// full. 60 chunks × 10 prices = 600 ladder entries.
+const BOOK_PRICE_ADD_CHUNK_SIZE = 10;
 
 function log(msg) {
   process.stdout.write(`[seed-localnet] ${msg}\n`);
@@ -156,6 +195,90 @@ function die(msg, code = 1) {
 
 function ensureLocalnetDir() {
   mkdirSync(LOCALNET_DIR, { recursive: true });
+}
+
+function bookDefaultPriceStrings() {
+  // 100-tick ladder at stride 5 ticks (0.005·WAD spacing). Range covered:
+  // 0.005·WAD to 0.500·WAD. Includes the spec's reference price 0.4·WAD
+  // (= 80*stride = 400·PRICE_TICK), and every tick is a valid multiple
+  // of PRICE_TICK so price_precision_is_within_range passes. Sized so the
+  // PriceLadder account stays under the SBF heap budget for AddPrices'
+  // deserialize+modify+serialize roundtrip.
+  const STRIDE_TICKS = 5n;
+  const stride = STRIDE_TICKS * BOOK_PRICE_TICK_WAD;
+  return Array.from({ length: BOOK_DEFAULT_PRICE_COUNT }, (_, index) =>
+    (BigInt(index + 1) * stride).toString(),
+  );
+}
+
+function bookDefaultPrices() {
+  return bookDefaultPriceStrings().map((price) => new BN(price));
+}
+
+function chunkArray(values, size) {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function deriveBookPriceLadderPda(authority, distinctSeed) {
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("price_ladder"),
+      authority.toBuffer(),
+      Buffer.from(distinctSeed),
+    ],
+    SOOTH_BOOK_ID,
+  )[0];
+}
+
+function deriveBookMarketTypePda(name) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("market_type"), Buffer.from(name)],
+    SOOTH_BOOK_ID,
+  )[0];
+}
+
+function deriveBookAuthorisedOperatorsPda(operatorType) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("authorised_operators"), Buffer.from(operatorType)],
+    SOOTH_BOOK_ID,
+  )[0];
+}
+
+function operatorListContains(account, operator) {
+  return (
+    Array.isArray(account?.operatorList) &&
+    account.operatorList.some((item) => item.equals(operator))
+  );
+}
+
+function bookSingletonEnvLines(singletons) {
+  return [
+    `VITE_SOOTH_BOOK_ID=${SOOTH_BOOK_ID.toBase58()}`,
+    `VITE_SOOTH_BOOK_PRICE_LADDER_PDA=${singletons.priceLadderPda.toBase58()}`,
+    `VITE_SOOTH_BOOK_PRICE_LADDER_SEED=${BOOK_PRICE_LADDER_SEED}`,
+    `VITE_SOOTH_BOOK_MARKET_TYPE_PDA=${singletons.marketTypePda.toBase58()}`,
+    `VITE_SOOTH_BOOK_MARKET_TYPE_NAME=${BOOK_MARKET_TYPE_NAME}`,
+    `VITE_SOOTH_BOOK_ADMIN_OPERATORS_PDA=${singletons.adminOperatorsPda.toBase58()}`,
+    `VITE_SOOTH_BOOK_MARKET_OPERATORS_PDA=${singletons.marketOperatorsPda.toBase58()}`,
+    `VITE_SOOTH_BOOK_SEED_AUTHORITY=${singletons.seedAuthority.toBase58()}`,
+  ];
+}
+
+function writeBookLocalnetEnv(singletons) {
+  const envBody = [
+    "# Auto-generated by apps/demo/scripts/seed-localnet.mjs.",
+    "# SoothBook protocol singleton addresses for local e2e helpers.",
+    "# Regenerated every time `pnpm dev:surfpool` runs.",
+    "",
+    ...bookSingletonEnvLines(singletons),
+    "",
+  ].join("\n");
+  writeFileSync(LOCALNET_ENV_PATH, envBody);
+  log(`wrote ${LOCALNET_ENV_PATH}`);
 }
 
 function loadOrCreateKeypair(path) {
@@ -327,6 +450,7 @@ async function init() {
   const marketProgram = new Program(soothMarketIdl, provider);
   const launchpadProgram = new Program(soothLaunchpadIdl, provider);
   const adjudicatorProgram = new Program(soothAdjudicatorIdl, provider);
+  const bookProgram = new Program(soothBookProgramIdl, provider);
 
   // 16-byte random market id.
   const marketId = new Uint8Array(16);
@@ -414,6 +538,148 @@ async function init() {
       `  fee_pool_vault already present at ${feePoolVault.toBase58()}, skipping bootstrap`,
     );
   }
+
+  // ─── SoothBook protocol singletons ──────────────────────────────────
+  //
+  // The Monaco-derived book program needs a few cluster-level accounts
+  // before per-market setup can run. Seed them once on Surfpool boot and
+  // tolerate re-runs by checking existing PDAs before creating anything.
+  const bookPriceLadderPda = deriveBookPriceLadderPda(
+    creator.publicKey,
+    BOOK_PRICE_LADDER_SEED,
+  );
+  const bookMarketTypePda = deriveBookMarketTypePda(BOOK_MARKET_TYPE_NAME);
+  const bookAdminOperatorsPda = deriveBookAuthorisedOperatorsPda("ADMIN");
+  const bookMarketOperatorsPda = deriveBookAuthorisedOperatorsPda("MARKET");
+
+  const priceLadderAccount =
+    await bookProgram.account.priceLadder.fetchNullable(bookPriceLadderPda);
+  if (!priceLadderAccount) {
+    await bookProgram.methods
+      .createPriceLadder(BOOK_PRICE_LADDER_SEED, BOOK_PRICE_LADDER_MAX_PRICES)
+      .accounts({
+        priceLadder: bookPriceLadderPda,
+        authority: creator.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .preInstructions([
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
+      ])
+      .signers([creator])
+      .rpc();
+    log(
+      `  createPriceLadder OK (price_ladder=${bookPriceLadderPda.toBase58()})`,
+    );
+  } else {
+    log(
+      `  price_ladder already present at ${bookPriceLadderPda.toBase58()}, checking prices`,
+    );
+  }
+
+  const freshPriceLadderAccount =
+    priceLadderAccount ??
+    (await bookProgram.account.priceLadder.fetch(bookPriceLadderPda));
+  const existingPriceSet = new Set(
+    freshPriceLadderAccount.prices.map((price) => price.toString()),
+  );
+  const pricesToAdd = bookDefaultPrices().filter(
+    (price) => !existingPriceSet.has(price.toString()),
+  );
+  if (pricesToAdd.length > 0) {
+    for (const priceChunk of chunkArray(
+      pricesToAdd,
+      BOOK_PRICE_ADD_CHUNK_SIZE,
+    )) {
+      await bookProgram.methods
+        .addPricesToPriceLadder(priceChunk)
+        .accounts({
+          priceLadder: bookPriceLadderPda,
+          authority: creator.publicKey,
+        })
+        .preInstructions([
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        ])
+        .signers([creator])
+        .rpc();
+    }
+    log(
+      `  addPricesToPriceLadder OK (${pricesToAdd.length} prices, chunk_size=${BOOK_PRICE_ADD_CHUNK_SIZE})`,
+    );
+  } else {
+    log(
+      `  price_ladder already has ${BOOK_DEFAULT_PRICE_COUNT} default prices`,
+    );
+  }
+
+  const marketTypeInfo = await connection.getAccountInfo(bookMarketTypePda);
+  if (!marketTypeInfo) {
+    await bookProgram.methods
+      .createMarketType(BOOK_MARKET_TYPE_NAME, false, false)
+      .accounts({
+        marketType: bookMarketTypePda,
+        authority: creator.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([creator])
+      .rpc();
+    log(`  createMarketType OK (market_type=${bookMarketTypePda.toBase58()})`);
+  } else {
+    log(
+      `  market_type already present at ${bookMarketTypePda.toBase58()}, skipping bootstrap`,
+    );
+  }
+
+  const adminOperatorsAccount =
+    await bookProgram.account.authorisedOperators.fetchNullable(
+      bookAdminOperatorsPda,
+    );
+  if (!operatorListContains(adminOperatorsAccount, creator.publicKey)) {
+    await bookProgram.methods
+      .authoriseAdminOperator(creator.publicKey)
+      .accounts({
+        authorisedOperators: bookAdminOperatorsPda,
+        adminOperator: creator.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([creator])
+      .rpc();
+    log(
+      `  authoriseAdminOperator OK (operator=${creator.publicKey.toBase58()})`,
+    );
+  } else {
+    log(`  admin operator ${creator.publicKey.toBase58()} already authorised`);
+  }
+
+  const marketOperatorsAccount =
+    await bookProgram.account.authorisedOperators.fetchNullable(
+      bookMarketOperatorsPda,
+    );
+  if (!operatorListContains(marketOperatorsAccount, creator.publicKey)) {
+    await bookProgram.methods
+      .authoriseOperator("MARKET", creator.publicKey)
+      .accounts({
+        authorisedOperators: bookMarketOperatorsPda,
+        adminOperator: creator.publicKey,
+        adminOperators: bookAdminOperatorsPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([creator])
+      .rpc();
+    log(
+      `  authoriseOperator OK (type=MARKET, operator=${creator.publicKey.toBase58()})`,
+    );
+  } else {
+    log(`  market operator ${creator.publicKey.toBase58()} already authorised`);
+  }
+
+  const bookSingletons = {
+    priceLadderPda: bookPriceLadderPda,
+    marketTypePda: bookMarketTypePda,
+    adminOperatorsPda: bookAdminOperatorsPda,
+    marketOperatorsPda: bookMarketOperatorsPda,
+    seedAuthority: creator.publicKey,
+  };
+  writeBookLocalnetEnv(bookSingletons);
 
   // ─── Global lp_yield_vault (redeem_lp payout source) ─────────────────
   //
@@ -673,9 +939,14 @@ async function init() {
     "# Do not commit — see apps/demo/.gitignore.",
     "",
     `VITE_SOLANA_RPC_URL=${RPC_URL}`,
+    `# No EVM indexer on the Solana fork — short-circuits the poller`,
+    `# at apps/demo/src/hooks/indexer/config.ts to silence the dead-URL`,
+    `# error storm (was ~261k console errors per page session).`,
+    `VITE_USE_INDEXER=false`,
     `VITE_SOOTH_AMM_ID=${SOOTH_AMM_ID.toBase58()}`,
     `VITE_SOOTH_MARKET_ID=${SOOTH_MARKET_ID.toBase58()}`,
     `VITE_SOOTH_ADJUDICATOR_ID=${SOOTH_ADJUDICATOR_ID.toBase58()}`,
+    ...bookSingletonEnvLines(bookSingletons),
     `VITE_USDC_MINT=${USDC_MINT_DEVNET.toBase58()}`,
     `VITE_DEMO_MARKET_REF=sol:${marketPda.toBase58()}`,
     `VITE_DEMO_LP_YIELD_VAULT=${lpYieldVaultAta.toBase58()}`,

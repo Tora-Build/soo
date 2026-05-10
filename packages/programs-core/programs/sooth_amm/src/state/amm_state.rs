@@ -45,5 +45,5 @@ impl AmmState {
         + 8                      // trial_end_at
         + 1                      // is_graduated
         + 1                      // is_dismissed
-        + 1;                     // bump
+        + 1; // bump
 }

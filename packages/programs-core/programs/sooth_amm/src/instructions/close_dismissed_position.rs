@@ -68,7 +68,7 @@ fn require_claim_refund_parent(instruction_sysvar: &AccountInfo) -> Result<()> {
         let ix = ix_sysvar::load_instruction_at_checked(i, instruction_sysvar)?;
         if ix.program_id == sooth_market::ID
             && ix.data.len() >= 8
-            && &ix.data[..8] == &CLAIM_REFUND_DISCRIMINATOR
+            && ix.data[..8] == CLAIM_REFUND_DISCRIMINATOR
         {
             return Ok(());
         }

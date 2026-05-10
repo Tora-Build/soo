@@ -17,8 +17,8 @@
 //! - `lock_vault` USDC ATA   owner = `lock_authority` PDA
 //!
 //! Pre-existing (read+modified):
-//! - `market`     Market PDA — flips lifecycle from `Initializing` → `Open`
-//!                             and stores the `vault` / `lock_vault` ATAs.
+//! - `market` — flips lifecycle from `Initializing` → `Open` and stores
+//!   the `vault` / `lock_vault` ATAs.
 
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;

@@ -1,0 +1,6 @@
+Vendored from Monaco Protocol protocol-product v0.2.0 (commit 10b312aa).
+
+License: Apache-2.0.
+Original copyright: Monaco Protocol contributors.
+
+The local copy updates Anchor and Solana dependency pins to match sooth-solana.
