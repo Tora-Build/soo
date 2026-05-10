@@ -164,11 +164,25 @@ const ENV_LOCAL_PATH = resolve(DEMO_ROOT, ".env.local");
 
 const RPC_URL = process.env.SOLANA_RPC_URL ?? "http://127.0.0.1:8899";
 const BOOK_PRICE_LADDER_SEED = "sooth-default";
-const BOOK_PRICE_LADDER_MAX_PRICES = 1_000;
+// SBF heap is 32KB total and Anchor's account-loading framework eats a
+// chunk of it. Empirically, AddPricesToPriceLadder fails with OOM at
+// 600 prices (account ~9.6KB). 100 prices = 1.6KB account fits cleanly.
+// Smaller ladder = coarser tick spacing; spec uses 0.4·WAD which still
+// hits the 0.001-WAD-spaced default ladder cleanly (price = tick 400 in
+// a 1000-cap world; with 100 prices we instead use 0.01·WAD spacing).
+// See seed-localnet's bookDefaultPriceStrings for the actual tick values.
+const BOOK_PRICE_LADDER_MAX_PRICES = 100;
 const BOOK_MARKET_TYPE_NAME = "sooth-binary";
-const BOOK_DEFAULT_PRICE_COUNT = 999;
+// Must be <= BOOK_PRICE_LADDER_MAX_PRICES; capped here to fit the
+// PriceLadder account's 10KB SystemProgram::create_account limit.
+const BOOK_DEFAULT_PRICE_COUNT = BOOK_PRICE_LADDER_MAX_PRICES;
 const BOOK_PRICE_TICK_WAD = 1_000_000_000_000_000n;
-const BOOK_PRICE_ADD_CHUNK_SIZE = 50;
+// Smaller chunk size to fit Solana's 32KB SBF heap. add_prices_to_price_ladder
+// deserializes the existing Vec<u128>, decodes new prices, merges, and
+// re-serializes — heap usage scales with (existing + new) entries. 10 per
+// chunk keeps each tx well under the heap cap even when the ladder is near
+// full. 60 chunks × 10 prices = 600 ladder entries.
+const BOOK_PRICE_ADD_CHUNK_SIZE = 10;
 
 function log(msg) {
   process.stdout.write(`[seed-localnet] ${msg}\n`);
@@ -184,8 +198,16 @@ function ensureLocalnetDir() {
 }
 
 function bookDefaultPriceStrings() {
+  // 100-tick ladder at stride 5 ticks (0.005·WAD spacing). Range covered:
+  // 0.005·WAD to 0.500·WAD. Includes the spec's reference price 0.4·WAD
+  // (= 80*stride = 400·PRICE_TICK), and every tick is a valid multiple
+  // of PRICE_TICK so price_precision_is_within_range passes. Sized so the
+  // PriceLadder account stays under the SBF heap budget for AddPrices'
+  // deserialize+modify+serialize roundtrip.
+  const STRIDE_TICKS = 5n;
+  const stride = STRIDE_TICKS * BOOK_PRICE_TICK_WAD;
   return Array.from({ length: BOOK_DEFAULT_PRICE_COUNT }, (_, index) =>
-    (BigInt(index + 1) * BOOK_PRICE_TICK_WAD).toString(),
+    (BigInt(index + 1) * stride).toString(),
   );
 }
 
@@ -530,15 +552,11 @@ async function init() {
   const bookAdminOperatorsPda = deriveBookAuthorisedOperatorsPda("ADMIN");
   const bookMarketOperatorsPda = deriveBookAuthorisedOperatorsPda("MARKET");
 
-  const priceLadderAccount = await bookProgram.account.priceLadder.fetchNullable(
-    bookPriceLadderPda,
-  );
+  const priceLadderAccount =
+    await bookProgram.account.priceLadder.fetchNullable(bookPriceLadderPda);
   if (!priceLadderAccount) {
     await bookProgram.methods
-      .createPriceLadder(
-        BOOK_PRICE_LADDER_SEED,
-        BOOK_PRICE_LADDER_MAX_PRICES,
-      )
+      .createPriceLadder(BOOK_PRICE_LADDER_SEED, BOOK_PRICE_LADDER_MAX_PRICES)
       .accounts({
         priceLadder: bookPriceLadderPda,
         authority: creator.publicKey,
@@ -549,7 +567,9 @@ async function init() {
       ])
       .signers([creator])
       .rpc();
-    log(`  createPriceLadder OK (price_ladder=${bookPriceLadderPda.toBase58()})`);
+    log(
+      `  createPriceLadder OK (price_ladder=${bookPriceLadderPda.toBase58()})`,
+    );
   } else {
     log(
       `  price_ladder already present at ${bookPriceLadderPda.toBase58()}, checking prices`,
@@ -586,7 +606,9 @@ async function init() {
       `  addPricesToPriceLadder OK (${pricesToAdd.length} prices, chunk_size=${BOOK_PRICE_ADD_CHUNK_SIZE})`,
     );
   } else {
-    log(`  price_ladder already has ${BOOK_DEFAULT_PRICE_COUNT} default prices`);
+    log(
+      `  price_ladder already has ${BOOK_DEFAULT_PRICE_COUNT} default prices`,
+    );
   }
 
   const marketTypeInfo = await connection.getAccountInfo(bookMarketTypePda);
@@ -625,9 +647,7 @@ async function init() {
       `  authoriseAdminOperator OK (operator=${creator.publicKey.toBase58()})`,
     );
   } else {
-    log(
-      `  admin operator ${creator.publicKey.toBase58()} already authorised`,
-    );
+    log(`  admin operator ${creator.publicKey.toBase58()} already authorised`);
   }
 
   const marketOperatorsAccount =
@@ -645,11 +665,11 @@ async function init() {
       })
       .signers([creator])
       .rpc();
-    log(`  authoriseOperator OK (type=MARKET, operator=${creator.publicKey.toBase58()})`);
-  } else {
     log(
-      `  market operator ${creator.publicKey.toBase58()} already authorised`,
+      `  authoriseOperator OK (type=MARKET, operator=${creator.publicKey.toBase58()})`,
     );
+  } else {
+    log(`  market operator ${creator.publicKey.toBase58()} already authorised`);
   }
 
   const bookSingletons = {

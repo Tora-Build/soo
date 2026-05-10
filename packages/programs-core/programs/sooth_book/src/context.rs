@@ -929,7 +929,7 @@ pub struct CreatePriceLadder<'info> {
         payer = authority,
         space = PriceLadder::size_for(max_number_of_prices)
     )]
-    pub price_ladder: Account<'info, PriceLadder>,
+    pub price_ladder: Box<Account<'info, PriceLadder>>,
     #[account(mut)]
     pub authority: Signer<'info>,
     #[account(address = system_program::ID)]
@@ -939,7 +939,7 @@ pub struct CreatePriceLadder<'info> {
 #[derive(Accounts)]
 pub struct UpdatePriceLadder<'info> {
     #[account(mut, has_one = authority)]
-    pub price_ladder: Account<'info, PriceLadder>,
+    pub price_ladder: Box<Account<'info, PriceLadder>>,
     pub authority: Signer<'info>,
 }
 
@@ -953,7 +953,7 @@ pub struct UpdatePriceLadderSize<'info> {
         realloc::zero = false,
         realloc::payer = authority
     )]
-    pub price_ladder: Account<'info, PriceLadder>,
+    pub price_ladder: Box<Account<'info, PriceLadder>>,
     #[account(mut)]
     pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,

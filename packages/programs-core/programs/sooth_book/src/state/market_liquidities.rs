@@ -12,14 +12,15 @@ pub struct MarketLiquidities {
 }
 
 impl MarketLiquidities {
-    // Lifted from Monaco's 30 to 1000 for Sooth: prediction-market grids
-    // populate every tick at depth, where sportsbooks rarely exceed
-    // ~30 distinct active levels per side. CU bound for matching against
-    // a populated 1000-entry book is ~150-210k (see docs/sooth_book/cu-analysis.md),
-    // well under the 1.4M per-tx budget. Account size becomes ~200KB
-    // per MarketLiquidities (vs ~6KB at 30), comfortably under Solana's
-    // 10MB account ceiling.
-    const LIQUIDITIES_VEC_LENGTH: usize = 1000_usize;
+    // Reverted from W4's 1000 back to Monaco's 30 because Solana's
+    // SystemProgram caps init/realloc at 10240 bytes per inner ix and
+    // 1000 entries × 50 bytes × 2 sides ≈ 100KB exceeds it. The W4 lift
+    // was based on CU-bound math that overlooked this allocation cap.
+    // Future fix: init at 30 + realloc-up via increase_*_size helper as
+    // the book deepens. For now, 30/side = ~6KB MarketLiquidities fits
+    // cleanly. CU analysis at docs/sooth_book/cu-analysis.md is now
+    // inapplicable for the smaller cap and will need redoing.
+    const LIQUIDITIES_VEC_LENGTH: usize = 30_usize;
     pub const SIZE: usize = DISCRIMINATOR_SIZE
         + PUB_KEY_SIZE // market
         + U64_SIZE // stake_matched_total
