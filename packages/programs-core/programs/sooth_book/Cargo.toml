@@ -25,7 +25,10 @@ anchor-spl = { version = "0.30.1", features = ["token"] }
 solana-program = "=1.18.26"
 spl-token = "=4.0.0"
 rust_decimal = "=1.32.0"
-protocol_product = { path = "vendor/protocol_product/programs/protocol_product", features = ["no-entrypoint"] }
+# protocol_product was vendored at W1 alongside Monaco's sportsbook layer.
+# After W3's sportsbook strip the only remaining sooth_book code path that
+# referenced it was removed. Dropping the dep so Cargo no longer compiles
+# Monaco's mainnet declare_id! into the workspace tree.
 sooth_market = { path = "../sooth_market", features = ["cpi"] }
 sooth-account-offsets = { path = "../../crates/sooth-account-offsets" }
 sooth-protocol-types = { path = "../../crates/sooth-protocol-types" }
