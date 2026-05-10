@@ -381,6 +381,13 @@ test.describe("dynamic create → graduate → orderbook trade (full lifecycle)"
     });
     expect(finalLen).toBeGreaterThan(lenBefore);
 
+    // UI health invariant — page surface must not contradict on-chain
+    // state. Catches receipt-status / chain-shim regressions.
+    await expect(
+      page.locator("text=/Transaction reverted on-chain/i"),
+    ).toHaveCount(0);
+    await expect(page.locator("text=/Application error/i")).toHaveCount(0);
+
     // Suppress unused-import warnings on adapters left in the helpers we
     // reference but don't directly call here. Anchor's tree-shake is strict
     // and TOKEN_PROGRAM_ID / ASSOCIATED_TOKEN_PROGRAM_ID are pulled in by
