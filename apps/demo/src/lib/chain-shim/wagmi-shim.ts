@@ -287,6 +287,7 @@ export function usePublicClient(_args?: unknown): ShimPublicClient {
           ? demo.userRef.replace(/^sol:/, "")
           : undefined,
         signer: demo.signer,
+        marketRef: demo.marketRef,
       }
     : null;
   const portfolio: PortfolioBridgeCtx | null = demo
@@ -382,6 +383,7 @@ function buildBridgeCtxs(
       connection: effectiveConnection as never,
       userBase58: demo.userRef ? demo.userRef.replace(/^sol:/, "") : undefined,
       signer: demo.signer,
+      marketRef: demo.marketRef,
     },
     portfolio: { adapter: demo.adapter, knownMarkets },
     markets: { adapter: demo.adapter, knownMarkets },
