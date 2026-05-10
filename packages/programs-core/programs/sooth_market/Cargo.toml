@@ -54,7 +54,9 @@ sooth-protocol-types = { path = "../../crates/sooth-protocol-types" }
 litesvm = "=0.2.1"
 solana-sdk = "=1.18.26"
 spl-token = "=4.0.0"
-spl-associated-token-account = "=2.3.0"
+spl-associated-token-account = { version = "=2.3.0", features = [
+  "no-entrypoint",
+] }
 # Pull in the sibling programs as host-side libs so the tests can build the
 # outer adjudicator/launchpad ixs via the auto-generated `instruction` and
 # `accounts` modules. The `cpi` feature pulls only the no-entrypoint surface
