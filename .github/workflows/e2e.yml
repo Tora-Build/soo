@@ -112,7 +112,9 @@ jobs:
   e2e:
     name: Surfpool Playwright E2E
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Run on every PR + every main push. The job's a real Surfpool boot +
+    # 22-spec UI suite — catches chain-shim / hook regressions that the
+    # cargo + vitest gates can't see.
     steps:
       - uses: actions/checkout@v4
 
@@ -174,6 +176,12 @@ jobs:
 
       - name: Create local deploy payer
         run: solana-keygen new -o apps/demo/.deploy-payer.json --no-bip39-passphrase --silent
+
+      - name: Build SDK (seed-localnet imports from packages/sdk-solana/dist)
+        # apps/demo/scripts/seed-localnet.mjs dynamic-imports leaf modules
+        # under packages/sdk-solana/dist/. Without this step the seed step
+        # inside dev:surfpool fails with ERR_MODULE_NOT_FOUND.
+        run: pnpm -F @sooth/sdk-solana build
 
       - name: Boot Surfpool demo
         run: |
