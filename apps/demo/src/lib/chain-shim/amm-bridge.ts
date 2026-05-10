@@ -60,6 +60,7 @@ import {
   type SoothRequest,
 } from "@sooth/sdk-solana";
 import { AnchorProvider, Program, type Idl } from "@coral-xyz/anchor";
+import { findUserOpenOrderAtLevel } from "./orderbook-reads";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -291,6 +292,19 @@ export async function dispatchAmmRead(
 
     case "decimals": {
       return USDC_DECIMALS;
+    }
+
+    case "getOrdersAtTick": {
+      // EVM SoothBook.getOrdersAtTick(marketKey, side, tick) →
+      // (totalAmount: u128, makers: Order[]). The Solana fork doesn't
+      // surface a per-tick aggregator on-chain; the demo reads this to
+      // populate the order-book depth panel, which we leave empty
+      // (depth view shows "no liquidity"). The non-empty tuple shape is
+      // load-bearing — `useOrderbook.scanTickDepth` destructures
+      // `[totalAmount] = result.result`, and a bare `undefined` would
+      // throw "Cannot destructure undefined" inside the multicall loop,
+      // leaving `useOrderbook.isLoading` stuck on the first poll.
+      return [0n, [] as readonly unknown[]] as const;
     }
 
     case "isMarketRegistered": {
@@ -1093,12 +1107,18 @@ async function dispatchOrderbookWrite(
   const args = (call.args ?? []) as readonly unknown[];
 
   if (fn === "cancelById") {
-    // EVM args: `[orderId: bigint]`. On Solana there is no monotonic order
-    // id — Order PDAs are addressed by their pubkey. The chain-shim accepts
-    // a bare base58 / `sol:<base58>` ref tunneled through args[0] when the
-    // upstream caller is Solana-aware. EVM-shaped numeric ids cannot be
-    // resolved (no on-chain registry) — fail loudly so we don't silently
-    // submit a wrong cancel.
+    // EVM args: `[orderId: bigint | string]`. On Solana there is no
+    // monotonic order id — Order PDAs are addressed by their pubkey. Two
+    // shapes are accepted:
+    //
+    //   1. base58 / `sol:<base58>` — tunneled through by Solana-aware
+    //      callers (e.g. our synthetic `OrderPlaced.args.orderId` from
+    //      orderbook-reads.synthOrderPlacedLogs). Used directly.
+    //   2. numeric `bigint` (the EVM convention) — unreachable on the
+    //      Solana fork because the chain-shim's getLogs only ever emits
+    //      base58 orderIds. We still surface a descriptive error so a
+    //      stale upstream cache (e.g. the deprecated useOrderStore) that
+    //      replays a numeric id fails fast.
     const raw = args[0];
     let orderRef: string;
     if (typeof raw === "string") {
@@ -1118,13 +1138,49 @@ async function dispatchOrderbookWrite(
 
   if (fn === "cancel") {
     // EVM args: `[marketKey, side, tick]` — collapses into an iter-cancel
-    // over every Order at a (side, tick) level. Solana has no such bulk-
-    // cancel ix; cancellation is per-Order PDA. The shim does not have an
-    // on-chain index from (side, tick) → Order PDAs, so this path can't
-    // be honored via a single ix today.
-    throw new Error(
-      "cancel(side, tick): bulk-cancel by level is not supported on Solana — cancel by Order PDA via cancelById",
+    // over every Order at a (side, tick) level. Solana has no bulk-by-
+    // level cancel ix, but the upstream `parseOrderId` produces this
+    // shape whenever the order id stored locally is `${side}:${tick}`
+    // (e.g. UserOrdersPanel rows synthesized via the shim's `getLogs`
+    // RPC fallback). We resolve the on-chain Order PDA at that level by
+    // querying `program.account.order.all` filtered by
+    // `(market, purchaser)` and matching `(forOutcome, expectedPrice)`.
+    //
+    // If no Order PDA matches the level (most common: the OrderRequest
+    // hasn't been processed into an Order yet — `process_order_request`
+    // must run first via the off-chain crank or an adapter-direct call),
+    // surface a descriptive error so the upstream toast pipeline tells
+    // the user to retry.
+    const sideRaw = args[1];
+    const tickRaw = args[2];
+    const side = (Number(sideRaw) === 1 ? 1 : 0) as 0 | 1;
+    const tickArg =
+      typeof tickRaw === "number" ? tickRaw : Number(tickRaw ?? 0);
+    if (!Number.isFinite(tickArg) || tickArg < 1 || tickArg > 999) {
+      throw new Error(
+        `cancel: invalid tick ${String(tickRaw)} (expected 1..999)`,
+      );
+    }
+    const order = await findUserOpenOrderAtLevel(
+      ctx.connection,
+      ctx.adapter,
+      ctx.marketRef,
+      userBase58,
+      side,
+      tickArg,
     );
+    if (!order) {
+      throw new Error(
+        `cancel: no open Order PDA found at side=${side} tick=${tickArg} for ${userBase58}. ` +
+          "If a place tx just confirmed, the OrderRequest may not have been processed yet — " +
+          "run process_order_request and retry.",
+      );
+    }
+    const req = await ctx.adapter.buildOrderbookCancel(
+      bookMarketRef,
+      order.pda.toBase58(),
+    );
+    return submitAndSynth(ctx.adapter, req, signer);
   }
 
   // buyYes / buyNo path. EVM args: `[marketKey, tick, shares, escrow, matchLimit]`.

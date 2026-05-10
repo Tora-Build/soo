@@ -19,6 +19,7 @@ export {
   deriveAdjudicatorPda,
   deriveAmmStatePda,
   deriveBookMarketPda,
+  deriveBookOrderRequestQueuePda,
   deriveBookPriceLadderPda,
   deriveLockAuthorityPda,
   deriveLockEntryPda,
@@ -63,7 +64,7 @@ export {
 
 // IDLs are exported so consumers can build their own Anchor `Program`
 // instances if they need read paths the adapter doesn't expose.
-export { soothAmmIdl, soothMarketIdl } from "./anchor/index.js";
+export { soothAmmIdl, soothMarketIdl, soothBookIdl } from "./anchor/index.js";
 
 // VENDORED chain-adapter types — see top of `./types.ts` for the Phase A
 // swap-out comment.

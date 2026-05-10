@@ -23,6 +23,7 @@ import {
   type AmmBridgeCtx,
   type ReadCallShape,
 } from "./amm-bridge";
+import { fetchUserOpenOrders, synthOrderPlacedLogs } from "./orderbook-reads";
 import {
   dispatchPortfolioRead,
   PORTFOLIO_NOT_HANDLED,
@@ -208,8 +209,46 @@ function makeShimPublicClient(
   // freely (event-log shape, multicall tuple shape, etc.). Most return
   // sentinels; `readContract` dispatches AMM-shaped reads through the
   // bridge and falls through to `undefined` for unhandled function names.
+  //
+  // `getLogs`: synthesize EVM-shaped `OrderPlaced` logs from on-chain
+  // sooth_book Order PDAs so `useIndexerOrders.fetchOpenOrdersFromRpc`
+  // populates the My-Orders panel. Only the buy-path (forOutcome=true)
+  // shape is emitted — see orderbook-reads.ts for the full mapping. All
+  // other event topics fall through to `[]` (empty), preserving the
+  // pre-orderbook behaviour for AMM logs / activity / etc.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const getLogs = async <_E = unknown>(_args?: any): Promise<any[]> => [];
+  const getLogs = async <_E = unknown>(args?: any): Promise<any[]> => {
+    if (!bridge || !bridge.marketRef || !bridge.userBase58) return [];
+    const eventName: string | undefined =
+      args?.event?.name ?? args?.eventName ?? undefined;
+    // OrderPlaced is the only event upstream's open-orders RPC fallback
+    // path (`useIndexerOrders.fetchOpenOrdersFromRpc`) inspects to
+    // reconstruct level-aggregated rows. Cancelled / Filled aggregates
+    // would also be synthesized here once the SELL / fill paths are
+    // wired — until then we deliberately emit `[]` for them so the
+    // upstream subtraction `placed - cancelled - filled = stake_unmatched`
+    // yields the right remaining amount.
+    if (eventName !== "OrderPlaced") return [];
+    try {
+      const orders = await fetchUserOpenOrders(
+        bridge.connection,
+        bridge.adapter,
+        bridge.marketRef,
+        bridge.userBase58,
+      );
+      const marketKey =
+        typeof args?.args?.marketKey === "string"
+          ? (args.args.marketKey as string)
+          : undefined;
+      const ownerLower =
+        typeof args?.args?.maker === "string"
+          ? (args.args.maker as string).toLowerCase()
+          : `0x${bridge.userBase58}`.toLowerCase();
+      return synthOrderPlacedLogs(orders, marketKey, ownerLower);
+    } catch {
+      return [];
+    }
+  };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const readContract = async (args?: any): Promise<any> => {
     if (!bridge || !portfolio || !markets || !args) return undefined;
