@@ -302,6 +302,11 @@ function makeShimPublicClient(
       _args?: unknown,
     ): Promise<TransactionReceipt> => ({
       transactionHash: "0x0" as Hash,
+      // status is load-bearing: useOrderbookTrade.executeWrite throws
+      // "Transaction reverted on-chain" when receipt.status !== "success"
+      // (useOrderbookTrade.ts:422). Without it the post-submit toast
+      // always shows error even when the on-chain tx landed cleanly.
+      status: "success",
       logs: [],
     }),
     getBlockNumber: async () => 0n,
