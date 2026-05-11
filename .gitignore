@@ -10,6 +10,9 @@ Cargo.lock
 .anchor/
 test-ledger/
 
+# tmuxx agent worktrees + transcripts (one per dispatched task)
+.worktrees/
+
 # Spike crates pin their own Cargo.lock for reproducibility
 !_spikes/**/Cargo.lock
 
