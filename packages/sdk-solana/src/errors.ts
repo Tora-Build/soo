@@ -80,7 +80,14 @@ function formatMessage(
     case "NetworkError":
       return `SoothError: ${kind} attempt=${fields.attempt ?? "?"} msg=${fields.msg ?? ""}${sigSuffix}`;
     case "SlippageExceeded":
-      return `SoothError: ${kind} expected=${fields.expected} actual=${fields.actual}${sigSuffix}`;
+      // expected/actual come from the on-chain program's `msg!` log, which
+      // classifySubmitError doesn't currently parse. Fall back to the
+      // generic msg + code so the toast doesn't read "expected=undefined
+      // actual=undefined" (which is meaningless to users).
+      if (fields.expected !== undefined || fields.actual !== undefined) {
+        return `SoothError: ${kind} expected=${fields.expected ?? "?"} actual=${fields.actual ?? "?"}${sigSuffix}`;
+      }
+      return `SoothError: ${kind} ${fields.msg ?? "max_cost_wad exceeded"}${sigSuffix}`;
     case "InsufficientShares":
       return `SoothError: ${kind} needed=${fields.needed} available=${fields.available}${sigSuffix}`;
     case "AccountNotFound":
