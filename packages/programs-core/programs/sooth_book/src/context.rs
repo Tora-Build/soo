@@ -280,8 +280,13 @@ pub struct DequeueOrderRequest<'info> {
 
 #[derive(Accounts)]
 pub struct CancelOrder<'info> {
+    // All large Account<'info, T> fields are Box-wrapped to push the
+    // deserialized state off the SBF stack and onto the heap. Without
+    // these boxes anchor's try_accounts function frame overflows the
+    // 4096-byte stack limit (Market + MarketLiquidities alone are
+    // multi-KB structs).
     #[account(mut)]
-    pub order: Account<'info, Order>,
+    pub order: Box<Account<'info, Order>>,
 
     #[account(mut, address = order.purchaser @ CoreError::CancelationPurchaserMismatch)]
     pub purchaser: Signer<'info>,
@@ -290,26 +295,26 @@ pub struct CancelOrder<'info> {
         associated_token::mint = market.mint_account,
         associated_token::authority = purchaser,
     )]
-    pub purchaser_token_account: Account<'info, TokenAccount>,
+    pub purchaser_token_account: Box<Account<'info, TokenAccount>>,
 
     #[account(mut, address = order.payer @ CoreError::CancelationPayerMismatch)]
     pub payer: SystemAccount<'info>,
 
     #[account(mut, address = order.market @ CoreError::CancelationMarketMismatch)]
-    pub market: Account<'info, Market>,
+    pub market: Box<Account<'info, Market>>,
     #[account(
         mut,
         has_one = market @ CoreError::CancelationMarketLiquiditiesMismatch,
     )]
-    pub market_liquidities: Account<'info, MarketLiquidities>,
+    pub market_liquidities: Box<Account<'info, MarketLiquidities>>,
     #[account(
         mut,
         has_one = market @ CoreError::CancelationMarketOutcomeMismatch,
         constraint = market_outcome.index == order.market_outcome_index @ CoreError::CancelationMarketOutcomeMismatch,
     )]
-    pub market_outcome: Account<'info, MarketOutcome>,
+    pub market_outcome: Box<Account<'info, MarketOutcome>>,
     #[account(has_one = market)]
-    pub market_matching_queue: Account<'info, MarketMatchingQueue>,
+    pub market_matching_queue: Box<Account<'info, MarketMatchingQueue>>,
     #[account(
         mut,
         seeds = [
@@ -321,7 +326,7 @@ pub struct CancelOrder<'info> {
         ],
         bump,
     )]
-    pub market_matching_pool: Account<'info, MarketMatchingPool>,
+    pub market_matching_pool: Box<Account<'info, MarketMatchingPool>>,
     #[account(
         mut,
         token::mint = market.mint_account,
