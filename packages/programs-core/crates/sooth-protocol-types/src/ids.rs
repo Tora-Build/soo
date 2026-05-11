@@ -41,8 +41,26 @@ pub const SOOTH_LAUNCHPAD_PROGRAM_ID: Pubkey =
 pub const SOOTH_ADJUDICATOR_PROGRAM_ID: Pubkey =
     anchor_lang::pubkey!("H8DtUDKvaJZVj2Vt2RZW9FmUCjpJAQunffGFcCTbctos");
 
+/// `sooth_book` program ID. Mirrors `sooth_book::declare_id!`. Used by
+/// `sooth_market` filler-only orderbook helpers to verify the legitimate
+/// parent dispatcher without taking a path-dep on the book program.
+pub const SOOTH_BOOK_PROGRAM_ID: Pubkey =
+    anchor_lang::pubkey!("DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X");
+
 /// Canonical devnet USDC mint, pinned on every `usdc_mint` Accounts entry
 /// across the AMM/market/launchpad. Mainnet uses `EPjFW...`; the SDK swaps
 /// the constant per cluster at deploy time.
 pub const USDC_MINT_DEVNET: Pubkey =
     anchor_lang::pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+
+/// Canonical mainnet USDC mint. Used when `sooth-protocol-types` is built
+/// with `--features mainnet`.
+pub const USDC_MINT_MAINNET: Pubkey =
+    anchor_lang::pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+
+/// The base-token mint the protocol resolves to at compile time. Toggle via
+/// the `mainnet` build feature on `sooth-protocol-types`.
+#[cfg(feature = "mainnet")]
+pub const BASE_TOKEN_MINT: Pubkey = USDC_MINT_MAINNET;
+#[cfg(not(feature = "mainnet"))]
+pub const BASE_TOKEN_MINT: Pubkey = USDC_MINT_DEVNET;
