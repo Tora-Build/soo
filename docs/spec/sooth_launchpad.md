@@ -189,7 +189,7 @@ Graduation is the canonical `BONDING → LIVE` transition. On Solana it
 fires when:
 
 ```text
-AmmState.fees_accrued_wad >= protocol_config.graduation_bps * baseline / 10000
+AmmState.fee_b_base_wad >= protocol_config.graduation_bps * baseline / 10000
 ```
 
 baseline is the creator's seed deposit. The check happens inside

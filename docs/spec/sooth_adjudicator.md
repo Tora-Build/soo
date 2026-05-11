@@ -3,7 +3,7 @@
 > Status: **partial (devnet)** — manual variant shipped; zkTLS and other
 > production variants deferred.
 > Canon law: [`law/adjudicator.md`](https://github.com/Tora-Build/sooth-canon/blob/main/law/adjudicator.md).
-> EVM source mirrored: `sooth-alpha/packages/contracts-core/src/IAdjudicator.sol` + `AdjudicatorBase.sol` + `AdjudicatorRegistry.sol` + `adjudicators/ManualAdjudicator.sol`.
+> EVM source mirrored: `sooth-alpha/packages/contracts-core/src/interfaces/IAdjudicator.sol` + `adjudicators/AdjudicatorBase.sol` + `adjudicators/AdjudicatorRegistry.sol` + `adjudicators/ManualAdjudicator.sol`.
 > Architecture context: [`packages/programs-core/docs/architecture.md`](../../packages/programs-core/docs/architecture.md) §7.
 
 ---
