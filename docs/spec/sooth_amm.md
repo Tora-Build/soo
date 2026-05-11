@@ -42,15 +42,16 @@ Devnet program id: `67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k` (per
 // packages/programs-core/programs/sooth_amm/src/state/amm_state.rs
 pub struct AmmState {
     pub market: Pubkey,             // bound to sooth_market::Market PDA
-    pub q_yes: u128,                // YES inventory, WAD
-    pub q_no:  u128,                // NO inventory,  WAD
-    pub b:     u128,                // LMSR liquidity parameter, WAD
-    pub seed_q_yes: u128,           // unclaimable LMSR seed (for floor calc)
-    pub seed_q_no:  u128,
-    pub fees_accrued_wad: u128,     // graduation tracker
+    pub q_yes: i128,                // YES inventory, WAD (signed; LMSR allows negative)
+    pub q_no:  i128,                // NO inventory,  WAD (signed)
+    pub b:     i128,                // LMSR liquidity parameter, WAD
+    pub seed_q_yes: i128,           // unclaimable LMSR seed (for floor calc)
+    pub seed_q_no:  i128,
+    pub fee_b_base_wad: u128,       // graduation tracker / accumulator
+    pub trial_end_at: i64,          // unix seconds
     pub is_graduated: bool,
-    pub trial_end_time: i64,        // unix seconds
-    // ... fee-pool sub-state
+    pub is_dismissed: bool,
+    pub bump: u8,
 }
 ```
 
@@ -61,14 +62,21 @@ pub struct AmmState {
 
 ```rust
 pub struct Position {
-    pub market: Pubkey,
     pub user:   Pubkey,
-    pub yes_shares: u128,           // WAD
-    pub no_shares:  u128,           // WAD
+    pub market: Pubkey,
+    pub yes_shares: i128,           // WAD; always >= 0 (signed type for math symmetry with AmmState)
+    pub no_shares:  i128,           // WAD; always >= 0
+    pub locked_cost_usdc: u64,      // sum-invariant: market_vault == sum(Position.locked_cost_usdc)
+    pub sell_nonce: u64,            // monotonic per-position counter; LockEntry seed component
+    pub bump: u8,
 }
 ```
 
 **Seeds:** `[b"pos", market.market_id.as_ref(), user.as_ref()]`.
+
+The `locked_cost_usdc` field anchors the AMM's solvency invariant
+(every open Position carries a corresponding share of the market USDC
+vault). `sell_nonce` makes per-sell `LockEntry` PDA addresses unique.
 
 Per canon's two-venue independence rule, this is the **AMM-only** position
 ledger. Orderbook positions live in `sooth_market::OrderbookPosition` (see

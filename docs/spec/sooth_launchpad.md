@@ -1,8 +1,15 @@
 # sooth_launchpad — Factory + Fee Router + LP Token (Solana)
 
-> Status: **partial (devnet)** — protocol bootstrap, LP token paths, and
-> AMM fee accumulator land; `create_market` + `distribute_fees` bodies
-> are `todo!()` stubs awaiting CPI plumbing.
+> Status: **shipped (devnet)** — protocol bootstrap, market factory, LP token
+> paths, and fee distribution land. Per-market `MarketFeePool` (D16) is the
+> only major surface still planned.
+>
+> **Verification note (2026-05-11)**: The `lib.rs` doc comments on
+> `create_market` and `distribute_fees` say "STUB — body is `todo!()`".
+> Those comments are stale. The actual handler bodies are real:
+> `create_market` is a 4-leg CPI bundle to `sooth_market` + `sooth_amm`,
+> and `distribute_fees` implements the 4-way bps split with
+> remainder-to-protocol. See §4.2 + §4.4.
 > Canon law: [`law/lifecycle.md`](https://github.com/Tora-Build/sooth-canon/blob/main/law/lifecycle.md) (graduation + trial),
 > [`law/fee-policy.md`](https://github.com/Tora-Build/sooth-canon/blob/main/law/fee-policy.md),
 > [`law/atomicity.md`](https://github.com/Tora-Build/sooth-canon/blob/main/law/atomicity.md).
@@ -26,17 +33,17 @@ Devnet program id: `HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3` (D6).
 
 ## 2. Status
 
-| Surface                                                | Status                                                         |
-| ------------------------------------------------------ | -------------------------------------------------------------- |
-| `initialize_protocol`                                  | shipped                                                        |
-| `initialize_fee_pool` (global)                         | shipped — will be retired in favor of per-market pools per D16 |
-| `create_market` (4-leg CPI bundle)                     | **stub** — body is `todo!()`; Accounts struct shape committed  |
-| `distribute_fees` (4-way split)                        | **stub** — body is `todo!()`                                   |
-| `seed_lp` (creator deposit → LP)                       | shipped (Wave 5C)                                              |
-| `mint_lp_for_buy` (per-buy LP-on-buy mint)             | shipped — CPI'd by `sooth_amm::trade_positions`                |
-| `redeem_lp` (post-settle LP burn → yield)              | shipped                                                        |
-| Per-market `MarketFeePool` (D16)                       | **planned** — lands with `sooth_book` port W2                  |
-| Trial-period clock + `isTrialExpiredWithoutGraduation` | shipped                                                        |
+| Surface                                                | Status                                                                                                                                 |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `initialize_protocol`                                  | shipped                                                                                                                                |
+| `initialize_fee_pool` (global)                         | shipped — will be retired in favor of per-market pools per D16                                                                         |
+| `create_market` (4-leg CPI bundle)                     | shipped — CPIs sooth_market::{initialize_market, initialize_outcome_mints, initialize_market_vaults} + sooth_amm::initialize_amm_state |
+| `distribute_fees` (4-way bps split)                    | shipped — floor-div + remainder-to-protocol; bps from `ProtocolConfig`                                                                 |
+| `seed_lp` (creator deposit → LP)                       | shipped (Wave 5C)                                                                                                                      |
+| `mint_lp_for_buy` (per-buy LP-on-buy mint)             | shipped — CPI'd by `sooth_amm::trade_positions`                                                                                        |
+| `redeem_lp` (post-settle LP burn → yield)              | shipped                                                                                                                                |
+| Per-market `MarketFeePool` (D16)                       | **planned** — lands with `sooth_book` port W2                                                                                          |
+| Trial-period clock + `isTrialExpiredWithoutGraduation` | shipped                                                                                                                                |
 
 ## 3. Account / state model
 
@@ -104,20 +111,27 @@ afterward the global pool is permanently empty. See
 
 ### 4.2 Market creation
 
-| Ix                    | Args                                                                | Status                                                     | EVM equivalent                 |
-| --------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------ |
-| `create_market(args)` | `CreateMarketArgs` (question text, creator, deadline, seed deposit) | **stub** — Accounts struct shape committed; body `todo!()` | `LaunchpadEngine.createMarket` |
+| Ix                    | Args                                                                             | Status                          | EVM equivalent                 |
+| --------------------- | -------------------------------------------------------------------------------- | ------------------------------- | ------------------------------ |
+| `create_market(args)` | `CreateMarketArgs` (market_id, question_hash, start_time, deadline, adjudicator) | shipped — full 4-leg CPI bundle | `LaunchpadEngine.createMarket` |
 
-When implemented, `create_market` will CPI into:
+`create_market` CPIs into the four init legs in order:
 
 1. `sooth_market::initialize_market`
 2. `sooth_market::initialize_outcome_mints`
 3. `sooth_market::initialize_market_vaults`
 4. `sooth_amm::initialize_amm_state`
-5. `sooth_launchpad::seed_lp` (in-program; no CPI)
 
-The four-leg fragmentation is forced by the SBF 4 KB stack frame; one
-super-ix bundling all `try_accounts` codegen overflows.
+`seed_lp` is **NOT** bundled into `create_market`. It is a separate
+caller-driven ix (see §4.3) — keeps `try_accounts` codegen under the
+SBF 4 KB stack ceiling, same constraint that fragmented
+`sooth_market::initialize_market` into three legs.
+
+`CreateMarketArgs` actual shape (per
+`instructions/create_market.rs:180-210`): `market_id: [u8; 16]`,
+`question_hash: [u8; 32]`, `start_time: i64`, `deadline: i64`,
+`adjudicator: Pubkey`. Question text is NOT passed — the caller hashes
+it off-chain and submits only the hash (see [`sqf.md`](./sqf.md) §4).
 
 ### 4.3 LP token lifecycle
 
@@ -141,13 +155,11 @@ the post-settle USDC yield vault based on the pre-burn LP mint supply.
 
 ### 4.4 Fee distribution
 
-| Ix                | Args | Status   | EVM equivalent                  |
-| ----------------- | ---- | -------- | ------------------------------- |
-| `distribute_fees` | —    | **stub** | `FeeRouter._distributePostGrad` |
+| Ix                | Args | Status                                                       | EVM equivalent                  |
+| ----------------- | ---- | ------------------------------------------------------------ | ------------------------------- |
+| `distribute_fees` | —    | shipped — 4-way bps split, floor-div + remainder-to-protocol | `FeeRouter._distributePostGrad` |
 
-When implemented, drains the fee accumulator (currently
-`AmmState.fee_b_base_wad`; moving to per-market `MarketFeePool` token
-balance per D16) and splits across:
+Drains the global `fee_pool_vault` token-balance and splits across:
 
 - `bBase` (LP yield + b-growth)
 - `LP yield pool`
@@ -189,9 +201,10 @@ graduation:
 - (planned) `sooth_book::MarketBook` becomes initializable
 - LP-on-buy minting stops (per EVM behavior)
 
-Currently the graduation hook is partial — the AMM accumulator increments
-but `distribute_fees` is a `todo!()` stub. Implementation lands alongside
-the `sooth_book` port (per W5 in `evm-direct-port.md` §11).
+`distribute_fees` is shipped and implements the 4-way bps split with
+floor-div + remainder-to-protocol. The migration from the global
+`fee_pool_vault` to per-market `MarketFeePool` accounts (D16) lands
+alongside the `sooth_book` port per W5 in `evm-direct-port.md` §11.
 
 ## 7. Canon mapping
 
@@ -211,24 +224,30 @@ Solana implementation status against each:
 
 Per canon `law/fee-policy.md`:
 
-| Canon rule                                              | Solana status                    |
-| ------------------------------------------------------- | -------------------------------- |
-| 4-way split (bBase / LP yield / adjudicator / treasury) | planned (`distribute_fees` stub) |
-| Pull-based adjudicator / treasury claims                | planned                          |
-| LP yield through floor (no separate claim)              | planned                          |
-| Pre-grad fee = LP-on-buy mint                           | shipped (`mint_lp_for_buy`)      |
+| Canon rule                                              | Solana status                                           |
+| ------------------------------------------------------- | ------------------------------------------------------- |
+| 4-way split (bBase / LP yield / adjudicator / treasury) | shipped (`distribute_fees`)                             |
+| Pull-based adjudicator / treasury claims                | shipped (drained from per-market fee pool destinations) |
+| LP yield through floor (no separate claim)              | shipped (via `redeem_lp`)                               |
+| Pre-grad fee = LP-on-buy mint                           | shipped (`mint_lp_for_buy`)                             |
 
 ## 8. Capability claim
 
 Per canon `law/capability-matrix.md`:
 
-| Lane                       | Level claim                                                                                                      |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Lifecycle                  | `L0` (market creation works once `create_market` lands); `L1` blocked on `distribute_fees` activating graduation |
-| Settlement / LP redemption | `S3` (LP floor calc works in `redeem_lp`)                                                                        |
-| Fee policy                 | partial — pre-grad LP-on-buy works; post-grad 4-way split is stub                                                |
+| Lane                       | Level claim                                                                                                       |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Lifecycle (graduation)     | `L1` — `create_market` shipped, graduation hook fires inside `distribute_fees` when accumulator crosses threshold |
+| Settlement / LP redemption | `S3` — LP floor calc works in `redeem_lp` (post-settle gated)                                                     |
+| Fee policy                 | shipped — pre-grad LP-on-buy + post-grad 4-way split both land; D16 per-market pool migration pending             |
 
-Self-attested aggregate post-stub-resolution: **`L1 + S3`**.
+Self-attested aggregate: **`L1 + S3`** (verified via handler bodies on
+2026-05-11). `L2` (trial expiry) depends on
+`sooth_amm::dismiss_market` (shipped) plus the adjudicator
+`INVALID`-settle path (shipped via `sooth_adjudicator::attest_outcome`);
+when the conformance harness exercises this end-to-end the lane can
+promote to `L2`. `L5` (permissionless `invalidate()` fallback) remains a
+gap per `evm-direct-port.md` §15.
 
 ## 9. Forbidden shortcuts
 
