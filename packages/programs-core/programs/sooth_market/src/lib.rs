@@ -61,7 +61,7 @@ declare_id!("5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH");
 // address-of-truth from `declare_id!`) back to the shared constant so any
 // drift between the two trips the build.
 pub use sooth_protocol_types::{
-    SOOTH_ADJUDICATOR_PROGRAM_ID, SOOTH_AMM_PROGRAM_ID, USDC_MINT_DEVNET,
+    SOOTH_ADJUDICATOR_PROGRAM_ID, SOOTH_AMM_PROGRAM_ID, SOOTH_BOOK_PROGRAM_ID, USDC_MINT_DEVNET,
 };
 
 /// Compile-time assert that `declare_id!` matches
@@ -205,5 +205,54 @@ pub mod sooth_market {
         amount: u64,
     ) -> Result<()> {
         instructions::transfer_from_lock_vault::handler(ctx, amount)
+    }
+
+    /// CPI-only fill settlement helper for `sooth_book::{buy_yes,buy_no}`.
+    pub fn fill_order(
+        ctx: Context<FillOrder>,
+        taker_side: u8,
+        shares: u128,
+        taker_tick: u16,
+        maker_tick: u16,
+        taker_escrow: bool,
+        maker_escrow: bool,
+    ) -> Result<()> {
+        instructions::fill_order::handler(
+            ctx,
+            taker_side,
+            shares,
+            taker_tick,
+            maker_tick,
+            taker_escrow,
+            maker_escrow,
+        )
+    }
+
+    /// CPI-only orderbook deposit helper for `sooth_book::{buy_yes,buy_no}`.
+    pub fn deposit_for_order(ctx: Context<DepositForOrder>, base_units: u64) -> Result<()> {
+        instructions::deposit_for_order::handler(ctx, base_units)
+    }
+
+    /// CPI-only orderbook withdraw helper for `sooth_book::{cancel,cancel_by_id}`.
+    pub fn withdraw_for_order(ctx: Context<WithdrawForOrder>, base_units: u64) -> Result<()> {
+        instructions::withdraw_for_order::handler(ctx, base_units)
+    }
+
+    /// CPI-only orderbook share credit helper for `sooth_book`.
+    pub fn credit_shares_for_order(
+        ctx: Context<CreditSharesForOrder>,
+        outcome: u8,
+        amount: u128,
+    ) -> Result<()> {
+        instructions::credit_shares_for_order::handler(ctx, outcome, amount)
+    }
+
+    /// CPI-only orderbook share debit helper for active-trading escrow flows.
+    pub fn debit_shares_for_order_before_deadline(
+        ctx: Context<DebitSharesForOrderBeforeDeadline>,
+        outcome: u8,
+        amount: u128,
+    ) -> Result<()> {
+        instructions::debit_shares_for_order_before_deadline::handler(ctx, outcome, amount)
     }
 }

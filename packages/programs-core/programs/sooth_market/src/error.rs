@@ -63,4 +63,16 @@ pub enum SoothMarketError {
 
     #[msg("Market is not dismissed")]
     MarketNotDismissed,
+
+    #[msg("Invalid instructions sysvar account")]
+    InvalidSysvar,
+
+    #[msg("Trading window has closed (now >= deadline)")]
+    TradingClosed,
+
+    #[msg("Invalid tick")]
+    InvalidTick,
+
+    #[msg("Amount too small for base token decimals")]
+    AmountTooSmallForBaseTokenDecimals,
 }
