@@ -6,10 +6,11 @@ layout, cross-program wiring, and known deviations from the canonical EVM
 implementation.
 
 Specs live here so contributors and reviewers don't have to guess which doc
-under `docs/` reflects the current direction. Older design notes,
-investigations, and superseded plans live under `docs/research/` and
-`docs/sooth_book/archive/` (when they exist); pre-rev drafts are explicitly
-marked.
+under `docs/` reflects the current direction. Active research and design
+notes live under `docs/research/` and `docs/sooth_book/`; superseded plans
+and investigations are moved to `docs/archive/` (see
+[`docs/archive/README.md`](../archive/README.md) for the index).
+Pre-rev drafts are explicitly marked.
 
 ## Spec map
 

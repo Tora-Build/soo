@@ -464,5 +464,5 @@ PDA), which is fed by both `sooth_amm::trade_positions` and now
 ## Cross-references
 
 - W3+W4 implementation: `feature/sooth_book-monaco-fork` (in flight)
-- Source readings: `monaco-investigation-week-01.md`
+- Source readings: [`../archive/monaco-investigation-week-01.md`](../archive/monaco-investigation-week-01.md) (archived per D13)
 - AMM reference patterns: `programs/sooth_amm/src/instructions/trade_positions.rs` (fee accumulator), `programs/sooth_market/src/instructions/redeem.rs` (parent-ix gate), `programs/sooth_amm/src/instructions/dismiss_market.rs` (creator-only auth)

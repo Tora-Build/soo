@@ -1,8 +1,12 @@
 # Monaco Investigation Week 01 — Source Reading Report
 
+> **ARCHIVED (2026-05-11).** Monaco fork direction retired per
+> decision-log D13. Current sooth_book direction lives at
+> [`../spec/sooth_book.md`](../spec/sooth_book.md).
+>
 > Status: research deliverable, 2026-05-05.
-> Inputs to P1 (`sooth_book` direction) per [`docs/decision-log.md`](../decision-log.md) — research complete, founder approval pending.
-> Validates / refutes [`docs/monaco-fork-analysis.md`](../monaco-fork-analysis.md) §6 against first-hand source reading.
+> Inputs to P1 (`sooth_book` direction) per [`docs/decision-log.md`](../decision-log.md).
+> Validates / refutes [`docs/monaco-fork-analysis.md`](./monaco-fork-analysis.md) §6 against first-hand source reading.
 
 ---
 

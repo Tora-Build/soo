@@ -1,7 +1,7 @@
 # Ladder × Density — `sooth_book` Coordinated Sizing Analysis
 
 > **SUPERSEDED (2026-05-11).** This analysis was input to the
-> Monaco-fork capacity-lift decision under [`docs/sooth_book/fork-plan.md`](../sooth_book/fork-plan.md).
+> Monaco-fork capacity-lift decision under [`docs/archive/sooth_book-fork-plan.md`](./sooth_book-fork-plan.md).
 > Both the fork direction and the density-lift question were retired
 > per decision-log D13. The current `sooth_book` direction is the
 > EVM-direct port at [`docs/spec/sooth_book.md`](../spec/sooth_book.md),
@@ -18,7 +18,7 @@
 > ---
 >
 > _Original status: research deliverable, 2026-05-10._
-> _Original framing: Inputs to W2 follow-up (capacity lift) per [`docs/sooth_book/fork-plan.md`](../sooth_book/fork-plan.md) §2. Refined [`docs/sooth_book/cu-analysis.md`](../sooth_book/cu-analysis.md) and corrected an entry-size error in [`packages/programs-core/programs/sooth_book/src/state/market_liquidities.rs:13-22`](../../packages/programs-core/programs/sooth_book/src/state/market_liquidities.rs)._
+> _Original framing: Inputs to W2 follow-up (capacity lift) per [`docs/archive/sooth_book-fork-plan.md`](./sooth_book-fork-plan.md) §2. Refined [`docs/sooth_book/cu-analysis.md`](../sooth_book/cu-analysis.md) and corrected an entry-size error in [`packages/programs-core/programs/sooth_book/src/state/market_liquidities.rs:13-22`](../../packages/programs-core/programs/sooth_book/src/state/market_liquidities.rs)._
 
 ---
 
@@ -29,7 +29,7 @@
 - **Ladder resolution** — distinct WAD-probability ticks on the price grid (`PRICE_TICK`).
 - **Density cap** — concurrent populated price levels per side (`LIQUIDITIES_VEC_LENGTH`).
 
-Recommended action: bump **density 30 → 100** at unchanged **ladder = 1000**. One-line constant change; fits single-CPI init at ~5.3 KB; 3.3× depth headroom; +0.026 SOL rent/market; D1 integrator contract untouched. End-state remains 1000/1000 but is gated on a realloc-up helper (or the bitmap rewrite from [`docs/monaco-fork-analysis.md`](../monaco-fork-analysis.md) §3 Option β). Do not drop the ladder to 100 under any condition — that violates D1 with no upside.
+Recommended action: bump **density 30 → 100** at unchanged **ladder = 1000**. One-line constant change; fits single-CPI init at ~5.3 KB; 3.3× depth headroom; +0.026 SOL rent/market; D1 integrator contract untouched. End-state remains 1000/1000 but is gated on a realloc-up helper (or the bitmap rewrite from [`docs/archive/monaco-fork-analysis.md`](./monaco-fork-analysis.md) §3 Option β). Do not drop the ladder to 100 under any condition — that violates D1 with no upside.
 
 ---
 
@@ -127,7 +127,7 @@ Init at 30/side; expose `increase_market_liquidities_size(steps: u8)` that calls
 - Pros: minimal new architecture; reuses Monaco's sorted-Vec mental model
 - Cons: ~$50/market rent; per-market write-lock contention on a 51 KB hot account; auditor-visible incremental-grow path is novel
 
-### 8b. Bitmap rewrite (Option β from [`monaco-fork-analysis.md`](../monaco-fork-analysis.md) §3)
+### 8b. Bitmap rewrite (Option β from [`monaco-fork-analysis.md`](./monaco-fork-analysis.md) §3)
 
 Replace `MarketLiquidities` Vec with a 4-word `[u64; 16]` bitmap (128 bytes) plus per-`(market, side, tick)` PDA liquidity nodes. Bit-scan via `u64::leading_zeros()` for next-tick discovery. Mirrors EVM `TickBitmap.findNextDown`/`findNextUp`.
 
@@ -150,10 +150,10 @@ The bitmap path is the higher-leverage answer if density > 500 becomes load-bear
 ## 10. Cross-references
 
 - [`docs/decision-log.md`](../decision-log.md) D1 (integrator contract), D7 (fork direction)
-- [`docs/monaco-fork-analysis.md`](../monaco-fork-analysis.md) §3 (three options for handling 1000 ticks)
+- [`docs/archive/monaco-fork-analysis.md`](./monaco-fork-analysis.md) §3 (three options for handling 1000 ticks)
 - [`docs/research/monaco-investigation-week-01.md`](./monaco-investigation-week-01.md) §3-4 (60-cap finding, call-site classification)
 - [`docs/sooth_book/cu-analysis.md`](../sooth_book/cu-analysis.md) (CU upper bound at 1000-pop)
-- [`docs/sooth_book/fork-plan.md`](../sooth_book/fork-plan.md) §2 (hard rewrite sites, including `LIQUIDITIES_VEC_LENGTH`)
+- [`docs/archive/sooth_book-fork-plan.md`](./sooth_book-fork-plan.md) §2 (hard rewrite sites, including `LIQUIDITIES_VEC_LENGTH`)
 - EVM reference: `sooth-alpha/packages/contracts-core/src/SoothBook.sol:47-49`, `sooth-alpha/packages/contracts-core/src/libraries/TickBitmap.sol:31-33`
 
 ---

@@ -2,8 +2,8 @@
 
 > Status: **implementation-ready**, 2026-05-11.
 > Direction: direct port of EVM `SoothBook.sol`; on-chain CLOB only (Path A); Monaco vendor deleted.
-> Supersedes [`docs/sooth_book/fork-plan.md`](../sooth_book/fork-plan.md).
-> Companion to [`docs/research/ladder-vs-density.md`](../research/ladder-vs-density.md).
+> Supersedes [`docs/archive/sooth_book-fork-plan.md`](../archive/sooth_book-fork-plan.md).
+> Companion (archived): [`docs/archive/ladder-vs-density.md`](../archive/ladder-vs-density.md).
 > Within Path A fee/accounting/matching: no parity gaps. Out of scope: Path B (signed orders), T\* retroactive settlement, TruthMarket `invalidate()` parity — see §15.
 
 ---
@@ -909,8 +909,8 @@ Within Path A fee/accounting/matching: **no known parity gaps.**
 ## 16. Cross-references
 
 - [`docs/decision-log.md`](../decision-log.md) D7 (P1 — Monaco fork direction; superseded by D13)
-- [`docs/research/ladder-vs-density.md`](../research/ladder-vs-density.md) (cap analysis)
-- [`docs/sooth_book/fork-plan.md`](../sooth_book/fork-plan.md) (superseded by this spec)
+- [`docs/archive/ladder-vs-density.md`](../archive/ladder-vs-density.md) (cap analysis; archived)
+- [`docs/archive/sooth_book-fork-plan.md`](../archive/sooth_book-fork-plan.md) (superseded by this spec; archived)
 - [`docs/sooth_book/cu-analysis.md`](../sooth_book/cu-analysis.md) (CU bound)
 - EVM source: `sooth-alpha/packages/contracts-core/src/{SoothBook,OrderEngine,AMMEngine,TruthMarket}.sol`, `libraries/TickBitmap.sol`
 - Parent-ix introspection precedent: `packages/programs-core/programs/sooth_market/src/instruction_introspection.rs:71-156`

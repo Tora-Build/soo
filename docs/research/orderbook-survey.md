@@ -75,7 +75,7 @@ This survey informed the orderbook decision in [`programs-core/docs/architecture
   - `MarketMatchingPool` account per `(market, outcome, price, for/against)`: contains a **`Cirque` (circular queue) of order PDAs**. Default capacity 50.
 - **Distinctive choice**: **One `MarketMatchingPool` per (outcome × price × side)** — shards the orderbook into many small per-price-level accounts, solving Solana's account-list constraint.
 - **Open source**: Apache-2.0 — **most permissive license of any project surveyed.**
-- **Lessons for Sooth**: **The single closest existing implementation to what Sooth needs.** Binary outcome with FOR/AGAINST encoding maps almost 1:1 to YES/NO. Per-price-level matching pool accounts solve the account-list problem. FIFO best-price matches Sooth's intended semantics. Lifecycle states map directly. **What Monaco does NOT have natively**: complete-set mint/merge atomicity (escrow=true), the surplus mechanic, custom adjudicator integration, **and 1000-tick price indexing (caps at 30 per side; see [`../monaco-fork-analysis.md`](../monaco-fork-analysis.md))**.
+- **Lessons for Sooth**: **The single closest existing implementation to what Sooth needs.** Binary outcome with FOR/AGAINST encoding maps almost 1:1 to YES/NO. Per-price-level matching pool accounts solve the account-list problem. FIFO best-price matches Sooth's intended semantics. Lifecycle states map directly. **What Monaco does NOT have natively**: complete-set mint/merge atomicity (escrow=true), the surplus mechanic, custom adjudicator integration, **and 1000-tick price indexing (caps at 30 per side; see [`../archive/monaco-fork-analysis.md`](../archive/monaco-fork-analysis.md))**.
 
 ### 9. Polymarket on Solana
 
@@ -116,7 +116,7 @@ Given Sooth's specific requirements (atomic complete-set escrow on `escrow=true`
 
 Apache-2.0 license (no GPL contamination), already a binary-outcome FOR/AGAINST orderbook with FIFO best-price matching, per-`(outcome × price × side)` sharded matching pools that solve the account-list problem, lifecycle states that map directly to Sooth.
 
-**What you'd add**: complete-set mint/merge instructions, surplus mechanic (likely a new instruction detecting `yesTick + noTick >= 1000` and atomically minting a complete set against the surplus), adjudicator-based settlement to replace Monaco's oracle-driven settlement, **and a 1000-tick price index to replace Monaco's 60-cap `MarketLiquidities` Vec (see [`../monaco-fork-analysis.md`](../monaco-fork-analysis.md))**.
+**What you'd add**: complete-set mint/merge instructions, surplus mechanic (likely a new instruction detecting `yesTick + noTick >= 1000` and atomically minting a complete set against the surplus), adjudicator-based settlement to replace Monaco's oracle-driven settlement, **and a 1000-tick price index to replace Monaco's 60-cap `MarketLiquidities` Vec (see [`../archive/monaco-fork-analysis.md`](../archive/monaco-fork-analysis.md))**.
 
 This is the highest-leverage choice for matching engine reuse, but the price-index replacement is more invasive than initially estimated.
 

@@ -242,8 +242,8 @@ Recorded for the decision-log; full evaluation in chat history
 
 ## 8. Cross-references
 
-- Source reading: [`../research/monaco-investigation-week-01.md`](../research/monaco-investigation-week-01.md)
+- Source reading: [`./monaco-investigation-week-01.md`](./monaco-investigation-week-01.md)
 - Architecture overview: [`../../packages/programs-core/docs/architecture.md`](../../packages/programs-core/docs/architecture.md)
 - Decision-log entry: [`../decision-log.md`](../decision-log.md) D7 (P1 resolution)
-- Original Monaco fork analysis: [`../monaco-fork-analysis.md`](../monaco-fork-analysis.md)
+- Original Monaco fork analysis: [`./monaco-fork-analysis.md`](./monaco-fork-analysis.md)
 - Monaco upstream: <https://github.com/MonacoProtocol/protocol>
