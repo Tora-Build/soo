@@ -1,8 +1,24 @@
 # Ladder × Density — `sooth_book` Coordinated Sizing Analysis
 
-> Status: research deliverable, 2026-05-10.
-> Inputs to W2 follow-up (capacity lift) per [`docs/sooth_book/fork-plan.md`](../sooth_book/fork-plan.md) §2.
-> Refines [`docs/sooth_book/cu-analysis.md`](../sooth_book/cu-analysis.md) and corrects an entry-size error in [`packages/programs-core/programs/sooth_book/src/state/market_liquidities.rs:13-22`](../../packages/programs-core/programs/sooth_book/src/state/market_liquidities.rs).
+> **SUPERSEDED (2026-05-11).** This analysis was input to the
+> Monaco-fork capacity-lift decision under [`docs/sooth_book/fork-plan.md`](../sooth_book/fork-plan.md).
+> Both the fork direction and the density-lift question were retired
+> per decision-log D13. The current `sooth_book` direction is the
+> EVM-direct port at [`docs/spec/sooth_book.md`](../spec/sooth_book.md),
+> which uses a two-level bitmap + per-tick `BookSide` PDAs instead of
+> the `MarketLiquidities` aggregate this analysis sized.
+>
+> The arithmetic and findings remain accurate as historical record;
+> the corrected `MarketLiquidities` entry size (26 B, not 50 B) is
+> moot post-Monaco-retirement since `MarketLiquidities` is deleted in
+> W1 per [`docs/spec/sooth_book.md`](../spec/sooth_book.md) §9.1.
+>
+> Do not implement against the recommendations below.
+>
+> ---
+>
+> _Original status: research deliverable, 2026-05-10._
+> _Original framing: Inputs to W2 follow-up (capacity lift) per [`docs/sooth_book/fork-plan.md`](../sooth_book/fork-plan.md) §2. Refined [`docs/sooth_book/cu-analysis.md`](../sooth_book/cu-analysis.md) and corrected an entry-size error in [`packages/programs-core/programs/sooth_book/src/state/market_liquidities.rs:13-22`](../../packages/programs-core/programs/sooth_book/src/state/market_liquidities.rs)._
 
 ---
 
