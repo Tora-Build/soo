@@ -3,8 +3,9 @@
 //! Centralises the values that would otherwise be duplicated in each
 //! program's `lib.rs`:
 //!   - Program IDs (`SOOTH_AMM_PROGRAM_ID`, `SOOTH_MARKET_PROGRAM_ID`,
-//!     `SOOTH_LAUNCHPAD_PROGRAM_ID`, `SOOTH_ADJUDICATOR_PROGRAM_ID`).
-//!   - The canonical devnet USDC mint (`USDC_MINT_DEVNET`).
+//!     `SOOTH_LAUNCHPAD_PROGRAM_ID`, `SOOTH_ADJUDICATOR_PROGRAM_ID`,
+//!     `SOOTH_BOOK_PROGRAM_ID`).
+//!   - The canonical USDC mint (`BASE_TOKEN_MINT`, switched by feature cfg).
 //!   - Anchor instruction discriminators used by parent-ix introspection.
 //!
 //! See `Cargo.toml` for the rationale on why these live in their own crate

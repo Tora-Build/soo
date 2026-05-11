@@ -76,3 +76,17 @@ pub const TRANSFER_TO_LOCK_DISCRIMINATOR: [u8; 8] = [88, 66, 17, 203, 225, 33, 1
 
 /// `sooth_market::transfer_from_lock_vault`.
 pub const TRANSFER_FROM_LOCK_VAULT_DISCRIMINATOR: [u8; 8] = [48, 17, 136, 127, 104, 131, 136, 169];
+
+// ── sooth_book-owned ix discriminators ──────────────────────────────────
+
+/// `sooth_book::buy_yes`.
+pub const SOOTH_BOOK_BUY_YES_DISCRIMINATOR: [u8; 8] = [124, 76, 113, 130, 177, 112, 187, 104];
+
+/// `sooth_book::buy_no`.
+pub const SOOTH_BOOK_BUY_NO_DISCRIMINATOR: [u8; 8] = [89, 240, 244, 16, 196, 201, 190, 163];
+
+/// `sooth_book::cancel`.
+pub const SOOTH_BOOK_CANCEL_DISCRIMINATOR: [u8; 8] = [232, 219, 223, 41, 219, 236, 220, 190];
+
+/// `sooth_book::cancel_by_id`.
+pub const SOOTH_BOOK_CANCEL_BY_ID_DISCRIMINATOR: [u8; 8] = [188, 241, 240, 50, 95, 134, 33, 127];

@@ -9,6 +9,10 @@ repository = "https://github.com/Tora-Build/sooth-solana"
 [lib]
 name = "sooth_protocol_types"
 
+[features]
+default = []
+mainnet = []
+
 # Pure constants crate. Sister to `sooth-account-offsets`.
 #
 # ── Why this crate exists ───────────────────────────────────────────────────
