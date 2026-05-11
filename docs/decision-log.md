@@ -108,7 +108,7 @@ The SoothBook crossing rule (commented at `soothCore.ts:943–951`) explains why
 
 - The "what % of trades use escrow" question reduces to "what % of SoothBook orders are sells" — structurally ~50% by symmetry, with the actual ratio bounded by user behavior, not by feature adoption.
 - Phoenix and OpenBook v2 remain disqualified per D2. A non-atomic escrow path would silently break every limit sell in the telegram app, not just an opt-in feature.
-- Combined with the P1 investigation result, the orderbook direction is effectively decided modulo founder approval: **fork Monaco** with escrow added as a first-class field, per the insertion point already scoped in `docs/research/monaco-investigation-week-01.md` (~200 LOC in `process_order_request` + `MarketPosition` accounting). The atomicity caveat noted in the spike-2 report — verify the Monaco queue step doesn't break atomicity — is now load-bearing and must be resolved before any sell flow ships on Solana.
+- Combined with the P1 investigation result, the orderbook direction is effectively decided modulo founder approval: **fork Monaco** with escrow added as a first-class field, per the insertion point already scoped in `docs/archive/monaco-investigation-week-01.md` (~200 LOC in `process_order_request` + `MarketPosition` accounting). The atomicity caveat noted in the spike-2 report — verify the Monaco queue step doesn't break atomicity — is now load-bearing and must be resolved before any sell flow ships on Solana.
 - For the indexer, the schema column already exists (`packages/indexer/ponder.schema.ts:202` — `escrow: boolean NOT NULL` on the `order` table). When the Solana adapter writes order events, it must populate the same column to preserve query parity with EVM.
 
 ### D7. Fork Monaco for `sooth_book` (2026-05-08; resolves P1)
@@ -172,15 +172,15 @@ The P1/P3/P5/P6/P7/P8 prompts below are retained as historical context. They are
 **Trade-offs**:
 
 - Custom build: ~6 months engineering, fresh audit, exact fit to Sooth semantics, full design freedom
-- Monaco fork: ~3-4 months engineering (with the bitmap-replacement work captured in [`./monaco-fork-analysis.md`](./monaco-fork-analysis.md)), reuses tested matching engine and lifecycle states, but inherits sportsbook-shaped assumptions that need replacing in 3-4 places (especially `MarketLiquidities` 60-cap → 1000-tick bitmap)
+- Monaco fork: ~3-4 months engineering (with the bitmap-replacement work captured in [`./archive/monaco-fork-analysis.md`](./archive/monaco-fork-analysis.md)), reuses tested matching engine and lifecycle states, but inherits sportsbook-shaped assumptions that need replacing in 3-4 places (especially `MarketLiquidities` 60-cap → 1000-tick bitmap)
 
 **Gates**: investigation week reading `programs/monaco_protocol/src` end-to-end. Specifically: how many call sites assume `liquidities.len() < 100`? <5 → fork wins; >20 → custom build is cleaner.
 
-**Investigation result (2026-05-05)**: see [`./research/monaco-investigation-week-01.md`](./research/monaco-investigation-week-01.md) for the full report against Monaco v0.15.5 (`96d4d79`).
+**Investigation result (2026-05-05)**: see [`./archive/monaco-investigation-week-01.md`](./archive/monaco-investigation-week-01.md) for the full report against Monaco v0.15.5 (`96d4d79`).
 
 - **Hard-rewrite sites: 2** — `LIQUIDITIES_VEC_LENGTH = 30` const at `state/market_liquidities.rs:22` and the `is_full()` comparison at `:412–415`. Account-space `SIZE` const cascades automatically. Plus 3 SOFT sites for CU re-validation.
 - **Total touched sites: 5–7** — well below the 20-site fork-cliff threshold.
-- **Refines the prior 60-cap framing in [`./monaco-fork-analysis.md`](./monaco-fork-analysis.md)**: the 30 is a per-side liquidity-density cap, not a price-ladder cap. Monaco's default price ladder is 317 prices (`state/price_ladder.rs:4`). More importantly, `MATCH_CAPACITY = 10` at `instructions/matching/on_order_creation.rs:13` caps per-order matching to 10 fills regardless of liquidity vec depth — so lifting the vec from 30 to 1000 does **not** cascade into matching-engine CU blow-up. The price-index lift is orthogonal to matching cost.
+- **Refines the prior 60-cap framing in [`./archive/monaco-fork-analysis.md`](./archive/monaco-fork-analysis.md)**: the 30 is a per-side liquidity-density cap, not a price-ladder cap. Monaco's default price ladder is 317 prices (`state/price_ladder.rs:4`). More importantly, `MATCH_CAPACITY = 10` at `instructions/matching/on_order_creation.rs:13` caps per-order matching to 10 fills regardless of liquidity vec depth — so lifting the vec from 30 to 1000 does **not** cascade into matching-engine CU blow-up. The price-index lift is orthogonal to matching cost.
 - **Lifecycle**: Monaco's `Initializing → Open → Locked → ReadyForSettlement → Settled` maps cleanly to Sooth's; only the authority-gate model needs swapping for adjudicator CPI (~150 LOC).
 - **Outcome model**: Sooth's binary outcome is a strict subset of Monaco's n-way; disabling cross-matching removes ~300–500 LOC of dead code (net simplification).
 - **Escrow flag**: natural insertion point in `process_order_request` + `MarketPosition` accounting (~200 LOC). Caveat: verify the queue step in `process_order_request` does not break atomicity — must be re-checked before D2 is honored end-to-end.
@@ -251,7 +251,7 @@ Resolved 2026-05-05 from EVM SDK source reading (no Postgres query needed). `bui
 
 ### CN1. Whether to write `solana/soothbook-automatch-evaluation.md` as a separate doc
 
-The auto-match SDK incompatibility was thoroughly analyzed in conversation; the conclusions live in [`programs-core/docs/architecture.md §6`](../packages/programs-core/docs/architecture.md), [`research/orderbook-survey.md`](./research/orderbook-survey.md), and [`./monaco-fork-analysis.md`](./monaco-fork-analysis.md). A standalone doc would duplicate.
+The auto-match SDK incompatibility was thoroughly analyzed in conversation; the conclusions live in [`programs-core/docs/architecture.md §6`](../packages/programs-core/docs/architecture.md), [`research/orderbook-survey.md`](./research/orderbook-survey.md), and [`./archive/monaco-fork-analysis.md`](./archive/monaco-fork-analysis.md). A standalone doc would duplicate.
 
 ---
 
@@ -261,7 +261,7 @@ The auto-match SDK incompatibility was thoroughly analyzed in conversation; the 
 
 **Why**: Cost analysis under the founder's <$50 hard cap on market creation showed Monaco's design tax (per-order PDAs, `MarketLiquidities` aggregate, `PriceLadder` PDA, `MarketOrderRequestQueue`, `OrderStatus` enum, 12-field `Order`) incompatible with the target. Monaco at density=100 hits ~$15 empty / ~$1,940 saturated. EVM SoothBook is structurally simpler (~600 LOC, 4-field Order, no aggregate, lazy-delete via `amount=0`, two-level bitmap). Direct Solana port hits ~$0.42/market with 62× headroom against the cap. Architecture sound across 16+ Codex review rounds.
 
-**Implication**: D7 superseded. ~9-week port instead of the Monaco fork's ~3–4 month estimate. Spec at [`docs/spec/sooth_book.md`](./spec/sooth_book.md) is the canonical implementation reference. `docs/sooth_book/fork-plan.md` is superseded.
+**Implication**: D7 superseded. ~9-week port instead of the Monaco fork's ~3–4 month estimate. Spec at [`docs/spec/sooth_book.md`](./spec/sooth_book.md) is the canonical implementation reference. `docs/archive/sooth_book-fork-plan.md` is the archived plan.
 
 ### D14. Path A on-chain CLOB only for v1 (2026-05-11)
 

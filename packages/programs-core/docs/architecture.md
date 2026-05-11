@@ -506,12 +506,11 @@ narrows the headroom:
 
 ## 6. CLOB — Build vs Integrate
 
-**Status (P1 investigation complete)**: Monaco fork investigation
-finished — see `docs/research/monaco-investigation-week-01.md`.
-Recommendation is to **fork Monaco**: ~5 hard-rewrite + 4 soft-rewrite
-sites confined to a single state file plus two call sites. Founder
-approval still pending; the original three options below are kept as
-historical context.
+**Status (post-D13 pivot)**: Monaco fork retired; direction is
+**direct port of EVM `SoothBook.sol`** — see [`docs/spec/sooth_book.md`](../../../docs/spec/sooth_book.md)
+for the canonical 9-week implementation plan. The original Monaco
+investigation lives in [`docs/archive/monaco-investigation-week-01.md`](../../../docs/archive/monaco-investigation-week-01.md);
+the build-vs-integrate options below remain as historical context.
 
 ### Option A — Port SoothBook to Anchor (`sooth_book` program)
 
@@ -547,8 +546,8 @@ historical context.
   constant.
 - Per-order CU cost remains bounded after the lift; a CU benchmark on a
   populated 1000-cap account is the remaining open item before commit.
-- See `docs/research/monaco-investigation-week-01.md` and
-  `docs/monaco-fork-analysis.md` for the source-reading detail.
+- See `docs/archive/monaco-investigation-week-01.md` and
+  `docs/archive/monaco-fork-analysis.md` for the source-reading detail.
 
 ---
 
@@ -678,11 +677,24 @@ sooth-solana/
 │   ├── roadmap.md              # active items + pending decisions
 │   ├── decision-log.md         # P-numbers / D-numbers
 │   ├── glossary.md             # WAD, OUTCOME, tick, CU, PDA, ATA
-│   ├── monaco-fork-analysis.md
+│   ├── spec/                   # canonical per-program implementation specs
+│   │   ├── README.md
+│   │   ├── sooth_book.md
+│   │   ├── sooth_amm.md
+│   │   ├── sooth_market.md
+│   │   ├── sooth_launchpad.md
+│   │   ├── sooth_adjudicator.md
+│   │   └── sqf.md
+│   ├── archive/                # superseded plans + investigations (D13 pivot)
+│   │   ├── README.md
+│   │   ├── sooth_book-fork-plan.md
+│   │   ├── monaco-fork-analysis.md
+│   │   ├── monaco-investigation-week-01.md
+│   │   └── ladder-vs-density.md
+│   ├── sooth_book/             # active sooth_book design notes (cu-analysis, sooth-ix-design)
 │   └── research/
 │       ├── porting-evaluation.md
-│       ├── orderbook-survey.md
-│       └── monaco-investigation-week-01.md
+│       └── orderbook-survey.md
 ├── _spikes/
 │   └── lmsr-cu/                # D4 prototype (excluded from workspace)
 └── HANDOVER.md                 # contributor index

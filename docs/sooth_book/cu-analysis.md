@@ -99,7 +99,7 @@ anyway.
 
 ## Cross-references
 
-- Source-reading investigation: [`../research/monaco-investigation-week-01.md`](../research/monaco-investigation-week-01.md) §4 (call-site classification — sites #11-13 are the matching engine)
+- Source-reading investigation: [`../archive/monaco-investigation-week-01.md`](../archive/monaco-investigation-week-01.md) §4 (call-site classification — sites #11-13 are the matching engine; archived per D13 pivot)
 - Match loop body: `packages/programs-core/programs/sooth_book/src/instructions/matching/on_order_creation.rs:27-100` (FOR-order match), `:160-245` (AGAINST-order match)
 - Liquidity Vec: `packages/programs-core/programs/sooth_book/src/state/market_liquidities.rs:10-50`
 - Solana CU budget: 1,400,000 per transaction (Solana validator default; configurable via `ComputeBudgetProgram`)

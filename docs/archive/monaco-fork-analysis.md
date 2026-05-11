@@ -1,8 +1,13 @@
 # Monaco Protocol Fork Analysis — Sooth Solana
 
+> **ARCHIVED (2026-05-11).** Monaco fork direction retired per
+> decision-log D13; the canonical sooth_book direction is now the
+> EVM-direct port at [`../spec/sooth_book.md`](../spec/sooth_book.md).
+> This analysis is preserved as the original investigation record.
+>
 > Status: design analysis, 2026-05-05.
-> Companion to [`orderbook-survey.md`](./research/orderbook-survey.md) (broader survey).
-> This doc is referenced from [`docs/decision-log.md` P1](./decision-log.md), [`programs-core/docs/architecture.md §6`](../packages/programs-core/docs/architecture.md), and [`sdk-solana/docs/implementation-guide.md §10`](../packages/sdk-solana/docs/implementation-guide.md).
+> Companion to [`orderbook-survey.md`](../research/orderbook-survey.md) (broader survey).
+> Originally referenced from [`docs/decision-log.md` P1](../decision-log.md), [`programs-core/docs/architecture.md §6`](../../packages/programs-core/docs/architecture.md), and [`sdk-solana/docs/implementation-guide.md §10`](../../packages/sdk-solana/docs/implementation-guide.md).
 
 Monaco Protocol is the closest existing implementation to what Sooth needs on Solana. This doc evaluates it as a fork base — what we'd reuse, what we'd need to add or replace, where the fit breaks down, and the key load-bearing finding (Monaco's 60-cap on `MarketLiquidities` and what it costs to lift it).
 
@@ -10,7 +15,7 @@ Monaco Protocol is the closest existing implementation to what Sooth needs on So
 
 ## §1. Why Monaco
 
-From [`orderbook-survey.md §8`](./research/orderbook-survey.md):
+From [`orderbook-survey.md §8`](../research/orderbook-survey.md):
 
 - **Apache-2.0 licensed.** No GPL contamination concerns (unlike OpenBook v2 and Manifest, both GPL-3.0). Sooth fork stays under whatever license operators need.
 - **Binary-outcome FOR/AGAINST orderbook.** Maps almost 1:1 to Sooth's YES/NO encoding.
@@ -130,7 +135,7 @@ In a Monaco fork, the `match_orders` instruction needs to detect surplus and ato
 
 ### C. `escrow=true` flag (atomic complete-set debit)
 
-Per [`docs/decision-log.md` D2](./decision-log.md), this is the load-bearing SDK invariant. Monaco doesn't have it natively. **Unlike Phoenix and OpenBook, we control the fork**, so we add an `escrow` boolean to the `Order` PDA and `create_order` instruction.
+Per [`docs/decision-log.md` D2](../decision-log.md), this is the load-bearing SDK invariant. Monaco doesn't have it natively. **Unlike Phoenix and OpenBook, we control the fork**, so we add an `escrow` boolean to the `Order` PDA and `create_order` instruction.
 
 Atomicity is preserved because the order placement, opposite-side debit, and any subsequent matching all run inside our fork's instructions — same TX, same atomic boundary.
 
@@ -176,7 +181,7 @@ Fork still wins, but the gap narrows. The "70-80% engine reuse" claim from the e
 
 ## §6. Investigation week protocol
 
-Per [`orderbook-survey.md §10`](./research/orderbook-survey.md) and [`docs/decision-log.md` P1](./decision-log.md), a focused investigation week should validate fork viability before commitment. Specifically:
+Per [`orderbook-survey.md §10`](../research/orderbook-survey.md) and [`docs/decision-log.md` P1](../decision-log.md), a focused investigation week should validate fork viability before commitment. Specifically:
 
 ### Week 1 — Code reading
 
@@ -220,9 +225,9 @@ If the call-site count exceeds 20, **switch to custom build (Option 2)** — at 
 
 This analysis blocks/depends on:
 
-- **[P1 — orderbook backend choice](./decision-log.md)**: this doc is the primary input
-- **[P2 — LMSR CU spike](./decision-log.md)**: orderbook decision is moot if AMM doesn't fit; LMSR spike should run in parallel with the Monaco investigation week
-- **[P4 — escrow usage analytics](./decision-log.md)**: if escrow turns out to be unused, Phoenix becomes viable and this entire analysis is moot
+- **[P1 — orderbook backend choice](../decision-log.md)**: this doc is the primary input
+- **[P2 — LMSR CU spike](../decision-log.md)**: orderbook decision is moot if AMM doesn't fit; LMSR spike should run in parallel with the Monaco investigation week
+- **[P4 — escrow usage analytics](../decision-log.md)**: if escrow turns out to be unused, Phoenix becomes viable and this entire analysis is moot
 
 ---
 
