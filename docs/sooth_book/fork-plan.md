@@ -1,8 +1,16 @@
 # SoothBook Monaco Fork Plan
 
-> Status: P1 resolved 2026-05-08 (decision-log D7). Fork active on
-> `feature/sooth_book-monaco-fork` as of 2026-05-09. Replaces the prior
-> 1-page record now that the port is in motion.
+> **SUPERSEDED BY [`evm-direct-port.md`](./evm-direct-port.md) (2026-05-11).**
+>
+> The Monaco fork direction is retired per decision-log D13 (revises D7). The cost envelope was incompatible with the founder's <$50 hard cap on market creation. The replacement plan is a direct port of EVM `SoothBook.sol` — see `evm-direct-port.md` for the canonical implementation reference (9-week timeline, ~$0.42/market creation cost, full Path A EVM parity).
+>
+> This document is retained as historical record. Do not implement against it.
+>
+> ---
+>
+> _Original status: P1 resolved 2026-05-08 (decision-log D7). Fork active on_
+> _`feature/sooth_book-monaco-fork` as of 2026-05-09. Replaces the prior_
+> _1-page record now that the port is in motion._
 
 ## Decision
 

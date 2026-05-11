@@ -255,4 +255,38 @@ The auto-match SDK incompatibility was thoroughly analyzed in conversation; the 
 
 ---
 
-_Last updated: 2026-05-08 (D7-D12 resolved P1/P3/P5/P6/P7/P8; D6 was already used for devnet program IDs)._
+### D13. EVM-direct port supersedes Monaco fork (2026-05-11; revises D7)
+
+**Decision**: Replace the Monaco fork direction with a direct port of EVM `SoothBook.sol` (Path A on-chain CLOB only). Monaco vendor deleted.
+
+**Why**: Cost analysis under the founder's <$50 hard cap on market creation showed Monaco's design tax (per-order PDAs, `MarketLiquidities` aggregate, `PriceLadder` PDA, `MarketOrderRequestQueue`, `OrderStatus` enum, 12-field `Order`) incompatible with the target. Monaco at density=100 hits ~$15 empty / ~$1,940 saturated. EVM SoothBook is structurally simpler (~600 LOC, 4-field Order, no aggregate, lazy-delete via `amount=0`, two-level bitmap). Direct Solana port hits ~$0.42/market with 62× headroom against the cap. Architecture sound across 16+ Codex review rounds.
+
+**Implication**: D7 superseded. ~9-week port instead of the Monaco fork's ~3–4 month estimate. Spec at [`docs/sooth_book/evm-direct-port.md`](./sooth_book/evm-direct-port.md) is the canonical implementation reference. `docs/sooth_book/fork-plan.md` is superseded.
+
+### D14. Path A on-chain CLOB only for v1 (2026-05-11)
+
+**Decision**: v1 ships Path A only. Path B (signed orders / off-chain CLOB operator), T\* retroactive settlement, and TruthMarket `invalidate()` parity are explicitly deferred.
+
+**Why**: Solana Path B requires non-trivial new infrastructure (Ed25519 typed-data + operator authorization + signed-order nonce tracking, ~3–4 weeks additional scope). The on-chain Path A alone meets the cost target and the EVM telegram app's escrow-driven sell flow works end-to-end on Path A.
+
+**Implication**: Within Path A fee/accounting/matching, no parity gaps. Path B, T\*, and `invalidate()` are tracked in `docs/sooth_book/evm-direct-port.md` §15 as out-of-scope until a later wave.
+
+### D15. Split position model — `OrderbookPosition` separate from AMM `Position` (2026-05-11)
+
+**Decision**: Add `sooth_market::OrderbookPosition` PDA per (market, user) — separate from existing AMM `sooth_market::Position`. Mirrors EVM `OrderEngine._positions` vs `AMMEngine._positions` literally.
+
+**Why**: EVM keeps orderbook and AMM positions as logically separate balances on different contracts. A unified Solana position would diverge from EVM accounting at the share-credit boundary. Per-user cost is +$0.10 (refundable on `redeem_orderbook` post-settle close); cleaner audit boundary outweighs the rent.
+
+**Implication**: `Position` (AMM-only) and `OrderbookPosition` (orderbook fills + complete-set mint/merge/redeem) coexist on `sooth_market`. Separate redeem paths post-settle.
+
+### D16. Per-market fee pools replace the global `fee_pool_vault` (2026-05-11)
+
+**Decision**: Each market gets its own `MarketFeePool` TokenAccount (owned by `sooth_launchpad`, lazy-init on first AMM or orderbook fee). AMM trade fees and orderbook fees both flow into this per-market pool. `distribute_fees` redesigned to take a `market` argument and drain the per-market pool; `distribute_fees_legacy` kept for one-time drain of the legacy global pool on deploy day.
+
+**Why**: Founder rejected the framing of EVM `AMMEngine._marketCollateral[market]` as a "known parity gap" that the on-chain spec leaves unmirrored. The structural equivalent on Solana is per-market token-vault balance reads — no `AmmState` field needed. Closes EVM parity at the token-vault level without an `AmmState` layout migration.
+
+**Implication**: `sooth_amm::trade_positions` changes its SPL fee-transfer destination from global to per-market pool (one-line accounts struct change + sell-path fee wiring previously TODO'd). `sooth_launchpad::distribute_fees` redesigned per-market. Existing global `fee_pool_vault` becomes a one-time legacy drain. Timeline expanded 7w → 9w to absorb the AMM + launchpad rewrites.
+
+---
+
+_Last updated: 2026-05-11 (D13-D16 record the EVM-direct port direction, scope, position model, and per-market fee pool decisions resolved by [`docs/sooth_book/evm-direct-port.md`](./sooth_book/evm-direct-port.md). D7-D12 resolved P1/P3/P5/P6/P7/P8 on 2026-05-08; D7 is superseded by D13. D6 was already used for devnet program IDs.)._
