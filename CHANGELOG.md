@@ -7,9 +7,64 @@ and this project adheres to semantic versioning once tags are cut.
 
 ## [Unreleased]
 
-> Tracking the `feature/sooth_book-monaco-fork` branch (P1 → fork Monaco
-> for `sooth_book`, see `docs/sooth_book/fork-plan.md` for the W1-W16
-> roadmap). Will become `[0.4.0]` once the orderbook is mainnet-ready.
+> Tracking `main` (W1-W6 merged via PRs #1-#6 on 2026-05-10 → 2026-05-11).
+> Will become `[0.4.0]` once the orderbook is mainnet-ready.
+
+### Added
+
+- W3-W6 + UI cohort (PRs #1-#6, `ddfb032 → 263f5a1`):
+  - W3 sportsbook strip-down (~5400 LOC removed from vendored Monaco).
+  - W4 probability·WAD price ladder (u128 prices; `MarketLiquidities`
+    depth=30 per side, bounded by Solana's 10240-byte realloc cap).
+  - W5 cross-program `Market` PDA bind to `sooth_market`; 4 new ix
+    (`mint_into_book`, `settle_resting_orders`, `fee_route_hook`, plus
+    the cross-program seed); `sooth_market`
+    `mint_complete_set_to_program_owned` / `redeem_from_program_owned`
+    variants.
+  - W6 SDK builders (`buildOrderbookBuy/Sell/Cancel`) + chain-shim
+    dispatch (`buyYes/buyNo/cancelById`/`cancel`/`isMarketRegistered`/
+    `getBalance`/synth `getLogs`) so upstream `SoothBookTerminal` drives
+    real on-chain orders via the LocalKeypairAdapter.
+- 6 new e2e specs (19 adapter-direct, 20 UI-click place, 21 UI-cancel,
+  22 dynamic create→graduate→trade); UI health invariants enforced
+  suite-wide.
+- CI: Surfpool Playwright E2E job now runs on every PR (previously
+  `main`-only and broken since v0.3.0).
+
+### Changed
+
+- `usePublicClient` (chain-shim) wrapped in `useMemo` so consumers'
+  `useCallback` deps stay stable; without this the orderbook panel
+  loading state thrashed forever.
+- Chain-shim `waitForTransactionReceipt` returns `status:"success"`;
+  upstream `useOrderbookTrade.executeWrite` threw "Transaction reverted
+  on-chain" on `undefined !== "success"` even when the tx confirmed.
+- `seed-localnet.mjs` writes `VITE_USE_INDEXER=false`; the Ponder
+  indexer at `localhost:42069` only exists on the EVM upstream.
+
+### Fixed
+
+- W2 Box-wrap pass missed `CancelOrder`; new CI Surfpool E2E gate
+  caught the latent SBF stack-offset overflow (`+8` over the 4096
+  cap) and PR #6 Box-wrapped the remaining large `Account<T>` fields.
+- spec 12 race against `__lastCreatedMarketPda` (chain-shim stashes
+  pre-confirm; spec now polls `fetchMarket` to 30s).
+- CI `Anchor build` job failed with `duplicate symbol: entrypoint` on
+  `cpi_create_market` test target — `spl-associated-token-account` dev
+  dep needed `no-entrypoint` feature; applied to all 4 program crates.
+- Cargo fmt drift on W5 `sooth_market` program-owned variants.
+
+### Removed
+
+- Vendored `protocol_product` (Monaco mainnet program-id placeholder;
+  zero usages in `sooth_book/src` after W3 strip). 13 files, ~60 KB.
+- Spec 18 (`orderbook-gated-state`) obsolete post-W6: the primary
+  gate it asserted no longer fires.
+
+---
+
+> Pre-PR-#1 entries below cover the W1-W2 work that landed on the
+> `feature/sooth_book-monaco-fork` branch before its first merge.
 
 ### Added
 
