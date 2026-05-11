@@ -67,7 +67,7 @@ pub struct Position {
     pub yes_shares: i128,           // WAD; always >= 0 (signed type for math symmetry with AmmState)
     pub no_shares:  i128,           // WAD; always >= 0
     pub locked_cost_usdc: u64,      // sum-invariant: market_vault == sum(Position.locked_cost_usdc)
-    pub sell_nonce: u64,            // monotonic per-position counter; LockEntry seed component
+    pub lock_nonce: u64,            // monotonic per-position counter; LockEntry seed component
     pub bump: u8,
 }
 ```
@@ -76,7 +76,7 @@ pub struct Position {
 
 The `locked_cost_usdc` field anchors the AMM's solvency invariant
 (every open Position carries a corresponding share of the market USDC
-vault). `sell_nonce` makes per-sell `LockEntry` PDA addresses unique.
+vault). `lock_nonce` makes per-sell `LockEntry` PDA addresses unique.
 
 Per canon's two-venue independence rule, this is the **AMM-only** position
 ledger. Orderbook positions live in `sooth_market::OrderbookPosition` (see
@@ -86,16 +86,19 @@ ledger. Orderbook positions live in `sooth_market::OrderbookPosition` (see
 
 ```rust
 pub struct LockEntry {
-    pub market:   Pubkey,
-    pub user:     Pubkey,
-    pub amount_usdc_base_units: u64,  // proceeds in base units (USDC = 6 decimals)
-    pub expiry:   i64,                // unix seconds; lock_duration = 24h
+    pub user:        Pubkey,
+    pub market:      Pubkey,
+    pub amount_usdc: u64,              // proceeds in base units (USDC = 6 decimals)
+    pub unlock_at:   i64,              // unix seconds; lock_duration = 24h (LOCK_DURATION_SECS)
+    pub nonce:       u64,              // copied from Position.lock_nonce at creation; seed component
+    pub bump:        u8,
 }
 ```
 
-**Seeds:** `[b"lock", market.market_id.as_ref(), user.as_ref(), nonce.to_le_bytes()]`.
+**Seeds:** `[b"lock", market.market_id.as_ref(), user.as_ref(), nonce.to_le_bytes()]`
+(nonce is sourced from `Position.lock_nonce` at the time of the sell).
 **Lifecycle:** created on `sell_positions`, drained and closed on
-`claim_unlocked` after `expiry`. Rent refunded to user on close.
+`claim_unlocked` after `unlock_at`. Rent refunded to user on close.
 
 ## 4. Instruction surface
 

@@ -13,14 +13,14 @@ marked.
 
 ## Spec map
 
-| Spec                                             | Program / artifact                                | Status                                               | EVM equivalent                                                         |
-| ------------------------------------------------ | ------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------- |
-| [`sooth_book.md`](./sooth_book.md)               | `sooth_book` (orderbook)                          | implementation-ready (W1–W9 ahead)                   | `SoothBook.sol` + `OrderEngine.sol`                                    |
-| [`sooth_amm.md`](./sooth_amm.md)                 | `sooth_amm` (LMSR AMM)                            | shipped (devnet); under maintenance                  | `AMMEngine.sol`                                                        |
-| [`sooth_market.md`](./sooth_market.md)           | `sooth_market` (lifecycle + custody)              | shipped (devnet); under maintenance                  | `TruthMarket.sol` + parts of `OrderEngine.sol`                         |
-| [`sooth_launchpad.md`](./sooth_launchpad.md)     | `sooth_launchpad` (factory + fees + LP)           | shipped (devnet); under maintenance                  | `LaunchpadEngine.sol` + `FeeRouter.sol` + `LaunchpadLPToken.sol`       |
-| [`sooth_adjudicator.md`](./sooth_adjudicator.md) | `sooth_adjudicator` (resolver / attest / dispute) | partial (manual placeholder shipped; zkTLS deferred) | `IAdjudicator.sol` + `AdjudicatorBase.sol` + `AdjudicatorRegistry.sol` |
-| [`sqf.md`](./sqf.md)                             | Sooth Question Format (SDK + demo)                | shipped (TS); on-chain mapping deferred              | shared with EVM (canon `law/question-format.md`)                       |
+| Spec                                             | Program / artifact                                | Status                                               | EVM equivalent                                                                           |
+| ------------------------------------------------ | ------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [`sooth_book.md`](./sooth_book.md)               | `sooth_book` (orderbook)                          | implementation-ready (W1–W9 ahead)                   | `SoothBook.sol` + `OrderEngine.sol`                                                      |
+| [`sooth_amm.md`](./sooth_amm.md)                 | `sooth_amm` (LMSR AMM)                            | shipped (devnet); under maintenance                  | `AMMEngine.sol`                                                                          |
+| [`sooth_market.md`](./sooth_market.md)           | `sooth_market` (lifecycle + custody)              | shipped (devnet); under maintenance                  | `TruthMarket.sol` + parts of `OrderEngine.sol`                                           |
+| [`sooth_launchpad.md`](./sooth_launchpad.md)     | `sooth_launchpad` (factory + fees + LP)           | shipped (devnet); under maintenance                  | `LaunchpadEngine.sol` + `FeeRouter.sol` + `LaunchpadLPToken.sol`                         |
+| [`sooth_adjudicator.md`](./sooth_adjudicator.md) | `sooth_adjudicator` (resolver / attest / dispute) | partial (manual placeholder shipped; zkTLS deferred) | `interfaces/IAdjudicator.sol` + `adjudicators/{AdjudicatorBase,AdjudicatorRegistry}.sol` |
+| [`sqf.md`](./sqf.md)                             | Sooth Question Format (SDK + demo)                | shipped (TS); on-chain mapping deferred              | shared with EVM (canon `law/question-format.md`)                                         |
 
 ## Conventions
 

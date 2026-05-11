@@ -89,13 +89,20 @@ pub struct Market {
 ```rust
 // packages/programs-core/programs/sooth_market/src/state/adjudicator_allowlist.rs:61
 pub struct AdjudicatorAllowlist {
-    pub authority: Pubkey,            // admin
-    pub adjudicators: Vec<Pubkey>,    // allowlisted adjudicator program ids
+    pub authority: Pubkey,                                // admin
+    pub entries:   [Pubkey; ADJUDICATOR_ALLOWLIST_CAPACITY],  // fixed cap = 16
+    pub entry_count: u8,                                  // populated entries [0, 16]
+    pub bump:        u8,
 }
 ```
 
 **Seeds:** `[b"adjudicator_allowlist"]`. Bootstrapped once at protocol
 init; managed via `add_adjudicator` / `remove_adjudicator`.
+
+The fixed-size array (cap **16** per `ADJUDICATOR_ALLOWLIST_CAPACITY`,
+`adjudicator_allowlist.rs:55`) means rent is constant — `add_adjudicator`
+never reallocs. `add_adjudicator` rejects on full; bumping the cap is a
+breaking layout change requiring a fresh-deploy migration.
 
 ## 4. Instruction surface
 

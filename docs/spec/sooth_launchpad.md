@@ -52,36 +52,50 @@ Devnet program id: `HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3` (D6).
 ```rust
 // packages/programs-core/programs/sooth_launchpad/src/state/protocol_config.rs
 pub struct ProtocolConfig {
-    pub authority: Pubkey,           // admin
-    pub default_trial_period_secs: i64,
-    pub invalidation_buffer_secs: i64,
-    // fee split bps: bBase / lpYield / adjudicator / treasury (sum = 10000)
-    pub b_base_share_bps: u16,
-    pub lp_yield_share_bps: u16,
+    pub authority: Pubkey,             // admin / config rotator (multisig in production)
+    pub treasury:  Pubkey,             // protocol-share USDC ATA destination
+    pub fee_bps:   u16,                // total per-trade fee in bps; bounded ≤ 10_000
+    // 4-way split bps — must sum to 10_000 (architecture §8)
+    pub b_base_share_bps:      u16,
+    pub lp_yield_share_bps:    u16,
     pub adjudicator_share_bps: u16,
-    pub protocol_share_bps: u16,
-    pub graduation_bps: u16,         // graduation threshold
+    pub protocol_share_bps:    u16,
+    pub default_trial_period:  i64,    // seconds; concrete trial_end_at computed per-market
+    pub bump: u8,
 }
 ```
 
 **Seeds:** `[b"protocol_config"]`. Bootstrapped at protocol init via
 `initialize_protocol`. EVM analogue: `LaunchpadEngine` constructor +
-`setDefaultTrialPeriod` + `setInvalidationBuffer` + `FeeRouter`
-constructor — all collapsed.
+`setDefaultTrialPeriod` + `FeeRouter` constructor — all collapsed.
+
+**Note on graduation:** there is no `graduation_bps` field. The
+graduation threshold is `b · ln(2)` (the LMSR doubling-of-liquidity
+point), computed at trade time from `AmmState.b` — not configurable
+through `ProtocolConfig`. See §6.
+
+**Note on invalidation buffer:** EVM's `invalidationBuffer` is not
+mirrored as a config field today. The `invalidate()` parity gap is
+tracked in [`sooth_book.md`](./sooth_book.md) §15.
 
 ### 3.2 `LpPosition` (one per (market, user))
 
 ```rust
 // packages/programs-core/programs/sooth_launchpad/src/state/lp_position.rs
 pub struct LpPosition {
-    pub market: Pubkey,
-    pub user: Pubkey,
-    pub lp_tokens_held: u64,         // mirrors LP ATA balance for fast reads
-    // ...
+    pub market:   Pubkey,
+    pub creator:  Pubkey,             // creator's deposit (seed LP); only one LpPosition per market today
+    pub lp_mint:  Pubkey,             // per-market LP SPL mint
+    pub seed_deposit_wad: u128,       // WAD; baseline for redeem floor calc
+    pub graduated_at: i64,            // unix seconds; 0 until graduation flips on AmmState
+    pub bump: u8,
 }
 ```
 
-**Seeds:** `[b"lp_position", market.market_id.as_ref(), user.as_ref()]`.
+**Seeds:** `[b"lp_position", market.market_id.as_ref(), creator.as_ref()]`.
+Per-creator (not per arbitrary holder) — only the seed depositor gets an
+`LpPosition`. LP token transfer is via the SPL mint; subsequent holders
+are tracked by the LP ATA balance, not by additional `LpPosition` PDAs.
 
 ### 3.3 `LpMint` + LP ATA (per market)
 
@@ -185,24 +199,27 @@ Once expired without graduation:
 
 ## 6. Graduation
 
-Graduation is the canonical `BONDING → LIVE` transition. On Solana it
-fires when:
+Graduation is the canonical `BONDING → LIVE` transition. The threshold is
+the LMSR doubling-of-liquidity point — when accumulated bBase fees equal
+`b · ln(2)`, the AMM has earned back its initial liquidity provisioning.
 
 ```text
-AmmState.fee_b_base_wad >= protocol_config.graduation_bps * baseline / 10000
+threshold_wad = wad_mul(AmmState.b, LN2_WAD)
+if AmmState.fee_b_base_wad >= threshold_wad { AmmState.is_graduated = true }
 ```
 
-baseline is the creator's seed deposit. The check happens inside
-`distribute_fees` (or, planned, inside `fee_router_hook` if fee
-distribution becomes a CPI from `sooth_amm::trade_positions`). On
-graduation:
+Source: `sooth_amm/src/instructions/trade_positions.rs:498-503`. The
+check fires **inline in `trade_positions`** on every pre-graduation buy
+(not in `distribute_fees`); graduation is one-shot and atomic with the
+triggering trade per canon `law/lifecycle.md`. On graduation:
 
 - `AmmState.is_graduated = true`
 - (planned) `sooth_book::MarketBook` becomes initializable
 - LP-on-buy minting stops (per EVM behavior)
+- `MarketGraduated` event emitted with `fees_accumulated_wad` and `threshold_wad`
 
-`distribute_fees` is shipped and implements the 4-way bps split with
-floor-div + remainder-to-protocol. The migration from the global
+`distribute_fees` is a separate post-graduation crank that drains the
+fee pool into the 4-way bps split. The migration from the global
 `fee_pool_vault` to per-market `MarketFeePool` accounts (D16) lands
 alongside the `sooth_book` port per W5 in `evm-direct-port.md` §11.
 
