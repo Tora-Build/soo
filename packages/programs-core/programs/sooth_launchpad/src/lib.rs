@@ -117,6 +117,13 @@ pub mod sooth_launchpad {
         instructions::initialize_fee_pool::handler(ctx)
     }
 
+    /// Permissionless per-market fee-pool token account init. Creates the
+    /// SPL TokenAccount PDA `[b"market_fee_pool", market.market_id]` with
+    /// owner = `fee_pool_authority`.
+    pub fn init_market_fee_pool(ctx: Context<InitMarketFeePool>) -> Result<()> {
+        instructions::init_market_fee_pool::handler(ctx)
+    }
+
     /// Create a tradeable market in one transaction by composing the four
     /// init legs from `sooth_market` + `sooth_amm` via CPI. STUB — body is
     /// `todo!()` until the CPI plumbing lands. Architecture §4.1 has the
