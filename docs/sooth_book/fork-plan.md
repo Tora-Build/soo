@@ -1,8 +1,8 @@
 # SoothBook Monaco Fork Plan
 
-> **SUPERSEDED BY [`evm-direct-port.md`](./evm-direct-port.md) (2026-05-11).**
+> **SUPERSEDED BY [`docs/spec/sooth_book.md`](../spec/sooth_book.md) (2026-05-11).**
 >
-> The Monaco fork direction is retired per decision-log D13 (revises D7). The cost envelope was incompatible with the founder's <$50 hard cap on market creation. The replacement plan is a direct port of EVM `SoothBook.sol` — see `evm-direct-port.md` for the canonical implementation reference (9-week timeline, ~$0.42/market creation cost, full Path A EVM parity).
+> The Monaco fork direction is retired per decision-log D13 (revises D7). The cost envelope was incompatible with the founder's <$50 hard cap on market creation. The replacement plan is a direct port of EVM `SoothBook.sol` — see `docs/spec/sooth_book.md` for the canonical implementation reference (9-week timeline, ~$0.42/market creation cost, full Path A EVM parity).
 >
 > This document is retained as historical record. Do not implement against it.
 >

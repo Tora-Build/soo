@@ -261,7 +261,7 @@ The auto-match SDK incompatibility was thoroughly analyzed in conversation; the 
 
 **Why**: Cost analysis under the founder's <$50 hard cap on market creation showed Monaco's design tax (per-order PDAs, `MarketLiquidities` aggregate, `PriceLadder` PDA, `MarketOrderRequestQueue`, `OrderStatus` enum, 12-field `Order`) incompatible with the target. Monaco at density=100 hits ~$15 empty / ~$1,940 saturated. EVM SoothBook is structurally simpler (~600 LOC, 4-field Order, no aggregate, lazy-delete via `amount=0`, two-level bitmap). Direct Solana port hits ~$0.42/market with 62× headroom against the cap. Architecture sound across 16+ Codex review rounds.
 
-**Implication**: D7 superseded. ~9-week port instead of the Monaco fork's ~3–4 month estimate. Spec at [`docs/sooth_book/evm-direct-port.md`](./sooth_book/evm-direct-port.md) is the canonical implementation reference. `docs/sooth_book/fork-plan.md` is superseded.
+**Implication**: D7 superseded. ~9-week port instead of the Monaco fork's ~3–4 month estimate. Spec at [`docs/spec/sooth_book.md`](./spec/sooth_book.md) is the canonical implementation reference. `docs/sooth_book/fork-plan.md` is superseded.
 
 ### D14. Path A on-chain CLOB only for v1 (2026-05-11)
 
@@ -269,7 +269,7 @@ The auto-match SDK incompatibility was thoroughly analyzed in conversation; the 
 
 **Why**: Solana Path B requires non-trivial new infrastructure (Ed25519 typed-data + operator authorization + signed-order nonce tracking, ~3–4 weeks additional scope). The on-chain Path A alone meets the cost target and the EVM telegram app's escrow-driven sell flow works end-to-end on Path A.
 
-**Implication**: Within Path A fee/accounting/matching, no parity gaps. Path B, T\*, and `invalidate()` are tracked in `docs/sooth_book/evm-direct-port.md` §15 as out-of-scope until a later wave.
+**Implication**: Within Path A fee/accounting/matching, no parity gaps. Path B, T\*, and `invalidate()` are tracked in `docs/spec/sooth_book.md` §15 as out-of-scope until a later wave.
 
 ### D15. Split position model — `OrderbookPosition` separate from AMM `Position` (2026-05-11)
 
@@ -289,4 +289,4 @@ The auto-match SDK incompatibility was thoroughly analyzed in conversation; the 
 
 ---
 
-_Last updated: 2026-05-11 (D13-D16 record the EVM-direct port direction, scope, position model, and per-market fee pool decisions resolved by [`docs/sooth_book/evm-direct-port.md`](./sooth_book/evm-direct-port.md). D7-D12 resolved P1/P3/P5/P6/P7/P8 on 2026-05-08; D7 is superseded by D13. D6 was already used for devnet program IDs.)._
+_Last updated: 2026-05-11 (D13-D16 record the EVM-direct port direction, scope, position model, and per-market fee pool decisions resolved by [`docs/spec/sooth_book.md`](./spec/sooth_book.md). D7-D12 resolved P1/P3/P5/P6/P7/P8 on 2026-05-08; D7 is superseded by D13. D6 was already used for devnet program IDs.)._
