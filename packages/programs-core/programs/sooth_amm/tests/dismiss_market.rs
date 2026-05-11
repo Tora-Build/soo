@@ -470,7 +470,7 @@ fn buy_ix(fixture: &Fixture, trader: &TraderFixture) -> Instruction {
         market_vault: fixture.pdas.vault,
         usdc_mint: USDC_MINT,
         protocol_config: fixture.protocol_config_pda,
-        fee_pool_vault: fixture.fee_pool_vault,
+        market_fee_pool: fixture.fee_pool_vault,
         lp_mint: fixture.pdas.lp_mint,
         lp_mint_authority: fixture.pdas.lp_mint_authority,
         user_lp_ata: trader.lp_ata,

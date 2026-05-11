@@ -365,7 +365,7 @@ fn send_buy(
         market_vault,
         usdc_mint: USDC_MINT,
         protocol_config,
-        fee_pool_vault,
+        market_fee_pool: fee_pool_vault,
         lp_mint,
         lp_mint_authority,
         user_lp_ata,
