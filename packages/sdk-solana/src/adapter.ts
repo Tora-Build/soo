@@ -74,6 +74,7 @@ import {
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
   deriveYesMintPda,
+  orderbookPositionPda,
   type ProgramIds,
 } from "./pdas.js";
 import { decodePubkeyRef, encodeSignatureRef } from "./refs.js";
@@ -1965,6 +1966,20 @@ export class SolanaChainAdapter implements ChainAdapter {
     return this.buildCompleteSetInner(market, args, "merge");
   }
 
+  async buildOrderbookMint(
+    market: MarketRef,
+    args: CompleteSetArgs,
+  ): Promise<TradeRequest> {
+    return this.buildOrderbookCompleteSetInner(market, args, "mint");
+  }
+
+  async buildOrderbookMerge(
+    market: MarketRef,
+    args: CompleteSetArgs,
+  ): Promise<TradeRequest> {
+    return this.buildOrderbookCompleteSetInner(market, args, "merge");
+  }
+
   private async buildCompleteSetInner(
     market: MarketRef,
     args: CompleteSetArgs,
@@ -2064,6 +2079,87 @@ export class SolanaChainAdapter implements ChainAdapter {
         operation: kind === "mint" ? "mintCompleteSet" : "mergeCompleteSet",
         amountStr: args.amount.toString(),
         preIxs,
+      },
+    };
+  }
+
+  private async buildOrderbookCompleteSetInner(
+    market: MarketRef,
+    args: CompleteSetArgs,
+    kind: "mint" | "merge",
+  ): Promise<TradeRequest> {
+    if (!args.user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method: `buildOrderbook${kind === "mint" ? "Mint" : "Merge"} — args.user (Solana-only meta) is required at build time`,
+      });
+    }
+    if (args.amount <= 0n) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildOrderbook${kind === "mint" ? "Mint" : "Merge"}: amount must be positive`,
+      });
+    }
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const marketVault = deriveMarketVaultAta(
+      resolved.marketId,
+      this.usdcMint,
+      this.programIds,
+    );
+    const userUsdcAta = getAssociatedTokenAddressSync(this.usdcMint, userPk);
+    const [position] = orderbookPositionPda(
+      resolved.marketId,
+      userPk,
+      this.programIds,
+    );
+
+    const methodName =
+      kind === "mint"
+        ? "mintCompleteSetForOrderbook"
+        : "mergeCompleteSetForOrderbook";
+    const builder = (this.soothMarket.methods as any)[methodName](
+      bigIntToBn(args.amount),
+    );
+    const accounts =
+      kind === "mint"
+        ? {
+            market: marketPda,
+            position,
+            vault: marketVault,
+            userUsdcAta,
+            user: userPk,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+            rent: SYSVAR_RENT_PUBKEY,
+          }
+        : {
+            market: marketPda,
+            vaultAuthority: deriveVaultAuthorityPda(
+              resolved.marketId,
+              this.programIds,
+            )[0],
+            position,
+            vault: marketVault,
+            userUsdcAta,
+            user: userPk,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          };
+    const ix: TransactionInstruction = await builder.accounts(accounts).instruction();
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      costEstimateWad: args.amount * 1_000_000_000_000n,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation:
+          kind === "mint" ? "orderbookMintCompleteSet" : "orderbookMergeCompleteSet",
+        amountStr: args.amount.toString(),
+        orderbookPosition: position.toBase58(),
       },
     };
   }
