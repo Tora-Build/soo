@@ -56,22 +56,6 @@ import {
 import {
   deriveAdjudicatorAllowlistPda,
   deriveAmmStatePda,
-  deriveBookAuthorisedOperatorsPda,
-  deriveBookEscrowPda,
-  deriveBookFundingPda,
-  deriveBookLegacyMarketPositionPda,
-  deriveBookMarketLiquiditiesPda,
-  deriveBookMarketMatchingPoolPda,
-  deriveBookMarketMatchingQueuePda,
-  deriveBookMarketOutcomePda,
-  deriveBookMarketPositionPda,
-  deriveBookMarketPda,
-  deriveBookMarketTypePda,
-  deriveBookOrderPda,
-  deriveBookOrderRequestOrderPda,
-  deriveBookOrderRequestQueuePda,
-  deriveBookPriceLadderPda,
-  deriveBookTradePda,
   deriveFeePoolAuthorityPda,
   deriveFeePoolVaultAta,
   deriveLockAuthorityPda,
@@ -320,6 +304,210 @@ interface SoothBookMethods {
 const SOOTH_BOOK_DEFAULT_PROGRAM_ID = new PublicKey(
   "DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X",
 );
+
+// Adapter-private Monaco helpers retained only so the pre-W7 orderbook
+// builder stubs keep compiling while `pdas.ts` exposes the new W6 public PDA
+// surface. W7 deletes these call paths when cancel/buy/sell are rewritten.
+function legacySoothBookProgramId(
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): PublicKey {
+  if (!programs.soothBook) {
+    throw new Error("soothBook program id is required for legacy sooth_book PDAs");
+  }
+  return programs.soothBook;
+}
+
+function legacyU64Bytes(value: bigint, name: string): Buffer {
+  if (value < 0n || value > 0xffffffffffffffffn) {
+    throw new Error(`${name} must fit in u64, got ${value.toString()}`);
+  }
+  const out = Buffer.alloc(8);
+  out.writeBigUInt64LE(value, 0);
+  return out;
+}
+
+function legacyU128Bytes(value: bigint, name: string): Buffer {
+  if (value < 0n || value > 0xffffffffffffffffffffffffffffffffn) {
+    throw new Error(`${name} must fit in u128, got ${value.toString()}`);
+  }
+  const out = Buffer.alloc(16);
+  out.writeBigUInt64LE(value & 0xffffffffffffffffn, 0);
+  out.writeBigUInt64LE(value >> 64n, 8);
+  return out;
+}
+
+function legacySeed16(seed: Uint8Array, name: string): Buffer {
+  if (seed.length !== 16) {
+    throw new Error(`${name} must be exactly 16 bytes, got ${seed.length}`);
+  }
+  return Buffer.from(seed);
+}
+
+function deriveBookMarketPda(
+  soothMarketPda: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("market"), soothMarketPda.toBuffer()],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookEscrowPda(
+  bookMarketPda: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("escrow"), bookMarketPda.toBuffer()],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookFundingPda(
+  bookMarketPda: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("funding"), bookMarketPda.toBuffer()],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookMarketLiquiditiesPda(
+  bookMarketPda: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("liquidities"), bookMarketPda.toBuffer()],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookMarketMatchingQueuePda(
+  bookMarketPda: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("matching"), bookMarketPda.toBuffer()],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookOrderRequestQueuePda(
+  bookMarketPda: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("order_request"), bookMarketPda.toBuffer()],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookMarketPositionPda(
+  bookMarketPda: PublicKey,
+  user: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("position"), bookMarketPda.toBuffer(), user.toBuffer()],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookLegacyMarketPositionPda(
+  bookMarketPda: PublicKey,
+  purchaser: PublicKey,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [purchaser.toBuffer(), bookMarketPda.toBuffer()],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookOrderPda(
+  bookMarketPda: PublicKey,
+  distinctSeed: bigint,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("order"), bookMarketPda.toBuffer(), legacyU64Bytes(distinctSeed, "distinctSeed")],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookOrderRequestOrderPda(
+  bookMarketPda: PublicKey,
+  purchaser: PublicKey,
+  distinctSeed: Uint8Array,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [bookMarketPda.toBuffer(), purchaser.toBuffer(), legacySeed16(distinctSeed, "distinctSeed")],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookMarketOutcomePda(
+  bookMarketPda: PublicKey,
+  outcomeIndex: number,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [bookMarketPda.toBuffer(), Buffer.from(String(outcomeIndex))],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookMarketMatchingPoolPda(
+  bookMarketPda: PublicKey,
+  outcomeIndex: number,
+  expectedPrice: bigint,
+  forOutcome: boolean,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [
+      bookMarketPda.toBuffer(),
+      Buffer.from(String(outcomeIndex)),
+      Buffer.from("-"),
+      legacyU128Bytes(expectedPrice, "expectedPrice"),
+      Buffer.from(forOutcome ? "true" : "false"),
+    ],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookTradePda(
+  orderPda: PublicKey,
+  tradeSeed: Uint8Array,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [orderPda.toBuffer(), legacySeed16(tradeSeed, "tradeSeed")],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookMarketTypePda(
+  name: string,
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("market_type"), Buffer.from(name)],
+    legacySoothBookProgramId(programs),
+  );
+}
+
+function deriveBookAuthorisedOperatorsPda(
+  role: "MARKET" | "CRANK",
+  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("authorised_operators"), Buffer.from(role)],
+    legacySoothBookProgramId(programs),
+  );
+}
 
 export class SolanaChainAdapter implements ChainAdapter {
   readonly node: SoothNode;
