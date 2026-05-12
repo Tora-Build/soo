@@ -34,7 +34,7 @@ pub struct Fixture {
     pub creator: Keypair,
     pub mint_authority: Keypair,
     pub protocol_config_pda: Pubkey,
-    pub fee_pool_vault: Pubkey,
+    pub market_fee_pool: Pubkey,
     pub pdas: MarketPdas,
 }
 
@@ -57,6 +57,26 @@ pub struct MarketPdas {
     pub amm_state: Pubkey,
     pub lp_mint: Pubkey,
     pub lp_mint_authority: Pubkey,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BuyQuote {
+    pub cost_wad: u128,
+    pub fee_wad: u128,
+    pub cost_usdc: u64,
+    pub fee_usdc: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SellQuote {
+    pub gross_proceeds_wad: u128,
+    pub fee_wad: u128,
+    pub net_proceeds_wad: u128,
+    pub gross_proceeds_usdc: u64,
+    pub fee_usdc: u64,
+    pub net_proceeds_usdc: u64,
+    pub vault_outflow_usdc: u64,
+    pub lock_entry: Pubkey,
 }
 
 impl MarketPdas {
@@ -177,16 +197,16 @@ pub fn setup_market(seed: u8) -> Fixture {
         )],
     );
 
-    let (fee_pool_authority_pda, _) =
+    let (fee_pool_authority, _) =
         Pubkey::find_program_address(&[b"fee_pool_authority"], &LAUNCHPAD_ID);
-    let fee_pool_vault = get_associated_token_address(&fee_pool_authority_pda, &USDC_MINT);
+    let fee_pool_vault = get_associated_token_address(&fee_pool_authority, &USDC_MINT);
     send_ixs(
         &mut svm,
         &creator,
         &[build_ix(
             LAUNCHPAD_ID,
             sooth_launchpad::accounts::InitializeFeePool {
-                fee_pool_authority: fee_pool_authority_pda,
+                fee_pool_authority,
                 usdc_mint: USDC_MINT,
                 fee_pool_vault,
                 signer: creator.pubkey(),
@@ -200,6 +220,10 @@ pub fn setup_market(seed: u8) -> Fixture {
     );
 
     let pdas = MarketPdas::derive(market_id(seed));
+    let (market_fee_pool, _) = Pubkey::find_program_address(
+        &[b"market_fee_pool", pdas.market_id.as_ref()],
+        &LAUNCHPAD_ID,
+    );
     let deadline = NOW_TS + 7 * 24 * 60 * 60;
     let create_args = sooth_launchpad::instructions::CreateMarketArgs {
         market_id: pdas.market_id,
@@ -241,12 +265,31 @@ pub fn setup_market(seed: u8) -> Fixture {
         ],
     );
 
+    send_ixs(
+        &mut svm,
+        &creator,
+        &[build_ix(
+            LAUNCHPAD_ID,
+            sooth_launchpad::accounts::InitMarketFeePool {
+                market: pdas.market,
+                fee_pool_authority,
+                usdc_mint: USDC_MINT,
+                market_fee_pool,
+                signer: creator.pubkey(),
+                token_program: spl_token::ID,
+                system_program: solana_sdk::system_program::ID,
+                rent: solana_sdk::sysvar::rent::ID,
+            },
+            sooth_launchpad::instruction::InitMarketFeePool {},
+        )],
+    );
+
     let mut fixture = Fixture {
         svm,
         creator,
         mint_authority,
         protocol_config_pda,
-        fee_pool_vault,
+        market_fee_pool,
         pdas,
     };
     seed_lp(&mut fixture);
@@ -312,39 +355,73 @@ pub fn setup_trader(fixture: &mut Fixture) -> TraderFixture {
 }
 
 pub fn buy_yes(fixture: &mut Fixture, trader: &TraderFixture, shares: i128) -> u64 {
-    let before = read_amm_state(&fixture.svm, &fixture.pdas.amm_state);
-    let cost_wad = cost_delta(before.q_yes, before.q_no, before.b, shares, 0).unwrap();
-    assert!(cost_wad > 0);
-    let cost_usdc = wad_to_usdc_ceil(cost_wad as u128).unwrap();
+    let quote = quote_buy_yes(fixture, shares);
     let max_cost_wad = 10_000u128 * WAD_U;
-    let accounts = trade_accounts(fixture, trader);
-
+    let ix = buy_yes_ix(fixture, trader, shares, max_cost_wad);
     send_ixs(
         &mut fixture.svm,
         &trader.keypair,
         &[
             ComputeBudgetInstruction::set_compute_unit_limit(500_000),
-            build_ix(
-                AMM_ID,
-                accounts,
-                sooth_amm::instruction::TradePositions {
-                    outcome: 1,
-                    delta_shares: shares,
-                    max_cost_wad,
-                },
-            ),
+            ix,
         ],
     );
-    cost_usdc
+    quote.cost_usdc
 }
 
-pub fn sell_yes(fixture: &mut Fixture, trader: &TraderFixture, shares: i128) -> u64 {
+pub fn sell_yes(fixture: &mut Fixture, trader: &TraderFixture, shares: i128) -> SellQuote {
+    sell_yes_with_min(fixture, trader, shares, 0)
+}
+
+pub fn sell_yes_with_min(
+    fixture: &mut Fixture,
+    trader: &TraderFixture,
+    shares: i128,
+    min_proceeds_wad: u128,
+) -> SellQuote {
+    assert!(shares > 0);
+    let quote = quote_sell_yes(fixture, trader, shares);
+
+    let ix = sell_yes_ix(fixture, trader, shares, min_proceeds_wad, quote.lock_entry);
+    send_ixs(
+        &mut fixture.svm,
+        &trader.keypair,
+        &[
+            ComputeBudgetInstruction::set_compute_unit_limit(500_000),
+            ix,
+        ],
+    );
+    quote
+}
+
+pub fn quote_buy_yes(fixture: &Fixture, shares: i128) -> BuyQuote {
+    let before = read_amm_state(&fixture.svm, &fixture.pdas.amm_state);
+    let cost_wad = cost_delta(before.q_yes, before.q_no, before.b, shares, 0).unwrap();
+    assert!(cost_wad > 0);
+    let cost_wad = cost_wad as u128;
+    let fee_wad = cost_wad.checked_mul(FEE_BPS as u128).unwrap() / 10_000;
+    BuyQuote {
+        cost_wad,
+        fee_wad,
+        cost_usdc: wad_to_usdc_ceil(cost_wad).unwrap(),
+        fee_usdc: wad_to_usdc_ceil(fee_wad).unwrap(),
+    }
+}
+
+pub fn quote_sell_yes(fixture: &Fixture, trader: &TraderFixture, shares: i128) -> SellQuote {
     assert!(shares > 0);
     let before = read_amm_state(&fixture.svm, &fixture.pdas.amm_state);
-    let proceeds_wad = cost_delta(before.q_yes, before.q_no, before.b, -shares, 0)
+    let gross_proceeds_wad = cost_delta(before.q_yes, before.q_no, before.b, -shares, 0)
         .unwrap()
         .unsigned_abs();
-    let proceeds_usdc = wad_to_usdc_floor(proceeds_wad).unwrap();
+    let fee_wad = gross_proceeds_wad.checked_mul(FEE_BPS as u128).unwrap() / 10_000;
+    let net_proceeds_wad = gross_proceeds_wad.saturating_sub(fee_wad);
+    let gross_proceeds_usdc = wad_to_usdc_floor(gross_proceeds_wad).unwrap();
+    let fee_usdc = wad_to_usdc_floor(fee_wad).unwrap();
+    let net_proceeds_usdc = wad_to_usdc_floor(net_proceeds_wad).unwrap();
+    let vault_outflow_usdc = net_proceeds_usdc.checked_add(fee_usdc).unwrap();
+    assert!(vault_outflow_usdc <= gross_proceeds_usdc);
+
     let position = read_position(&fixture.svm, &trader.position_pda);
     let nonce = position.lock_nonce;
     let (lock_entry, _) = Pubkey::find_program_address(
@@ -356,39 +433,85 @@ pub fn sell_yes(fixture: &mut Fixture, trader: &TraderFixture, shares: i128) -> 
         &AMM_ID,
     );
 
-    send_ixs(
-        &mut fixture.svm,
-        &trader.keypair,
-        &[
-            ComputeBudgetInstruction::set_compute_unit_limit(500_000),
-            build_ix(
-                AMM_ID,
-                sooth_amm::accounts::SellPositions {
-                    market: fixture.pdas.market,
-                    amm_state: fixture.pdas.amm_state,
-                    position: trader.position_pda,
-                    vault_authority: fixture.pdas.vault_authority,
-                    lock_authority: fixture.pdas.lock_authority,
-                    market_vault: fixture.pdas.vault,
-                    lock_vault: fixture.pdas.lock_vault,
-                    lock_entry,
-                    usdc_mint: USDC_MINT,
-                    user: trader.keypair.pubkey(),
-                    system_program: solana_sdk::system_program::ID,
-                    token_program: spl_token::ID,
-                    rent: solana_sdk::sysvar::rent::ID,
-                    sooth_market_program: MARKET_ID,
-                    instruction_sysvar: solana_sdk::sysvar::instructions::ID,
-                },
-                sooth_amm::instruction::SellPositions {
-                    outcome: 1,
-                    delta_shares: -shares,
-                    min_proceeds_wad: 0,
-                },
-            ),
-        ],
-    );
-    proceeds_usdc
+    SellQuote {
+        gross_proceeds_wad,
+        fee_wad,
+        net_proceeds_wad,
+        gross_proceeds_usdc,
+        fee_usdc,
+        net_proceeds_usdc,
+        vault_outflow_usdc,
+        lock_entry,
+    }
+}
+
+pub fn buy_yes_ix(
+    fixture: &Fixture,
+    trader: &TraderFixture,
+    shares: i128,
+    max_cost_wad: u128,
+) -> Instruction {
+    build_ix(
+        AMM_ID,
+        trade_accounts(fixture, trader),
+        sooth_amm::instruction::TradePositions {
+            outcome: 1,
+            delta_shares: shares,
+            max_cost_wad,
+        },
+    )
+}
+
+pub fn sell_yes_ix(
+    fixture: &Fixture,
+    trader: &TraderFixture,
+    shares: i128,
+    min_proceeds_wad: u128,
+    lock_entry: Pubkey,
+) -> Instruction {
+    assert!(shares > 0);
+    build_ix(
+        AMM_ID,
+        sooth_amm::accounts::SellPositions {
+            market: fixture.pdas.market,
+            amm_state: fixture.pdas.amm_state,
+            position: trader.position_pda,
+            vault_authority: fixture.pdas.vault_authority,
+            lock_authority: fixture.pdas.lock_authority,
+            market_vault: fixture.pdas.vault,
+            lock_vault: fixture.pdas.lock_vault,
+            lock_entry,
+            usdc_mint: USDC_MINT,
+            protocol_config: fixture.protocol_config_pda,
+            market_fee_pool: fixture.market_fee_pool,
+            user: trader.keypair.pubkey(),
+            system_program: solana_sdk::system_program::ID,
+            token_program: spl_token::ID,
+            rent: solana_sdk::sysvar::rent::ID,
+            sooth_market_program: MARKET_ID,
+            instruction_sysvar: solana_sdk::sysvar::instructions::ID,
+        },
+        sooth_amm::instruction::SellPositions {
+            outcome: 1,
+            delta_shares: -shares,
+            min_proceeds_wad,
+        },
+    )
+}
+
+pub fn transfer_fee_to_market_pool_ix(fixture: &Fixture, amount: u64) -> Instruction {
+    build_ix(
+        MARKET_ID,
+        sooth_market::accounts::TransferFeeToMarketPool {
+            market: fixture.pdas.market,
+            market_vault: fixture.pdas.vault,
+            market_fee_pool: fixture.market_fee_pool,
+            vault_authority: fixture.pdas.vault_authority,
+            instruction_sysvar: solana_sdk::sysvar::instructions::ID,
+            token_program: spl_token::ID,
+        },
+        sooth_market::instruction::TransferFeeToMarketPool { amount },
+    )
 }
 
 pub fn dismiss_market(fixture: &mut Fixture) {
@@ -447,6 +570,12 @@ pub fn read_position(svm: &LiteSVM, position: &Pubkey) -> sooth_amm::state::Posi
 
 pub fn read_amm_state(svm: &LiteSVM, amm_state: &Pubkey) -> sooth_amm::state::AmmState {
     let acc = svm.get_account(amm_state).expect("amm_state missing");
+    assert_eq!(acc.owner, AMM_ID);
+    decode_anchor(&acc.data)
+}
+
+pub fn read_lock_entry(svm: &LiteSVM, lock_entry: &Pubkey) -> sooth_amm::state::LockEntry {
+    let acc = svm.get_account(lock_entry).expect("lock_entry missing");
     assert_eq!(acc.owner, AMM_ID);
     decode_anchor(&acc.data)
 }
@@ -565,7 +694,7 @@ fn trade_accounts(
         market_vault: fixture.pdas.vault,
         usdc_mint: USDC_MINT,
         protocol_config: fixture.protocol_config_pda,
-        market_fee_pool: fixture.fee_pool_vault,
+        market_fee_pool: fixture.market_fee_pool,
         lp_mint: fixture.pdas.lp_mint,
         lp_mint_authority: fixture.pdas.lp_mint_authority,
         user_lp_ata: trader.lp_ata,

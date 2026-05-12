@@ -163,6 +163,8 @@ fn buy_fees_accumulate_on_amm_state() {
     let (lp_mint, _) = Pubkey::find_program_address(&[b"lp", &market_id], &LAUNCHPAD_ID);
     let (lp_mint_authority, _) =
         Pubkey::find_program_address(&[b"lp_mint_authority", &market_id], &LAUNCHPAD_ID);
+    let (market_fee_pool, _) =
+        Pubkey::find_program_address(&[b"market_fee_pool", &market_id], &LAUNCHPAD_ID);
     let (lp_position, _) = Pubkey::find_program_address(
         &[b"lp_position", &market_id, creator.pubkey().as_ref()],
         &LAUNCHPAD_ID,
@@ -209,6 +211,25 @@ fn buy_fees_accumulate_on_amm_state() {
                 sooth_launchpad::instruction::CreateMarket { args: create_args },
             ),
         ],
+    );
+
+    send_ixs(
+        &mut svm,
+        &creator,
+        &[build_ix(
+            LAUNCHPAD_ID,
+            sooth_launchpad::accounts::InitMarketFeePool {
+                market,
+                fee_pool_authority: fee_pool_authority_pda,
+                usdc_mint: USDC_MINT,
+                market_fee_pool,
+                signer: creator.pubkey(),
+                token_program: spl_token::ID,
+                system_program: solana_sdk::system_program::ID,
+                rent: solana_sdk::sysvar::rent::ID,
+            },
+            sooth_launchpad::instruction::InitMarketFeePool {},
+        )],
     );
 
     let creator_lp_ata = get_associated_token_address(&creator.pubkey(), &lp_mint);
@@ -296,7 +317,7 @@ fn buy_fees_accumulate_on_amm_state() {
         trader_usdc_ata,
         vault,
         protocol_config_pda,
-        fee_pool_vault,
+        market_fee_pool,
         lp_mint,
         lp_mint_authority,
         trader_lp_ata,
@@ -323,7 +344,7 @@ fn buy_fees_accumulate_on_amm_state() {
         trader_usdc_ata,
         vault,
         protocol_config_pda,
-        fee_pool_vault,
+        market_fee_pool,
         lp_mint,
         lp_mint_authority,
         trader_lp_ata,
@@ -350,7 +371,7 @@ fn send_buy(
     user_usdc_ata: Pubkey,
     market_vault: Pubkey,
     protocol_config: Pubkey,
-    fee_pool_vault: Pubkey,
+    market_fee_pool: Pubkey,
     lp_mint: Pubkey,
     lp_mint_authority: Pubkey,
     user_lp_ata: Pubkey,
@@ -365,7 +386,7 @@ fn send_buy(
         market_vault,
         usdc_mint: USDC_MINT,
         protocol_config,
-        market_fee_pool: fee_pool_vault,
+        market_fee_pool,
         lp_mint,
         lp_mint_authority,
         user_lp_ata,

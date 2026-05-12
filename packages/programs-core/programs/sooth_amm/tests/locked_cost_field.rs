@@ -20,12 +20,15 @@ fn sell_decreases_locked_cost() {
 
     let cost_usdc = buy_yes(&mut fixture, &trader, 10 * one_share());
     let vault_before = fetch_token_amount(&fixture.svm, fixture.pdas.vault);
-    let proceeds_usdc = sell_yes(&mut fixture, &trader, 5 * one_share());
+    let sell = sell_yes(&mut fixture, &trader, 5 * one_share());
     let vault_after = fetch_token_amount(&fixture.svm, fixture.pdas.vault);
     let position = read_position(&fixture.svm, &trader.position_pda);
 
-    assert_eq!(position.locked_cost_usdc, cost_usdc - proceeds_usdc);
-    assert_eq!(vault_after, vault_before - proceeds_usdc);
+    assert_eq!(
+        position.locked_cost_usdc,
+        cost_usdc - sell.vault_outflow_usdc
+    );
+    assert_eq!(vault_after, vault_before - sell.vault_outflow_usdc);
 }
 
 #[test]
@@ -53,12 +56,13 @@ fn saturating_sub_floors_to_zero() {
     fixture.svm.expire_blockhash();
     buy_yes(&mut fixture, &whale, 500 * one_share());
 
-    let expected_proceeds = sell_yes(&mut fixture, &trader, one_share());
+    let sell = sell_yes(&mut fixture, &trader, one_share());
     let position = read_position(&fixture.svm, &trader.position_pda);
 
     assert!(
-        expected_proceeds > locked_cost,
-        "test setup must create price impact: proceeds={expected_proceeds} locked={locked_cost}"
+        sell.vault_outflow_usdc > locked_cost,
+        "test setup must create price impact: proceeds={} locked={locked_cost}",
+        sell.vault_outflow_usdc
     );
     assert_eq!(position.locked_cost_usdc, 0);
 }

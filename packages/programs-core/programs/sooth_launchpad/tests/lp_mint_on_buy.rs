@@ -185,6 +185,8 @@ fn pre_graduation_buy_mints_lp_to_trader() {
     let (lp_mint, _) = Pubkey::find_program_address(&[b"lp", &market_id], &LAUNCHPAD_ID);
     let (lp_mint_authority, _) =
         Pubkey::find_program_address(&[b"lp_mint_authority", &market_id], &LAUNCHPAD_ID);
+    let (market_fee_pool, _) =
+        Pubkey::find_program_address(&[b"market_fee_pool", &market_id], &LAUNCHPAD_ID);
     let (lp_position, _) = Pubkey::find_program_address(
         &[b"lp_position", &market_id, creator.pubkey().as_ref()],
         &LAUNCHPAD_ID,
@@ -234,6 +236,25 @@ fn pre_graduation_buy_mints_lp_to_trader() {
             ComputeBudgetInstruction::set_compute_unit_limit(1_400_000),
             create_ix,
         ],
+    );
+
+    send_ixs(
+        &mut svm,
+        &creator,
+        &[build_ix(
+            LAUNCHPAD_ID,
+            sooth_launchpad::accounts::InitMarketFeePool {
+                market,
+                fee_pool_authority: fee_pool_authority_pda,
+                usdc_mint: USDC_MINT,
+                market_fee_pool,
+                signer: creator.pubkey(),
+                token_program: spl_token::ID,
+                system_program: solana_sdk::system_program::ID,
+                rent: solana_sdk::sysvar::rent::ID,
+            },
+            sooth_launchpad::instruction::InitMarketFeePool {},
+        )],
     );
 
     // ─── 6. seed_lp — bootstrap LP mint + creator LP allocation ──────────
@@ -334,7 +355,7 @@ fn pre_graduation_buy_mints_lp_to_trader() {
         market_vault: vault,
         usdc_mint: USDC_MINT,
         protocol_config: protocol_config_pda,
-        market_fee_pool: fee_pool_vault,
+        market_fee_pool,
         lp_mint,
         lp_mint_authority,
         user_lp_ata: trader_lp_ata,

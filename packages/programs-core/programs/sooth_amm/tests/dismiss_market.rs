@@ -142,7 +142,7 @@ struct Fixture {
     creator: Keypair,
     mint_authority: Keypair,
     protocol_config_pda: Pubkey,
-    fee_pool_vault: Pubkey,
+    market_fee_pool: Pubkey,
     pdas: MarketPdas,
 }
 
@@ -285,16 +285,16 @@ fn setup_market(seed: u8) -> Fixture {
         )],
     );
 
-    let (fee_pool_authority_pda, _) =
+    let (fee_pool_authority, _) =
         Pubkey::find_program_address(&[b"fee_pool_authority"], &LAUNCHPAD_ID);
-    let fee_pool_vault = get_associated_token_address(&fee_pool_authority_pda, &USDC_MINT);
+    let fee_pool_vault = get_associated_token_address(&fee_pool_authority, &USDC_MINT);
     send_ixs(
         &mut svm,
         &creator,
         &[build_ix(
             LAUNCHPAD_ID,
             sooth_launchpad::accounts::InitializeFeePool {
-                fee_pool_authority: fee_pool_authority_pda,
+                fee_pool_authority,
                 usdc_mint: USDC_MINT,
                 fee_pool_vault,
                 signer: creator.pubkey(),
@@ -308,6 +308,10 @@ fn setup_market(seed: u8) -> Fixture {
     );
 
     let pdas = MarketPdas::derive(market_id(seed));
+    let (market_fee_pool, _) = Pubkey::find_program_address(
+        &[b"market_fee_pool", pdas.market_id.as_ref()],
+        &LAUNCHPAD_ID,
+    );
     let deadline = NOW_TS + 7 * 24 * 60 * 60;
     let create_args = sooth_launchpad::instructions::CreateMarketArgs {
         market_id: pdas.market_id,
@@ -349,12 +353,31 @@ fn setup_market(seed: u8) -> Fixture {
         ],
     );
 
+    send_ixs(
+        &mut svm,
+        &creator,
+        &[build_ix(
+            LAUNCHPAD_ID,
+            sooth_launchpad::accounts::InitMarketFeePool {
+                market: pdas.market,
+                fee_pool_authority,
+                usdc_mint: USDC_MINT,
+                market_fee_pool,
+                signer: creator.pubkey(),
+                token_program: spl_token::ID,
+                system_program: solana_sdk::system_program::ID,
+                rent: solana_sdk::sysvar::rent::ID,
+            },
+            sooth_launchpad::instruction::InitMarketFeePool {},
+        )],
+    );
+
     Fixture {
         svm,
         creator,
         mint_authority,
         protocol_config_pda,
-        fee_pool_vault,
+        market_fee_pool,
         pdas,
     }
 }
@@ -470,7 +493,7 @@ fn buy_ix(fixture: &Fixture, trader: &TraderFixture) -> Instruction {
         market_vault: fixture.pdas.vault,
         usdc_mint: USDC_MINT,
         protocol_config: fixture.protocol_config_pda,
-        market_fee_pool: fixture.fee_pool_vault,
+        market_fee_pool: fixture.market_fee_pool,
         lp_mint: fixture.pdas.lp_mint,
         lp_mint_authority: fixture.pdas.lp_mint_authority,
         user_lp_ata: trader.lp_ata,
