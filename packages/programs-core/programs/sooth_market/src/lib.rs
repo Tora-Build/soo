@@ -160,6 +160,15 @@ pub mod sooth_market {
         instructions::merge_complete_set::handler(ctx, amount)
     }
 
+    /// Merge an orderbook complete set — burn equal WAD-scaled YES + NO
+    /// shares from `OrderbookPosition` and return USDC from the market vault.
+    pub fn merge_complete_set_for_orderbook(
+        ctx: Context<MergeCompleteSetForOrderbook>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::merge_complete_set_for_orderbook::handler(ctx, amount)
+    }
+
     /// Lock the market for resolution (LIVE → LOCKED). EVM analogue:
     /// `TruthMarket.resolve` (`TruthMarket.sol:90-106`).
     pub fn lock_for_resolution(ctx: Context<LockForResolution>) -> Result<()> {
