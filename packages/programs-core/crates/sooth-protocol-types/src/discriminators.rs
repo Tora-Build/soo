@@ -81,6 +81,10 @@ pub const TRANSFER_FROM_LOCK_VAULT_DISCRIMINATOR: [u8; 8] = [48, 17, 136, 127, 1
 pub const TRANSFER_FEE_TO_MARKET_POOL_DISCRIMINATOR: [u8; 8] =
     [131, 157, 242, 158, 75, 108, 145, 203];
 
+/// `sooth_market::transfer_fee_to_market_pool_from_book`.
+pub const TRANSFER_FEE_TO_MARKET_POOL_FROM_BOOK_DISCRIMINATOR: [u8; 8] =
+    [27, 95, 201, 236, 222, 168, 222, 163];
+
 // ── sooth_book-owned ix discriminators ──────────────────────────────────
 
 /// `sooth_book::buy_yes`.
@@ -127,8 +131,12 @@ pub const MERGE_COMPLETE_SET_FOR_ORDERBOOK_DISCRIMINATOR: [u8; 8] =
 /// `sooth_market::redeem_orderbook`.
 pub const REDEEM_ORDERBOOK_DISCRIMINATOR: [u8; 8] = [214, 142, 100, 85, 174, 200, 192, 15];
 
-// ── sooth_launchpad-owned per-market fee-pool ix discriminator ──────────
+// ── sooth_launchpad-owned fee-pool ix discriminators ────────────────────
 
 /// `sooth_launchpad::init_market_fee_pool`.
 pub const SOOTH_LAUNCHPAD_INIT_MARKET_FEE_POOL_DISCRIMINATOR: [u8; 8] =
     [51, 19, 251, 120, 171, 91, 138, 115];
+
+/// `sooth_launchpad::distribute_fees_legacy`.
+pub const DISTRIBUTE_FEES_LEGACY_DISCRIMINATOR: [u8; 8] =
+    [50, 179, 149, 32, 120, 79, 13, 181];

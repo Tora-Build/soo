@@ -4,7 +4,8 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 use crate::error::SoothMarketError;
 use crate::instruction_introspection::{
-    require_sooth_book_cpi_parent, SOOTH_BOOK_CANCEL_BY_ID_DISCRIMINATOR,
+    require_sooth_book_cpi_parent, SOOTH_BOOK_BUY_NO_DISCRIMINATOR,
+    SOOTH_BOOK_BUY_YES_DISCRIMINATOR, SOOTH_BOOK_CANCEL_BY_ID_DISCRIMINATOR,
     SOOTH_BOOK_CANCEL_DISCRIMINATOR,
 };
 use crate::state::Market;
@@ -46,6 +47,8 @@ pub fn handler(ctx: Context<WithdrawForOrder>, base_units: u64) -> Result<()> {
     require_sooth_book_cpi_parent(
         &ctx.accounts.instruction_sysvar,
         &[
+            SOOTH_BOOK_BUY_YES_DISCRIMINATOR,
+            SOOTH_BOOK_BUY_NO_DISCRIMINATOR,
             SOOTH_BOOK_CANCEL_DISCRIMINATOR,
             SOOTH_BOOK_CANCEL_BY_ID_DISCRIMINATOR,
         ],

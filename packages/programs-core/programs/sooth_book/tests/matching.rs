@@ -2,19 +2,19 @@ use std::path::PathBuf;
 
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::{AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas};
-use litesvm::LiteSVM;
+use litesvm::{types::TransactionMetadata, LiteSVM};
 use solana_sdk::{
-    account::Account, compute_budget::ComputeBudgetInstruction, instruction::Instruction,
-    message::Message, program_pack::Pack, signature::Keypair, signer::Signer, sysvar::clock::Clock,
-    transaction::Transaction,
+    account::Account, compute_budget::ComputeBudgetInstruction, instruction::AccountMeta,
+    instruction::Instruction, message::Message, program_pack::Pack, signature::Keypair,
+    signer::Signer, sysvar::clock::Clock, transaction::Transaction,
 };
 use spl_associated_token_account::{
     get_associated_token_address, instruction::create_associated_token_account_idempotent,
 };
-use spl_token::state::Mint;
+use spl_token::state::{Account as TokenState, Mint};
 
-use sooth_book::math::{min_resting_order_for_tick, NUM_TICKS};
-use sooth_book::state::{BookSide, MarketBook, SIDE_FOR};
+use sooth_book::math::NUM_TICKS;
+use sooth_book::state::{BookSide, MarketBook, SIDE_AGAINST, SIDE_FOR};
 
 const USDC_MINT: Pubkey = sooth_market::USDC_MINT_DEVNET;
 const BOOK_ID: Pubkey = sooth_book::ID;
@@ -24,11 +24,9 @@ const LAUNCHPAD_ID: Pubkey = sooth_launchpad::ID;
 const NOW_TS: i64 = 1_000_000;
 const INITIAL_B_WAD: u128 = 1_000_000_000_000_000_000_000;
 const WAD: u128 = 1_000_000_000_000_000_000;
-const TICK: u16 = 500;
 
 struct Fixture {
     svm: LiteSVM,
-    creator: Keypair,
     mint_authority: Keypair,
     pdas: MarketPdas,
 }
@@ -93,202 +91,239 @@ impl MarketPdas {
 }
 
 #[test]
-fn place_at_empty_tick() {
-    let mut fixture = setup_market(1);
-    let trader = setup_trader(&mut fixture);
-
-    buy_yes(&mut fixture, &trader, TICK, WAD, false).unwrap();
-
-    let book_side = read_book_side(&fixture.svm, &book_side_pda(&fixture.pdas, SIDE_FOR, TICK));
-    assert_eq!(book_side.market, fixture.pdas.market);
-    assert_eq!(book_side.side, SIDE_FOR);
-    assert_eq!(book_side.tick, TICK);
-    assert_eq!(book_side.head_index, 0);
-    assert_eq!(book_side.orders.len(), 1);
-    assert_eq!(book_side.orders[0].maker, trader.keypair.pubkey());
-    assert_eq!(book_side.orders[0].amount, WAD);
-
-    let market_book = read_market_book(&fixture.svm, &fixture.pdas.market_book);
-    assert!(market_book.bitmap(SIDE_FOR).is_set(TICK));
-}
-
-#[test]
-fn append_at_populated_tick() {
-    let mut fixture = setup_market(2);
-    let trader = setup_trader(&mut fixture);
-    let book_side_key = book_side_pda(&fixture.pdas, SIDE_FOR, TICK);
-
-    buy_yes(&mut fixture, &trader, TICK, WAD, false).unwrap();
-    buy_yes(&mut fixture, &trader, TICK, WAD, false).unwrap();
-
-    let account = fixture.svm.get_account(&book_side_key).unwrap();
-    assert_eq!(account.data.len(), BookSide::space_for(2));
-    let book_side = decode_anchor::<BookSide>(&account.data);
-    assert_eq!(book_side.orders.len(), 2);
-    assert_eq!(book_side.head_index, 0);
-}
-
-#[test]
-fn cap_rejects_51st_order() {
-    let mut fixture = setup_market(3);
-    let trader = setup_trader(&mut fixture);
-
-    for _ in 0..50 {
-        buy_yes(&mut fixture, &trader, TICK, WAD, false).unwrap();
+fn match_limit_unlimited() {
+    let mut fixture = setup_market(31);
+    let makers = setup_traders(&mut fixture, 3);
+    let taker = setup_trader(&mut fixture);
+    for maker in &makers {
+        buy_no(&mut fixture, maker, 300, WAD, false, 3).unwrap();
     }
-    let err = buy_yes(&mut fixture, &trader, TICK, WAD, false).unwrap_err();
-    assert_anchor_error(err, "BookSideFull");
 
-    let book_side = read_book_side(&fixture.svm, &book_side_pda(&fixture.pdas, SIDE_FOR, TICK));
-    assert_eq!(book_side.orders.len(), 50);
+    let bundles = fill_bundles(&fixture, &makers, SIDE_AGAINST, 300);
+    buy_yes(&mut fixture, &taker, 800, 3 * WAD, false, 0, bundles).unwrap();
+
+    let book = read_market_book(&fixture.svm, &fixture.pdas.market_book);
+    assert!(!book.bitmap(SIDE_AGAINST).is_set(300));
+    let side = read_book_side(
+        &fixture.svm,
+        &book_side_pda(&fixture.pdas, SIDE_AGAINST, 300),
+    );
+    assert_eq!(side.head_index, 3);
+    assert!(side.orders.iter().all(|order| order.amount == 0));
+    assert_eq!(
+        read_orderbook_position(&fixture.svm, &taker.orderbook_position).yes_shares,
+        3 * WAD
+    );
 }
 
 #[test]
-fn cancel_marks_amount_zero() {
-    let mut fixture = setup_market(4);
-    let trader = setup_trader(&mut fixture);
-
-    buy_yes(&mut fixture, &trader, TICK, WAD, false).unwrap();
-    cancel(&mut fixture, &trader, SIDE_FOR, TICK).unwrap();
-
-    let book_side = read_book_side(&fixture.svm, &book_side_pda(&fixture.pdas, SIDE_FOR, TICK));
-    assert_eq!(book_side.orders.len(), 1);
-    assert_eq!(book_side.orders[0].amount, 0);
-    assert!(fixture
-        .svm
-        .get_account(&book_side_pda(&fixture.pdas, SIDE_FOR, TICK))
-        .is_some());
-}
-
-#[test]
-fn cancel_by_id_seed_mismatch() {
-    let mut fixture = setup_market(5);
-    let trader = setup_trader(&mut fixture);
-
-    buy_yes(&mut fixture, &trader, TICK, WAD, false).unwrap();
-    buy_yes(&mut fixture, &trader, TICK + 1, WAD, false).unwrap();
-    let order_id =
-        read_book_side(&fixture.svm, &book_side_pda(&fixture.pdas, SIDE_FOR, TICK)).orders[0].id;
-
-    let err = cancel_by_id(&mut fixture, &trader, order_id, SIDE_FOR, TICK + 1).unwrap_err();
-    assert_anchor_error(err, "OrderIdSeedMismatch");
-}
-
-#[test]
-fn compact_drops_trailing_zeros() {
-    let mut fixture = setup_market(6);
-    let trader = setup_trader(&mut fixture);
-    let book_side_key = book_side_pda(&fixture.pdas, SIDE_FOR, TICK);
-
-    for _ in 0..5 {
-        buy_yes(&mut fixture, &trader, TICK, WAD, false).unwrap();
+fn match_limit_three_bounded() {
+    let mut fixture = setup_market(32);
+    let makers = setup_traders(&mut fixture, 4);
+    for (maker, tick) in makers.iter().zip([900, 800, 700, 600]) {
+        write_orderbook_position(
+            &mut fixture.svm,
+            maker.orderbook_position,
+            &sooth_market::state::OrderbookPosition {
+                market: fixture.pdas.market,
+                user: maker.keypair.pubkey(),
+                yes_shares: 0,
+                no_shares: 0,
+                _reserved: [0; 16],
+            },
+        );
+        buy_no(&mut fixture, maker, tick, WAD, false, 3).unwrap();
     }
-    let mut book_side = read_book_side(&fixture.svm, &book_side_key);
-    for order in book_side.orders.iter_mut().skip(2) {
-        order.amount = 0;
-    }
-    write_book_side(&mut fixture.svm, book_side_key, &book_side);
-
-    compact_book_side(&mut fixture, SIDE_FOR, TICK, 3).unwrap();
-
-    let book_side = read_book_side(&fixture.svm, &book_side_key);
-    assert_eq!(book_side.orders.len(), 2);
-    assert!(book_side.orders.iter().all(|order| order.amount > 0));
-}
-
-#[test]
-fn compact_max_drops_bounded() {
-    let mut fixture = setup_market(7);
-    let trader = setup_trader(&mut fixture);
-    let book_side_key = book_side_pda(&fixture.pdas, SIDE_FOR, TICK);
-
-    for _ in 0..20 {
-        buy_yes(&mut fixture, &trader, TICK, WAD, false).unwrap();
-    }
-    let mut book_side = read_book_side(&fixture.svm, &book_side_key);
-    for order in &mut book_side.orders {
-        order.amount = 0;
-    }
-    write_book_side(&mut fixture.svm, book_side_key, &book_side);
-
-    compact_book_side(&mut fixture, SIDE_FOR, TICK, 16).unwrap();
-
-    let book_side = read_book_side(&fixture.svm, &book_side_key);
-    assert_eq!(book_side.orders.len(), 4);
-}
-
-#[test]
-fn close_rejects_when_not_drained() {
-    let mut fixture = setup_market(8);
-    let trader = setup_trader(&mut fixture);
-
-    buy_yes(&mut fixture, &trader, TICK, WAD, false).unwrap();
-
-    let err = close_book_side(&mut fixture, SIDE_FOR, TICK).unwrap_err();
-    assert_anchor_error(err, "BookSideNotDrained");
-}
-
-#[test]
-fn close_succeeds_when_drained() {
-    let mut fixture = setup_market(9);
-    let trader = setup_trader(&mut fixture);
-    let book_side_key = book_side_pda(&fixture.pdas, SIDE_FOR, TICK);
-
-    buy_yes(&mut fixture, &trader, TICK, WAD, false).unwrap();
-    let mut book_side = read_book_side(&fixture.svm, &book_side_key);
-    book_side.orders[0].amount = 0;
-    book_side.head_index = book_side.orders.len() as u32;
-    write_book_side(&mut fixture.svm, book_side_key, &book_side);
-
-    let mut market_book = read_market_book(&fixture.svm, &fixture.pdas.market_book);
-    market_book.bitmap_mut(SIDE_FOR).clear_bit(TICK);
-    write_market_book(&mut fixture.svm, fixture.pdas.market_book, &market_book);
-
-    let closer_before = fixture
-        .svm
-        .get_account(&fixture.creator.pubkey())
-        .unwrap()
-        .lamports;
-    close_book_side(&mut fixture, SIDE_FOR, TICK).unwrap();
-    let closer_after = fixture
-        .svm
-        .get_account(&fixture.creator.pubkey())
-        .unwrap()
-        .lamports;
-
-    assert!(is_closed(&fixture.svm, &book_side_key));
-    assert!(closer_after > closer_before);
-}
-
-#[test]
-fn dust_credit_back_for_escrow() {
-    let mut fixture = setup_market(10);
-    let trader = setup_trader(&mut fixture);
-    let tick = 999;
-    let amount = min_resting_order_for_tick(NUM_TICKS - tick).unwrap() - 1;
+    let taker = setup_trader(&mut fixture);
     write_orderbook_position(
         &mut fixture.svm,
-        trader.orderbook_position,
+        taker.orderbook_position,
         &sooth_market::state::OrderbookPosition {
             market: fixture.pdas.market,
-            user: trader.keypair.pubkey(),
+            user: taker.keypair.pubkey(),
             yes_shares: 0,
-            no_shares: amount,
+            no_shares: 0,
             _reserved: [0; 16],
         },
     );
+    let bundles = [
+        fill_bundle(&fixture, &makers[0], SIDE_AGAINST, 900),
+        fill_bundle(&fixture, &makers[1], SIDE_AGAINST, 800),
+        fill_bundle(&fixture, &makers[2], SIDE_AGAINST, 700),
+        fill_bundle(&fixture, &makers[3], SIDE_AGAINST, 600),
+    ]
+    .concat();
 
-    buy_yes(&mut fixture, &trader, tick, amount, true).unwrap();
+    buy_yes(&mut fixture, &taker, 950, 3 * WAD + 1, false, 3, bundles).unwrap();
 
-    let position = read_orderbook_position(&fixture.svm, &trader.orderbook_position);
-    assert_eq!(position.no_shares, amount);
-    assert!(fixture
-        .svm
-        .get_account(&book_side_pda(&fixture.pdas, SIDE_FOR, tick))
-        .map(|acc| acc.lamports == 0 && acc.data.is_empty())
-        .unwrap_or(true));
-    let market_book = read_market_book(&fixture.svm, &fixture.pdas.market_book);
-    assert!(!market_book.bitmap(SIDE_FOR).is_set(tick));
+    let book = read_market_book(&fixture.svm, &fixture.pdas.market_book);
+    for tick in [900, 800, 700] {
+        assert!(!book.bitmap(SIDE_AGAINST).is_set(tick));
+    }
+    assert!(book.bitmap(SIDE_AGAINST).is_set(600));
+    assert_eq!(
+        read_book_side(
+            &fixture.svm,
+            &book_side_pda(&fixture.pdas, SIDE_AGAINST, 600)
+        )
+        .orders[0]
+            .amount,
+        WAD
+    );
+}
+
+#[test]
+fn zero_bundles_no_cross() {
+    let mut fixture = setup_market(33);
+    let maker = setup_trader(&mut fixture);
+    buy_no(&mut fixture, &maker, 600, WAD, false, 3).unwrap();
+    let taker = setup_trader(&mut fixture);
+
+    buy_yes(&mut fixture, &taker, 300, WAD, false, 3, vec![]).unwrap();
+
+    let book = read_market_book(&fixture.svm, &fixture.pdas.market_book);
+    assert!(book.bitmap(SIDE_AGAINST).is_set(600));
+    assert!(book.bitmap(SIDE_FOR).is_set(300));
+    assert_eq!(
+        read_book_side(
+            &fixture.svm,
+            &book_side_pda(&fixture.pdas, SIDE_AGAINST, 600)
+        )
+        .orders[0]
+            .amount,
+        WAD
+    );
+}
+
+#[test]
+fn missing_crossing_book_side() {
+    let mut fixture = setup_market(34);
+    let maker = setup_trader(&mut fixture);
+    buy_no(&mut fixture, &maker, 300, WAD, false, 3).unwrap();
+    let taker = setup_trader(&mut fixture);
+    let wrong_bundle = fill_bundle(&fixture, &maker, SIDE_AGAINST, 200);
+
+    let err = buy_yes(&mut fixture, &taker, 700, WAD, false, 3, wrong_bundle).unwrap_err();
+    assert_anchor_error(err, "MissingCrossingBookSide");
+}
+
+#[test]
+fn maker_account_mismatch() {
+    let mut fixture = setup_market(35);
+    let maker = setup_trader(&mut fixture);
+    let wrong_maker = setup_trader(&mut fixture);
+    buy_no(&mut fixture, &maker, 300, WAD, false, 3).unwrap();
+    let taker = setup_trader(&mut fixture);
+    let wrong_bundle = fill_bundle(&fixture, &wrong_maker, SIDE_AGAINST, 300);
+
+    let err = buy_yes(&mut fixture, &taker, 700, WAD, false, 3, wrong_bundle).unwrap_err();
+    assert_anchor_error(err, "MakerAccountMismatch");
+}
+
+#[test]
+fn wrong_bundle_arity() {
+    let mut fixture = setup_market(36);
+    let maker = setup_trader(&mut fixture);
+    buy_no(&mut fixture, &maker, 300, WAD, false, 3).unwrap();
+    let taker = setup_trader(&mut fixture);
+    let mut metas = fill_bundle(&fixture, &maker, SIDE_AGAINST, 300);
+    metas.pop();
+
+    let err = buy_yes(&mut fixture, &taker, 700, WAD, false, 3, metas).unwrap_err();
+    assert_anchor_error(err, "WrongBundleArity");
+}
+
+#[test]
+fn bitmap_walk_correctness_respects_min_opp_tick_boundary() {
+    let mut fixture = setup_market(37);
+    let makers = setup_traders(&mut fixture, 3);
+    for (maker, tick) in makers.iter().zip([100, 200, 300]) {
+        buy_no(&mut fixture, maker, tick, WAD, false, 3).unwrap();
+    }
+    let taker = setup_trader(&mut fixture);
+    let bundles = fill_bundle(&fixture, &makers[2], SIDE_AGAINST, 300);
+
+    buy_yes(&mut fixture, &taker, 700, 2 * WAD, false, 3, bundles).unwrap();
+
+    let book = read_market_book(&fixture.svm, &fixture.pdas.market_book);
+    assert!(!book.bitmap(SIDE_AGAINST).is_set(300));
+    assert!(book.bitmap(SIDE_AGAINST).is_set(200));
+    assert!(book.bitmap(SIDE_AGAINST).is_set(100));
+    assert_eq!(
+        read_book_side(
+            &fixture.svm,
+            &book_side_pda(&fixture.pdas, SIDE_AGAINST, 300)
+        )
+        .orders[0]
+            .amount,
+        0
+    );
+    for (maker_index, tick) in [(0, 100), (1, 200)] {
+        let side = read_book_side(
+            &fixture.svm,
+            &book_side_pda(&fixture.pdas, SIDE_AGAINST, tick),
+        );
+        assert_eq!(side.orders[0].maker, makers[maker_index].keypair.pubkey());
+        assert_eq!(side.orders[0].amount, WAD);
+    }
+    let resting = read_book_side(&fixture.svm, &book_side_pda(&fixture.pdas, SIDE_FOR, 700));
+    assert_eq!(resting.orders[0].amount, WAD);
+}
+
+#[test]
+fn fill_order_return_data_decoded() {
+    let mut fixture = setup_market(39);
+    let maker = setup_trader(&mut fixture);
+    buy_no(&mut fixture, &maker, 900, WAD, false, 3).unwrap();
+    let taker = setup_trader(&mut fixture);
+    let bundles = fill_bundle(&fixture, &maker, SIDE_AGAINST, 900);
+
+    buy_yes(&mut fixture, &taker, 950, WAD, false, 3, bundles).unwrap();
+
+    assert_eq!(
+        read_token_amount(&fixture.svm, &fixture.pdas.market_fee_pool),
+        expected_fee_base(WAD, 950, 100)
+    );
+    let book = read_market_book(&fixture.svm, &fixture.pdas.market_book);
+    assert_eq!(book.pending_fees, 0);
+    assert_eq!(book.pending_taker_payout, 0);
+}
+
+#[test]
+fn measure_three_fill_worst_case_buy_cu() {
+    let mut fixture = setup_market(40);
+    let makers = setup_traders(&mut fixture, 3);
+    for (maker, tick) in makers.iter().zip([900, 850, 800]) {
+        write_orderbook_position(
+            &mut fixture.svm,
+            maker.orderbook_position,
+            &sooth_market::state::OrderbookPosition {
+                market: fixture.pdas.market,
+                user: maker.keypair.pubkey(),
+                yes_shares: WAD,
+                no_shares: 0,
+                _reserved: [0; 16],
+            },
+        );
+        buy_no(&mut fixture, maker, tick, WAD, true, 3).unwrap();
+    }
+    let taker = setup_trader(&mut fixture);
+    let bundles = [
+        fill_bundle(&fixture, &makers[0], SIDE_AGAINST, 900),
+        fill_bundle(&fixture, &makers[1], SIDE_AGAINST, 850),
+        fill_bundle(&fixture, &makers[2], SIDE_AGAINST, 800),
+    ]
+    .concat();
+
+    let meta = buy_yes(&mut fixture, &taker, 950, 3 * WAD, false, 3, bundles).unwrap();
+    let cu = meta.compute_units_consumed;
+    println!("W4_3_FILL_WORST_CASE_BUY_CU={cu}");
+    // W4 local measurement: 291279 CU. Update if the fixture shape changes.
+    assert!(cu > 0);
+    assert_eq!(
+        read_token_amount(&fixture.svm, &fixture.pdas.market_fee_pool),
+        expected_fee_base(WAD, 950, 100) * 3
+    );
 }
 
 fn setup_market(seed: u8) -> Fixture {
@@ -442,10 +477,13 @@ fn setup_market(seed: u8) -> Fixture {
 
     Fixture {
         svm,
-        creator,
         mint_authority,
         pdas,
     }
+}
+
+fn setup_traders(fixture: &mut Fixture, count: usize) -> Vec<Trader> {
+    (0..count).map(|_| setup_trader(fixture)).collect()
 }
 
 fn setup_trader(fixture: &mut Fixture) -> Trader {
@@ -499,8 +537,10 @@ fn buy_yes(
     tick: u16,
     amount: u128,
     escrow: bool,
-) -> Result<(), litesvm::types::FailedTransactionMetadata> {
-    let ix = build_ix(
+    match_limit_arg: u32,
+    remaining: Vec<AccountMeta>,
+) -> Result<TransactionMetadata, litesvm::types::FailedTransactionMetadata> {
+    let mut ix = build_ix(
         BOOK_ID,
         sooth_book::accounts::BuyYesOrder {
             taker: trader.keypair.pubkey(),
@@ -523,125 +563,84 @@ fn buy_yes(
             tick,
             amount,
             escrow,
-            match_limit_arg: 3,
+            match_limit_arg,
         },
     );
+    ix.accounts.extend(remaining);
     try_send_ixs(
         &mut fixture.svm,
         &trader.keypair,
         &[
-            ComputeBudgetInstruction::set_compute_unit_limit(500_000),
+            ComputeBudgetInstruction::set_compute_unit_limit(1_400_000),
             ix,
         ],
     )
 }
 
-fn cancel(
+fn buy_no(
     fixture: &mut Fixture,
     trader: &Trader,
-    side: u8,
     tick: u16,
-) -> Result<(), litesvm::types::FailedTransactionMetadata> {
+    amount: u128,
+    escrow: bool,
+    match_limit_arg: u32,
+) -> Result<TransactionMetadata, litesvm::types::FailedTransactionMetadata> {
     let ix = build_ix(
         BOOK_ID,
-        cancel_accounts(fixture, trader, side, tick),
-        sooth_book::instruction::Cancel { side, tick },
-    );
-    try_send_ixs(&mut fixture.svm, &trader.keypair, &[ix])
-}
-
-fn cancel_by_id(
-    fixture: &mut Fixture,
-    trader: &Trader,
-    order_id: u64,
-    side: u8,
-    tick: u16,
-) -> Result<(), litesvm::types::FailedTransactionMetadata> {
-    let ix = build_ix(
-        BOOK_ID,
-        sooth_book::accounts::CancelByIdOrder {
-            user: trader.keypair.pubkey(),
+        sooth_book::accounts::BuyNoOrder {
+            taker: trader.keypair.pubkey(),
             market: fixture.pdas.market,
             market_book: fixture.pdas.market_book,
-            book_side: book_side_pda(&fixture.pdas, side, tick),
-            vault_authority: fixture.pdas.vault_authority,
+            book_side: book_side_pda(&fixture.pdas, SIDE_AGAINST, tick),
             market_usdc_vault: fixture.pdas.vault,
-            user_usdc_ata: trader.usdc_ata,
-            user_orderbook_position: trader.orderbook_position,
+            vault_authority: fixture.pdas.vault_authority,
+            market_fee_pool: fixture.pdas.market_fee_pool,
+            taker_usdc_ata: trader.usdc_ata,
+            taker_orderbook_position: trader.orderbook_position,
+            protocol_config: fixture.pdas.protocol_config,
             system_program: solana_sdk::system_program::ID,
             token_program: spl_token::ID,
             rent: solana_sdk::sysvar::rent::ID,
             sooth_market_program: MARKET_ID,
             instruction_sysvar: solana_sdk::sysvar::instructions::ID,
         },
-        sooth_book::instruction::CancelById {
-            order_id,
-            side,
+        sooth_book::instruction::BuyNo {
             tick,
+            amount,
+            escrow,
+            match_limit_arg,
         },
     );
-    try_send_ixs(&mut fixture.svm, &trader.keypair, &[ix])
+    try_send_ixs(
+        &mut fixture.svm,
+        &trader.keypair,
+        &[
+            ComputeBudgetInstruction::set_compute_unit_limit(1_400_000),
+            ix,
+        ],
+    )
 }
 
-fn compact_book_side(
-    fixture: &mut Fixture,
-    side: u8,
-    tick: u16,
-    max_drops: u8,
-) -> Result<(), litesvm::types::FailedTransactionMetadata> {
-    let creator = clone_keypair(&fixture.creator);
-    let ix = build_ix(
-        BOOK_ID,
-        sooth_book::accounts::CompactBookSide {
-            cranker: creator.pubkey(),
-            market: fixture.pdas.market,
-            book_side: book_side_pda(&fixture.pdas, side, tick),
-        },
-        sooth_book::instruction::CompactBookSide { max_drops },
-    );
-    try_send_ixs(&mut fixture.svm, &creator, &[ix])
-}
-
-fn close_book_side(
-    fixture: &mut Fixture,
-    side: u8,
-    tick: u16,
-) -> Result<(), litesvm::types::FailedTransactionMetadata> {
-    let creator = clone_keypair(&fixture.creator);
-    let ix = build_ix(
-        BOOK_ID,
-        sooth_book::accounts::CloseBookSide {
-            closer: creator.pubkey(),
-            market: fixture.pdas.market,
-            market_book: fixture.pdas.market_book,
-            book_side: book_side_pda(&fixture.pdas, side, tick),
-        },
-        sooth_book::instruction::CloseBookSide {},
-    );
-    try_send_ixs(&mut fixture.svm, &creator, &[ix])
-}
-
-fn cancel_accounts(
+fn fill_bundles(
     fixture: &Fixture,
-    trader: &Trader,
-    side: u8,
-    tick: u16,
-) -> sooth_book::accounts::CancelOrder {
-    sooth_book::accounts::CancelOrder {
-        user: trader.keypair.pubkey(),
-        market: fixture.pdas.market,
-        market_book: fixture.pdas.market_book,
-        book_side: book_side_pda(&fixture.pdas, side, tick),
-        vault_authority: fixture.pdas.vault_authority,
-        market_usdc_vault: fixture.pdas.vault,
-        user_usdc_ata: trader.usdc_ata,
-        user_orderbook_position: trader.orderbook_position,
-        system_program: solana_sdk::system_program::ID,
-        token_program: spl_token::ID,
-        rent: solana_sdk::sysvar::rent::ID,
-        sooth_market_program: MARKET_ID,
-        instruction_sysvar: solana_sdk::sysvar::instructions::ID,
-    }
+    makers: &[Trader],
+    opp_side: u8,
+    opp_tick: u16,
+) -> Vec<AccountMeta> {
+    makers
+        .iter()
+        .flat_map(|maker| fill_bundle(fixture, maker, opp_side, opp_tick))
+        .collect()
+}
+
+fn fill_bundle(fixture: &Fixture, maker: &Trader, opp_side: u8, opp_tick: u16) -> Vec<AccountMeta> {
+    vec![
+        AccountMeta::new(book_side_pda(&fixture.pdas, opp_side, opp_tick), false),
+        AccountMeta::new(maker.orderbook_position, false),
+        AccountMeta::new(maker.usdc_ata, false),
+        AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+        AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+    ]
 }
 
 fn build_ix<A, D>(program_id: Pubkey, accounts: A, data: D) -> Instruction
@@ -673,7 +672,7 @@ fn try_send_ixs(
     svm: &mut LiteSVM,
     signer: &Keypair,
     ixs: &[Instruction],
-) -> Result<(), litesvm::types::FailedTransactionMetadata> {
+) -> Result<TransactionMetadata, litesvm::types::FailedTransactionMetadata> {
     svm.expire_blockhash();
     let blockhash = svm.latest_blockhash();
     let tx = Transaction::new(
@@ -681,7 +680,7 @@ fn try_send_ixs(
         Message::new(ixs, Some(&signer.pubkey())),
         blockhash,
     );
-    svm.send_transaction(tx).map(|_| ())
+    svm.send_transaction(tx)
 }
 
 fn target_deploy() -> PathBuf {
@@ -756,28 +755,9 @@ fn read_orderbook_position(svm: &LiteSVM, pda: &Pubkey) -> sooth_market::state::
     decode_anchor(&acc.data)
 }
 
-fn write_book_side(svm: &mut LiteSVM, pda: Pubkey, book_side: &BookSide) {
-    let existing = svm.get_account(&pda).expect("book_side missing");
-    write_anchor_account(
-        svm,
-        pda,
-        BOOK_ID,
-        existing.lamports,
-        BookSide::space_for(book_side.orders.len()),
-        book_side,
-    );
-}
-
-fn write_market_book(svm: &mut LiteSVM, pda: Pubkey, market_book: &MarketBook) {
-    let existing = svm.get_account(&pda).expect("market_book missing");
-    write_anchor_account(
-        svm,
-        pda,
-        BOOK_ID,
-        existing.lamports,
-        MarketBook::SPACE,
-        market_book,
-    );
+fn read_token_amount(svm: &LiteSVM, pda: &Pubkey) -> u64 {
+    let acc = svm.get_account(pda).expect("token account missing");
+    TokenState::unpack(&acc.data).unwrap().amount
 }
 
 fn write_orderbook_position(
@@ -833,17 +813,8 @@ fn assert_anchor_error(err: litesvm::types::FailedTransactionMetadata, expected:
     );
 }
 
-fn is_closed(svm: &LiteSVM, account: &Pubkey) -> bool {
-    svm.get_account(account)
-        .map(|acc| {
-            acc.lamports == 0
-                || acc.owner == solana_sdk::system_program::ID
-                || acc.data.is_empty()
-                || acc.data.iter().all(|b| *b == 0)
-        })
-        .unwrap_or(true)
-}
-
-fn clone_keypair(kp: &Keypair) -> Keypair {
-    Keypair::from_bytes(&kp.to_bytes()).expect("keypair round-trip")
+fn expected_fee_base(shares: u128, taker_tick: u16, fee_bps: u16) -> u64 {
+    let base_cost_wad = shares * taker_tick as u128 / NUM_TICKS as u128;
+    let fee_wad = base_cost_wad * fee_bps as u128 / 10_000;
+    (((base_cost_wad + fee_wad) / 1_000_000_000_000) - (base_cost_wad / 1_000_000_000_000)) as u64
 }

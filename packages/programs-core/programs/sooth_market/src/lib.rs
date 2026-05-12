@@ -40,6 +40,7 @@ pub mod instructions;
 pub mod state;
 
 pub use error::SoothMarketError;
+pub use instructions::fill_order::FillReturnData;
 pub use instructions::*;
 
 // Placeholder program ID. Generate a real keypair before devnet deploy with:
@@ -231,6 +232,15 @@ pub mod sooth_market {
         instructions::transfer_fee_to_market_pool::handler(ctx, amount)
     }
 
+    /// PDA-signed transfer `market_vault -> market_fee_pool`. Helper for
+    /// `sooth_book::{buy_yes,buy_no}` accumulator fee flushes.
+    pub fn transfer_fee_to_market_pool_from_book(
+        ctx: Context<TransferFeeToMarketPoolFromBook>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::transfer_fee_to_market_pool_from_book::handler(ctx, amount)
+    }
+
     /// PDA-signed transfer `lock_vault → recipient`. Helper for
     /// `sooth_amm::claim_unlocked` — same rationale as `transfer_to_lock`.
     /// See `instructions/transfer_from_lock_vault.rs` for the auth model.
@@ -244,6 +254,7 @@ pub mod sooth_market {
     /// CPI-only fill settlement helper for `sooth_book::{buy_yes,buy_no}`.
     pub fn fill_order(
         ctx: Context<FillOrder>,
+        maker: Pubkey,
         taker_side: u8,
         shares: u128,
         taker_tick: u16,
@@ -253,6 +264,7 @@ pub mod sooth_market {
     ) -> Result<()> {
         instructions::fill_order::handler(
             ctx,
+            maker,
             taker_side,
             shares,
             taker_tick,

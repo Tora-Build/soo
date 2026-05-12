@@ -21,6 +21,7 @@ use sooth_protocol_types::{
     SOOTH_MARKET_DEBIT_SHARES_FOR_ORDER_BEFORE_DEADLINE_DISCRIMINATOR,
     SOOTH_MARKET_DEPOSIT_FOR_ORDER_DISCRIMINATOR, SOOTH_MARKET_FILL_ORDER_DISCRIMINATOR,
     SOOTH_MARKET_WITHDRAW_FOR_ORDER_DISCRIMINATOR,
+    TRANSFER_FEE_TO_MARKET_POOL_FROM_BOOK_DISCRIMINATOR,
 };
 
 #[track_caller]
@@ -79,6 +80,8 @@ fn filler_allowlist(name: &str) -> Vec<[u8; 8]> {
             ]
         }
         "withdraw_for_order" => vec![
+            SOOTH_BOOK_BUY_YES_DISCRIMINATOR,
+            SOOTH_BOOK_BUY_NO_DISCRIMINATOR,
             SOOTH_BOOK_CANCEL_DISCRIMINATOR,
             SOOTH_BOOK_CANCEL_BY_ID_DISCRIMINATOR,
         ],
@@ -129,6 +132,10 @@ fn sooth_book_cpi_gate_discriminators_match_anchor_hashes() {
     assert_eq!(
         REDEEM_ORDERBOOK_DISCRIMINATOR,
         anchor_disc("redeem_orderbook")
+    );
+    assert_eq!(
+        TRANSFER_FEE_TO_MARKET_POOL_FROM_BOOK_DISCRIMINATOR,
+        anchor_disc("transfer_fee_to_market_pool_from_book")
     );
 }
 

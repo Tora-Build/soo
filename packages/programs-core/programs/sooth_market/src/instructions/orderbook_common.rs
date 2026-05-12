@@ -54,12 +54,10 @@ pub fn read_fee_bps(protocol_config: &AccountInfo) -> Result<u16> {
     ))
 }
 
-pub fn compute_taker_pull(base_cost_wad: u128, fee_bps: u16) -> Result<(u64, u64, u64)> {
-    let fee_wad = base_cost_wad
-        .checked_mul(fee_bps as u128)
-        .ok_or(error!(SoothMarketError::MathOverflow))?
-        .checked_div(BPS_DENOMINATOR)
-        .ok_or(error!(SoothMarketError::MathOverflow))?;
+pub fn compute_taker_pull_from_fee_wad(
+    base_cost_wad: u128,
+    fee_wad: u128,
+) -> Result<(u64, u64, u64)> {
     let taker_base_cost = wad_to_base(base_cost_wad)?;
     let cost_plus_fee_wad = base_cost_wad
         .checked_add(fee_wad)
@@ -73,6 +71,15 @@ pub fn compute_taker_pull(base_cost_wad: u128, fee_bps: u16) -> Result<(u64, u64
         .checked_sub(taker_base_cost)
         .ok_or(error!(SoothMarketError::MathOverflow))?;
     Ok((taker_base_cost, fee_base, taker_cost_plus_fee))
+}
+
+pub fn compute_taker_pull(base_cost_wad: u128, fee_bps: u16) -> Result<(u64, u64, u64)> {
+    let fee_wad = base_cost_wad
+        .checked_mul(fee_bps as u128)
+        .ok_or(error!(SoothMarketError::MathOverflow))?
+        .checked_div(BPS_DENOMINATOR)
+        .ok_or(error!(SoothMarketError::MathOverflow))?;
+    compute_taker_pull_from_fee_wad(base_cost_wad, fee_wad)
 }
 
 pub fn require_before_deadline(market: &Market) -> Result<()> {
