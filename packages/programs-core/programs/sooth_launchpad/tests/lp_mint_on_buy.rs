@@ -334,7 +334,7 @@ fn pre_graduation_buy_mints_lp_to_trader() {
         market_vault: vault,
         usdc_mint: USDC_MINT,
         protocol_config: protocol_config_pda,
-        fee_pool_vault,
+        market_fee_pool: fee_pool_vault,
         lp_mint,
         lp_mint_authority,
         user_lp_ata: trader_lp_ata,

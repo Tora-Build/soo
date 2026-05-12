@@ -33,10 +33,11 @@
 //! and the test crates keep resolving without a churn-pass.
 
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::sysvar;
 use anchor_lang::solana_program::sysvar::instructions as ix_sysvar;
 
 use crate::error::SoothMarketError;
-use crate::{SOOTH_ADJUDICATOR_PROGRAM_ID, SOOTH_AMM_PROGRAM_ID};
+use crate::{SOOTH_ADJUDICATOR_PROGRAM_ID, SOOTH_AMM_PROGRAM_ID, SOOTH_BOOK_PROGRAM_ID};
 
 // The five discriminators consumed by the gates below. See
 // `sooth_protocol_types::discriminators` for the canonical definitions and
@@ -45,7 +46,9 @@ use crate::{SOOTH_ADJUDICATOR_PROGRAM_ID, SOOTH_AMM_PROGRAM_ID};
 // against any drift in the on-chain Anchor codegen.
 pub use sooth_protocol_types::{
     ATTEST_OUTCOME_DISCRIMINATOR, CLAIM_UNLOCKED_DISCRIMINATOR, DISPUTE_DISCRIMINATOR,
-    REQUEST_LOCK_DISCRIMINATOR, SELL_POSITIONS_DISCRIMINATOR,
+    REQUEST_LOCK_DISCRIMINATOR, SELL_POSITIONS_DISCRIMINATOR, SOOTH_BOOK_BUY_NO_DISCRIMINATOR,
+    SOOTH_BOOK_BUY_YES_DISCRIMINATOR, SOOTH_BOOK_CANCEL_BY_ID_DISCRIMINATOR,
+    SOOTH_BOOK_CANCEL_DISCRIMINATOR,
 };
 
 /// On-chain wrapper. Borrows the sysvar account, scans the top-level ix
@@ -155,6 +158,45 @@ pub fn require_adjudicator_parent_ix_any(
     Err(error!(SoothMarketError::InvalidParentInstruction))
 }
 
+/// Single-load parent-ix gate for sooth_book-CPI-only ix bodies.
+///
+/// Unlike `require_parent_ix_from_program` which scans `0..=current_index`
+/// to tolerate ComputeBudget / ATA-create prelude ixs, this helper loads
+/// ONLY the instruction at `current_index`. This closes the scan-bypass
+/// attack vector: an earlier, unrelated sooth_book ix in the same tx cannot
+/// satisfy the gate on a later filler-only call.
+///
+/// Use ONLY for filler-only ix called by sooth_book::{buy_yes,buy_no,cancel,
+/// cancel_by_id}. AMM and adjudicator gates keep the existing scan helpers
+/// because their flows include legitimate ComputeBudget prefix ixs.
+pub fn require_sooth_book_cpi_parent(
+    instruction_sysvar: &AccountInfo,
+    allowed_discriminators: &[[u8; 8]],
+) -> Result<()> {
+    require_keys_eq!(
+        *instruction_sysvar.key,
+        sysvar::instructions::ID,
+        SoothMarketError::InvalidSysvar
+    );
+    let current_index = ix_sysvar::load_current_index_checked(instruction_sysvar)? as usize;
+    let parent_ix = ix_sysvar::load_instruction_at_checked(current_index, instruction_sysvar)?;
+    require!(
+        parent_ix.program_id == SOOTH_BOOK_PROGRAM_ID,
+        SoothMarketError::InvalidParentInstruction
+    );
+    let disc: [u8; 8] = parent_ix
+        .data
+        .get(..8)
+        .ok_or(error!(SoothMarketError::InvalidParentInstruction))?
+        .try_into()
+        .map_err(|_| error!(SoothMarketError::InvalidParentInstruction))?;
+    require!(
+        allowed_discriminators.contains(&disc),
+        SoothMarketError::InvalidParentInstruction
+    );
+    Ok(())
+}
+
 /// Pure host-side parser that operates directly on the serialized sysvar
 /// data. Mirrors `require_parent_ix` but without the `AccountInfo` shell so
 /// it can be exercised by `cargo test -p sooth_market` (which doesn't ship
@@ -233,4 +275,35 @@ pub fn require_parent_ix_from_data_any(
     }
 
     Err(SoothMarketError::InvalidParentInstruction)
+}
+
+/// Host-side parser for `require_sooth_book_cpi_parent`. Mirrors the
+/// single-load semantics exactly: ONLY `current_index` is inspected.
+#[allow(deprecated)]
+pub fn require_sooth_book_cpi_parent_from_data(
+    sysvar_data: &[u8],
+    allowed_discriminators: &[[u8; 8]],
+) -> std::result::Result<(), SoothMarketError> {
+    if sysvar_data.len() < 2 {
+        return Err(SoothMarketError::InvalidParentInstruction);
+    }
+    let len = sysvar_data.len();
+    let mut idx_buf = [0u8; 2];
+    idx_buf.copy_from_slice(&sysvar_data[len - 2..len]);
+    let current_index = u16::from_le_bytes(idx_buf) as usize;
+
+    let ix = match ix_sysvar::load_instruction_at(current_index, sysvar_data) {
+        Ok(ix) => ix,
+        Err(_) => return Err(SoothMarketError::InvalidParentInstruction),
+    };
+    if ix.program_id != SOOTH_BOOK_PROGRAM_ID || ix.data.len() < 8 {
+        return Err(SoothMarketError::InvalidParentInstruction);
+    }
+    let disc: [u8; 8] = ix.data[..8]
+        .try_into()
+        .map_err(|_| SoothMarketError::InvalidParentInstruction)?;
+    if !allowed_discriminators.contains(&disc) {
+        return Err(SoothMarketError::InvalidParentInstruction);
+    }
+    Ok(())
 }

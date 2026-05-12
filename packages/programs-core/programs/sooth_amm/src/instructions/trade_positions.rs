@@ -209,20 +209,17 @@ pub struct TradePositions<'info> {
     )]
     pub protocol_config: UncheckedAccount<'info>,
 
-    /// Global fee-pool USDC ATA. Credited with the per-trade `fee_usdc`
-    /// slice on every buy; drained later by `sooth_launchpad::distribute_fees`.
-    /// Owner = `fee_pool_authority` PDA (signer-only PDA owned by
-    /// `sooth_launchpad`, seeds `[b"fee_pool_authority"]`). This authority
-    /// is opaque to `sooth_amm` — we just push USDC into the ATA, the
-    /// launchpad signs the drain.
-    ///
-    /// The single global pool (vs per-market pools) is documented in
-    /// `sooth_launchpad::distribute_fees`'s module comment.
+    /// Per-market fee-pool token account. Credited with the per-trade
+    /// `fee_usdc` slice on every buy; drained later by the launchpad's
+    /// per-market fee distribution path.
     #[account(
         mut,
+        seeds = [b"market_fee_pool", market.market_id.as_ref()],
+        bump,
+        seeds::program = SOOTH_LAUNCHPAD_PROGRAM_ID,
         token::mint = usdc_mint,
     )]
-    pub fee_pool_vault: Box<Account<'info, TokenAccount>>,
+    pub market_fee_pool: Box<Account<'info, TokenAccount>>,
 
     /// Per-market LP token mint owned by `sooth_launchpad`. Address pinned
     /// via PDA seeds under the launchpad program so a forged mint can't be
@@ -469,7 +466,7 @@ pub fn handler(
             ctx.accounts.token_program.to_account_info(),
             Transfer {
                 from: ctx.accounts.user_usdc_ata.to_account_info(),
-                to: ctx.accounts.fee_pool_vault.to_account_info(),
+                to: ctx.accounts.market_fee_pool.to_account_info(),
                 authority: ctx.accounts.user.to_account_info(),
             },
         );

@@ -90,3 +90,30 @@ pub const SOOTH_BOOK_CANCEL_DISCRIMINATOR: [u8; 8] = [232, 219, 223, 41, 219, 23
 
 /// `sooth_book::cancel_by_id`.
 pub const SOOTH_BOOK_CANCEL_BY_ID_DISCRIMINATOR: [u8; 8] = [188, 241, 240, 50, 95, 134, 33, 127];
+
+// ── sooth_market-owned orderbook filler ix discriminators ───────────────
+
+/// `sooth_market::fill_order`.
+pub const SOOTH_MARKET_FILL_ORDER_DISCRIMINATOR: [u8; 8] = [232, 122, 115, 25, 199, 143, 136, 162];
+
+/// `sooth_market::deposit_for_order`.
+pub const SOOTH_MARKET_DEPOSIT_FOR_ORDER_DISCRIMINATOR: [u8; 8] =
+    [44, 108, 102, 223, 77, 187, 65, 7];
+
+/// `sooth_market::withdraw_for_order`.
+pub const SOOTH_MARKET_WITHDRAW_FOR_ORDER_DISCRIMINATOR: [u8; 8] =
+    [137, 20, 98, 172, 190, 84, 61, 228];
+
+/// `sooth_market::credit_shares_for_order`.
+pub const SOOTH_MARKET_CREDIT_SHARES_FOR_ORDER_DISCRIMINATOR: [u8; 8] =
+    [145, 124, 127, 255, 105, 166, 254, 157];
+
+/// `sooth_market::debit_shares_for_order_before_deadline`.
+pub const SOOTH_MARKET_DEBIT_SHARES_FOR_ORDER_BEFORE_DEADLINE_DISCRIMINATOR: [u8; 8] =
+    [64, 239, 77, 172, 202, 79, 175, 254];
+
+// ── sooth_launchpad-owned per-market fee-pool ix discriminator ──────────
+
+/// `sooth_launchpad::init_market_fee_pool`.
+pub const SOOTH_LAUNCHPAD_INIT_MARKET_FEE_POOL_DISCRIMINATOR: [u8; 8] =
+    [51, 19, 251, 120, 171, 91, 138, 115];
