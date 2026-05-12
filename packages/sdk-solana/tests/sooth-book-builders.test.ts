@@ -16,6 +16,7 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import { SolanaChainAdapter } from "../src/adapter.js";
 import { soothBookIdl } from "../src/anchor/index.js";
 import {
+  bookSidePda,
   deriveFeePoolAuthorityPda,
   deriveFeePoolVaultAta,
   deriveMarketVaultAta,
@@ -24,6 +25,9 @@ import {
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
   deriveYesMintPda,
+  marketBookPda,
+  marketFeePoolPda,
+  orderbookPositionPda,
 } from "../src/pdas.js";
 import { encodePubkeyRef } from "../src/refs.js";
 
@@ -472,239 +476,161 @@ describe("sooth_book builder request shapes", () => {
   });
 
   // ── buildOrderbookBuy / Sell ───────────────────────────────────────────
-  //
-  // The shared `create_order_request` ix backs both. Tests verify
-  // discriminator, account count, the W4 tick→price (10^15 step) mapping,
-  // the umbrella `side` (NO=0/YES=1) → on-chain outcome (YES=0/NO=1)
-  // translation, and the load-bearing PDA derivations.
 
-  it("buildOrderbookBuy emits create_order_request with for_outcome=true", async () => {
+  it("buildOrderbookBuy emits buy_yes with the W7 PDA surface", async () => {
     const purchaser = smoke.user.publicKey;
-    const priceLadder = Keypair.generate().publicKey; // arbitrary; not derived in shape test
-    const distinctSeed = seed16(101);
-    const tick = 400; // 0.400·WAD
-    const stake = 100_000_000n; // 100 USDC
+    const tick = 400;
+    const amount = 100_000_000_000_000_000n;
     const req = await adapter.buildOrderbookBuy(
-      encodePubkeyRef(bookMarketPda),
+      encodePubkeyRef(smoke.marketPda),
       {
-        side: 1, // YES (umbrella)
+        side: 1,
         tick,
-        amount: stake,
+        amount,
         escrow: false,
         matchLimit: 0,
-        // Solana-only meta channel (cast widens for the extension fields)
         user: encodePubkeyRef(purchaser),
-        priceLadder: encodePubkeyRef(priceLadder),
-        distinctSeed,
       } as any,
     );
 
     const meta = req.meta as BuiltMeta;
     expect(req.kind).toBe("orderbook");
     expect(meta.ixProgramId).toBe(bookPrograms.soothBook.toBase58());
-    expect(discriminator(meta)).toEqual(
-      idlDiscriminator("create_order_request"),
-    );
-    expect(req.accounts).toHaveLength(idlAccountCount("create_order_request"));
-    expect(meta.forOutcome).toBe(true);
-    expect(meta.marketOutcomeIndex).toBe(0); // YES → outcome 0
-    expect(meta.priceWadStr).toBe(String(BigInt(tick) * 10n ** 15n));
-    expect(meta.stakeStr).toBe(String(stake));
+    expect(discriminator(meta)).toEqual(hexDiscriminator("7c4c7182b170bb68"));
+    expect(req.accounts).toHaveLength(15);
+    expect(meta.operation).toBe("buyYes");
+    expect(meta.side).toBe(1);
+    expect(meta.tick).toBe(tick);
+    expect(meta.amountStr).toBe(String(amount));
+    expect(meta.matchLimit).toBe(3);
 
-    const [reservedOrder] = deriveBookOrderRequestOrderPda(
-      bookMarketPda,
+    const [marketBook] = marketBookPda(smoke.marketId, smoke.programs);
+    const [bookSide] = bookSidePda(smoke.marketId, 1, tick, smoke.programs);
+    const [feePool] = marketFeePoolPda(smoke.marketId, smoke.programs);
+    const [position] = orderbookPositionPda(
+      smoke.marketId,
       purchaser,
-      distinctSeed,
-      bookPrograms,
+      smoke.programs,
     );
-    const [orderRequestQueue] = deriveBookOrderRequestQueuePda(
-      bookMarketPda,
-      bookPrograms,
-    );
-    const [marketEscrow] = deriveBookEscrowPda(bookMarketPda, bookPrograms);
-    const [marketOutcomeYes] = deriveBookMarketOutcomePda(
-      bookMarketPda,
-      0,
-      bookPrograms,
-    );
-    const purchaserToken = getAssociatedTokenAddressSync(
-      smoke.usdcMint,
-      purchaser,
-      true,
-      TOKEN_PROGRAM_ID,
-      ASSOCIATED_TOKEN_PROGRAM_ID,
-    );
-
     const keys = keySet(req);
-    expect(keys).toContain(reservedOrder.toBase58());
-    expect(keys).toContain(orderRequestQueue.toBase58());
-    expect(keys).toContain(marketEscrow.toBase58());
-    expect(keys).toContain(marketOutcomeYes.toBase58());
-    expect(keys).toContain(priceLadder.toBase58());
-    expect(keys).toContain(purchaserToken.toBase58());
-    expect(keys).toContain(bookMarketPda.toBase58());
-    expect(keys).toContain(purchaser.toBase58());
+    expect(keys).toContain(smoke.marketPda.toBase58());
+    expect(keys).toContain(marketBook.toBase58());
+    expect(keys).toContain(bookSide.toBase58());
+    expect(keys).toContain(feePool.toBase58());
+    expect(keys).toContain(position.toBase58());
+    expect(keys).toContain(deriveUserUsdcAta(purchaser, smoke.usdcMint).toBase58());
   });
 
-  it("buildOrderbookSell emits create_order_request with for_outcome=false and outcomeIdx=1 for NO", async () => {
+  it("buildOrderbookSell routes to buy_no with side=0", async () => {
     const purchaser = smoke.user.publicKey;
-    const priceLadder = Keypair.generate().publicKey;
-    const distinctSeed = seed16(150);
+    const tick = 600;
     const req = await adapter.buildOrderbookSell(
-      encodePubkeyRef(bookMarketPda),
+      encodePubkeyRef(smoke.marketPda),
       {
-        side: 0, // NO (umbrella)
-        tick: 600,
-        amount: 50_000_000n,
+        side: 0,
+        tick,
+        amount: 50_000_000_000_000_000n,
         escrow: false,
-        matchLimit: 0,
+        matchLimit: 3,
         user: encodePubkeyRef(purchaser),
-        priceLadder: encodePubkeyRef(priceLadder),
-        distinctSeed,
       } as any,
     );
 
     const meta = req.meta as BuiltMeta;
-    expect(discriminator(meta)).toEqual(
-      idlDiscriminator("create_order_request"),
-    );
-    expect(req.accounts).toHaveLength(idlAccountCount("create_order_request"));
-    expect(meta.forOutcome).toBe(false);
-    // umbrella side=0 (NO) → on-chain outcome index 1
-    expect(meta.marketOutcomeIndex).toBe(1);
+    expect(discriminator(meta)).toEqual(hexDiscriminator("59f0f410c4c9bea3"));
+    expect(req.accounts).toHaveLength(15);
+    expect(meta.operation).toBe("buyNo");
 
-    const [marketOutcomeNo] = deriveBookMarketOutcomePda(
-      bookMarketPda,
-      1,
-      bookPrograms,
-    );
-    expect(keySet(req)).toContain(marketOutcomeNo.toBase58());
+    const [bookSide] = bookSidePda(smoke.marketId, 0, tick, smoke.programs);
+    expect(keySet(req)).toContain(bookSide.toBase58());
   });
 
   it("buildOrderbookBuy throws when args.user is missing", async () => {
     await expect(
-      adapter.buildOrderbookBuy(encodePubkeyRef(bookMarketPda), {
+      adapter.buildOrderbookBuy(encodePubkeyRef(smoke.marketPda), {
         side: 1,
         tick: 400,
         amount: 1_000_000n,
         escrow: false,
         matchLimit: 0,
-        priceLadder: encodePubkeyRef(Keypair.generate().publicKey),
       } as any),
     ).rejects.toThrow(/args\.user/);
   });
 
-  it("buildOrderbookBuy throws when args.priceLadder is missing", async () => {
+  it("buildOrderbookBuy throws when tick is outside the orderbook range", async () => {
     await expect(
-      adapter.buildOrderbookBuy(encodePubkeyRef(bookMarketPda), {
+      adapter.buildOrderbookBuy(encodePubkeyRef(smoke.marketPda), {
         side: 1,
-        tick: 400,
+        tick: 1000,
         amount: 1_000_000n,
         escrow: false,
         matchLimit: 0,
         user: encodePubkeyRef(smoke.user.publicKey),
       } as any),
-    ).rejects.toThrow(/priceLadder/);
+    ).rejects.toThrow(/1\.\.999/);
   });
 
   // ── buildOrderbookCancel ───────────────────────────────────────────────
-  //
-  // Cancel reads the Order PDA on-chain to recover (outcome, price,
-  // for_outcome) and derive the matching pool PDA. We seed a synthetic
-  // Order via bankrun's setAccount to avoid running the full create→queue
-  // crank chain (covered by the e2e roundtrip spec).
 
-  it("buildOrderbookCancel emits the cancel_order shape and derives matching pool from Order fields", async () => {
+  it("buildOrderbookCancel emits cancel for a signer-owned linear scan", async () => {
     const purchaser = smoke.user.publicKey;
-    const orderOutcomeIndex = 1; // NO
-    const orderForOutcome = false;
-    const orderExpectedPrice = 600_000_000_000_000n; // 0.6 · WAD
-    const [orderPda] = deriveBookOrderPda(bookMarketPda, 9999n, bookPrograms);
-
-    // Encode an Order via Anchor's account coder and seed it under the
-    // sooth_book program so the adapter's `fetchNullable` returns it.
-    // Anchor 0.30.1's `accounts.encode/decode` uses the lowercased account
-    // name (snake_case in the IDL) — `order`, not `Order`.
-    const program = (
-      adapter as unknown as {
-        soothBook: {
-          coder: {
-            accounts: { encode: (n: string, v: unknown) => Promise<Buffer> };
-          };
-        };
-      }
-    ).soothBook;
-    const orderData = await program.coder.accounts.encode("order", {
-      purchaser,
-      market: bookMarketPda,
-      marketOutcomeIndex: orderOutcomeIndex,
-      forOutcome: orderForOutcome,
-      orderStatus: { open: {} },
-      stake: new BN(50_000_000),
-      voidedStake: new BN(0),
-      expectedPrice: new BN(orderExpectedPrice.toString()),
-      creationTimestamp: new BN(0),
-      stakeUnmatched: new BN(50_000_000),
-      payout: new BN(0),
-      payer: purchaser,
-    });
-    smoke.ctx.setAccount(orderPda, {
-      executable: false,
-      owner: bookPrograms.soothBook,
-      lamports: 1_000_000_000 as unknown as number,
-      data: orderData,
-      rentEpoch: 0 as unknown as number,
-    });
-
+    const side = 1;
+    const tick = 450;
     const req = await adapter.buildOrderbookCancel(
-      encodePubkeyRef(bookMarketPda),
-      orderPda.toBase58(),
+      encodePubkeyRef(smoke.marketPda),
+      side,
+      tick,
+      { user: encodePubkeyRef(purchaser) },
     );
-
     const meta = req.meta as BuiltMeta;
     expect(req.kind).toBe("orderbook");
     expect(meta.ixProgramId).toBe(bookPrograms.soothBook.toBase58());
-    expect(discriminator(meta)).toEqual(idlDiscriminator("cancel_order"));
-    expect(req.accounts).toHaveLength(idlAccountCount("cancel_order"));
-    expect(meta.marketOutcomeIndex).toBe(orderOutcomeIndex);
-    expect(meta.forOutcome).toBe(orderForOutcome);
-    expect(meta.expectedPriceStr).toBe(String(orderExpectedPrice));
+    expect(discriminator(meta)).toEqual(hexDiscriminator("e8dbdf29dbecdcbe"));
+    expect(req.accounts).toHaveLength(13);
+    expect(meta.operation).toBe("cancel");
+    expect(meta.side).toBe(side);
+    expect(meta.tick).toBe(tick);
 
-    const [matchingPool] = deriveBookMarketMatchingPoolPda(
-      bookMarketPda,
-      orderOutcomeIndex,
-      orderExpectedPrice,
-      orderForOutcome,
-      bookPrograms,
+    const [marketBook] = marketBookPda(smoke.marketId, smoke.programs);
+    const [bookSide] = bookSidePda(smoke.marketId, side, tick, smoke.programs);
+    const [position] = orderbookPositionPda(
+      smoke.marketId,
+      purchaser,
+      smoke.programs,
     );
-    const [matchingQueue] = deriveBookMarketMatchingQueuePda(
-      bookMarketPda,
-      bookPrograms,
-    );
-    const [marketOutcome] = deriveBookMarketOutcomePda(
-      bookMarketPda,
-      orderOutcomeIndex,
-      bookPrograms,
-    );
-    const [marketEscrow] = deriveBookEscrowPda(bookMarketPda, bookPrograms);
-
     const keys = keySet(req);
-    expect(keys).toContain(orderPda.toBase58());
+    expect(keys).toContain(smoke.marketPda.toBase58());
+    expect(keys).toContain(marketBook.toBase58());
+    expect(keys).toContain(bookSide.toBase58());
+    expect(keys).toContain(position.toBase58());
     expect(keys).toContain(purchaser.toBase58());
-    expect(keys).toContain(matchingPool.toBase58());
-    expect(keys).toContain(matchingQueue.toBase58());
-    expect(keys).toContain(marketOutcome.toBase58());
-    expect(keys).toContain(marketEscrow.toBase58());
   });
 
-  it("buildOrderbookCancel throws AccountNotFound for an unknown Order PDA", async () => {
-    const ghost = Keypair.generate().publicKey;
+  it("buildOrderbookCancel emits cancel_by_id and checks composite side/tick", async () => {
+    const side = 0;
+    const tick = 610;
+    const orderId = encodeOrderId(side, tick, 123n);
+    const req = await adapter.buildOrderbookCancel(
+      encodePubkeyRef(smoke.marketPda),
+      side,
+      tick,
+      { user: encodePubkeyRef(smoke.user.publicKey), byId: orderId },
+    );
+
+    const meta = req.meta as BuiltMeta;
+    expect(discriminator(meta)).toEqual(hexDiscriminator("bcf1f0325f86217f"));
+    expect(req.accounts).toHaveLength(13);
+    expect(meta.operation).toBe("cancelById");
+    expect(meta.orderId).toBe(orderId.toString());
+
     await expect(
       adapter.buildOrderbookCancel(
-        encodePubkeyRef(bookMarketPda),
-        ghost.toBase58(),
+        encodePubkeyRef(smoke.marketPda),
+        1,
+        tick,
+        { user: encodePubkeyRef(smoke.user.publicKey), byId: orderId },
       ),
-    ).rejects.toThrow(/Order PDA not found/);
+    ).rejects.toThrow(/does not match/);
   });
 });
 
@@ -729,8 +655,16 @@ function discriminator(meta: BuiltMeta): number[] {
   return [...Buffer.from(meta.ixData, "base64").subarray(0, 8)];
 }
 
+function hexDiscriminator(hex: string): number[] {
+  return [...Buffer.from(hex, "hex")];
+}
+
 function keySet(req: { accounts?: Array<{ pubkey: string }> }): string[] {
   return (req.accounts ?? []).map((account) => account.pubkey);
+}
+
+function encodeOrderId(side: 0 | 1, tick: number, seq: bigint): bigint {
+  return (BigInt(side) << 56n) | (BigInt(tick) << 40n) | seq;
 }
 
 function seed16(start: number): Uint8Array {

@@ -18,7 +18,7 @@
 //   non-bypass setAccount we keep, because it's a fixture (devnet USDC isn't
 //   on bankrun) rather than a workaround for a missing on-chain feature.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -43,6 +43,7 @@ import {
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
   Transaction,
+  TransactionInstruction,
   type VersionedTransaction,
 } from "@solana/web3.js";
 import { Clock, start, type ProgramTestContext } from "solana-bankrun";
@@ -70,6 +71,8 @@ import {
   deriveUserLpAta,
   deriveVaultAuthorityPda,
   deriveYesMintPda,
+  marketFeePoolPda,
+  SOOTH_MARKET_PROGRAM_ID,
   type ProgramIds,
 } from "../../src/pdas.js";
 import { WAD } from "../../src/math/lmsr.js";
@@ -82,9 +85,16 @@ export const REPO_ROOT = resolve(__dirname, "..", "..", "..", "..");
 
 // Placeholder program IDs (from `declare_id!` in the on-chain programs).
 export const SOOTH_AMM_ID = new PublicKey(soothAmmIdl.address);
-export const SOOTH_MARKET_ID = new PublicKey(soothMarketIdl.address);
+export const SOOTH_MARKET_ID =
+  soothMarketIdl.address && soothMarketIdl.address.length > 0
+    ? new PublicKey(soothMarketIdl.address)
+    : SOOTH_MARKET_PROGRAM_ID;
 export const SOOTH_LAUNCHPAD_ID = new PublicKey(soothLaunchpadIdl.address);
 export const SOOTH_ADJUDICATOR_ID = new PublicKey(soothAdjudicatorIdl.address);
+
+const INIT_MARKET_FEE_POOL_DISCRIMINATOR = Buffer.from([
+  51, 19, 251, 120, 171, 91, 138, 115,
+]);
 
 export const PROGRAMS: ProgramIds = {
   soothAmm: SOOTH_AMM_ID,
@@ -129,7 +139,7 @@ export async function bootSmoke(
   // alone; bankrun's underlying `solana-program-test` searches
   // `BPF_OUT_DIR`. We point that env var at the workspace's
   // `target/deploy/` before calling `start`.
-  const soDir = resolve(REPO_ROOT, "target", "deploy");
+  const soDir = resolveDeployDir();
   process.env.BPF_OUT_DIR = soDir;
   // Sanity-check that the .so files exist; fail fast with a clear message
   // if they don't (means `cargo build-sbf` hasn't been run for this commit).
@@ -233,7 +243,10 @@ export async function bootSmoke(
     commitment: "confirmed",
     preflightCommitment: "confirmed",
   });
-  const marketProgram = new Program(soothMarketIdl as Idl, provider);
+  const marketProgram = new Program(
+    { ...soothMarketIdl, address: SOOTH_MARKET_ID.toBase58() } as Idl,
+    provider,
+  );
   const ammProgram = new Program(soothAmmIdl as Idl, provider);
   const launchpadProgram = new Program(soothLaunchpadIdl as Idl, provider);
 
@@ -447,6 +460,45 @@ export async function bootSmoke(
     ),
   );
 
+  // ─── 3b. init_market_fee_pool ──────────────────────────────────────────
+  //
+  // Current AMM buy/sell instructions route fees into a per-market
+  // sooth_launchpad token account. The tracked launchpad IDL can lag this
+  // helper, so fixture setup sends the zero-arg instruction by discriminator.
+  const [marketFeePool] = marketFeePoolPda(marketId, PROGRAMS);
+  await sendTx(
+    ctx,
+    [creator],
+    await buildTx(
+      ctx,
+      [
+        new TransactionInstruction({
+          programId: SOOTH_LAUNCHPAD_ID,
+          keys: [
+            { pubkey: marketPda, isSigner: false, isWritable: false },
+            {
+              pubkey: feePoolAuthorityPda,
+              isSigner: false,
+              isWritable: false,
+            },
+            { pubkey: USDC_MINT_DEVNET, isSigner: false, isWritable: false },
+            { pubkey: marketFeePool, isSigner: false, isWritable: true },
+            { pubkey: creator.publicKey, isSigner: true, isWritable: true },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+            {
+              pubkey: SystemProgram.programId,
+              isSigner: false,
+              isWritable: false,
+            },
+            { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+          ],
+          data: Buffer.from(INIT_MARKET_FEE_POOL_DISCRIMINATOR),
+        }),
+      ],
+      creator.publicKey,
+    ),
+  );
+
   // ─── Advance bankrun's clock past `startTime` ──────────────────────────
   // C1 (Codex) added a `start_time <= now < deadline` guard to
   // `trade_positions`. Bankrun boots with `unix_timestamp = 0`; warp the
@@ -555,6 +607,20 @@ export async function bootSmoke(
     marketPda,
     ammStatePda,
   };
+}
+
+export function resolveDeployDir(): string {
+  const candidates = [
+    resolve(REPO_ROOT, "target", "deploy"),
+    resolve(REPO_ROOT, "..", "..", "..", "target", "deploy"),
+  ];
+  return (
+    candidates.find((candidate) =>
+      ["sooth_amm.so", "sooth_market.so", "sooth_launchpad.so"].every((so) =>
+        existsSync(resolve(candidate, so)),
+      ),
+    ) ?? candidates[0]
+  );
 }
 
 // ─── Internals ────────────────────────────────────────────────────────────

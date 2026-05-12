@@ -446,17 +446,15 @@
             }
           }
         },
-        {
-          "name": "fee_pool_vault",
-          "docs": [
-            "Global fee-pool USDC ATA. Owner = fee_pool_authority PDA owned",
-            "by sooth_launchpad. trade_positions credits this on every buy;",
-            "sooth_launchpad::distribute_fees drains it via PDA-signed CPIs.",
-            "See programs/sooth_launchpad/src/instructions/distribute_fees.rs",
-            "for the pool-then-distribute rationale."
-          ],
-          "writable": true
-        },
+    {
+      "name": "market_fee_pool",
+      "docs": [
+        "Per-market fee-pool token account. Credited with the per-trade",
+        "fee_usdc slice on every buy; drained later by the launchpad's",
+        "per-market fee distribution path."
+      ],
+      "writable": true
+    },
         {
           "name": "lp_mint",
           "docs": [
@@ -967,13 +965,26 @@
             ]
           }
         },
-        {
-          "name": "usdc_mint",
-          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
-        },
-        {
-          "name": "user",
-          "writable": true,
+    {
+      "name": "usdc_mint",
+      "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+    },
+    {
+      "name": "protocol_config",
+      "docs": [
+        "ProtocolConfig PDA owned by sooth_launchpad; raw-parsed for fee_bps."
+      ]
+    },
+    {
+      "name": "market_fee_pool",
+      "docs": [
+        "Per-market fee-pool token account credited by the sell fee CPI."
+      ],
+      "writable": true
+    },
+    {
+      "name": "user",
+      "writable": true,
           "signer": true
         },
         {

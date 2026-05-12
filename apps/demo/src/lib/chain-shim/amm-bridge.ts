@@ -38,6 +38,7 @@ import {
   PublicKey,
   Transaction,
   type Connection as SolanaConnection,
+  type TransactionInstruction,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
@@ -52,13 +53,14 @@ import {
   LN2_WAD,
   WAD,
   WAD_TO_USDC_SCALAR,
+  DEFAULT_MATCH_LIMIT_PER_TX,
+  buildOrderbookBuyMultiTx,
   soothMarketIdl,
   type SolanaChainAdapter,
   type SignerRef,
   type SoothRequest,
 } from "@sooth/sdk-solana";
 import { AnchorProvider, Program, type Idl } from "@coral-xyz/anchor";
-import { findUserOpenOrderAtLevel } from "./orderbook-reads";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -83,37 +85,6 @@ export interface AmmBridgeCtx {
 // the constant so the EVM-shaped balance reads stay decoupled from
 // adapter.usdcMint queries.
 const USDC_DECIMALS = 6;
-
-function deriveBookMarketPda(
-  soothMarketPda: PublicKey,
-  programIds: SolanaChainAdapter["programIds"],
-): [PublicKey, number] {
-  if (!programIds.soothBook) {
-    throw new Error("amm-bridge: soothBook programId missing on adapter");
-  }
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), soothMarketPda.toBuffer()],
-    programIds.soothBook,
-  );
-}
-
-function deriveBookPriceLadderPda(
-  authority: PublicKey,
-  distinctSeed: string,
-  programIds: SolanaChainAdapter["programIds"],
-): [PublicKey, number] {
-  if (!programIds.soothBook) {
-    throw new Error("amm-bridge: soothBook programId missing on adapter");
-  }
-  return PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("price_ladder"),
-      authority.toBuffer(),
-      Buffer.from(distinctSeed),
-    ],
-    programIds.soothBook,
-  );
-}
 
 // ─── Read dispatcher ────────────────────────────────────────────────────────
 
@@ -337,14 +308,9 @@ export async function dispatchAmmRead(
     }
 
     case "isMarketRegistered": {
-      // SoothBookTerminal gates the trade form on this read.
-      // EVM contract: SoothBook.isMarketRegistered(market) → bool. On Solana
-      // a "registered" book market means the bookMarketPda account exists.
-      // The URL path is `/orderbook/<addr>`; spec 19's convention uses the
-      // bookMarketPda directly, while spec 18 / TradingContextBar links use
-      // the soothMarketPda. Be tolerant of both: try args[0] as bookMarketPda
-      // first (most direct), then fall back to deriving bookMarketPda from
-      // args[0] interpreted as soothMarketPda.
+      // SoothBookTerminal gates the trade form on this read. MarketBook is
+      // lazy-created by the first buy_yes/buy_no, so a valid sooth_market PDA
+      // is enough to consider the book available.
       const raw = call.args?.[0];
       if (typeof raw !== "string" || !raw) return false;
       const tail = raw.startsWith("0x")
@@ -359,14 +325,12 @@ export async function dispatchAmmRead(
         return false;
       }
       try {
-        // Path 1: candidate is already the bookMarketPda.
+        // Path 1: candidate is already the lazy-created MarketBook PDA.
         const direct = await ctx.connection.getAccountInfo(candidate);
         if (direct) return true;
-        // Path 2: candidate is the soothMarketPda; derive bookMarketPda.
-        const programIds = ctx.adapter.programIds;
-        const [bookMarketPda] = deriveBookMarketPda(candidate, programIds);
-        const derived = await ctx.connection.getAccountInfo(bookMarketPda);
-        return Boolean(derived);
+        // Path 2: candidate is the soothMarketPda.
+        await ctx.adapter.resolveOrderbookMarket(`sol:${candidate.toBase58()}`);
+        return true;
       } catch {
         return false;
       }
@@ -1090,9 +1054,7 @@ async function dispatchRedeemLp(
 // `marketKey` is the FNV-1a folding of `marketAddress` produced by
 // `viem-shim.keccak256` — it's a deterministic identifier, but not invertible
 // to the underlying sooth_market PDA. We therefore source the active market
-// from `ctx.marketRef` (set by `DemoContext.marketRef` during page mount) and
-// derive `bookMarketPda = deriveBookMarketPda(soothMarketPda, programIds)` at
-// dispatch time.
+// from `ctx.marketRef` (set by `DemoContext.marketRef` during page mount).
 //
 // Outcome encoding:
 //   - The hook inverts EVM's outcome convention internally
@@ -1105,15 +1067,9 @@ async function dispatchRedeemLp(
 //       adapter maps that to outcomeIndex=0.
 //   - `buyNo`  → `side=0` (BuyArgs: 0=NO) → adapter outcomeIndex=1.
 //
-// Tick → priceWad: PRICE_TICK_WAD = 10^15 (W4 default ladder step). The
-// adapter performs the multiplication; we pass `tick` through unchanged.
-//
 // Sell path: upstream's hook collapses sell-YES into "buyNo at oppositeTick"
 // (and sell-NO into "buyYes at oppositeTick") by submitting the inverted-side
-// purchase against the resting ask. The Solana sooth_book ix is the same
-// `create_order_request` either way — we route through `buildOrderbookBuy` for
-// both buyYes and buyNo because the on-chain side is determined by the
-// outcome+`for_outcome=true` combination, not by an "isBuy" flag at this level.
+// purchase against the resting ask.
 async function dispatchOrderbookWrite(
   call: WriteCallShape,
   ctx: AmmBridgeCtx,
@@ -1126,58 +1082,32 @@ async function dispatchOrderbookWrite(
       `${fn}: no active marketRef on chain-shim ctx — orderbook writes need DemoContext.marketRef`,
     );
   }
-  const soothMarketPda = decodeSolMarketRef(ctx.marketRef);
-  const programIds = ctx.adapter.programIds;
-  const [bookMarketPda] = deriveBookMarketPda(soothMarketPda, programIds);
-  const bookMarketRef = `sol:${bookMarketPda.toBase58()}`;
-
   const args = (call.args ?? []) as readonly unknown[];
 
   if (fn === "cancelById") {
-    // EVM args: `[orderId: bigint | string]`. On Solana there is no
-    // monotonic order id — Order PDAs are addressed by their pubkey. Two
-    // shapes are accepted:
-    //
-    //   1. base58 / `sol:<base58>` — tunneled through by Solana-aware
-    //      callers (e.g. our synthetic `OrderPlaced.args.orderId` from
-    //      orderbook-reads.synthOrderPlacedLogs). Used directly.
-    //   2. numeric `bigint` (the EVM convention) — unreachable on the
-    //      Solana fork because the chain-shim's getLogs only ever emits
-    //      base58 orderIds. We still surface a descriptive error so a
-    //      stale upstream cache (e.g. the deprecated useOrderStore) that
-    //      replays a numeric id fails fast.
     const raw = args[0];
-    let orderRef: string;
-    if (typeof raw === "string") {
-      orderRef = raw.startsWith("sol:")
+    const orderId =
+      typeof raw === "bigint"
         ? raw
-        : raw.startsWith("0x")
-          ? `sol:${raw.slice(2)}`
-          : `sol:${raw}`;
-    } else {
+        : typeof raw === "string" && /^\d+$/.test(raw)
+          ? BigInt(raw)
+          : null;
+    if (orderId == null) {
       throw new Error(
-        "cancelById: Solana orderbook expects a base58 Order PDA, got numeric id (no EVM↔Solana order-id mapping)",
+        "cancelById: Solana orderbook expects a decimal composite order_id",
       );
     }
-    const req = await ctx.adapter.buildOrderbookCancel(bookMarketRef, orderRef);
+    const decoded = decodeCompositeOrderId(orderId);
+    const req = await ctx.adapter.buildOrderbookCancel(
+      ctx.marketRef,
+      decoded.side,
+      decoded.tick,
+      { user: `sol:${userBase58}`, byId: orderId },
+    );
     return submitAndSynth(ctx.adapter, req, signer);
   }
 
   if (fn === "cancel") {
-    // EVM args: `[marketKey, side, tick]` — collapses into an iter-cancel
-    // over every Order at a (side, tick) level. Solana has no bulk-by-
-    // level cancel ix, but the upstream `parseOrderId` produces this
-    // shape whenever the order id stored locally is `${side}:${tick}`
-    // (e.g. UserOrdersPanel rows synthesized via the shim's `getLogs`
-    // RPC fallback). We resolve the on-chain Order PDA at that level by
-    // querying `program.account.order.all` filtered by
-    // `(market, purchaser)` and matching `(forOutcome, expectedPrice)`.
-    //
-    // If no Order PDA matches the level (most common: the OrderRequest
-    // hasn't been processed into an Order yet — `process_order_request`
-    // must run first via the off-chain crank or an adapter-direct call),
-    // surface a descriptive error so the upstream toast pipeline tells
-    // the user to retry.
     const sideRaw = args[1];
     const tickRaw = args[2];
     const side = (Number(sideRaw) === 1 ? 1 : 0) as 0 | 1;
@@ -1188,24 +1118,11 @@ async function dispatchOrderbookWrite(
         `cancel: invalid tick ${String(tickRaw)} (expected 1..999)`,
       );
     }
-    const order = await findUserOpenOrderAtLevel(
-      ctx.connection,
-      ctx.adapter,
+    const req = await ctx.adapter.buildOrderbookCancel(
       ctx.marketRef,
-      userBase58,
       side,
       tickArg,
-    );
-    if (!order) {
-      throw new Error(
-        `cancel: no open Order PDA found at side=${side} tick=${tickArg} for ${userBase58}. ` +
-          "If a place tx just confirmed, the OrderRequest may not have been processed yet — " +
-          "run process_order_request and retry.",
-      );
-    }
-    const req = await ctx.adapter.buildOrderbookCancel(
-      bookMarketRef,
-      order.pda.toBase58(),
+      { user: `sol:${userBase58}` },
     );
     return submitAndSynth(ctx.adapter, req, signer);
   }
@@ -1217,9 +1134,8 @@ async function dispatchOrderbookWrite(
   if (!Number.isFinite(tick) || tick < 1 || tick > 999) {
     throw new Error(`${fn}: invalid tick ${String(tickRaw)} (expected 1..999)`);
   }
-  // Upstream packs shares as 18-decimal WAD (`parseUnits(amount, 18)`); the
-  // Solana stake is u64 USDC base units (6 decimals). Translate at the
-  // boundary by floor-dividing out 12 decimals.
+  // Upstream packs shares as 18-decimal WAD (`parseUnits(amount, 18)`); W7
+  // sooth_book stores inline order amounts in the same WAD unit.
   const sharesWad =
     typeof sharesRaw === "bigint"
       ? sharesRaw
@@ -1227,57 +1143,40 @@ async function dispatchOrderbookWrite(
   if (sharesWad <= 0n) {
     throw new Error(`${fn}: shares must be positive`);
   }
-  const stakeUsdc = sharesWad / 10n ** 12n;
-  if (stakeUsdc <= 0n) {
-    throw new Error(`${fn}: shares too small after WAD→USDC truncation`);
-  }
-
-  // Resolve the protocol-default price ladder PDA. The bridge reads the
-  // seed-localnet output from `import.meta.env.VITE_SOOTH_BOOK_PRICE_LADDER_PDA`;
-  // if missing we fall back to deriving from
-  // `(VITE_SOOTH_BOOK_SEED_AUTHORITY, "sooth-default")`. Tests + production
-  // can override via either env var.
-  const priceLadderPda = resolvePriceLadderPda(ctx);
-  if (!priceLadderPda) {
-    throw new Error(
-      `${fn}: no resolved price-ladder PDA — set VITE_SOOTH_BOOK_PRICE_LADDER_PDA (or VITE_SOOTH_BOOK_SEED_AUTHORITY) via seed-localnet`,
-    );
-  }
 
   // Outcome encoding (see header comment for the full rationale).
   // BuyArgs.side: 0=NO, 1=YES.
   const side: 0 | 1 = fn === "buyYes" ? 1 : 0;
+  const rawLimit =
+    typeof args[4] === "number"
+      ? args[4]
+      : Number((args[4] as { toString(): string })?.toString() ?? 0);
+  const matchLimitPerTx =
+    Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(Math.floor(rawLimit), DEFAULT_MATCH_LIMIT_PER_TX)
+      : DEFAULT_MATCH_LIMIT_PER_TX;
+  const user = `sol:${userBase58}`;
+  const escrow = typeof args[3] === "boolean" ? args[3] : false;
 
-  // 16-byte fresh distinguisher per call.
-  const distinctSeed = new Uint8Array(16);
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.getRandomValues === "function"
-  ) {
-    crypto.getRandomValues(distinctSeed);
-  } else {
-    for (let i = 0; i < 16; i++)
-      distinctSeed[i] = Math.floor(Math.random() * 256);
-  }
-
-  // BuyArgs is the umbrella shape; the Solana-only meta channel
-  // (`user`, `priceLadder`, `distinctSeed`) is surfaced via the ext
-  // interface. TypeScript's `BuyArgs` doesn't include those slots — we
-  // augment locally and the adapter narrows back at the boundary.
-  const req = await ctx.adapter.buildOrderbookBuy(bookMarketRef, {
+  const batches = await buildOrderbookBuyMultiTx(ctx.adapter, ctx.marketRef, {
     side,
     tick,
-    amount: stakeUsdc,
-    escrow: typeof args[3] === "boolean" ? args[3] : false,
-    matchLimit:
-      typeof args[4] === "number"
-        ? args[4]
-        : Number((args[4] as { toString(): string })?.toString() ?? 100),
-    // Solana-only meta extensions. Cast: BuyArgs is intentionally narrow on
-    // the umbrella surface — the adapter pulls these via OrderbookOrderArgsExt.
-    user: `sol:${userBase58}`,
-    priceLadder: `sol:${priceLadderPda.toBase58()}`,
-    distinctSeed,
+    amount: sharesWad,
+    escrow,
+    matchLimitPerTx,
+    user,
+  });
+  if (batches.length > 0) {
+    return submitInstructionBatches(ctx.adapter, batches, signer, userBase58);
+  }
+
+  const req = await ctx.adapter.buildOrderbookBuy(ctx.marketRef, {
+    side,
+    tick,
+    amount: sharesWad,
+    escrow,
+    matchLimit: matchLimitPerTx,
+    user,
   } as never);
 
   return submitAndSynth(ctx.adapter, req, signer);
@@ -1286,35 +1185,6 @@ async function dispatchOrderbookWrite(
 function decodeSolMarketRef(ref: string): PublicKey {
   const stripped = ref.startsWith("sol:") ? ref.slice(4) : ref;
   return new PublicKey(stripped);
-}
-
-function resolvePriceLadderPda(ctx: AmmBridgeCtx): PublicKey | null {
-  const env =
-    (import.meta as unknown as { env?: Record<string, string | undefined> })
-      .env ?? {};
-
-  const direct = env.VITE_SOOTH_BOOK_PRICE_LADDER_PDA;
-  if (direct) {
-    try {
-      return new PublicKey(direct);
-    } catch {
-      // fallthrough to authority-based derivation
-    }
-  }
-  const authorityBase58 = env.VITE_SOOTH_BOOK_SEED_AUTHORITY;
-  const ladderSeed = env.VITE_SOOTH_BOOK_PRICE_LADDER_SEED ?? "sooth-default";
-  if (!authorityBase58) return null;
-  try {
-    const authority = new PublicKey(authorityBase58);
-    const [pda] = deriveBookPriceLadderPda(
-      authority,
-      ladderSeed,
-      ctx.adapter.programIds,
-    );
-    return pda;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -1369,6 +1239,83 @@ function requireWallet(
     throw new Error(`${op}: no Solana wallet pubkey — connect a wallet first`);
   }
   return { signer: ctx.signer, userBase58: ctx.userBase58 };
+}
+
+function decodeCompositeOrderId(orderId: bigint): { side: 0 | 1; tick: number } {
+  if (orderId < 0n || orderId > 0xffffffffffffffffn) {
+    throw new Error(`cancelById: order_id must fit in u64, got ${orderId}`);
+  }
+  const side = Number((orderId >> 56n) & 0xffn);
+  const tick = Number((orderId >> 40n) & 0xffffn);
+  if (side !== 0 && side !== 1 || tick < 1 || tick > 999) {
+    throw new Error(
+      `cancelById: composite order_id encodes invalid side/tick (${side}, ${tick})`,
+    );
+  }
+  return { side, tick };
+}
+
+async function submitInstructionBatches(
+  adapter: SolanaChainAdapter,
+  batches: Array<TransactionInstruction[]>,
+  signer: SignerRef,
+  userBase58: string,
+): Promise<string> {
+  let lastSignature = "";
+  for (const batch of batches) {
+    const receipt = await adapter.submit(
+      requestFromInstructions(batch, userBase58),
+      signer,
+    );
+    lastSignature = receipt.txId.replace(/^sol:/, "");
+  }
+  return synthHashFromSignature(lastSignature);
+}
+
+function requestFromInstructions(
+  ixs: TransactionInstruction[],
+  userBase58: string,
+): SoothRequest {
+  if (ixs.length === 0) {
+    throw new Error("orderbook multi-tx batch contained no instructions");
+  }
+  const main = ixs[ixs.length - 1]!;
+  const preIxs = ixs.slice(0, -1).map(serializeIxForSubmit);
+  return {
+    kind: "orderbook",
+    accounts: main.keys.map((k) => ({
+      pubkey: k.pubkey.toBase58(),
+      isSigner: k.isSigner,
+      isWritable: k.isWritable,
+    })),
+    meta: {
+      userPk: userBase58,
+      ixData: Buffer.from(main.data).toString("base64"),
+      ixKeys: main.keys.map((k) => ({
+        pubkey: k.pubkey.toBase58(),
+        isSigner: k.isSigner,
+        isWritable: k.isWritable,
+      })),
+      ixProgramId: main.programId.toBase58(),
+      preIxs,
+    },
+  };
+}
+
+function serializeIxForSubmit(ix: TransactionInstruction): {
+  programId: string;
+  keys: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }>;
+  data: string;
+} {
+  return {
+    programId: ix.programId.toBase58(),
+    keys: ix.keys.map((k) => ({
+      pubkey: k.pubkey.toBase58(),
+      isSigner: k.isSigner,
+      isWritable: k.isWritable,
+    })),
+    data: Buffer.from(ix.data).toString("base64"),
+  };
 }
 
 /**
