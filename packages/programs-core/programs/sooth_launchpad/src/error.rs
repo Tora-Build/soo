@@ -42,4 +42,7 @@ pub enum SoothLaunchpadError {
 
     #[msg("LP supply is empty")]
     EmptyLpSupply,
+
+    #[msg("Legacy fee drain already executed")]
+    LegacyDrainAlreadyExecuted,
 }

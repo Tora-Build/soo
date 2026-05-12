@@ -1,5 +1,10 @@
 //! `initialize_fee_pool` — singleton init for the global `fee_pool_vault`.
 //!
+//! Deprecated for new fee accrual: W5 routes fees to per-market
+//! `market_fee_pool` accounts. The global pool remains allocated so
+//! `distribute_fees_legacy` can drain pre-W5 balances exactly once without
+//! breaking historical PDA derivations.
+//!
 //! Wave 5A wired `sooth_amm::trade_positions` (and the matching
 //! `sell_positions` path) to push the per-trade `fee_usdc` slice into a
 //! global SPL token ATA owned by the singleton `fee_pool_authority` PDA

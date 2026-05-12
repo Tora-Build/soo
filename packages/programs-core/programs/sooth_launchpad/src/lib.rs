@@ -106,6 +106,9 @@ pub mod sooth_launchpad {
         instructions::initialize_protocol::handler(ctx, args)
     }
 
+    /// Deprecated: retained only to keep the historical global fee-pool ATA
+    /// derivation available for the one-shot `distribute_fees_legacy` drain.
+    ///
     /// Bootstrap the singleton global `fee_pool_vault` USDC ATA. **Single-
     /// shot**: must be called exactly once per cluster deploy. The ATA is
     /// owned by the `fee_pool_authority` PDA (seeds `[b"fee_pool_authority"]`)
@@ -140,6 +143,12 @@ pub mod sooth_launchpad {
     /// (which `trade_positions` mutates today).
     pub fn distribute_fees(ctx: Context<DistributeFees>) -> Result<()> {
         instructions::distribute_fees::handler(ctx)
+    }
+
+    /// One-shot migration drain for the historical global `fee_pool_vault`.
+    /// Replay-protected by `LegacyFeeDrainMarker`.
+    pub fn distribute_fees_legacy(ctx: Context<DistributeFeesLegacy>) -> Result<()> {
+        instructions::distribute_fees_legacy::handler(ctx)
     }
 
     /// Mint LP tokens for a creator's seed deposit on a pre-graduation
