@@ -1,0 +1,53 @@
+use anchor_lang::prelude::*;
+use sooth_market::state::Market;
+
+use crate::error::CoreError;
+use crate::state::{BookSide, MarketBook};
+
+#[derive(Accounts)]
+pub struct CloseBookSide<'info> {
+    #[account(mut)]
+    pub closer: Signer<'info>,
+
+    #[account(
+        seeds = [b"market", market.market_id.as_ref()],
+        bump = market.bump,
+        seeds::program = sooth_market::ID,
+    )]
+    pub market: Box<Account<'info, Market>>,
+
+    #[account(
+        seeds = [b"market_book", market.market_id.as_ref()],
+        bump,
+        constraint = market_book.market == market.key() @ CoreError::OrderIdSeedMismatch,
+    )]
+    pub market_book: Box<Account<'info, MarketBook>>,
+
+    #[account(
+        mut,
+        close = closer,
+        seeds = [
+            b"book_side",
+            market.market_id.as_ref(),
+            &[book_side.side],
+            &book_side.tick.to_le_bytes()
+        ],
+        bump,
+        has_one = market @ CoreError::OrderIdSeedMismatch,
+    )]
+    pub book_side: Box<Account<'info, BookSide>>,
+}
+
+pub fn close_book_side_handler(ctx: Context<CloseBookSide>) -> Result<()> {
+    let book = &ctx.accounts.market_book;
+    let book_side = &ctx.accounts.book_side;
+    require!(
+        book_side.head_index as usize == book_side.orders.len(),
+        CoreError::BookSideNotDrained
+    );
+    require!(
+        !book.bitmap(book_side.side).is_set(book_side.tick),
+        CoreError::BookSideNotDrained
+    );
+    Ok(())
+}
