@@ -191,6 +191,12 @@ pub mod sooth_market {
         instructions::redeem::handler(ctx)
     }
 
+    /// Redeem the orderbook-side position ledger after settlement, then
+    /// close the `OrderbookPosition` PDA and refund rent to the user.
+    pub fn redeem_orderbook(ctx: Context<RedeemOrderbook>) -> Result<()> {
+        instructions::redeem_orderbook::handler(ctx)
+    }
+
     /// Split-destination redemption for CPI escrow flows — burn requested
     /// YES/NO amounts from a burn authority and pay USDC to an arbitrary
     /// token account.
