@@ -7,6 +7,7 @@ use sooth_protocol_types::ids::{BASE_TOKEN_MINT, SOOTH_BOOK_PROGRAM_ID};
 
 use crate::error::CoreError;
 use crate::events::{DustOrderSkipped, OrderPlaced};
+use crate::matching::{match_buy, MatchAccounts};
 use crate::math::{min_resting_order_for_tick, resting_cost_base, MAX_TICK, MIN_TICK, NUM_TICKS};
 use crate::state::{
     encode_order_id, BookSide, InlineOrder, MarketBook, MAX_ORDERS_PER_TICK, SIDE_AGAINST, SIDE_FOR,
@@ -51,6 +52,24 @@ pub struct BuyYesOrder<'info> {
     )]
     pub market_usdc_vault: Box<Account<'info, TokenAccount>>,
 
+    /// CHECK: derived via sooth_market seeds; signs vault outflows there.
+    #[account(
+        seeds = [b"vault", market.market_id.as_ref()],
+        bump = market.vault_authority_bump,
+        seeds::program = sooth_market::ID,
+    )]
+    pub vault_authority: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"market_fee_pool", market.market_id.as_ref()],
+        bump,
+        seeds::program = sooth_protocol_types::SOOTH_LAUNCHPAD_PROGRAM_ID,
+        constraint = market_fee_pool.mint == market_usdc_vault.mint
+            @ CoreError::BaseMintDrift,
+    )]
+    pub market_fee_pool: Box<Account<'info, TokenAccount>>,
+
     #[account(
         mut,
         token::mint = market_usdc_vault.mint,
@@ -71,6 +90,15 @@ pub struct BuyYesOrder<'info> {
         seeds::program = sooth_market::ID,
     )]
     pub taker_orderbook_position: UncheckedAccount<'info>,
+
+    /// CHECK: PDA + owner constraints bind this to sooth_launchpad's singleton.
+    #[account(
+        seeds = [b"protocol_config"],
+        bump,
+        seeds::program = sooth_protocol_types::SOOTH_LAUNCHPAD_PROGRAM_ID,
+        owner = sooth_protocol_types::SOOTH_LAUNCHPAD_PROGRAM_ID,
+    )]
+    pub protocol_config: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
@@ -121,6 +149,24 @@ pub struct BuyNoOrder<'info> {
     )]
     pub market_usdc_vault: Box<Account<'info, TokenAccount>>,
 
+    /// CHECK: derived via sooth_market seeds; signs vault outflows there.
+    #[account(
+        seeds = [b"vault", market.market_id.as_ref()],
+        bump = market.vault_authority_bump,
+        seeds::program = sooth_market::ID,
+    )]
+    pub vault_authority: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"market_fee_pool", market.market_id.as_ref()],
+        bump,
+        seeds::program = sooth_protocol_types::SOOTH_LAUNCHPAD_PROGRAM_ID,
+        constraint = market_fee_pool.mint == market_usdc_vault.mint
+            @ CoreError::BaseMintDrift,
+    )]
+    pub market_fee_pool: Box<Account<'info, TokenAccount>>,
+
     #[account(
         mut,
         token::mint = market_usdc_vault.mint,
@@ -142,6 +188,15 @@ pub struct BuyNoOrder<'info> {
     )]
     pub taker_orderbook_position: UncheckedAccount<'info>,
 
+    /// CHECK: PDA + owner constraints bind this to sooth_launchpad's singleton.
+    #[account(
+        seeds = [b"protocol_config"],
+        bump,
+        seeds::program = sooth_protocol_types::SOOTH_LAUNCHPAD_PROGRAM_ID,
+        owner = sooth_protocol_types::SOOTH_LAUNCHPAD_PROGRAM_ID,
+    )]
+    pub protocol_config: UncheckedAccount<'info>,
+
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,
@@ -152,21 +207,25 @@ pub struct BuyNoOrder<'info> {
     pub instruction_sysvar: UncheckedAccount<'info>,
 }
 
-pub fn buy_yes_handler(
-    ctx: Context<BuyYesOrder>,
+pub fn buy_yes_handler<'info>(
+    ctx: Context<'_, '_, '_, 'info, BuyYesOrder<'info>>,
     tick: u16,
     amount: u128,
     escrow: bool,
     match_limit_arg: u32,
 ) -> Result<()> {
+    let remaining_accounts = ctx.remaining_accounts;
     let accounts = BuyAccounts {
         taker: &ctx.accounts.taker,
         market: ctx.accounts.market.as_ref(),
         market_book: ctx.accounts.market_book.as_mut(),
         book_side: &ctx.accounts.book_side,
         market_usdc_vault: ctx.accounts.market_usdc_vault.as_ref(),
+        vault_authority: &ctx.accounts.vault_authority,
+        market_fee_pool: ctx.accounts.market_fee_pool.as_ref(),
         taker_usdc_ata: ctx.accounts.taker_usdc_ata.as_ref(),
         taker_orderbook_position: &ctx.accounts.taker_orderbook_position,
+        protocol_config: &ctx.accounts.protocol_config,
         system_program: &ctx.accounts.system_program,
         token_program: &ctx.accounts.token_program,
         rent: &ctx.accounts.rent,
@@ -174,24 +233,36 @@ pub fn buy_yes_handler(
         instruction_sysvar: &ctx.accounts.instruction_sysvar,
         book_side_bump: ctx.bumps.book_side,
     };
-    buy_handler(accounts, SIDE_FOR, tick, amount, escrow, match_limit_arg)
+    buy_handler(
+        accounts,
+        SIDE_FOR,
+        tick,
+        amount,
+        escrow,
+        match_limit_arg,
+        remaining_accounts,
+    )
 }
 
-pub fn buy_no_handler(
-    ctx: Context<BuyNoOrder>,
+pub fn buy_no_handler<'info>(
+    ctx: Context<'_, '_, '_, 'info, BuyNoOrder<'info>>,
     tick: u16,
     amount: u128,
     escrow: bool,
     match_limit_arg: u32,
 ) -> Result<()> {
+    let remaining_accounts = ctx.remaining_accounts;
     let accounts = BuyAccounts {
         taker: &ctx.accounts.taker,
         market: ctx.accounts.market.as_ref(),
         market_book: ctx.accounts.market_book.as_mut(),
         book_side: &ctx.accounts.book_side,
         market_usdc_vault: ctx.accounts.market_usdc_vault.as_ref(),
+        vault_authority: &ctx.accounts.vault_authority,
+        market_fee_pool: ctx.accounts.market_fee_pool.as_ref(),
         taker_usdc_ata: ctx.accounts.taker_usdc_ata.as_ref(),
         taker_orderbook_position: &ctx.accounts.taker_orderbook_position,
+        protocol_config: &ctx.accounts.protocol_config,
         system_program: &ctx.accounts.system_program,
         token_program: &ctx.accounts.token_program,
         rent: &ctx.accounts.rent,
@@ -206,6 +277,7 @@ pub fn buy_no_handler(
         amount,
         escrow,
         match_limit_arg,
+        remaining_accounts,
     )
 }
 
@@ -215,8 +287,11 @@ pub struct BuyAccounts<'a, 'info> {
     pub market_book: &'a mut Account<'info, MarketBook>,
     pub book_side: &'a UncheckedAccount<'info>,
     pub market_usdc_vault: &'a Account<'info, TokenAccount>,
+    pub vault_authority: &'a UncheckedAccount<'info>,
+    pub market_fee_pool: &'a Account<'info, TokenAccount>,
     pub taker_usdc_ata: &'a Account<'info, TokenAccount>,
     pub taker_orderbook_position: &'a UncheckedAccount<'info>,
+    pub protocol_config: &'a UncheckedAccount<'info>,
     pub system_program: &'a Program<'info, System>,
     pub token_program: &'a Program<'info, Token>,
     pub rent: &'a Sysvar<'info, Rent>,
@@ -232,9 +307,8 @@ pub fn buy_handler<'info>(
     amount: u128,
     escrow: bool,
     match_limit_arg: u32,
+    remaining_accounts: &[AccountInfo<'info>],
 ) -> Result<()> {
-    let _ = match_limit_arg;
-
     require!(
         (MIN_TICK..=MAX_TICK).contains(&tick),
         CoreError::InvalidTick
@@ -248,24 +322,60 @@ pub fn buy_handler<'info>(
         debit_shares_for_order_before_deadline(&accounts, side ^ 1, amount)?;
     }
 
+    let match_limit = if match_limit_arg == 0 {
+        u32::MAX
+    } else {
+        match_limit_arg
+    };
+    let match_accounts = MatchAccounts {
+        taker: accounts.taker,
+        market: accounts.market,
+        vault_authority: accounts.vault_authority,
+        market_usdc_vault: accounts.market_usdc_vault,
+        taker_usdc_ata: accounts.taker_usdc_ata,
+        taker_orderbook_position: accounts.taker_orderbook_position,
+        protocol_config: accounts.protocol_config,
+        system_program: accounts.system_program,
+        token_program: accounts.token_program,
+        rent: accounts.rent,
+        sooth_market_program: accounts.sooth_market_program,
+        instruction_sysvar: accounts.instruction_sysvar,
+    };
+    let remaining = match_buy(
+        &mut *accounts.market_book,
+        &match_accounts,
+        side,
+        tick,
+        amount,
+        escrow,
+        match_limit,
+        remaining_accounts,
+    )?;
+
+    if remaining == 0 {
+        flush_accumulators(&mut accounts)?;
+        return Ok(());
+    }
+
     let value_tick = if escrow { NUM_TICKS - tick } else { tick };
-    if amount < min_resting_order_for_tick(value_tick)? {
+    if remaining < min_resting_order_for_tick(value_tick)? {
         if escrow {
-            credit_shares_for_order(&accounts, side ^ 1, amount)?;
+            credit_shares_for_order(&accounts, side ^ 1, remaining)?;
         }
         emit!(DustOrderSkipped {
             market: accounts.market.key(),
             side,
             tick,
             user: accounts.taker.key(),
-            amount,
+            amount: remaining,
             escrow,
         });
+        flush_accumulators(&mut accounts)?;
         return Ok(());
     }
 
     if !escrow {
-        let resting_cost_base = resting_cost_base(amount, tick)?;
+        let resting_cost_base = resting_cost_base(remaining, tick)?;
         deposit_for_order(&accounts, resting_cost_base)?;
     }
 
@@ -283,7 +393,7 @@ pub fn buy_handler<'info>(
     book_side.orders.push(InlineOrder {
         id: order_id,
         maker: accounts.taker.key(),
-        amount,
+        amount: remaining,
         escrow,
         _pad: [0; 3],
     });
@@ -294,12 +404,13 @@ pub fn buy_handler<'info>(
         side,
         tick,
         maker: accounts.taker.key(),
-        amount,
+        amount: remaining,
         escrow,
         order_id,
     });
 
     save_book_side(&accounts, &book_side)?;
+    flush_accumulators(&mut accounts)?;
     Ok(())
 }
 
@@ -481,6 +592,54 @@ fn deposit_for_order(accounts: &BuyAccounts<'_, '_>, base_units: u64) -> Result<
         ),
         base_units,
     )
+}
+
+fn flush_accumulators(accounts: &mut BuyAccounts<'_, '_>) -> Result<()> {
+    let taker_payout = accounts.market_book.pending_taker_payout;
+    if taker_payout > 0 {
+        let amount: u64 = taker_payout
+            .try_into()
+            .map_err(|_| error!(CoreError::MathOverflow))?;
+        sooth_market::cpi::withdraw_for_order(
+            CpiContext::new(
+                accounts.sooth_market_program.to_account_info(),
+                sooth_market::cpi::accounts::WithdrawForOrder {
+                    market: accounts.market.to_account_info(),
+                    vault_authority: accounts.vault_authority.to_account_info(),
+                    vault: accounts.market_usdc_vault.to_account_info(),
+                    to_usdc_ata: accounts.taker_usdc_ata.to_account_info(),
+                    token_program: accounts.token_program.to_account_info(),
+                    instruction_sysvar: accounts.instruction_sysvar.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+        accounts.market_book.pending_taker_payout = 0;
+    }
+
+    let pending_fees = accounts.market_book.pending_fees;
+    if pending_fees > 0 {
+        let amount: u64 = pending_fees
+            .try_into()
+            .map_err(|_| error!(CoreError::MathOverflow))?;
+        sooth_market::cpi::transfer_fee_to_market_pool_from_book(
+            CpiContext::new(
+                accounts.sooth_market_program.to_account_info(),
+                sooth_market::cpi::accounts::TransferFeeToMarketPoolFromBook {
+                    market: accounts.market.to_account_info(),
+                    market_vault: accounts.market_usdc_vault.to_account_info(),
+                    market_fee_pool: accounts.market_fee_pool.to_account_info(),
+                    vault_authority: accounts.vault_authority.to_account_info(),
+                    instruction_sysvar: accounts.instruction_sysvar.to_account_info(),
+                    token_program: accounts.token_program.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+        accounts.market_book.pending_fees = 0;
+    }
+
+    Ok(())
 }
 
 impl<'a, 'info> BuyAccounts<'a, 'info> {

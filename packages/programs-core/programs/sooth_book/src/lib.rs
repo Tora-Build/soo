@@ -12,6 +12,7 @@ pub mod bitmap;
 pub mod error;
 pub mod events;
 pub mod instructions;
+pub mod matching;
 pub mod math;
 pub mod state;
 
@@ -29,8 +30,8 @@ const _: () = assert!(sooth_protocol_types::pubkey_eq(
 pub mod sooth_book {
     use super::*;
 
-    pub fn buy_yes(
-        ctx: Context<BuyYesOrder>,
+    pub fn buy_yes<'info>(
+        ctx: Context<'_, '_, '_, 'info, BuyYesOrder<'info>>,
         tick: u16,
         amount: u128,
         escrow: bool,
@@ -39,8 +40,8 @@ pub mod sooth_book {
         instructions::buy::buy_yes_handler(ctx, tick, amount, escrow, match_limit_arg)
     }
 
-    pub fn buy_no(
-        ctx: Context<BuyNoOrder>,
+    pub fn buy_no<'info>(
+        ctx: Context<'_, '_, '_, 'info, BuyNoOrder<'info>>,
         tick: u16,
         amount: u128,
         escrow: bool,

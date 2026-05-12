@@ -43,12 +43,15 @@ struct MarketPdas {
     market_id: [u8; 16],
     market: Pubkey,
     vault_authority: Pubkey,
+    fee_pool_authority: Pubkey,
     lock_authority: Pubkey,
     yes_mint: Pubkey,
     no_mint: Pubkey,
     vault: Pubkey,
     lock_vault: Pubkey,
     amm_state: Pubkey,
+    market_fee_pool: Pubkey,
+    protocol_config: Pubkey,
     market_book: Pubkey,
 }
 
@@ -57,24 +60,33 @@ impl MarketPdas {
         let (market, _) = Pubkey::find_program_address(&[b"market", &market_id], &MARKET_ID);
         let (vault_authority, _) =
             Pubkey::find_program_address(&[b"vault", &market_id], &MARKET_ID);
+        let (fee_pool_authority, _) =
+            Pubkey::find_program_address(&[b"fee_pool_authority"], &LAUNCHPAD_ID);
         let (lock_authority, _) = Pubkey::find_program_address(&[b"lock", &market_id], &MARKET_ID);
         let (yes_mint, _) = Pubkey::find_program_address(&[b"mint", &market_id, b"y"], &MARKET_ID);
         let (no_mint, _) = Pubkey::find_program_address(&[b"mint", &market_id, b"n"], &MARKET_ID);
         let vault = get_associated_token_address(&vault_authority, &USDC_MINT);
         let lock_vault = get_associated_token_address(&lock_authority, &USDC_MINT);
         let (amm_state, _) = Pubkey::find_program_address(&[b"amm", &market_id], &AMM_ID);
+        let (market_fee_pool, _) =
+            Pubkey::find_program_address(&[b"market_fee_pool", &market_id], &LAUNCHPAD_ID);
+        let (protocol_config, _) =
+            Pubkey::find_program_address(&[b"protocol_config"], &LAUNCHPAD_ID);
         let (market_book, _) =
             Pubkey::find_program_address(&[b"market_book", &market_id], &BOOK_ID);
         Self {
             market_id,
             market,
             vault_authority,
+            fee_pool_authority,
             lock_authority,
             yes_mint,
             no_mint,
             vault,
             lock_vault,
             amm_state,
+            market_fee_pool,
+            protocol_config,
             market_book,
         }
     }
@@ -409,6 +421,24 @@ fn setup_market(seed: u8) -> Fixture {
             ),
         ],
     );
+    send_ixs(
+        &mut svm,
+        &creator,
+        &[build_ix(
+            LAUNCHPAD_ID,
+            sooth_launchpad::accounts::InitMarketFeePool {
+                market: pdas.market,
+                fee_pool_authority: pdas.fee_pool_authority,
+                usdc_mint: USDC_MINT,
+                market_fee_pool: pdas.market_fee_pool,
+                signer: creator.pubkey(),
+                token_program: spl_token::ID,
+                system_program: solana_sdk::system_program::ID,
+                rent: solana_sdk::sysvar::rent::ID,
+            },
+            sooth_launchpad::instruction::InitMarketFeePool {},
+        )],
+    );
 
     Fixture {
         svm,
@@ -478,8 +508,11 @@ fn buy_yes(
             market_book: fixture.pdas.market_book,
             book_side: book_side_pda(&fixture.pdas, SIDE_FOR, tick),
             market_usdc_vault: fixture.pdas.vault,
+            vault_authority: fixture.pdas.vault_authority,
+            market_fee_pool: fixture.pdas.market_fee_pool,
             taker_usdc_ata: trader.usdc_ata,
             taker_orderbook_position: trader.orderbook_position,
+            protocol_config: fixture.pdas.protocol_config,
             system_program: solana_sdk::system_program::ID,
             token_program: spl_token::ID,
             rent: solana_sdk::sysvar::rent::ID,

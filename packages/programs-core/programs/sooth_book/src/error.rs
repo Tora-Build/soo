@@ -26,4 +26,16 @@ pub enum CoreError {
     AccumulatorNotReset,
     #[msg("No cancellable order was found")]
     NoCancellableOrder,
+    #[msg("Fill return data was not set by sooth_market")]
+    MissingFillReturnData,
+    #[msg("Fill return data came from the wrong program")]
+    WrongFillReturnProgram,
+    #[msg("Fill return data could not be decoded")]
+    MalformedFillReturnData,
+    #[msg("Remaining-account bundle does not carry the crossing BookSide")]
+    MissingCrossingBookSide,
+    #[msg("Remaining-account bundle maker does not match the live order maker")]
+    MakerAccountMismatch,
+    #[msg("Remaining-account bundles must contain exactly five accounts per fill")]
+    WrongBundleArity,
 }
