@@ -62,17 +62,10 @@
 //!
 //! ## Sells & fees
 //!
-//! Per the EVM `FeeRouter._quoteFee` (`FeeRouter.sol:415-423`), sells DO
-//! pay fees: `netAmount = baseCost - fee` on sell. The Solana port's
-//! `sell_positions` ix is intentionally NOT updated in this commit (the
-//! Wave 1C scope explicitly excludes the sell path from fee wiring). The
-//! gap is tracked: `sell_positions` produces 0 fee revenue today, which
-//! makes the protocol slightly under-collected on round-trip trades.
-//! See the "Pre-/post-graduation tier handling" note in the ix-level
-//! handover — wiring `sell_positions` to debit `fee_pool_vault` mirrors
-//! this exact path with `Transfer { from: market_vault, to: fee_pool_vault, … }`
-//! signed by `vault_authority` (which means the helper must live in
-//! `sooth_market`, since only it can sign for `vault_authority`).
+//! Per the EVM `FeeRouter._quoteFee` (`FeeRouter.sol:415-423`), sells pay
+//! fees with `netAmount = baseCost - fee`. The sibling `sell_positions` ix
+//! handles that path by debiting the per-market fee pool before locking net
+//! proceeds.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};

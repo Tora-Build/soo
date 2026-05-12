@@ -8,41 +8,45 @@
 //!
 //!   1. LMSR `cost_delta(...)` returns a negative WAD value; absolute value
 //!      is the proceeds owed to the seller.
-//!   2. Optional slippage check vs `min_proceeds_wad` (mirrors EVM's
-//!      `minProceeds`); the SDK passes `0` to skip.
-//!   3. `proceeds_usdc = wad_to_usdc_floor(|proceeds_wad|)` — floor (not
-//!      ceil) per `wad.rs` so the vault stays solvent under round-trips.
-//!   4. Mutate `amm_state.q_yes/q_no` and `position.yes_shares/no_shares`.
-//!   5. PDA-signed `spl-token::transfer market_vault → lock_vault`, signed
-//!      by `vault_authority` (seeds `[b"vault", market_id]`,
-//!      bump `market.vault_authority_bump`).
-//!   6. `init` `LockEntry` PDA at `[b"lock_entry", position.key(), nonce]`,
+//!   2. Fee is computed from gross proceeds using `ProtocolConfig.fee_bps`;
+//!      net proceeds mirror EVM `_quoteFee` sell semantics.
+//!   3. Optional slippage check vs net `min_proceeds_wad`; the SDK passes `0`
+//!      to skip.
+//!   4. Gross/net/fee WAD values are independently floored to USDC atoms; any
+//!      rounding residue remains in `market_vault`.
+//!   5. Mutate `amm_state.q_yes/q_no` and `position.yes_shares/no_shares`.
+//!   6. PDA-signed fee transfer `market_vault -> market_fee_pool`, then
+//!      PDA-signed `market_vault -> lock_vault` for net proceeds.
+//!   7. `init` `LockEntry` PDA at `[b"lock_entry", position.key(), nonce]`,
 //!      where `nonce = position.lock_nonce` *before* increment.
-//!   7. Increment `position.lock_nonce`.
-//!   8. Emit `PositionSold`.
+//!   8. Increment `position.lock_nonce`.
+//!   9. Emit `PositionSold`.
 //!
 //! The user later calls `claim_unlocked` (separate ix) to drain the
 //! `LockEntry` after `LOCK_DURATION_SECS` has elapsed. Architecture §4.3.
 //!
 //! ## Slippage parameter
 //!
-//! `min_proceeds_wad: u128` is the seller-set lower bound on `|cost_wad|`;
-//! the trade reverts if the LMSR proceeds drop below it (someone front-ran
-//! the seller's intent). `0` disables the check. Mirrors EVM's
-//! `_executeSell(..., minProceeds, ...)`.
+//! `min_proceeds_wad: u128` is the seller-set lower bound on net proceeds
+//! after the sell fee. The trade reverts if the user-received proceeds drop
+//! below it. `0` disables the check. Mirrors EVM's
+//! `_executeSell(..., minProceeds, ...)` after `_quoteFee`.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::sysvar;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
-use sooth_market::cpi::accounts::TransferToLock;
+use sooth_account_offsets::{
+    PROTOCOL_CONFIG_FEE_BPS_OFFSET, PROTOCOL_CONFIG_TOTAL_LEN as PROTOCOL_CONFIG_MIN_LEN,
+};
+use sooth_market::cpi::accounts::{TransferFeeToMarketPool, TransferToLock};
 use sooth_market::program::SoothMarket;
 
 use crate::error::SoothAmmError;
 use crate::events::PositionSold;
 use crate::math::{cost_delta, wad_to_usdc_floor, MathError};
 use crate::state::{AmmState, LockEntry, Market, Position};
-use crate::LOCK_DURATION_SECS;
+use crate::{LOCK_DURATION_SECS, SOOTH_LAUNCHPAD_PROGRAM_ID};
 
 /// Protocol-wide OUTCOME encoding. Mirrors `glossary.md`.
 const OUTCOME_NO: u8 = 0;
@@ -145,6 +149,27 @@ pub struct SellPositions<'info> {
     #[account(address = crate::USDC_MINT_DEVNET)]
     pub usdc_mint: Box<Account<'info, Mint>>,
 
+    /// `ProtocolConfig` PDA owned by `sooth_launchpad`; raw-parsed for fee_bps
+    /// to avoid a cyclic dependency on the launchpad crate.
+    /// CHECK: address-pinned via PDA seeds + owner constraint.
+    #[account(
+        seeds = [b"protocol_config"],
+        bump,
+        seeds::program = SOOTH_LAUNCHPAD_PROGRAM_ID,
+        owner = SOOTH_LAUNCHPAD_PROGRAM_ID,
+    )]
+    pub protocol_config: UncheckedAccount<'info>,
+
+    /// Per-market fee-pool token account credited by the sell fee CPI.
+    #[account(
+        mut,
+        seeds = [b"market_fee_pool", market.market_id.as_ref()],
+        bump,
+        seeds::program = SOOTH_LAUNCHPAD_PROGRAM_ID,
+        token::mint = usdc_mint,
+    )]
+    pub market_fee_pool: Box<Account<'info, TokenAccount>>,
+
     #[account(mut)]
     pub user: Signer<'info>,
 
@@ -229,22 +254,50 @@ pub fn handler(
     require!(cost_wad <= 0, SoothAmmError::MathOverflow);
     let proceeds_wad: u128 = cost_wad.unsigned_abs();
 
-    // ── 3. Slippage check vs min_proceeds_wad ───────────────────────────
+    // ── 3. Fee + slippage check vs net min_proceeds_wad ────────────────────
     //
-    // EVM analogue: `_executeSell` `require(netAmount >= minProceeds, …)`.
-    // Skip when caller passes 0 (matches `minProceeds == 0` in EVM).
+    // EVM analogue: `FeeRouter._quoteFee` then `_executeSell`
+    // `require(netAmount >= minProceeds, ...)`.
+    let fee_bps: u16 = {
+        let pc_ai = ctx.accounts.protocol_config.to_account_info();
+        let data = pc_ai.try_borrow_data()?;
+        require!(
+            data.len() >= PROTOCOL_CONFIG_MIN_LEN,
+            SoothAmmError::MathOverflow
+        );
+        u16::from_le_bytes(
+            data[PROTOCOL_CONFIG_FEE_BPS_OFFSET..PROTOCOL_CONFIG_FEE_BPS_OFFSET + 2]
+                .try_into()
+                .map_err(|_| error!(SoothAmmError::MathOverflow))?,
+        )
+    };
+    let fee_wad: u128 = proceeds_wad
+        .checked_mul(fee_bps as u128)
+        .map(|v| v / 10_000)
+        .ok_or(error!(SoothAmmError::MathOverflow))?;
+    let net_proceeds_wad = proceeds_wad.saturating_sub(fee_wad);
+
     if min_proceeds_wad > 0 {
         require!(
-            proceeds_wad >= min_proceeds_wad,
+            net_proceeds_wad >= min_proceeds_wad,
             SoothAmmError::SlippageExceeded
         );
     }
 
     // ── 4. WAD → USDC floor (REAL) ───────────────────────────────────────
     //
-    // Floor (not ceil) on outflow: see `math/wad.rs::wad_to_usdc_floor`
-    // for the solvency rationale.
-    let proceeds_usdc: u64 = wad_to_usdc_floor(proceeds_wad).map_err(map_math_err)?;
+    // Floor (not ceil) on outflow. Fee and net are floored independently; any
+    // base-unit residue stays in the market vault.
+    let proceeds_usdc_pre_split: u64 = wad_to_usdc_floor(proceeds_wad).map_err(map_math_err)?;
+    let fee_usdc: u64 = wad_to_usdc_floor(fee_wad).map_err(map_math_err)?;
+    let net_proceeds_usdc: u64 = wad_to_usdc_floor(net_proceeds_wad).map_err(map_math_err)?;
+    let vault_outflow_usdc = net_proceeds_usdc
+        .checked_add(fee_usdc)
+        .ok_or(error!(SoothAmmError::MathOverflow))?;
+    require!(
+        vault_outflow_usdc <= proceeds_usdc_pre_split,
+        SoothAmmError::MathOverflow
+    );
 
     // ── 5. State mutation (scoped — must drop borrows before the CPI) ────
     {
@@ -273,35 +326,50 @@ pub fn handler(
         }
     }
 
-    // ── 6. CPI into sooth_market::transfer_to_lock ───────────────────────
+    // ── 6. CPIs into sooth_market fee + lock helpers ─────────────────────
     //
     // The `vault_authority` PDA is owned by `sooth_market`, so the AMM can't
     // `invoke_signed` against it directly. We delegate the actual transfer
-    // (and the PDA signing) to the `transfer_to_lock` helper. See
-    // `sooth_market::instructions::transfer_to_lock` for the auth model.
-    if proceeds_usdc > 0 {
-        let cpi_accounts = TransferToLock {
+    // (and the PDA signing) to the market-owned helpers. CU envelope: the
+    // previous sell path was ~75-80k CU; the extra SPL fee CPI adds ~5k, so
+    // the expected path remains under the W2b <=100k target.
+    if fee_usdc > 0 {
+        let cpi_accounts = TransferFeeToMarketPool {
             market: ctx.accounts.market.to_account_info(),
+            market_vault: ctx.accounts.market_vault.to_account_info(),
+            market_fee_pool: ctx.accounts.market_fee_pool.to_account_info(),
             vault_authority: ctx.accounts.vault_authority.to_account_info(),
-            vault: ctx.accounts.market_vault.to_account_info(),
-            lock_vault: ctx.accounts.lock_vault.to_account_info(),
-            position: ctx.accounts.position.to_account_info(),
-            usdc_mint: ctx.accounts.usdc_mint.to_account_info(),
-            user: ctx.accounts.user.to_account_info(),
-            token_program: ctx.accounts.token_program.to_account_info(),
             instruction_sysvar: ctx.accounts.instruction_sysvar.to_account_info(),
+            token_program: ctx.accounts.token_program.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(
             ctx.accounts.sooth_market_program.to_account_info(),
             cpi_accounts,
         );
-        sooth_market::cpi::transfer_to_lock(cpi_ctx, proceeds_usdc)?;
+        sooth_market::cpi::transfer_fee_to_market_pool(cpi_ctx, fee_usdc)?;
     }
+    let cpi_accounts = TransferToLock {
+        market: ctx.accounts.market.to_account_info(),
+        vault_authority: ctx.accounts.vault_authority.to_account_info(),
+        vault: ctx.accounts.market_vault.to_account_info(),
+        lock_vault: ctx.accounts.lock_vault.to_account_info(),
+        position: ctx.accounts.position.to_account_info(),
+        usdc_mint: ctx.accounts.usdc_mint.to_account_info(),
+        user: ctx.accounts.user.to_account_info(),
+        token_program: ctx.accounts.token_program.to_account_info(),
+        instruction_sysvar: ctx.accounts.instruction_sysvar.to_account_info(),
+    };
+    let cpi_ctx = CpiContext::new(
+        ctx.accounts.sooth_market_program.to_account_info(),
+        cpi_accounts,
+    );
+    sooth_market::cpi::transfer_to_lock(cpi_ctx, net_proceeds_usdc)?;
+
     ctx.accounts.position.locked_cost_usdc = ctx
         .accounts
         .position
         .locked_cost_usdc
-        .saturating_sub(proceeds_usdc);
+        .saturating_sub(vault_outflow_usdc);
 
     // ── 7. Populate the freshly-init'd LockEntry ─────────────────────────
     let unlock_at = now
@@ -314,7 +382,7 @@ pub fn handler(
         let lock_entry = &mut ctx.accounts.lock_entry;
         lock_entry.user = user_key;
         lock_entry.market = market_key;
-        lock_entry.amount_usdc = proceeds_usdc;
+        lock_entry.amount_usdc = net_proceeds_usdc;
         lock_entry.unlock_at = unlock_at;
         lock_entry.nonce = nonce_at_init;
         lock_entry.bump = lock_entry_bump;
@@ -334,7 +402,7 @@ pub fn handler(
         outcome,
         shares_sold: delta_shares.unsigned_abs(),
         lock_entry: lock_entry_key,
-        amount_usdc: proceeds_usdc,
+        amount_usdc: net_proceeds_usdc,
         unlock_at,
     });
 
