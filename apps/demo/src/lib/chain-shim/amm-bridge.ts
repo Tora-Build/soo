@@ -47,8 +47,6 @@ import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
-  deriveBookMarketPda,
-  deriveBookPriceLadderPda,
   deriveUserUsdcAta,
   yesPriceWad,
   LN2_WAD,
@@ -85,6 +83,37 @@ export interface AmmBridgeCtx {
 // the constant so the EVM-shaped balance reads stay decoupled from
 // adapter.usdcMint queries.
 const USDC_DECIMALS = 6;
+
+function deriveBookMarketPda(
+  soothMarketPda: PublicKey,
+  programIds: SolanaChainAdapter["programIds"],
+): [PublicKey, number] {
+  if (!programIds.soothBook) {
+    throw new Error("amm-bridge: soothBook programId missing on adapter");
+  }
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("market"), soothMarketPda.toBuffer()],
+    programIds.soothBook,
+  );
+}
+
+function deriveBookPriceLadderPda(
+  authority: PublicKey,
+  distinctSeed: string,
+  programIds: SolanaChainAdapter["programIds"],
+): [PublicKey, number] {
+  if (!programIds.soothBook) {
+    throw new Error("amm-bridge: soothBook programId missing on adapter");
+  }
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("price_ladder"),
+      authority.toBuffer(),
+      Buffer.from(distinctSeed),
+    ],
+    programIds.soothBook,
+  );
+}
 
 // ─── Read dispatcher ────────────────────────────────────────────────────────
 
@@ -859,16 +888,14 @@ async function dispatchAddAdjudicator(
 }
 
 /**
- * Mint or merge a complete set of outcome tokens.
+ * Mint or merge an orderbook complete set.
  *
- *   mint:  N USDC in → N·WAD YES + N·WAD NO out
- *   merge: N·WAD YES + N·WAD NO in → N USDC out
+ *   mint:  N USDC in → N·WAD YES + N·WAD NO on OrderbookPosition
+ *   merge: N·WAD YES + N·WAD NO from OrderbookPosition → N USDC out
  *
- * Routes through `adapter.buildMintCompleteSet` /
- * `adapter.buildMergeCompleteSet` for ix construction and
- * `adapter.submit` for sign/send/confirm — same machinery the trade path
- * uses. Idempotent-ATA-create preIxs ride along on the mint path so
- * first-time minters don't need a separate account-bootstrap tx.
+ * Routes through `adapter.buildOrderbookMint` /
+ * `adapter.buildOrderbookMerge` for ix construction and `adapter.submit`
+ * for sign/send/confirm — same machinery the trade path uses.
  *
  * Args:
  *   args[0]: market reference — `0x<base58>` or `sol:<base58>`
@@ -896,8 +923,8 @@ async function dispatchCompleteSet(
   const userArgs = { user: `sol:${userBase58}`, amount };
   const req =
     kind === "mint"
-      ? await ctx.adapter.buildMintCompleteSet(marketRef, userArgs)
-      : await ctx.adapter.buildMergeCompleteSet(marketRef, userArgs);
+      ? await ctx.adapter.buildOrderbookMint(marketRef, userArgs)
+      : await ctx.adapter.buildOrderbookMerge(marketRef, userArgs);
   return submitAndSynth(ctx.adapter, req, signer);
 }
 

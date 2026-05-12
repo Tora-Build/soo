@@ -279,84 +279,37 @@ export function deriveAdjudicatorPda(marketPda: PublicKey): PublicKey {
     adjudicatorProgramId,
   )[0];
 }
-export function deriveBookMarketPda(soothMarketPda: PublicKey): PublicKey {
+export function deriveMarketBookPda(marketId: Buffer): PublicKey {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), soothMarketPda.toBuffer()],
+    [Buffer.from("market_book"), marketId],
     bookProgramId,
   )[0];
 }
-export function deriveBookEscrowAuthorityPda(
-  bookMarketPda: PublicKey,
+export function deriveBookSidePda(
+  marketId: Buffer,
+  side: 0 | 1,
+  tick: number,
+): PublicKey {
+  const tickBuf = Buffer.alloc(2);
+  tickBuf.writeUInt16LE(tick, 0);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("book_side"), marketId, Buffer.from([side]), tickBuf],
+    bookProgramId,
+  )[0];
+}
+export function deriveOrderbookPositionPda(
+  marketId: Buffer,
+  user: PublicKey,
 ): PublicKey {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("escrow"), bookMarketPda.toBuffer()],
-    bookProgramId,
+    [Buffer.from("orderbook_position"), marketId, user.toBuffer()],
+    marketProgramId,
   )[0];
 }
-export function deriveBookFundingPda(bookMarketPda: PublicKey): PublicKey {
+export function deriveMarketFeePoolPda(marketId: Buffer): PublicKey {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("funding"), bookMarketPda.toBuffer()],
-    bookProgramId,
-  )[0];
-}
-export function deriveBookMarketLiquiditiesPda(
-  bookMarketPda: PublicKey,
-): PublicKey {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("liquidities"), bookMarketPda.toBuffer()],
-    bookProgramId,
-  )[0];
-}
-export function deriveBookMatchingQueuePda(
-  bookMarketPda: PublicKey,
-): PublicKey {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("matching"), bookMarketPda.toBuffer()],
-    bookProgramId,
-  )[0];
-}
-export function deriveBookOrderRequestQueuePda(
-  bookMarketPda: PublicKey,
-): PublicKey {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("order_request"), bookMarketPda.toBuffer()],
-    bookProgramId,
-  )[0];
-}
-export function deriveBookMarketOutcomePda(
-  bookMarketPda: PublicKey,
-  outcomeIndex: number,
-): PublicKey {
-  return PublicKey.findProgramAddressSync(
-    [bookMarketPda.toBuffer(), Buffer.from(String(outcomeIndex))],
-    bookProgramId,
-  )[0];
-}
-export function deriveBookPriceLadderPda(
-  authority: PublicKey,
-  distinctSeed: string,
-): PublicKey {
-  return PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("price_ladder"),
-      authority.toBuffer(),
-      Buffer.from(distinctSeed),
-    ],
-    bookProgramId,
-  )[0];
-}
-export function deriveBookMarketTypePda(name: string): PublicKey {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("market_type"), Buffer.from(name)],
-    bookProgramId,
-  )[0];
-}
-export function deriveBookAuthorisedOperatorsPda(
-  operatorType: "ADMIN" | "MARKET" | "CRANK",
-): PublicKey {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("authorised_operators"), Buffer.from(operatorType)],
-    bookProgramId,
+    [Buffer.from("market_fee_pool"), marketId],
+    launchpadProgramId,
   )[0];
 }
 
@@ -968,16 +921,7 @@ export interface FreshOrderbookMarketSetup {
   yesMint: PublicKey;
   noMint: PublicKey;
   bookMarketPda: PublicKey;
-  escrowAuthority: PublicKey;
-  escrowYesAta: PublicKey;
-  escrowNoAta: PublicKey;
-  marketLiquidities: PublicKey;
-  matchingQueue: PublicKey;
-  orderRequestQueue: PublicKey;
-  outcomeYesPda: PublicKey;
-  outcomeNoPda: PublicKey;
-  priceLadderPda: PublicKey;
-  marketTypePda: PublicKey;
+  marketFeePool: PublicKey;
 }
 
 export async function createSeededOrderbookMarketViaAdapter(args: {
@@ -1003,142 +947,10 @@ export async function createSeededOrderbookMarketViaAdapter(args: {
       deadline: args.deadline ?? defaultDeadline,
     }));
 
-  const programs = makePrograms(args.conn, args.creator);
-  const priceLadderPda = readE2eEnvPublicKey(
-    "VITE_SOOTH_BOOK_PRICE_LADDER_PDA",
-  );
-  const marketTypePda = readE2eEnvPublicKey(
-    "VITE_SOOTH_BOOK_MARKET_TYPE_PDA",
-  );
-  const marketOperatorsPda = deriveBookAuthorisedOperatorsPda("MARKET");
   const yesMint = deriveYesMintPda(sm.marketId);
   const noMint = deriveNoMintPda(sm.marketId);
-  const bookMarketPda = deriveBookMarketPda(sm.marketPda);
-  const escrowAuthority = deriveBookEscrowAuthorityPda(bookMarketPda);
-  const escrowYesAta = getAssociatedTokenAddressSync(
-    yesMint,
-    escrowAuthority,
-    true,
-  );
-  const escrowNoAta = getAssociatedTokenAddressSync(
-    noMint,
-    escrowAuthority,
-    true,
-  );
-  const funding = deriveBookFundingPda(bookMarketPda);
-  const marketLiquidities = deriveBookMarketLiquiditiesPda(bookMarketPda);
-  const matchingQueue = deriveBookMatchingQueuePda(bookMarketPda);
-  const orderRequestQueue = deriveBookOrderRequestQueuePda(bookMarketPda);
-  const outcomeYesPda = deriveBookMarketOutcomePda(bookMarketPda, 0);
-  const outcomeNoPda = deriveBookMarketOutcomePda(bookMarketPda, 1);
-  const bookMarketInfo = await args.conn.getAccountInfo(bookMarketPda);
-
-  if (!bookMarketInfo) {
-    const marketLockTimestamp =
-      args.marketLockTimestamp ?? args.deadline ?? defaultDeadline;
-    const eventStartTimestamp =
-      args.eventStartTimestamp ?? marketLockTimestamp;
-    const bookTitle =
-      args.bookTitle ?? args.question ?? `Orderbook ${Date.now()}`;
-
-    await (programs.book.methods as any)
-      .createMarket(
-        sm.marketPda,
-        sm.marketPda,
-        null,
-        null,
-        bookTitle,
-        3,
-        bn(marketLockTimestamp),
-        bn(eventStartTimestamp),
-        { none: {} },
-      )
-      .accounts({
-        existingMarket: null,
-        market: bookMarketPda,
-        escrow: escrowAuthority,
-        marketType: marketTypePda,
-        funding,
-        rent: SYSVAR_RENT_PUBKEY,
-        mint: args.usdcMint,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        marketOperator: args.creator.publicKey,
-        authorisedOperators: marketOperatorsPda,
-      })
-      .preInstructions([
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-      ])
-      .signers([args.creator])
-      .rpc();
-
-    // Current MarketOutcome accounts reserve 320 inline-price slots; the
-    // 999-tick ladder is attached through the singleton PriceLadder account.
-    await (programs.book.methods as any)
-      .initializeMarketOutcome("YES")
-      .accounts({
-        systemProgram: SystemProgram.programId,
-        outcome: outcomeYesPda,
-        priceLadder: priceLadderPda,
-        market: bookMarketPda,
-        marketOperator: args.creator.publicKey,
-        authorisedOperators: marketOperatorsPda,
-      })
-      .signers([args.creator])
-      .rpc();
-
-    await (programs.book.methods as any)
-      .initializeMarketOutcome("NO")
-      .accounts({
-        systemProgram: SystemProgram.programId,
-        outcome: outcomeNoPda,
-        priceLadder: priceLadderPda,
-        market: bookMarketPda,
-        marketOperator: args.creator.publicKey,
-        authorisedOperators: marketOperatorsPda,
-      })
-      .signers([args.creator])
-      .rpc();
-
-    await (programs.book.methods as any)
-      .openMarket()
-      .accounts({
-        market: bookMarketPda,
-        liquidities: marketLiquidities,
-        matchingQueue,
-        orderRequestQueue,
-        marketOperator: args.creator.publicKey,
-        authorisedOperators: marketOperatorsPda,
-        systemProgram: SystemProgram.programId,
-      })
-      .preInstructions([
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
-      ])
-      .signers([args.creator])
-      .rpc();
-  }
-
-  const escrowAtaTx = new Transaction().add(
-    createAssociatedTokenAccountIdempotentInstruction(
-      args.creator.publicKey,
-      escrowYesAta,
-      escrowAuthority,
-      yesMint,
-      TOKEN_PROGRAM_ID,
-      ASSOCIATED_TOKEN_PROGRAM_ID,
-    ),
-    createAssociatedTokenAccountIdempotentInstruction(
-      args.creator.publicKey,
-      escrowNoAta,
-      escrowAuthority,
-      noMint,
-      TOKEN_PROGRAM_ID,
-      ASSOCIATED_TOKEN_PROGRAM_ID,
-    ),
-  );
-  await sendAndConfirmTransaction(args.conn, escrowAtaTx, [args.creator], {
-    commitment: "confirmed",
-  });
+  const bookMarketPda = deriveMarketBookPda(sm.marketId);
+  const marketFeePool = deriveMarketFeePoolPda(sm.marketId);
 
   return {
     soothMarketPda: sm.marketPda,
@@ -1146,16 +958,7 @@ export async function createSeededOrderbookMarketViaAdapter(args: {
     yesMint,
     noMint,
     bookMarketPda,
-    escrowAuthority,
-    escrowYesAta,
-    escrowNoAta,
-    marketLiquidities,
-    matchingQueue,
-    orderRequestQueue,
-    outcomeYesPda,
-    outcomeNoPda,
-    priceLadderPda,
-    marketTypePda,
+    marketFeePool,
   };
 }
 

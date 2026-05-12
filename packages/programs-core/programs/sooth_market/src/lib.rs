@@ -134,6 +134,16 @@ pub mod sooth_market {
         instructions::mint_complete_set::handler(ctx, amount)
     }
 
+    /// Mint a complete set into the orderbook-side position ledger — pull
+    /// USDC from the user and credit WAD-scaled YES + NO shares on
+    /// `OrderbookPosition`.
+    pub fn mint_complete_set_for_orderbook(
+        ctx: Context<MintCompleteSetForOrderbook>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::mint_complete_set_for_orderbook::handler(ctx, amount)
+    }
+
     /// Split-authority complete-set mint for CPI escrow flows — pull
     /// `amount` USDC from a payer and mint YES + NO into token accounts owned
     /// by a separate destination authority.
@@ -149,6 +159,15 @@ pub mod sooth_market {
     /// (`OrderEngine.sol:696-712`).
     pub fn merge_complete_set(ctx: Context<MergeCompleteSet>, amount: u64) -> Result<()> {
         instructions::merge_complete_set::handler(ctx, amount)
+    }
+
+    /// Merge an orderbook complete set — burn equal WAD-scaled YES + NO
+    /// shares from `OrderbookPosition` and return USDC from the market vault.
+    pub fn merge_complete_set_for_orderbook(
+        ctx: Context<MergeCompleteSetForOrderbook>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::merge_complete_set_for_orderbook::handler(ctx, amount)
     }
 
     /// Lock the market for resolution (LIVE → LOCKED). EVM analogue:
@@ -171,6 +190,12 @@ pub mod sooth_market {
     /// 0.5 for both on INVALID).
     pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
         instructions::redeem::handler(ctx)
+    }
+
+    /// Redeem the orderbook-side position ledger after settlement, then
+    /// close the `OrderbookPosition` PDA and refund rent to the user.
+    pub fn redeem_orderbook(ctx: Context<RedeemOrderbook>) -> Result<()> {
+        instructions::redeem_orderbook::handler(ctx)
     }
 
     /// Split-destination redemption for CPI escrow flows — burn requested

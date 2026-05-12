@@ -18,9 +18,7 @@ export type { SoothErrorInit, SoothErrorKind } from "./errors.js";
 export {
   deriveAdjudicatorPda,
   deriveAmmStatePda,
-  deriveBookMarketPda,
-  deriveBookOrderRequestQueuePda,
-  deriveBookPriceLadderPda,
+  bookSidePda,
   deriveLockAuthorityPda,
   deriveLockEntryPda,
   deriveLockVaultAta,
@@ -32,6 +30,12 @@ export {
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
   deriveYesMintPda,
+  marketBookPda,
+  marketFeePoolPda,
+  orderbookPositionPda,
+  SOOTH_BOOK_PROGRAM_ID,
+  SOOTH_LAUNCHPAD_PROGRAM_ID,
+  SOOTH_MARKET_PROGRAM_ID,
   type MarketId,
   type ProgramIds,
 } from "./pdas.js";

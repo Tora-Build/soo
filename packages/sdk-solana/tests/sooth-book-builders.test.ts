@@ -16,17 +16,6 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import { SolanaChainAdapter } from "../src/adapter.js";
 import { soothBookIdl } from "../src/anchor/index.js";
 import {
-  deriveBookEscrowPda,
-  deriveBookMarketLiquiditiesPda,
-  deriveBookMarketMatchingPoolPda,
-  deriveBookMarketMatchingQueuePda,
-  deriveBookMarketOutcomePda,
-  deriveBookMarketPda,
-  deriveBookMarketPositionPda,
-  deriveBookOrderPda,
-  deriveBookOrderRequestOrderPda,
-  deriveBookOrderRequestQueuePda,
-  deriveBookTradePda,
   deriveFeePoolAuthorityPda,
   deriveFeePoolVaultAta,
   deriveMarketVaultAta,
@@ -48,10 +37,163 @@ type BuiltMeta = {
   [key: string]: unknown;
 };
 
+type BookPrograms = { soothBook: PublicKey };
+
+function u64Bytes(value: bigint, name: string): Buffer {
+  if (value < 0n || value > 0xffffffffffffffffn) {
+    throw new Error(`${name} must fit in u64`);
+  }
+  const out = Buffer.alloc(8);
+  out.writeBigUInt64LE(value, 0);
+  return out;
+}
+
+function u128Bytes(value: bigint, name: string): Buffer {
+  if (value < 0n || value > 0xffffffffffffffffffffffffffffffffn) {
+    throw new Error(`${name} must fit in u128`);
+  }
+  const out = Buffer.alloc(16);
+  out.writeBigUInt64LE(value & 0xffffffffffffffffn, 0);
+  out.writeBigUInt64LE(value >> 64n, 8);
+  return out;
+}
+
+function seed16Bytes(seed: Uint8Array, name: string): Buffer {
+  if (seed.length !== 16) {
+    throw new Error(`${name} must be exactly 16 bytes`);
+  }
+  return Buffer.from(seed);
+}
+
+function deriveBookMarketPda(
+  soothMarketPda: PublicKey,
+  programs: BookPrograms,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("market"), soothMarketPda.toBuffer()],
+    programs.soothBook,
+  );
+}
+
+function deriveBookEscrowPda(
+  bookMarketPda: PublicKey,
+  programs: BookPrograms,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("escrow"), bookMarketPda.toBuffer()],
+    programs.soothBook,
+  );
+}
+
+function deriveBookMarketLiquiditiesPda(
+  bookMarketPda: PublicKey,
+  programs: BookPrograms,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("liquidities"), bookMarketPda.toBuffer()],
+    programs.soothBook,
+  );
+}
+
+function deriveBookMarketMatchingQueuePda(
+  bookMarketPda: PublicKey,
+  programs: BookPrograms,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("matching"), bookMarketPda.toBuffer()],
+    programs.soothBook,
+  );
+}
+
+function deriveBookOrderRequestQueuePda(
+  bookMarketPda: PublicKey,
+  programs: BookPrograms,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("order_request"), bookMarketPda.toBuffer()],
+    programs.soothBook,
+  );
+}
+
+function deriveBookMarketPositionPda(
+  bookMarketPda: PublicKey,
+  user: PublicKey,
+  programs: BookPrograms,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("position"), bookMarketPda.toBuffer(), user.toBuffer()],
+    programs.soothBook,
+  );
+}
+
+function deriveBookOrderPda(
+  bookMarketPda: PublicKey,
+  distinctSeed: bigint,
+  programs: BookPrograms,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("order"), bookMarketPda.toBuffer(), u64Bytes(distinctSeed, "distinctSeed")],
+    programs.soothBook,
+  );
+}
+
+function deriveBookOrderRequestOrderPda(
+  bookMarketPda: PublicKey,
+  purchaser: PublicKey,
+  distinctSeed: Uint8Array,
+  programs: BookPrograms,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [bookMarketPda.toBuffer(), purchaser.toBuffer(), seed16Bytes(distinctSeed, "distinctSeed")],
+    programs.soothBook,
+  );
+}
+
+function deriveBookMarketOutcomePda(
+  bookMarketPda: PublicKey,
+  outcomeIndex: number,
+  programs: BookPrograms,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [bookMarketPda.toBuffer(), Buffer.from(String(outcomeIndex))],
+    programs.soothBook,
+  );
+}
+
+function deriveBookMarketMatchingPoolPda(
+  bookMarketPda: PublicKey,
+  outcomeIndex: number,
+  expectedPrice: bigint,
+  forOutcome: boolean,
+  programs: BookPrograms,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [
+      bookMarketPda.toBuffer(),
+      Buffer.from(String(outcomeIndex)),
+      Buffer.from("-"),
+      u128Bytes(expectedPrice, "expectedPrice"),
+      Buffer.from(forOutcome ? "true" : "false"),
+    ],
+    programs.soothBook,
+  );
+}
+
+function deriveBookTradePda(
+  orderPda: PublicKey,
+  tradeSeed: Uint8Array,
+  programs: BookPrograms,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [orderPda.toBuffer(), seed16Bytes(tradeSeed, "tradeSeed")],
+    programs.soothBook,
+  );
+}
+
 describe("sooth_book builder request shapes", () => {
   let smoke: SmokeContext;
   let adapter: SolanaChainAdapter;
-  let bookPrograms: { soothBook: PublicKey };
+  let bookPrograms: BookPrograms;
   let bookMarketPda: PublicKey;
 
   beforeAll(async () => {

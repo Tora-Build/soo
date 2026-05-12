@@ -49,13 +49,23 @@ import {
   type Connection as SolanaConnection,
 } from "@solana/web3.js";
 import { AnchorProvider, BN, Program, type Idl } from "@coral-xyz/anchor";
-import {
-  deriveBookMarketPda,
-  soothBookIdl,
-  type SolanaChainAdapter,
-} from "@sooth/sdk-solana";
+import { soothBookIdl, type SolanaChainAdapter } from "@sooth/sdk-solana";
 
 const PRICE_TICK_WAD = 10n ** 15n; // W4 default ladder step
+
+function deriveBookMarketPda(
+  soothMarketPda: PublicKey,
+  adapter: SolanaChainAdapter,
+): [PublicKey, number] {
+  const programId = adapter.programIds.soothBook;
+  if (!programId) {
+    throw new Error("orderbook-reads: soothBook programId missing on adapter");
+  }
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("market"), soothMarketPda.toBuffer()],
+    programId,
+  );
+}
 
 // Anchor account discriminator + struct field offsets for `Order`:
 //   0..8     discriminator
@@ -181,7 +191,7 @@ export async function fetchUserOpenOrders(
   try {
     const tail = soothMarketRef.replace(/^sol:/, "");
     const soothMarketPda = new PublicKey(tail);
-    [bookMarketPda] = deriveBookMarketPda(soothMarketPda, adapter.programIds);
+    [bookMarketPda] = deriveBookMarketPda(soothMarketPda, adapter);
   } catch {
     return [];
   }

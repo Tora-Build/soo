@@ -120,6 +120,17 @@ pub const SOOTH_MARKET_CREDIT_SHARES_FOR_ORDER_DISCRIMINATOR: [u8; 8] =
 pub const SOOTH_MARKET_DEBIT_SHARES_FOR_ORDER_BEFORE_DEADLINE_DISCRIMINATOR: [u8; 8] =
     [64, 239, 77, 172, 202, 79, 175, 254];
 
+/// `sooth_market::mint_complete_set_for_orderbook`.
+pub const MINT_COMPLETE_SET_FOR_ORDERBOOK_DISCRIMINATOR: [u8; 8] =
+    [177, 37, 18, 51, 114, 186, 109, 111];
+
+/// `sooth_market::merge_complete_set_for_orderbook`.
+pub const MERGE_COMPLETE_SET_FOR_ORDERBOOK_DISCRIMINATOR: [u8; 8] =
+    [165, 89, 106, 228, 206, 10, 32, 52];
+
+/// `sooth_market::redeem_orderbook`.
+pub const REDEEM_ORDERBOOK_DISCRIMINATOR: [u8; 8] = [214, 142, 100, 85, 174, 200, 192, 15];
+
 // ── sooth_launchpad-owned fee-pool ix discriminators ────────────────────
 
 /// `sooth_launchpad::init_market_fee_pool`.

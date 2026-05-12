@@ -15,7 +15,8 @@ use sooth_market::instructions::orderbook_common::require_before_deadline_at;
 use sooth_market::state::{Market, MarketLifecycle};
 use sooth_market::{SOOTH_AMM_PROGRAM_ID, SOOTH_BOOK_PROGRAM_ID};
 use sooth_protocol_types::{
-    SOOTH_LAUNCHPAD_INIT_MARKET_FEE_POOL_DISCRIMINATOR,
+    MERGE_COMPLETE_SET_FOR_ORDERBOOK_DISCRIMINATOR, MINT_COMPLETE_SET_FOR_ORDERBOOK_DISCRIMINATOR,
+    REDEEM_ORDERBOOK_DISCRIMINATOR, SOOTH_LAUNCHPAD_INIT_MARKET_FEE_POOL_DISCRIMINATOR,
     SOOTH_MARKET_CREDIT_SHARES_FOR_ORDER_DISCRIMINATOR,
     SOOTH_MARKET_DEBIT_SHARES_FOR_ORDER_BEFORE_DEADLINE_DISCRIMINATOR,
     SOOTH_MARKET_DEPOSIT_FOR_ORDER_DISCRIMINATOR, SOOTH_MARKET_FILL_ORDER_DISCRIMINATOR,
@@ -119,6 +120,18 @@ fn sooth_book_cpi_gate_discriminators_match_anchor_hashes() {
     assert_eq!(
         SOOTH_LAUNCHPAD_INIT_MARKET_FEE_POOL_DISCRIMINATOR,
         anchor_disc("init_market_fee_pool")
+    );
+    assert_eq!(
+        MINT_COMPLETE_SET_FOR_ORDERBOOK_DISCRIMINATOR,
+        anchor_disc("mint_complete_set_for_orderbook")
+    );
+    assert_eq!(
+        MERGE_COMPLETE_SET_FOR_ORDERBOOK_DISCRIMINATOR,
+        anchor_disc("merge_complete_set_for_orderbook")
+    );
+    assert_eq!(
+        REDEEM_ORDERBOOK_DISCRIMINATOR,
+        anchor_disc("redeem_orderbook")
     );
     assert_eq!(
         TRANSFER_FEE_TO_MARKET_POOL_FROM_BOOK_DISCRIMINATOR,
