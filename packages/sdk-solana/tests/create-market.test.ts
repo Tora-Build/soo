@@ -59,6 +59,7 @@ import {
   deriveProtocolConfigPda,
   deriveVaultAuthorityPda,
   deriveYesMintPda,
+  SOOTH_MARKET_PROGRAM_ID,
   type ProgramIds,
 } from "../src/pdas.js";
 import { WAD } from "../src/math/lmsr.js";
@@ -66,9 +67,13 @@ import { SolanaChainAdapter } from "../src/adapter.js";
 import { encodePubkeyRef } from "../src/refs.js";
 
 import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { resolveDeployDir } from "./fixtures/setup.js";
 
 const SOOTH_AMM_ID = new PublicKey(soothAmmIdl.address);
-const SOOTH_MARKET_ID = new PublicKey(soothMarketIdl.address);
+const SOOTH_MARKET_ID =
+  soothMarketIdl.address && soothMarketIdl.address.length > 0
+    ? new PublicKey(soothMarketIdl.address)
+    : SOOTH_MARKET_PROGRAM_ID;
 const SOOTH_LAUNCHPAD_ID = new PublicKey(soothLaunchpadIdl.address);
 const USDC_MINT_DEVNET = new PublicKey(
   "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
@@ -80,16 +85,10 @@ const PROGRAMS: ProgramIds = {
   soothLaunchpad: SOOTH_LAUNCHPAD_ID,
 };
 
-const REPO_ROOT = resolve(
-  resolve(new URL("..", import.meta.url).pathname),
-  "..",
-  "..",
-);
-
 describe("sooth_launchpad::create_market end-to-end", () => {
   it("creates Market + outcome mints + vaults + AmmState in one tx", async () => {
     // ─── 0. Boot bankrun with all three programs ──────────────────────
-    const soDir = resolve(REPO_ROOT, "target", "deploy");
+    const soDir = resolveDeployDir();
     process.env.BPF_OUT_DIR = soDir;
     for (const so of [
       "sooth_amm.so",
@@ -159,7 +158,10 @@ describe("sooth_launchpad::create_market end-to-end", () => {
       commitment: "confirmed",
       preflightCommitment: "confirmed",
     });
-    const marketProgram = new Program(soothMarketIdl as Idl, provider);
+    const marketProgram = new Program(
+      { ...soothMarketIdl, address: SOOTH_MARKET_ID.toBase58() } as Idl,
+      provider,
+    );
     const launchpadProgram = new Program(soothLaunchpadIdl as Idl, provider);
 
     // ─── 4. Adjudicator allowlist bootstrap ──────────────────────────

@@ -18,6 +18,7 @@ import {
   Keypair,
   PublicKey,
   Transaction,
+  TransactionInstruction,
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
   SYSVAR_INSTRUCTIONS_PUBKEY,
@@ -31,6 +32,11 @@ import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import anchor from "@coral-xyz/anchor";
+import {
+  SOOTH_MARKET_PROGRAM_ID,
+  SolanaChainAdapter,
+  type SignerRef,
+} from "@sooth/sdk-solana";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -66,7 +72,10 @@ function programIdOrFallback(idlAddress: unknown, fallback: PublicKey): PublicKe
 }
 
 export const ammProgramId = new PublicKey(ammIdl.address);
-export const marketProgramId = new PublicKey(marketIdl.address);
+export const marketProgramId = programIdOrFallback(
+  marketIdl.address,
+  SOOTH_MARKET_PROGRAM_ID,
+);
 export const launchpadProgramId = new PublicKey(launchpadIdl.address);
 export const adjudicatorProgramId = new PublicKey(adjudicatorIdl.address);
 export const bookProgramId = programIdOrFallback(
@@ -74,6 +83,7 @@ export const bookProgramId = programIdOrFallback(
   SOOTH_BOOK_DEFAULT_PROGRAM_ID,
 );
 const bookProgramIdl = { ...bookIdl, address: bookProgramId.toBase58() };
+const marketProgramIdl = { ...marketIdl, address: marketProgramId.toBase58() };
 
 // ─── Test wallet keypair ────────────────────────────────────────────────
 //
@@ -178,7 +188,7 @@ export function makePrograms(
   const provider = makeProvider(conn, signer);
   return {
     amm: new anchor.Program(ammIdl, provider),
-    market: new anchor.Program(marketIdl, provider),
+    market: new anchor.Program(marketProgramIdl, provider),
     launchpad: new anchor.Program(launchpadIdl, provider),
     adjudicator: new anchor.Program(adjudicatorIdl, provider),
     book: new anchor.Program(bookProgramIdl, provider),
@@ -960,6 +970,158 @@ export async function createSeededOrderbookMarketViaAdapter(args: {
     bookMarketPda,
     marketFeePool,
   };
+}
+
+export function makeSignerRef(signer: Keypair): SignerRef {
+  return {
+    publicKey: signer.publicKey.toBase58(),
+    signTransaction: async (txBytes: Uint8Array) => {
+      const tx = Transaction.from(txBytes);
+      tx.partialSign(signer);
+      return tx.serialize({
+        verifySignatures: false,
+        requireAllSignatures: false,
+      });
+    },
+  };
+}
+
+export function makeSolanaAdapter(args: {
+  conn: Connection;
+  usdcMint: PublicKey;
+}): SolanaChainAdapter {
+  return new SolanaChainAdapter({
+    node: {
+      id: "demo-e2e",
+      chainKind: "solana",
+      chainId: "localnet",
+      rpcUrl: process.env.SOLANA_RPC_URL ?? "http://127.0.0.1:8899",
+    },
+    programIds: {
+      soothAmm: ammProgramId,
+      soothMarket: marketProgramId,
+      soothLaunchpad: launchpadProgramId,
+      soothAdjudicator: adjudicatorProgramId,
+      soothBook: bookProgramId,
+    },
+    usdcMint: args.usdcMint,
+    connection: args.conn,
+  });
+}
+
+export async function forceAmmGraduatedViaSurfpool(args: {
+  conn: Connection;
+  marketId: Buffer;
+}): Promise<void> {
+  const ammStatePda = deriveAmmStatePda(args.marketId);
+  const info = await args.conn.getAccountInfo(ammStatePda);
+  if (!info) throw new Error(`AmmState missing at ${ammStatePda.toBase58()}`);
+  const data = Buffer.from(info.data);
+  if (data[144] === 1) return;
+  data.writeUInt8(1, 144);
+  const rpcUrl = process.env.SOLANA_RPC_URL ?? "http://127.0.0.1:8899";
+  const res = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "surfnet_setAccount",
+      params: [
+        ammStatePda.toBase58(),
+        {
+          lamports: info.lamports,
+          owner: info.owner.toBase58(),
+          data: data.toString("hex"),
+          executable: info.executable,
+        },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`surfnet_setAccount: HTTP ${res.status}`);
+  const json = (await res.json()) as { error?: { message?: string } };
+  if (json.error) {
+    throw new Error(`surfnet_setAccount failed: ${json.error.message}`);
+  }
+}
+
+export async function initMarketFeePoolViaAdapter(args: {
+  conn: Connection;
+  signer: Keypair;
+  usdcMint: PublicKey;
+  marketPda: PublicKey;
+  marketId: Buffer;
+}): Promise<void> {
+  const marketFeePool = deriveMarketFeePoolPda(args.marketId);
+  if (await args.conn.getAccountInfo(marketFeePool)) return;
+  const ix = new TransactionInstruction({
+    programId: launchpadProgramId,
+    keys: [
+      { pubkey: args.marketPda, isSigner: false, isWritable: false },
+      {
+        pubkey: deriveFeePoolAuthorityPda(),
+        isSigner: false,
+        isWritable: false,
+      },
+      { pubkey: args.usdcMint, isSigner: false, isWritable: false },
+      { pubkey: marketFeePool, isSigner: false, isWritable: true },
+      { pubkey: args.signer.publicKey, isSigner: true, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from("3313fb78ab5b8a73", "hex"),
+  });
+  await sendAndConfirmTransaction(args.conn, new Transaction().add(ix), [
+    args.signer,
+  ]);
+}
+
+export async function placeOrderbookBuyViaAdapter(args: {
+  conn: Connection;
+  signer: Keypair;
+  usdcMint: PublicKey;
+  marketPda: PublicKey;
+  side: 0 | 1;
+  tick: number;
+  amount: bigint;
+  escrow?: boolean;
+  matchLimit?: number;
+}): Promise<string> {
+  const adapter = makeSolanaAdapter({ conn: args.conn, usdcMint: args.usdcMint });
+  const req = await adapter.buildOrderbookBuy(`sol:${args.marketPda.toBase58()}`, {
+    side: args.side,
+    tick: args.tick,
+    amount: args.amount,
+    escrow: args.escrow ?? false,
+    matchLimit: args.matchLimit ?? 3,
+    user: `sol:${args.signer.publicKey.toBase58()}`,
+  } as never);
+  const receipt = await adapter.submit(req, makeSignerRef(args.signer));
+  return receipt.txId;
+}
+
+export async function cancelOrderbookViaAdapter(args: {
+  conn: Connection;
+  signer: Keypair;
+  usdcMint: PublicKey;
+  marketPda: PublicKey;
+  side: 0 | 1;
+  tick: number;
+  byId?: bigint;
+}): Promise<string> {
+  const adapter = makeSolanaAdapter({ conn: args.conn, usdcMint: args.usdcMint });
+  const req = await adapter.buildOrderbookCancel(
+    `sol:${args.marketPda.toBase58()}`,
+    args.side,
+    args.tick,
+    {
+      user: `sol:${args.signer.publicKey.toBase58()}`,
+      byId: args.byId,
+    },
+  );
+  const receipt = await adapter.submit(req, makeSignerRef(args.signer));
+  return receipt.txId;
 }
 
 export async function createMarketViaAdapter(args: {

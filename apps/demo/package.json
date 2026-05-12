@@ -16,8 +16,9 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
+    "e2e": "node scripts/run-playwright-e2e.mjs",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "node scripts/run-playwright-e2e.mjs"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

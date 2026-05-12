@@ -70,6 +70,24 @@ export {
 // instances if they need read paths the adapter doesn't expose.
 export { soothAmmIdl, soothMarketIdl, soothBookIdl } from "./anchor/index.js";
 
+export {
+  DEFAULT_MATCH_LIMIT_PER_TX,
+  buildOrderbookBuyMultiTx,
+  planMatch,
+  simulateMatch,
+} from "./orderbook/matching-driver.js";
+export type {
+  BookSideSnapshot,
+  BuildOrderbookBuyTxTaker,
+  MatchSimulation,
+  MarketBookSnapshot,
+  SoothSolanaClient,
+} from "./orderbook/matching-driver.js";
+export {
+  classifyError as classifyOrderbookError,
+  type ClassifiedError as ClassifiedOrderbookError,
+} from "./orderbook/error-classifier.js";
+
 // VENDORED chain-adapter types — see top of `./types.ts` for the Phase A
 // swap-out comment.
 export * from "./types.js";

@@ -121,6 +121,9 @@ const {
   deriveProtocolConfigPda,
   deriveVaultAuthorityPda,
   deriveYesMintPda,
+  SOOTH_BOOK_PROGRAM_ID,
+  SOOTH_LAUNCHPAD_PROGRAM_ID,
+  SOOTH_MARKET_PROGRAM_ID,
 } = await import(sdkUrl("pdas.js"));
 const { WAD } = await import(sdkUrl("math/lmsr.js"));
 
@@ -129,13 +132,27 @@ function programIdOrFallback(idlAddress, fallback) {
 }
 
 const SOOTH_AMM_ID = new PublicKey(soothAmmIdl.address);
-const SOOTH_MARKET_ID = new PublicKey(soothMarketIdl.address);
-const SOOTH_LAUNCHPAD_ID = new PublicKey(soothLaunchpadIdl.address);
+const SOOTH_MARKET_ID = programIdOrFallback(
+  soothMarketIdl.address,
+  SOOTH_MARKET_PROGRAM_ID,
+);
+const SOOTH_LAUNCHPAD_ID = programIdOrFallback(
+  soothLaunchpadIdl.address,
+  SOOTH_LAUNCHPAD_PROGRAM_ID,
+);
 const SOOTH_ADJUDICATOR_ID = new PublicKey(soothAdjudicatorIdl.address);
 const SOOTH_BOOK_ID = programIdOrFallback(
   soothBookIdl.address,
-  new PublicKey("DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X"),
+  SOOTH_BOOK_PROGRAM_ID,
 );
+const soothMarketProgramIdl = {
+  ...soothMarketIdl,
+  address: SOOTH_MARKET_ID.toBase58(),
+};
+const soothLaunchpadProgramIdl = {
+  ...soothLaunchpadIdl,
+  address: SOOTH_LAUNCHPAD_ID.toBase58(),
+};
 const soothBookProgramIdl = {
   ...soothBookIdl,
   address: SOOTH_BOOK_ID.toBase58(),
@@ -447,8 +464,8 @@ async function init() {
     preflightCommitment: "confirmed",
   });
 
-  const marketProgram = new Program(soothMarketIdl, provider);
-  const launchpadProgram = new Program(soothLaunchpadIdl, provider);
+  const marketProgram = new Program(soothMarketProgramIdl, provider);
+  const launchpadProgram = new Program(soothLaunchpadProgramIdl, provider);
   const adjudicatorProgram = new Program(soothAdjudicatorIdl, provider);
   const bookProgram = new Program(soothBookProgramIdl, provider);
 
@@ -539,147 +556,11 @@ async function init() {
     );
   }
 
-  // ─── SoothBook protocol singletons ──────────────────────────────────
-  //
-  // The Monaco-derived book program needs a few cluster-level accounts
-  // before per-market setup can run. Seed them once on Surfpool boot and
-  // tolerate re-runs by checking existing PDAs before creating anything.
-  const bookPriceLadderPda = deriveBookPriceLadderPda(
-    creator.publicKey,
-    BOOK_PRICE_LADDER_SEED,
-  );
-  const bookMarketTypePda = deriveBookMarketTypePda(BOOK_MARKET_TYPE_NAME);
-  const bookAdminOperatorsPda = deriveBookAuthorisedOperatorsPda("ADMIN");
-  const bookMarketOperatorsPda = deriveBookAuthorisedOperatorsPda("MARKET");
-
-  const priceLadderAccount =
-    await bookProgram.account.priceLadder.fetchNullable(bookPriceLadderPda);
-  if (!priceLadderAccount) {
-    await bookProgram.methods
-      .createPriceLadder(BOOK_PRICE_LADDER_SEED, BOOK_PRICE_LADDER_MAX_PRICES)
-      .accounts({
-        priceLadder: bookPriceLadderPda,
-        authority: creator.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .preInstructions([
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-      ])
-      .signers([creator])
-      .rpc();
-    log(
-      `  createPriceLadder OK (price_ladder=${bookPriceLadderPda.toBase58()})`,
-    );
-  } else {
-    log(
-      `  price_ladder already present at ${bookPriceLadderPda.toBase58()}, checking prices`,
-    );
-  }
-
-  const freshPriceLadderAccount =
-    priceLadderAccount ??
-    (await bookProgram.account.priceLadder.fetch(bookPriceLadderPda));
-  const existingPriceSet = new Set(
-    freshPriceLadderAccount.prices.map((price) => price.toString()),
-  );
-  const pricesToAdd = bookDefaultPrices().filter(
-    (price) => !existingPriceSet.has(price.toString()),
-  );
-  if (pricesToAdd.length > 0) {
-    for (const priceChunk of chunkArray(
-      pricesToAdd,
-      BOOK_PRICE_ADD_CHUNK_SIZE,
-    )) {
-      await bookProgram.methods
-        .addPricesToPriceLadder(priceChunk)
-        .accounts({
-          priceLadder: bookPriceLadderPda,
-          authority: creator.publicKey,
-        })
-        .preInstructions([
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-        ])
-        .signers([creator])
-        .rpc();
-    }
-    log(
-      `  addPricesToPriceLadder OK (${pricesToAdd.length} prices, chunk_size=${BOOK_PRICE_ADD_CHUNK_SIZE})`,
-    );
-  } else {
-    log(
-      `  price_ladder already has ${BOOK_DEFAULT_PRICE_COUNT} default prices`,
-    );
-  }
-
-  const marketTypeInfo = await connection.getAccountInfo(bookMarketTypePda);
-  if (!marketTypeInfo) {
-    await bookProgram.methods
-      .createMarketType(BOOK_MARKET_TYPE_NAME, false, false)
-      .accounts({
-        marketType: bookMarketTypePda,
-        authority: creator.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([creator])
-      .rpc();
-    log(`  createMarketType OK (market_type=${bookMarketTypePda.toBase58()})`);
-  } else {
-    log(
-      `  market_type already present at ${bookMarketTypePda.toBase58()}, skipping bootstrap`,
-    );
-  }
-
-  const adminOperatorsAccount =
-    await bookProgram.account.authorisedOperators.fetchNullable(
-      bookAdminOperatorsPda,
-    );
-  if (!operatorListContains(adminOperatorsAccount, creator.publicKey)) {
-    await bookProgram.methods
-      .authoriseAdminOperator(creator.publicKey)
-      .accounts({
-        authorisedOperators: bookAdminOperatorsPda,
-        adminOperator: creator.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([creator])
-      .rpc();
-    log(
-      `  authoriseAdminOperator OK (operator=${creator.publicKey.toBase58()})`,
-    );
-  } else {
-    log(`  admin operator ${creator.publicKey.toBase58()} already authorised`);
-  }
-
-  const marketOperatorsAccount =
-    await bookProgram.account.authorisedOperators.fetchNullable(
-      bookMarketOperatorsPda,
-    );
-  if (!operatorListContains(marketOperatorsAccount, creator.publicKey)) {
-    await bookProgram.methods
-      .authoriseOperator("MARKET", creator.publicKey)
-      .accounts({
-        authorisedOperators: bookMarketOperatorsPda,
-        adminOperator: creator.publicKey,
-        adminOperators: bookAdminOperatorsPda,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([creator])
-      .rpc();
-    log(
-      `  authoriseOperator OK (type=MARKET, operator=${creator.publicKey.toBase58()})`,
-    );
-  } else {
-    log(`  market operator ${creator.publicKey.toBase58()} already authorised`);
-  }
-
-  const bookSingletons = {
-    priceLadderPda: bookPriceLadderPda,
-    marketTypePda: bookMarketTypePda,
-    adminOperatorsPda: bookAdminOperatorsPda,
-    marketOperatorsPda: bookMarketOperatorsPda,
-    seedAuthority: creator.publicKey,
-  };
-  writeBookLocalnetEnv(bookSingletons);
+  // The current W7 SoothBook program has no Monaco-era price ladder,
+  // market-type, or operator singleton bootstrap. MarketBook and BookSide
+  // PDAs are created lazily by buy_yes/buy_no.
+  const bookSingletons = null;
+  log("  SoothBook singleton bootstrap skipped (direct BookSide ABI)");
 
   // ─── Global lp_yield_vault (redeem_lp payout source) ─────────────────
   //
@@ -946,7 +827,7 @@ async function init() {
     `VITE_SOOTH_AMM_ID=${SOOTH_AMM_ID.toBase58()}`,
     `VITE_SOOTH_MARKET_ID=${SOOTH_MARKET_ID.toBase58()}`,
     `VITE_SOOTH_ADJUDICATOR_ID=${SOOTH_ADJUDICATOR_ID.toBase58()}`,
-    ...bookSingletonEnvLines(bookSingletons),
+    ...(bookSingletons ? bookSingletonEnvLines(bookSingletons) : []),
     `VITE_USDC_MINT=${USDC_MINT_DEVNET.toBase58()}`,
     `VITE_DEMO_MARKET_REF=sol:${marketPda.toBase58()}`,
     `VITE_DEMO_LP_YIELD_VAULT=${lpYieldVaultAta.toBase58()}`,

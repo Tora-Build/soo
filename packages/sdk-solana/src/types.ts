@@ -231,6 +231,12 @@ export interface CompleteSetArgs {
   amount: bigint;
 }
 export interface SellArgs extends BuyArgs {}
+
+export interface OrderbookCancelOptions {
+  user: AddressRef;
+  byId?: bigint;
+}
+
 export interface CreateMarketArgs {
   question: string;
   deadline: bigint;
@@ -289,7 +295,9 @@ export interface ChainAdapter {
   ): Promise<OrderbookRequest>;
   buildOrderbookCancel(
     market: MarketRef,
-    orderId: string,
+    side: 0 | 1,
+    tick: number,
+    options: OrderbookCancelOptions,
   ): Promise<OrderbookRequest>;
   buildCreateMarket(args: CreateMarketArgs): Promise<CreateMarketRequest>;
 
