@@ -38,6 +38,19 @@ pub struct FeesCollected {
     pub ts: i64,
 }
 
+/// Per-market fee distribution event emitted by `distribute_fees(market)`.
+#[event]
+pub struct MarketFeesDistributed {
+    pub market: Pubkey,
+    pub market_id: [u8; 16],
+    pub total_usdc: u64,
+    pub to_b_base: u64,
+    pub to_lp_yield: u64,
+    pub to_adjudicator: u64,
+    pub to_protocol: u64,
+    pub ts: i64,
+}
+
 /// Emitted once per protocol deploy by `initialize_protocol`. Indexers can
 /// pin the cluster's authority + treasury without re-reading the PDA.
 #[event]
