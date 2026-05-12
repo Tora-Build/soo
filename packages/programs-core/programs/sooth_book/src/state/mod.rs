@@ -1,6 +1,8 @@
+pub mod book_side;
 pub mod market_book;
 pub mod order_id;
 
+pub use book_side::*;
 pub use market_book::*;
 pub use order_id::*;
 
