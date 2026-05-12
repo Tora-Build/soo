@@ -20,6 +20,7 @@ pub struct FillReturnData {
 }
 
 #[derive(Accounts)]
+#[instruction(maker: Pubkey)]
 pub struct FillOrder<'info> {
     #[account(
         seeds = [b"market", market.market_id.as_ref()],
@@ -61,17 +62,13 @@ pub struct FillOrder<'info> {
         init_if_needed,
         payer = taker,
         space = OrderbookPosition::SPACE,
-        seeds = [b"orderbook_position", market.market_id.as_ref(), maker.key().as_ref()],
+        seeds = [b"orderbook_position", market.market_id.as_ref(), maker.as_ref()],
         bump,
     )]
     pub maker_position: Box<Account<'info, OrderbookPosition>>,
 
     #[account(mut)]
     pub taker: Signer<'info>,
-
-    /// CHECK: maker identity is bound through the maker_position seeds and
-    /// maker_usdc_ata token authority.
-    pub maker: UncheckedAccount<'info>,
 
     /// CHECK: PDA + owner constraints bind this to sooth_launchpad's singleton.
     #[account(
@@ -93,6 +90,7 @@ pub struct FillOrder<'info> {
 
 pub fn handler(
     ctx: Context<FillOrder>,
+    maker: Pubkey,
     taker_side: u8,
     shares: u128,
     taker_tick: u16,
@@ -121,11 +119,7 @@ pub fn handler(
         market_key,
         ctx.accounts.taker.key(),
     )?;
-    ensure_position_identity(
-        &mut ctx.accounts.maker_position,
-        market_key,
-        ctx.accounts.maker.key(),
-    )?;
+    ensure_position_identity(&mut ctx.accounts.maker_position, market_key, maker)?;
 
     let mut fee_base_delta: u128 = 0;
     let mut taker_payout_delta: u128 = 0;
