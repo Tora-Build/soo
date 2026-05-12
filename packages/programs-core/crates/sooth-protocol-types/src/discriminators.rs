@@ -81,6 +81,10 @@ pub const TRANSFER_FROM_LOCK_VAULT_DISCRIMINATOR: [u8; 8] = [48, 17, 136, 127, 1
 pub const TRANSFER_FEE_TO_MARKET_POOL_DISCRIMINATOR: [u8; 8] =
     [131, 157, 242, 158, 75, 108, 145, 203];
 
+/// `sooth_market::transfer_fee_to_market_pool_from_book`.
+pub const TRANSFER_FEE_TO_MARKET_POOL_FROM_BOOK_DISCRIMINATOR: [u8; 8] =
+    [27, 95, 201, 236, 222, 168, 222, 163];
+
 // ── sooth_book-owned ix discriminators ──────────────────────────────────
 
 /// `sooth_book::buy_yes`.
