@@ -2,8 +2,8 @@
 // sits inside the orderbook terminal (sooth_book gated on P1) so users
 // have no path to these flows through the UI without this panel:
 //
-//   mint:   N USDC → N·WAD YES + N·WAD NO  (debit USDC, credit outcome tokens)
-//   merge:  N·WAD YES + N·WAD NO → N USDC  (burn outcome tokens, redeem USDC)
+//   mint:   N USDC → N·WAD YES + N·WAD NO on OrderbookPosition
+//   merge:  N·WAD YES + N·WAD NO on OrderbookPosition → N USDC
 //   redeem: post-settle — burn winning side, pay 1 USDC per share
 //           (INVALID outcome burns both, pays 0.5 each)
 //
@@ -89,15 +89,15 @@ export function CompleteSetPanel() {
   return (
     <Card className="bg-raised border border-rule p-6">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-base font-semibold text-ink">Complete Set</h3>
+        <h3 className="text-base font-semibold text-ink">Orderbook Set</h3>
         <span className="text-xs font-mono text-muted uppercase tracking-[0.12em]">
           {marketRef ? marketRef.slice(0, 12) + "…" : "no market"}
         </span>
       </div>
       <p className="text-xs text-muted mb-4">
-        Mint creates equal-weight YES + NO from USDC at parity. Merge reverses
-        it. Redeem (post-settle) burns winning shares for USDC. No price impact
-        on mint/merge.
+        Mint creates equal-weight orderbook YES + NO from USDC at parity. Merge
+        reverses it. Redeem (post-settle) burns winning outcome tokens for
+        USDC. No price impact on mint/merge.
       </p>
       <div className="flex gap-3 items-end" data-testid="complete-set-panel">
         <label className="flex-1">
