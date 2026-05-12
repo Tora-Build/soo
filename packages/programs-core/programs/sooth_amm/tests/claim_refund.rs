@@ -61,8 +61,8 @@ fn after_sell_and_dismiss() {
     let mut fixture = setup_market(0x84);
     let trader = setup_trader(&mut fixture);
     let buy_cost = buy_yes(&mut fixture, &trader, 10 * one_share());
-    let proceeds = sell_yes(&mut fixture, &trader, 3 * one_share());
-    let residual = buy_cost - proceeds;
+    let sell = sell_yes(&mut fixture, &trader, 3 * one_share());
+    let residual = buy_cost - sell.vault_outflow_usdc;
     let position = read_position(&fixture.svm, &trader.position_pda);
     assert_eq!(position.locked_cost_usdc, residual);
 
