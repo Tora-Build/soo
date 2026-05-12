@@ -41,6 +41,7 @@ use sooth_market::instruction_introspection::{
     require_parent_ix_from_data, CLAIM_UNLOCKED_DISCRIMINATOR, SELL_POSITIONS_DISCRIMINATOR,
 };
 use sooth_market::SOOTH_AMM_PROGRAM_ID;
+use sooth_protocol_types::TRANSFER_FEE_TO_MARKET_POOL_DISCRIMINATOR;
 
 /// `SoothMarketError` doesn't derive `PartialEq` (Anchor's `#[error_code]`
 /// macro doesn't add it), so `assert_eq!(res, Err(...))` won't compile. We
@@ -72,6 +73,14 @@ fn sell_positions_discriminator_matches_anchor() {
 #[test]
 fn claim_unlocked_discriminator_matches_anchor() {
     assert_eq!(CLAIM_UNLOCKED_DISCRIMINATOR, anchor_disc("claim_unlocked"));
+}
+
+#[test]
+fn transfer_fee_to_market_pool_discriminator_matches_anchor() {
+    assert_eq!(
+        TRANSFER_FEE_TO_MARKET_POOL_DISCRIMINATOR,
+        anchor_disc("transfer_fee_to_market_pool")
+    );
 }
 
 /// Build a fake sysvar blob containing the given ixs, with the given

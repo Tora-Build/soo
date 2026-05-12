@@ -197,6 +197,15 @@ pub mod sooth_market {
         instructions::transfer_to_lock::handler(ctx, amount)
     }
 
+    /// PDA-signed transfer `market_vault -> market_fee_pool`. Helper for
+    /// `sooth_amm::sell_positions` sell-fee routing.
+    pub fn transfer_fee_to_market_pool(
+        ctx: Context<TransferFeeToMarketPool>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::transfer_fee_to_market_pool::handler(ctx, amount)
+    }
+
     /// PDA-signed transfer `lock_vault → recipient`. Helper for
     /// `sooth_amm::claim_unlocked` — same rationale as `transfer_to_lock`.
     /// See `instructions/transfer_from_lock_vault.rs` for the auth model.
