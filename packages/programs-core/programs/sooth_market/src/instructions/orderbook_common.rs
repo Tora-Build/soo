@@ -11,6 +11,12 @@ pub const NUM_TICKS: u16 = 1_000;
 pub const BASE_UNIT_WAD: u128 = 1_000_000_000_000;
 pub const BPS_DENOMINATOR: u128 = 10_000;
 
+pub fn base_to_wad(base_units: u64) -> Result<u128> {
+    (base_units as u128)
+        .checked_mul(BASE_UNIT_WAD)
+        .ok_or(error!(SoothMarketError::MathOverflow))
+}
+
 pub fn wad_to_base(wad: u128) -> Result<u64> {
     (wad / BASE_UNIT_WAD)
         .try_into()

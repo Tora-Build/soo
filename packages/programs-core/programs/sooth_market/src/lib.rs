@@ -133,6 +133,16 @@ pub mod sooth_market {
         instructions::mint_complete_set::handler(ctx, amount)
     }
 
+    /// Mint a complete set into the orderbook-side position ledger — pull
+    /// USDC from the user and credit WAD-scaled YES + NO shares on
+    /// `OrderbookPosition`.
+    pub fn mint_complete_set_for_orderbook(
+        ctx: Context<MintCompleteSetForOrderbook>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::mint_complete_set_for_orderbook::handler(ctx, amount)
+    }
+
     /// Split-authority complete-set mint for CPI escrow flows — pull
     /// `amount` USDC from a payer and mint YES + NO into token accounts owned
     /// by a separate destination authority.
