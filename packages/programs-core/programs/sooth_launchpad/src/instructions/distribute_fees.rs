@@ -1,5 +1,5 @@
-//! `distribute_fees` — drain the global fee-pool USDC vault and split the
-//! proceeds across the four destinations per architecture §8.
+//! `distribute_fees` — drain one market's fee-pool USDC vault and split the
+//! proceeds across the four destinations per architecture §8 / SoothBook §9.5.
 //!
 //! EVM analogue: `FeeRouter._distributePostGrad` (`FeeRouter.sol:377-413`).
 //! On Solana this is **inlined inside `sooth_launchpad`** rather than a
@@ -15,23 +15,14 @@
 //!      (b) it forces the dust-rounding rule into `trade_positions` where
 //!      `wad_to_usdc_ceil` already handles user-side rounding.
 //!
-//!   2. **Pool-then-distribute** (chosen). `trade_positions` makes a single
-//!      extra transfer of the fee USDC into a global `fee_pool_vault`
-//!      (an ATA owned by `fee_pool_authority`, a `sooth_launchpad` PDA).
-//!      `distribute_fees` is a permissionless crank that drains the pool
-//!      across the four destinations using PDA-signed CPIs. Mirrors
+//!   2. **Pool-then-distribute** (chosen). `trade_positions` / sell-path fee
+//!      routing transfer fee USDC into a per-market `market_fee_pool`
+//!      TokenAccount owned by `fee_pool_authority`, a `sooth_launchpad` PDA.
+//!      `distribute_fees` is a permissionless crank that drains one market's
+//!      pool across the four destinations using PDA-signed CPIs. Mirrors
 //!      EVM's `protocolAccrued`/`adjudicatorAccrued`/`lpYieldPool`
 //!      pull-based accrual, just with the funds physically segregated
 //!      rather than tracked in storage slots.
-//!
-//! Why a global pool, not per-market: per-market pools would multiply
-//! ATA-init costs (each market pays rent for a 165-byte token account)
-//! without changing the math. The 4-way split bps are global on
-//! `ProtocolConfig` anyway, so the per-market dimension only matters for
-//! event/indexer attribution — and that's already covered by
-//! `PositionTraded` events on each trade. Adjudicator-fee attribution to
-//! a specific market in this v1 design is a known gap (see "future work"
-//! note at the bottom of this module).
 //!
 //! ## Pre-graduation vs post-graduation
 //!
@@ -44,15 +35,11 @@
 //! while post-grad applies the 4-way split. On Solana v1 we simplify
 //! further: this ix always applies the 4-way split. Pre-graduation LP
 //! tokens are minted separately by `seed_lp` (which uses its own
-//! WAD->LP-share math against `cost_wad`, not against the fee USDC). The
-//! tradeoff: pre-grad markets that haven't graduated yet still see the
-//! full 4-way split when the crank fires. This is acceptable for v1
-//! because the global pool aggregates fees across all markets and the
-//! split bps remain economically equivalent on aggregate.
+//! WAD->LP-share math against `cost_wad`, not against the fee USDC).
 //!
 //! ## Body (architecture §8)
 //!
-//! 1. Read `total_usdc = fee_pool_vault.amount`. Require > 0.
+//! 1. Read `total_usdc = market_fee_pool.amount`. Require > 0.
 //! 2. Read split bps from `config`. Compute four slice amounts:
 //!      `to_b_base       = total * b_base_share_bps       / 10_000`
 //!      `to_lp_yield     = total * lp_yield_share_bps     / 10_000`
@@ -62,13 +49,14 @@
 //!    no dust is lost. Mirrors EVM `_distributePostGrad:386` (`fee -
 //!    toBBase - toLPYield - toAdjudicator`).
 //! 3. Four CPI `token::transfer` calls signed by `fee_pool_authority` PDA.
-//! 4. Emit `FeesCollected` with the four slice amounts.
+//! 4. Emit `MarketFeesDistributed` with `market.market_id` and the four
+//!    slice amounts.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 use crate::error::SoothLaunchpadError;
-use crate::events::FeesCollected;
+use crate::events::MarketFeesDistributed;
 use crate::state::ProtocolConfig;
 
 #[derive(Accounts)]
@@ -83,10 +71,17 @@ pub struct DistributeFees<'info> {
     )]
     pub config: Box<Account<'info, ProtocolConfig>>,
 
-    /// Signer-only PDA — the authority on the global `fee_pool_vault`. Owned
-    /// by `sooth_launchpad`, signs the four `token::transfer` CPIs out of
-    /// the pool. Seeds chosen for global-pool rationale (see module
-    /// docstring); the matching SDK derivation is in
+    /// Market whose per-market fee pool is drained by this crank.
+    #[account(
+        seeds = [b"market", market.market_id.as_ref()],
+        bump = market.bump,
+        seeds::program = sooth_market::ID,
+    )]
+    pub market: Box<Account<'info, sooth_market::state::Market>>,
+
+    /// Signer-only PDA — the authority on every per-market fee-pool token
+    /// account. Owned by `sooth_launchpad`, signs the four `token::transfer`
+    /// CPIs out of the pool. The matching SDK derivation is in
     /// `packages/sdk-solana/src/pdas.ts`'s `deriveFeePoolAuthorityPda`.
     /// CHECK: signer-only PDA derived via seeds.
     #[account(
@@ -97,17 +92,19 @@ pub struct DistributeFees<'info> {
 
     /// USDC mint reference. Pinned to canonical USDC so all four downstream
     /// `token::mint` checks transitively bind to the same mint.
-    #[account(address = crate::USDC_MINT_DEVNET)]
+    #[account(address = sooth_protocol_types::BASE_TOKEN_MINT)]
     pub usdc_mint: Box<Account<'info, Mint>>,
 
-    /// Global fee-pool ATA — owner = `fee_pool_authority`. Source of all
-    /// four transfers. Drained-then-zero on every successful crank.
+    /// Per-market fee-pool TokenAccount. Source of all four transfers.
+    /// Drained-then-zero on every successful crank.
     #[account(
         mut,
+        seeds = [b"market_fee_pool", market.market_id.as_ref()],
+        bump,
         token::mint = usdc_mint,
         token::authority = fee_pool_authority,
     )]
-    pub fee_pool_vault: Box<Account<'info, TokenAccount>>,
+    pub market_fee_pool: Box<Account<'info, TokenAccount>>,
 
     /// bBase fee destination. ATA whose owner pubkey is left to the v1
     /// integrator (e.g. a per-market `seed_lp` PDA, or the protocol
@@ -143,11 +140,15 @@ pub struct DistributeFees<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handler(ctx: Context<DistributeFees>) -> Result<()> {
-    // ── 1. Read total USDC in the fee pool ───────────────────────────────
-    let total: u64 = ctx.accounts.fee_pool_vault.amount;
-    require!(total > 0, SoothLaunchpadError::NothingToDistribute);
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct FeeSplit {
+    pub to_b_base: u64,
+    pub to_lp_yield: u64,
+    pub to_adjudicator: u64,
+    pub to_protocol: u64,
+}
 
+pub(crate) fn compute_fee_split(total: u64, cfg: &ProtocolConfig) -> Result<FeeSplit> {
     // ── 2. Compute 4-way split (floor div with remainder-to-protocol) ────
     //
     // Mirrors EVM `_distributePostGrad` line 386: `toProtocol = fee -
@@ -156,7 +157,6 @@ pub fn handler(ctx: Context<DistributeFees>) -> Result<()> {
     // of the four equals `total` exactly (no dust loss). The split bps
     // are u16; widen to u128 for the multiplication to keep `total *
     // 10_000 ≤ 2^64 * 10_000 < 2^78` well inside u128.
-    let cfg = &ctx.accounts.config;
     let b_base_bps = cfg.b_base_share_bps as u128;
     let lp_yield_bps = cfg.lp_yield_share_bps as u128;
     let adjudicator_bps = cfg.adjudicator_share_bps as u128;
@@ -190,6 +190,21 @@ pub fn handler(ctx: Context<DistributeFees>) -> Result<()> {
         SoothLaunchpadError::FeeSplitMismatch
     );
 
+    Ok(FeeSplit {
+        to_b_base,
+        to_lp_yield,
+        to_adjudicator,
+        to_protocol,
+    })
+}
+
+pub fn handler(ctx: Context<DistributeFees>) -> Result<()> {
+    // ── 1. Read total USDC in the fee pool ───────────────────────────────
+    let total: u64 = ctx.accounts.market_fee_pool.amount;
+    require!(total > 0, SoothLaunchpadError::NothingToDistribute);
+
+    let split = compute_fee_split(total, &ctx.accounts.config)?;
+
     // ── 3. PDA-signed CPIs ───────────────────────────────────────────────
     //
     // `fee_pool_authority` is derived under `sooth_launchpad::ID` — we sign
@@ -199,60 +214,60 @@ pub fn handler(ctx: Context<DistributeFees>) -> Result<()> {
     let bump = ctx.bumps.fee_pool_authority;
     let signer_seeds: &[&[&[u8]]] = &[&[b"fee_pool_authority", &[bump]]];
 
-    if to_b_base > 0 {
+    if split.to_b_base > 0 {
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.fee_pool_vault.to_account_info(),
+                    from: ctx.accounts.market_fee_pool.to_account_info(),
                     to: ctx.accounts.b_base_yield_vault.to_account_info(),
                     authority: ctx.accounts.fee_pool_authority.to_account_info(),
                 },
                 signer_seeds,
             ),
-            to_b_base,
+            split.to_b_base,
         )?;
     }
-    if to_lp_yield > 0 {
+    if split.to_lp_yield > 0 {
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.fee_pool_vault.to_account_info(),
+                    from: ctx.accounts.market_fee_pool.to_account_info(),
                     to: ctx.accounts.lp_yield_vault.to_account_info(),
                     authority: ctx.accounts.fee_pool_authority.to_account_info(),
                 },
                 signer_seeds,
             ),
-            to_lp_yield,
+            split.to_lp_yield,
         )?;
     }
-    if to_adjudicator > 0 {
+    if split.to_adjudicator > 0 {
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.fee_pool_vault.to_account_info(),
+                    from: ctx.accounts.market_fee_pool.to_account_info(),
                     to: ctx.accounts.adjudicator_fee_vault.to_account_info(),
                     authority: ctx.accounts.fee_pool_authority.to_account_info(),
                 },
                 signer_seeds,
             ),
-            to_adjudicator,
+            split.to_adjudicator,
         )?;
     }
-    if to_protocol > 0 {
+    if split.to_protocol > 0 {
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.fee_pool_vault.to_account_info(),
+                    from: ctx.accounts.market_fee_pool.to_account_info(),
                     to: ctx.accounts.protocol_treasury_vault.to_account_info(),
                     authority: ctx.accounts.fee_pool_authority.to_account_info(),
                 },
                 signer_seeds,
             ),
-            to_protocol,
+            split.to_protocol,
         )?;
     }
 
@@ -266,32 +281,16 @@ pub fn handler(ctx: Context<DistributeFees>) -> Result<()> {
     // `total_wad` for ABI stability; the value semantics changed and the
     // event docs note the unit.
     let now = Clock::get()?.unix_timestamp;
-    emit!(FeesCollected {
-        market: Pubkey::default(), // global pool — no per-market attribution; see module note
-        total_wad: total as u128,
-        to_b_base,
-        to_lp_yield,
-        to_adjudicator,
-        to_protocol,
+    emit!(MarketFeesDistributed {
+        market: ctx.accounts.market.key(),
+        market_id: ctx.accounts.market.market_id,
+        total_usdc: total,
+        to_b_base: split.to_b_base,
+        to_lp_yield: split.to_lp_yield,
+        to_adjudicator: split.to_adjudicator,
+        to_protocol: split.to_protocol,
         ts: now,
     });
 
     Ok(())
 }
-
-// ── Future work ──────────────────────────────────────────────────────────
-//
-// 1. Per-market adjudicator attribution. `Market.adjudicator` is the right
-//    destination for `to_adjudicator` of fees from THAT market only. With
-//    a global pool, the on-chain crank can't reverse-attribute. Two
-//    options on the table:
-//      a. Move to a per-market `fee_pool_vault` (bumps rent + tx-account
-//         count, but enables exact attribution).
-//      b. Keep the global pool and rely on the indexer to compute
-//         per-adjudicator owed amounts from `PositionTraded` event totals
-//         × bps, with `distribute_fees` being a periodic settlement.
-// 2. Pre-grad LP-mint coupling. EVM's pre-grad path mints LP tokens to
-//    the trader 1:1 with `fee` and bumps `b` (`_distributePreGrad`). The
-//    Solana port hoists that to `seed_lp`; this ix doesn't currently
-//    branch on `is_graduated`. If pre-grad markets need a different
-//    crank-time behavior, add the branch here.
