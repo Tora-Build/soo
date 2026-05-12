@@ -116,8 +116,12 @@ pub const SOOTH_MARKET_CREDIT_SHARES_FOR_ORDER_DISCRIMINATOR: [u8; 8] =
 pub const SOOTH_MARKET_DEBIT_SHARES_FOR_ORDER_BEFORE_DEADLINE_DISCRIMINATOR: [u8; 8] =
     [64, 239, 77, 172, 202, 79, 175, 254];
 
-// ── sooth_launchpad-owned per-market fee-pool ix discriminator ──────────
+// ── sooth_launchpad-owned fee-pool ix discriminators ────────────────────
 
 /// `sooth_launchpad::init_market_fee_pool`.
 pub const SOOTH_LAUNCHPAD_INIT_MARKET_FEE_POOL_DISCRIMINATOR: [u8; 8] =
     [51, 19, 251, 120, 171, 91, 138, 115];
+
+/// `sooth_launchpad::distribute_fees_legacy`.
+pub const DISTRIBUTE_FEES_LEGACY_DISCRIMINATOR: [u8; 8] =
+    [50, 179, 149, 32, 120, 79, 13, 181];
