@@ -25,6 +25,15 @@ pub fn decode_order_id(id: u64) -> Result<(u8, u16, u64)> {
     Ok((side, tick, seq))
 }
 
+pub fn require_order_id_matches(order_id: u64, side: u8, tick: u16) -> Result<()> {
+    let (decoded_side, decoded_tick, _seq) = decode_order_id(order_id)?;
+    require!(
+        decoded_side == side && decoded_tick == tick,
+        CoreError::OrderIdSeedMismatch
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
