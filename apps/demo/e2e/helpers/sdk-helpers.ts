@@ -563,6 +563,13 @@ export async function buyViaAdapter(args: {
     maxCostWad,
   } = args;
   const programs = makePrograms(conn, signer);
+  await initMarketFeePoolViaAdapter({
+    conn,
+    signer,
+    usdcMint,
+    marketPda,
+    marketId,
+  });
 
   const ammPda = deriveAmmStatePda(marketId);
   const positionPda = derivePositionPda(marketId, signer.publicKey);
