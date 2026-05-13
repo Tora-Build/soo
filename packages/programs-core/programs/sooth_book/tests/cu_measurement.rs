@@ -1,7 +1,7 @@
 use std::{collections::HashSet, path::PathBuf};
 
 use anchor_lang::prelude::Pubkey;
-use anchor_lang::{AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas};
+use anchor_lang::{AccountSerialize, InstructionData, ToAccountMetas};
 use litesvm::{types::TransactionMetadata, LiteSVM};
 use solana_sdk::{
     account::Account, compute_budget::ComputeBudgetInstruction, instruction::AccountMeta,
