@@ -287,6 +287,23 @@ The auto-match SDK incompatibility was thoroughly analyzed in conversation; the 
 
 **Implication**: `sooth_amm::trade_positions` changes its SPL fee-transfer destination from global to per-market pool (one-line accounts struct change + sell-path fee wiring previously TODO'd). `sooth_launchpad::distribute_fees` redesigned per-market. Existing global `fee_pool_vault` becomes a one-time legacy drain. Timeline expanded 7w → 9w to absorb the AMM + launchpad rewrites.
 
+### D17. W9 audit-prep verdict accepts build/test/docs gates with one deferred High (2026-05-13)
+
+**Decision**: W9 is complete as a review-only audit-prep pass. The founder acknowledged the single High finding (H1: SDK multi-tx orderbook matching prebuilds stale maker bundles on deep same-tick crosses). W9 logs H1 in [`docs/audit-prep/findings.md`](./audit-prep/findings.md) and defers the fix to a post-W9 wave; W9 does not patch runtime code.
+
+**Why**: The on-chain matcher rejects stale maker bundles via live `BookSide`/maker-account validation, so H1 is a deep-cross liveness/user-flow failure rather than an unauthorized custody path. The dispatch surface-then-continue contract now gates W9 acceptance on the build/test/docs commands only.
+
+**Evidence**: W9 produced the required audit-prep docs under [`docs/audit-prep/`](./audit-prep/) and the file-by-file review [`codex-review-2026-05-13.md`](./audit-prep/codex-review-2026-05-13.md). Final severity counts are Critical 0 / High 1 / Medium 3 / Low 2. Acceptance gates passed on 2026-05-13:
+
+- `NO_DNA=1 cargo check --workspace`
+- `NO_DNA=1 cargo check --workspace --features mainnet`
+- `NO_DNA=1 anchor build` from `packages/programs-core`
+- `NO_DNA=1 cargo test --workspace`
+- `cd packages/sdk-solana && NO_DNA=1 pnpm test`
+- `cd apps/demo && NO_DNA=1 pnpm typecheck`
+
+**Implication**: Do not tag or deploy v0.4 from W9 alone if the founder wants zero Highs before external audit. The immediate post-W9 engineering fix is to change SDK multi-tx matching to submit one batch, confirm/re-read, then construct the next batch against fresh book state, with a regression for stale same-tick maker bundles. W9 did not push, tag, amend, or use `--no-verify`.
+
 ---
 
-_Last updated: 2026-05-11 (D13-D16 record the EVM-direct port direction, scope, position model, and per-market fee pool decisions resolved by [`docs/spec/sooth_book.md`](./spec/sooth_book.md). D7-D12 resolved P1/P3/P5/P6/P7/P8 on 2026-05-08; D7 is superseded by D13. D6 was already used for devnet program IDs.)._
+_Last updated: 2026-05-13 (D17 records the W9 audit-prep verdict and founder-acknowledged deferred High. D13-D16 record the EVM-direct port direction, scope, position model, and per-market fee pool decisions resolved by [`docs/spec/sooth_book.md`](./spec/sooth_book.md). D7-D12 resolved P1/P3/P5/P6/P7/P8 on 2026-05-08; D7 is superseded by D13. D6 was already used for devnet program IDs.)._
