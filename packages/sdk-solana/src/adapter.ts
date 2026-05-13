@@ -670,6 +670,10 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
         ).toBase58(),
         SOOTH_LAUNCHPAD_ERROR_TABLE,
       ],
+      [
+        (this.programIds.soothBook ?? SOOTH_BOOK_DEFAULT_PROGRAM_ID).toBase58(),
+        SOOTH_BOOK_ERROR_TABLE,
+      ],
       [soothAdjudicatorIdl.address, SOOTH_ADJUDICATOR_ERROR_TABLE],
     ]);
   }
@@ -4542,6 +4546,55 @@ const SOOTH_LAUNCHPAD_ERROR_TABLE: Record<
   6009: { kind: "NotGraduated", msg: "Market is not graduated" },
   6010: { kind: "ProgramError", msg: "LP amount must be > 0" },
   6011: { kind: "ProgramError", msg: "LP supply is empty" },
+  6012: { kind: "ProgramError", msg: "Legacy fee drain already executed" },
+};
+
+const SOOTH_BOOK_ERROR_TABLE: Record<number, { kind: string; msg: string }> = {
+  6000: { kind: "ProgramError", msg: "Tick is outside the supported orderbook range" },
+  6001: {
+    kind: "ProgramError",
+    msg: "Order id is outside the supported composite encoding range",
+  },
+  6002: {
+    kind: "ProgramError",
+    msg: "Decoded order id does not match the requested side or tick",
+  },
+  6003: { kind: "ProgramError", msg: "Arithmetic overflow" },
+  6004: { kind: "ProgramError", msg: "Order amount must be greater than zero" },
+  6005: { kind: "ProgramError", msg: "Book side is full for this tick" },
+  6006: { kind: "ProgramError", msg: "Book side is not fully drained" },
+  6007: {
+    kind: "ProgramError",
+    msg: "Compaction drop count exceeds the per-call bound",
+  },
+  6008: { kind: "ProgramError", msg: "Market vault uses the wrong base mint" },
+  6009: {
+    kind: "ProgramError",
+    msg: "MarketBook base mint does not match the market vault mint",
+  },
+  6010: {
+    kind: "ProgramError",
+    msg: "MarketBook accumulators must be reset before placing an order",
+  },
+  6011: { kind: "ProgramError", msg: "No cancellable order was found" },
+  6012: {
+    kind: "ProgramError",
+    msg: "Fill return data was not set by sooth_market",
+  },
+  6013: { kind: "ProgramError", msg: "Fill return data came from the wrong program" },
+  6014: { kind: "ProgramError", msg: "Fill return data could not be decoded" },
+  6015: {
+    kind: "ProgramError",
+    msg: "Remaining-account bundle does not carry the crossing BookSide",
+  },
+  6016: {
+    kind: "ProgramError",
+    msg: "Remaining-account bundle maker does not match the live order maker",
+  },
+  6017: {
+    kind: "ProgramError",
+    msg: "Remaining-account bundles must contain exactly five accounts per fill",
+  },
 };
 
 const SOOTH_ADJUDICATOR_ERROR_TABLE: Record<

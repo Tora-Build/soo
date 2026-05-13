@@ -89,4 +89,39 @@ describe("classifyError", () => {
     expect(out.category).toBe("protocol-internal");
     expect(out.retriable).toBe(false);
   });
+
+  it("classifies MarketNotOpen", () => {
+    const out = classifyError(anchorErr("MarketNotOpen"));
+    expect(out.code).toBe("MarketNotOpen");
+    expect(out.category).toBe("state");
+    expect(out.retriable).toBe(false);
+  });
+
+  it("classifies AMM MarketNotActive alias as MarketNotOpen", () => {
+    const out = classifyError(anchorErr("MarketNotActive"));
+    expect(out.code).toBe("MarketNotOpen");
+    expect(out.category).toBe("state");
+  });
+
+  it("classifies PositionInsufficient alias as InsufficientShares", () => {
+    const out = classifyError(anchorErr("PositionInsufficient"));
+    expect(out.code).toBe("InsufficientShares");
+    expect(out.category).toBe("validation");
+  });
+
+  it("classifies NothingToDistribute by program log text", () => {
+    const out = classifyError(
+      new Error("SoothError: ProgramError code=6008 msg=Fee pool is empty — nothing to distribute"),
+    );
+    expect(out.code).toBe("NothingToDistribute");
+    expect(out.category).toBe("state");
+  });
+
+  it("classifies LegacyDrainAlreadyExecuted by program log text", () => {
+    const out = classifyError(
+      new Error("SoothError: ProgramError code=6012 msg=Legacy fee drain already executed"),
+    );
+    expect(out.code).toBe("LegacyDrainAlreadyExecuted");
+    expect(out.category).toBe("state");
+  });
 });

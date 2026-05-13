@@ -208,7 +208,7 @@ export const Portfolio = () => {
         )}
       </Card>
 
-      <ActiveOrdersCard />
+      <ActiveOrdersCard marketRef={panelMarketRef} />
 
       <Card className="bg-raised border border-rule p-6">
         <div className="flex items-center justify-between mb-4">

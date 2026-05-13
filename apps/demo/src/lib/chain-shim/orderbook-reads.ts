@@ -10,6 +10,7 @@ export interface OnChainOrder {
   amount: bigint; // WAD shares
   side: 0 | 1;
   tick: number;
+  escrow: boolean;
   levelId: string;
 }
 
@@ -49,6 +50,7 @@ export async function fetchUserOpenOrders(
           amount: order.amount,
           side,
           tick,
+          escrow: order.escrow,
           levelId: `${side}:${tick}`,
         });
       }
@@ -101,7 +103,7 @@ export function synthOrderPlacedLogs(
         side: o.side,
         tick: o.tick,
         amount: o.amount,
-        escrow: false,
+        escrow: o.escrow,
         orderId,
       },
       blockNumber: BigInt(i + 1),

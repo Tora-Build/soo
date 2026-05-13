@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Build a single-file MP4 walkthrough of the 19-spec on-chain e2e suite.
+// Build a single-file MP4 walkthrough of the on-chain e2e suite.
 //
 // Inputs (from a `E2E_VIDEO=on pnpm test:e2e` run):
 //   - test-results/<spec-dir>/video.webm — one per spec
 //
 // Output:
-//   - test-results/19-suite-walkthrough.mp4 — title cards + each spec
+//   - test-results/e2e-suite-walkthrough.mp4 — title cards + each spec
 //
 // ffmpeg pipeline:
 //   1. Render a 1280×720 PNG title card per spec via Playwright Chromium
@@ -35,22 +35,21 @@ const REPO = resolve(__dirname, "..");
 const E2E_DIR = join(REPO, "e2e", "onchain");
 const RESULTS = join(REPO, "test-results");
 const STAGE = join(RESULTS, ".walkthrough-stage");
-const FINAL = join(RESULTS, "19-suite-walkthrough.mp4");
+const FINAL = join(RESULTS, "e2e-suite-walkthrough.mp4");
 
 const FPS = 30;
 const W = 1280;
 const H = 720;
 const TITLE_DURATION_S = 2.5;
 const SUMMARY_DURATION_S = 4;
-const SUMMARY_TEXT =
-  "19/19 PASSED · 175 cargo · 49 SDK · 19 e2e · sooth-solana 2026-05-08";
+const SUMMARY_TEXT = "E2E PASSED · Surfpool · sooth-solana";
 
 mkdirSync(STAGE, { recursive: true });
 
 // ─── 1. Discover specs in order ─────────────────────────────────────────────
 
 const specFiles = readdirSync(E2E_DIR)
-  .filter((f) => /^\d{2}-.*\.spec\.ts$/.test(f))
+  .filter((f) => /\.spec\.ts$/.test(f))
   .sort();
 
 if (specFiles.length === 0) {
@@ -61,11 +60,11 @@ if (specFiles.length === 0) {
 console.log(`[walkthrough] discovered ${specFiles.length} specs`);
 
 // Title comes from the first non-empty `// ` comment line in the spec.
-function specTitle(file) {
+function specTitle(file, index) {
   const path = join(E2E_DIR, file);
   const head = readFileSync(path, "utf8").split("\n").slice(0, 8).join("\n");
   const m = head.match(/\/\/\s*([^\n]+e2e[^\n]*)/i);
-  const num = file.match(/^(\d{2})/)[1];
+  const num = file.match(/^(\d{2})/)?.[1] ?? String(index + 1).padStart(2, "0");
   const cleaned = (m ? m[1] : file)
     .replace(/^\/\/\s*/, "")
     .replace(/\s+—\s+/, " — ");
@@ -83,9 +82,13 @@ function findVideo(specFile) {
   // disambiguates `03-slippage-rejection-amm-e2e` from `00-buy-amm-e2e`
   // (both share 'amm' + 'e2e' tokens).
   const numPrefix = specFile.match(/^(\d{2})-/)?.[1];
-  if (!numPrefix) return null;
+  const baseToken = specFile.replace(/\.spec\.ts$/, "");
   for (const dirName of readdirSync(RESULTS)) {
-    if (!dirName.startsWith(`${numPrefix}-`)) continue;
+    if (numPrefix) {
+      if (!dirName.startsWith(`${numPrefix}-`)) continue;
+    } else if (!dirName.startsWith(baseToken)) {
+      continue;
+    }
     const candidate = join(RESULTS, dirName, "video.webm");
     if (existsSync(candidate)) return candidate;
   }
@@ -167,8 +170,8 @@ function summaryHtml() {
 <body>
   <div class="accent"></div>
   <div class="num">SUMMARY</div>
-  <div class="passed">19/19 PASSED</div>
-  <div class="detail">175 cargo · 49 SDK · 19 e2e · <strong>sooth-solana</strong> 2026-05-08</div>
+  <div class="passed">E2E PASSED</div>
+  <div class="detail">${matched.length} specs · <strong>sooth-solana</strong></div>
   <div class="meta"><span>sooth-solana e2e walkthrough</span><span>${SUMMARY_TEXT}</span></div>
 </body></html>`;
 }

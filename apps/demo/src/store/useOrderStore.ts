@@ -10,6 +10,7 @@ export interface ActiveOrder {
     amount: number;
     timestamp: number;
     isBuy: boolean;
+    escrow?: boolean;
     hash?: string;
 }
 
