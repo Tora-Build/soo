@@ -78,7 +78,7 @@ process.stdout.write([
   id(anchor.soothLaunchpadIdl.address, pdas.SOOTH_LAUNCHPAD_PROGRAM_ID),
   anchor.soothAdjudicatorIdl.address,
   id(anchor.soothBookIdl.address, pdas.SOOTH_BOOK_PROGRAM_ID),
-].join(" "));
+].join(" ") + "\n");
 NODE
 )
 
