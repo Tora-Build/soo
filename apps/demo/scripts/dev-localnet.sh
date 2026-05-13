@@ -40,12 +40,6 @@ LAUNCHPAD_SO="$REPO_ROOT/target/deploy/sooth_launchpad.so"
 ADJUDICATOR_SO="$REPO_ROOT/target/deploy/sooth_adjudicator.so"
 BOOK_SO="$REPO_ROOT/target/deploy/sooth_book.so"
 
-AMM_KEYPAIR="$REPO_ROOT/target/deploy/sooth_amm-keypair.json"
-MARKET_KEYPAIR="$REPO_ROOT/target/deploy/sooth_market-keypair.json"
-LAUNCHPAD_KEYPAIR="$REPO_ROOT/target/deploy/sooth_launchpad-keypair.json"
-ADJUDICATOR_KEYPAIR="$REPO_ROOT/target/deploy/sooth_adjudicator-keypair.json"
-BOOK_KEYPAIR="$REPO_ROOT/target/deploy/sooth_book-keypair.json"
-
 VITE_PORT="${VITE_PORT:-5175}"
 RPC_PORT="${RPC_PORT:-8899}"
 
@@ -69,21 +63,24 @@ for so in "$AMM_SO" "$MARKET_SO" "$LAUNCHPAD_SO" "$ADJUDICATOR_SO" "$BOOK_SO"; d
   fi
 done
 
-for keypair in "$AMM_KEYPAIR" "$MARKET_KEYPAIR" "$LAUNCHPAD_KEYPAIR" "$ADJUDICATOR_KEYPAIR" "$BOOK_KEYPAIR"; do
-  if [[ ! -f "$keypair" ]]; then
-    err "missing $keypair"
-    err "Run from repo root: cd packages/programs-core && cargo build-sbf"
-    exit 1
-  fi
-done
-
-# The seed script reads program IDs from generated IDL addresses, which are
-# regenerated from target/deploy keypairs. Keep validator preload ids aligned.
-SOOTH_AMM_ID="$(solana address -k "$AMM_KEYPAIR")"
-SOOTH_MARKET_ID="$(solana address -k "$MARKET_KEYPAIR")"
-SOOTH_LAUNCHPAD_ID="$(solana address -k "$LAUNCHPAD_KEYPAIR")"
-SOOTH_ADJUDICATOR_ID="$(solana address -k "$ADJUDICATOR_KEYPAIR")"
-SOOTH_BOOK_ID="$(solana address -k "$BOOK_KEYPAIR")"
+# The seed script reads program IDs from the built SDK IDLs/constants. Keep
+# validator preload ids aligned with that exact source of truth.
+read -r SOOTH_AMM_ID SOOTH_MARKET_ID SOOTH_LAUNCHPAD_ID SOOTH_ADJUDICATOR_ID SOOTH_BOOK_ID < <(
+  REPO_ROOT="$REPO_ROOT" node --input-type=module <<'NODE'
+const root = process.env.REPO_ROOT;
+const sdk = `${root}/packages/sdk-solana/dist`;
+const anchor = await import(new URL(`file://${sdk}/anchor/index.js`).href);
+const pdas = await import(new URL(`file://${sdk}/pdas.js`).href);
+const id = (idlAddress, fallback) => idlAddress || fallback.toBase58();
+process.stdout.write([
+  anchor.soothAmmIdl.address,
+  id(anchor.soothMarketIdl.address, pdas.SOOTH_MARKET_PROGRAM_ID),
+  id(anchor.soothLaunchpadIdl.address, pdas.SOOTH_LAUNCHPAD_PROGRAM_ID),
+  anchor.soothAdjudicatorIdl.address,
+  id(anchor.soothBookIdl.address, pdas.SOOTH_BOOK_PROGRAM_ID),
+].join(" "));
+NODE
+)
 
 # ─── Stop a previously-launched validator (only ours) ─────────────────────
 if [[ -f "$VALIDATOR_PID_FILE" ]]; then
