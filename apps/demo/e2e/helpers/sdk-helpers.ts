@@ -1094,7 +1094,6 @@ export async function distributeMarketFeesViaAdapter(args: {
   marketPda: PublicKey;
   marketId: Buffer;
 }): Promise<string> {
-  const programs = makePrograms(args.conn, args.signer);
   const creatorAta = getAssociatedTokenAddressSync(
     args.usdcMint,
     args.signer.publicKey,
@@ -1130,22 +1129,34 @@ export async function distributeMarketFeesViaAdapter(args: {
   const tx = new Transaction().add(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
   );
-  const ix = await (programs.launchpad.methods as any)
-    .distributeFees()
-    .accounts({
-      config: deriveProtocolConfigPda(),
-      market: args.marketPda,
-      feePoolAuthority: deriveFeePoolAuthorityPda(),
-      usdcMint: args.usdcMint,
-      marketFeePool: deriveMarketFeePoolPda(args.marketId),
-      bBaseYieldVault: creatorAta,
-      lpYieldVault,
-      adjudicatorFeeVault: creatorAta,
-      protocolTreasuryVault: creatorAta,
-      cranker: args.signer.publicKey,
-      tokenProgram: TOKEN_PROGRAM_ID,
-    })
-    .instruction();
+  const ix = new TransactionInstruction({
+    programId: launchpadProgramId,
+    keys: [
+      { pubkey: deriveProtocolConfigPda(), isSigner: false, isWritable: false },
+      { pubkey: args.marketPda, isSigner: false, isWritable: false },
+      {
+        pubkey: deriveFeePoolAuthorityPda(),
+        isSigner: false,
+        isWritable: false,
+      },
+      { pubkey: args.usdcMint, isSigner: false, isWritable: false },
+      {
+        pubkey: deriveMarketFeePoolPda(args.marketId),
+        isSigner: false,
+        isWritable: true,
+      },
+      { pubkey: creatorAta, isSigner: false, isWritable: true },
+      { pubkey: lpYieldVault, isSigner: false, isWritable: true },
+      { pubkey: creatorAta, isSigner: false, isWritable: true },
+      { pubkey: creatorAta, isSigner: false, isWritable: true },
+      { pubkey: args.signer.publicKey, isSigner: true, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: createHash("sha256")
+      .update("global:distribute_fees")
+      .digest()
+      .subarray(0, 8),
+  });
   tx.add(ix);
   return sendAndConfirmTransaction(args.conn, tx, [args.signer], {
     commitment: "confirmed",
