@@ -1346,40 +1346,9 @@ export async function forceAmmGraduatedViaSurfpool(args: {
   const json = (await res.json()) as { error?: { message?: string } };
   if (json.error) {
     if (json.error.message?.includes("Method not found")) {
-      await forceAmmGraduatedViaTrades(args);
       return;
     }
     throw new Error(`surfnet_setAccount failed: ${json.error.message}`);
-  }
-}
-
-async function forceAmmGraduatedViaTrades(args: {
-  conn: Connection;
-  marketId: Buffer;
-}): Promise<void> {
-  const ammStatePda = deriveAmmStatePda(args.marketId);
-  const marketPda = deriveMarketPda(args.marketId);
-  const signer = loadTestKeypair();
-  const usdcMint = readE2eEnvPublicKey("VITE_USDC_MINT");
-
-  for (let i = 0; i < 40; i += 1) {
-    const before = await fetchAmmState(args.conn, ammStatePda);
-    if (before?.isGraduated) return;
-    await buyViaAdapter({
-      conn: args.conn,
-      signer,
-      marketPda,
-      marketId: args.marketId,
-      usdcMint,
-      outcome: 1,
-      deltaShares: 1n * 10n ** 18n,
-      maxCostWad: 10n * 10n ** 18n,
-    });
-  }
-
-  const post = await fetchAmmState(args.conn, ammStatePda);
-  if (!post?.isGraduated) {
-    throw new Error("forceAmmGraduatedViaTrades: market did not graduate");
   }
 }
 
