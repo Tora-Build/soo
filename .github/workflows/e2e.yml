@@ -29,7 +29,7 @@ jobs:
         run: cargo test
 
       - name: SoothBook CU ceiling
-        run: NO_DNA=1 cargo test -p sooth_book --tests cu_measurement -- --nocapture
+        run: NO_DNA=1 cargo test -p sooth_book --test cu_measurement -- --nocapture
 
   sdk-vitest:
     name: SDK Vitest
