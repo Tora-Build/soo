@@ -1257,7 +1257,7 @@ export async function createSeededOrderbookMarketViaAdapter(args: {
       creator: args.creator,
       usdcMint: args.usdcMint,
       question: args.question ?? `orderbook market ${Date.now()}`,
-      initialB: args.initialB ?? 10n * 10n ** 18n,
+      initialB: args.initialB ?? 1n * 10n ** 18n,
       deadline: args.deadline ?? defaultDeadline,
     }));
 
@@ -1372,8 +1372,8 @@ async function forceAmmGraduatedViaTrades(args: {
       marketId: args.marketId,
       usdcMint,
       outcome: 1,
-      deltaShares: 10n * 10n ** 18n,
-      maxCostWad: 100n * 10n ** 18n,
+      deltaShares: 1n * 10n ** 18n,
+      maxCostWad: 10n * 10n ** 18n,
     });
   }
 

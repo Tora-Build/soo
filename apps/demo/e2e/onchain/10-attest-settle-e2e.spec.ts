@@ -40,6 +40,7 @@ import {
   buyViaAdapter,
   loadTestKeypair,
   loadCreatorKeypair,
+  mintCompleteSetViaAdapter,
   derivePositionPda,
   deriveAdjudicatorPda,
   fetchMarket,
@@ -96,6 +97,14 @@ test.describe("attest + settle (UI-driven via OperatorActionsPanel)", () => {
         500,
       );
     }
+    await mintCompleteSetViaAdapter({
+      conn,
+      signer: userSigner,
+      marketPda,
+      marketId: idBytes,
+      usdcMint,
+      amount: 10_000_000n,
+    });
 
     // 2. Idempotent terminal-state check.
     const marketBefore = await fetchMarket(conn, marketPda);
