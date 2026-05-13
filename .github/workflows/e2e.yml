@@ -28,6 +28,9 @@ jobs:
       - name: Cargo test
         run: cargo test
 
+      - name: SoothBook CU ceiling
+        run: NO_DNA=1 cargo test -p sooth_book --test cu_measurement -- --nocapture
+
   sdk-vitest:
     name: SDK Vitest
     runs-on: ubuntu-latest
@@ -113,7 +116,7 @@ jobs:
     name: Surfpool Playwright E2E
     runs-on: ubuntu-latest
     # Run on every PR + every main push. The job's a real Surfpool boot +
-    # 22-spec UI suite — catches chain-shim / hook regressions that the
+    # Full UI suite including W8 orderbook specs — catches chain-shim / hook regressions that the
     # cargo + vitest gates can't see.
     steps:
       - uses: actions/checkout@v4
@@ -211,8 +214,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sooth-solana-19-suite-walkthrough
-          path: apps/demo/test-results/19-suite-walkthrough.mp4
+          name: sooth-solana-e2e-suite-walkthrough
+          path: apps/demo/test-results/e2e-suite-walkthrough.mp4
           if-no-files-found: warn
 
       - name: Stop Surfpool demo

@@ -446,6 +446,21 @@ async function init() {
   await sendAndConfirmTransaction(connection, mintTx, [mintAuthority]);
   log(`minted 1000 USDC to user`);
 
+  const creatorTreasuryAta = getAssociatedTokenAddressSync(
+    USDC_MINT_DEVNET,
+    creator.publicKey,
+  );
+  const treasuryAtaTx = new Transaction().add(
+    createAssociatedTokenAccountIdempotentInstruction(
+      creator.publicKey,
+      creatorTreasuryAta,
+      creator.publicKey,
+      USDC_MINT_DEVNET,
+    ),
+  );
+  await sendAndConfirmTransaction(connection, treasuryAtaTx, [creator]);
+  log(`creator treasury USDC ATA: ${creatorTreasuryAta.toBase58()}`);
+
   // ─── Build Anchor providers + create market ───────────────────────────
   const wallet = {
     publicKey: creator.publicKey,
@@ -500,7 +515,7 @@ async function init() {
     await launchpadProgram.methods
       .initializeProtocol({
         feeBps: 100, // 1%
-        treasury: creator.publicKey, // demo: creator doubles as treasury
+        treasury: creatorTreasuryAta,
         bBaseShareBps: 5_000,
         lpYieldShareBps: 3_000,
         adjudicatorShareBps: 1_000,

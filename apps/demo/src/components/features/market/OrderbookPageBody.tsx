@@ -9,7 +9,7 @@
  * that when this body is rendered inside MarketDrawer, the AMM/Orderbook
  * toggle swaps the drawer's body in place instead of navigating away.
  */
-import { useMemo, useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import { keccak256, encodePacked } from "@/lib/chain-shim";
 
 import { TradingContextBar } from "../TradingContextBar";
@@ -20,6 +20,7 @@ import { SoothBookTerminal, HistoricalPriceCard } from "../pro";
 import { useChainStore } from "../../../store/useChainStore";
 import { DEFAULT_CHAIN_ID } from "../../../lib/chains";
 import { ErrorBoundary } from "../../ui/ErrorBoundary";
+import { DemoContextObj } from "../../../lib/DemoContext";
 
 interface OrderbookPageBodyProps {
   marketAddress: string;
@@ -38,6 +39,7 @@ export const OrderbookPageBody = ({
   onModeChange,
   onClose,
 }: OrderbookPageBodyProps) => {
+  const demoCtx = useContext(DemoContextObj);
   const { selectedChainId } = useChainStore();
   const chainId = Number(selectedChainId) || DEFAULT_CHAIN_ID;
   const { market: truth } = useTruthMarketDirect(
@@ -81,6 +83,12 @@ export const OrderbookPageBody = ({
               : "bonding");
 
   const [viewOutcome, setViewOutcome] = useState<"yes" | "no">("yes");
+  const pageMarketRef = useMemo(() => {
+    if (!marketAddress) return null;
+    if (marketAddress.startsWith("sol:")) return marketAddress;
+    if (marketAddress.startsWith("0x")) return `sol:${marketAddress.slice(2)}`;
+    return `sol:${marketAddress}`;
+  }, [marketAddress]);
 
   const priceCard = (
     <HistoricalPriceCard
@@ -142,11 +150,19 @@ export const OrderbookPageBody = ({
           </div>
         }
       >
-        <SoothBookTerminal
-          marketAddress={marketAddress as `0x${string}`}
-          beforeOrderbookPane={priceCard}
-          onOutcomeChange={setViewOutcome}
-        />
+        <DemoContextObj.Provider
+          value={
+            demoCtx && pageMarketRef
+              ? { ...demoCtx, marketRef: pageMarketRef }
+              : demoCtx
+          }
+        >
+          <SoothBookTerminal
+            marketAddress={marketAddress as `0x${string}`}
+            beforeOrderbookPane={priceCard}
+            onOutcomeChange={setViewOutcome}
+          />
+        </DemoContextObj.Provider>
       </ErrorBoundary>
     </div>
   );

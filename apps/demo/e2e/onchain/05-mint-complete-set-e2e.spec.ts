@@ -5,22 +5,21 @@
 //   2. Navigate to /portfolio, connect the LocalKeypair adapter, wait for
 //      the CompleteSetPanel to mount.
 //   3. Fill amount = 10, click MINT.
-//   4. Poll on-chain until yes_ata / no_ata each grew by exactly 10·USDC
-//      (10_000_000 base units, 6-decimal mint) and usdc_ata dropped by
-//      the same.
+//   4. Poll on-chain until OrderbookPosition yes/no each grew by exactly
+//      10·WAD and usdc_ata dropped by 10 USDC.
 //
 // Verifications:
-//   - user_yes_ata.amount and user_no_ata.amount each += 10·USDC
+//   - OrderbookPosition.yes_shares and .no_shares each += 10·WAD
 //   - user USDC ATA -= 10·USDC
 
 import { test, expect } from "@playwright/test";
 import { PublicKey } from "@solana/web3.js";
-import { getAssociatedTokenAddressSync, getAccount } from "@solana/spl-token";
 import { makeConnection, getTokenBalance } from "../helpers/onchain";
 import { loadFixture, testPubkey, marketIdBytes } from "../helpers/fixture";
-import { deriveYesMintPda, deriveNoMintPda } from "../helpers/sdk-helpers";
+import { fetchOrderbookPosition } from "../helpers/sdk-helpers";
 
 const TEN_USDC = 10_000_000n;
+const TEN_SHARES_WAD = 10n * 10n ** 18n;
 
 test.describe("mint complete-set (UI-driven)", () => {
   test("MINT 10 USDC via /portfolio: YES+NO ATAs each += 10·USDC; USDC -= 10·USDC", async ({
@@ -33,21 +32,11 @@ test.describe("mint complete-set (UI-driven)", () => {
     const idBytes = marketIdBytes(fixture);
     const usdcMint = new PublicKey(fixture.usdcMint);
 
-    const yesMint = deriveYesMintPda(idBytes);
-    const noMint = deriveNoMintPda(idBytes);
-
-    async function readOutcome(mint: PublicKey): Promise<bigint> {
-      const ata = getAssociatedTokenAddressSync(mint, TEST_PUBKEY);
-      try {
-        const acc = await getAccount(conn, ata);
-        return acc.amount;
-      } catch {
-        return 0n;
-      }
-    }
-
-    const yesBefore = await readOutcome(yesMint);
-    const noBefore = await readOutcome(noMint);
+    const positionBefore = await fetchOrderbookPosition({
+      conn,
+      marketId: idBytes,
+      user: TEST_PUBKEY,
+    });
     const usdcBefore = await getTokenBalance(conn, usdcMint, TEST_PUBKEY);
 
     await page.goto(`/portfolio`);
@@ -72,11 +61,27 @@ test.describe("mint complete-set (UI-driven)", () => {
 
     // Poll on-chain for the yes/no/usdc deltas.
     await expect
-      .poll(async () => await readOutcome(yesMint), { timeout: 60_000 })
-      .toBe(yesBefore + TEN_USDC);
-    const noAfter = await readOutcome(noMint);
+      .poll(
+        async () =>
+          (
+            await fetchOrderbookPosition({
+              conn,
+              marketId: idBytes,
+              user: TEST_PUBKEY,
+            })
+          ).yesShares,
+        { timeout: 60_000 },
+      )
+      .toBe(positionBefore.yesShares + TEN_SHARES_WAD);
+    const positionAfter = await fetchOrderbookPosition({
+      conn,
+      marketId: idBytes,
+      user: TEST_PUBKEY,
+    });
     const usdcAfter = await getTokenBalance(conn, usdcMint, TEST_PUBKEY);
-    expect(noAfter - noBefore).toBe(TEN_USDC);
+    expect(positionAfter.noShares - positionBefore.noShares).toBe(
+      TEN_SHARES_WAD,
+    );
     expect(usdcBefore - usdcAfter).toBe(TEN_USDC);
 
     // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.

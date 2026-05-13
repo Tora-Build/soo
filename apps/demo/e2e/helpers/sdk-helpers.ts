@@ -20,15 +20,19 @@ import {
   Transaction,
   TransactionInstruction,
   SystemProgram,
+  LAMPORTS_PER_SOL,
   SYSVAR_RENT_PUBKEY,
   SYSVAR_INSTRUCTIONS_PUBKEY,
   ComputeBudgetProgram,
   sendAndConfirmTransaction,
+  type AccountMeta,
 } from "@solana/web3.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountIdempotentInstruction,
+  createMintToInstruction,
+  getAccount,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import anchor from "@coral-xyz/anchor";
@@ -559,6 +563,13 @@ export async function buyViaAdapter(args: {
     maxCostWad,
   } = args;
   const programs = makePrograms(conn, signer);
+  await initMarketFeePoolViaAdapter({
+    conn,
+    signer,
+    usdcMint,
+    marketPda,
+    marketId,
+  });
 
   const ammPda = deriveAmmStatePda(marketId);
   const positionPda = derivePositionPda(marketId, signer.publicKey);
@@ -614,6 +625,7 @@ export async function buyViaAdapter(args: {
       marketVault,
       usdcMint,
       protocolConfig,
+      marketFeePool: deriveMarketFeePoolPda(marketId),
       feePoolVault,
       lpMint,
       lpMintAuthority,
@@ -689,6 +701,8 @@ export async function sellViaAdapter(args: {
       lockVault,
       lockEntry: lockEntryPda,
       usdcMint,
+      protocolConfig: deriveProtocolConfigPda(),
+      marketFeePool: deriveMarketFeePoolPda(marketId),
       user: signer.publicKey,
       systemProgram: SystemProgram.programId,
       tokenProgram: TOKEN_PROGRAM_ID,
@@ -890,6 +904,305 @@ export function loadMintAuthorityKeypair(): Keypair {
   );
 }
 
+export async function fundOrderbookTrader(args: {
+  conn: Connection;
+  trader: Keypair;
+  mintAuthority: Keypair;
+  usdcMint: PublicKey;
+  usdcBaseUnits?: bigint;
+  sol?: number;
+}): Promise<void> {
+  const sol = args.sol ?? 2;
+  if ((await args.conn.getBalance(args.trader.publicKey)) < LAMPORTS_PER_SOL) {
+    const sig = await args.conn.requestAirdrop(
+      args.trader.publicKey,
+      sol * LAMPORTS_PER_SOL,
+    );
+    await args.conn.confirmTransaction(sig, "confirmed");
+  }
+
+  const ata = getAssociatedTokenAddressSync(
+    args.usdcMint,
+    args.trader.publicKey,
+  );
+  const tx = new Transaction().add(
+    createAssociatedTokenAccountIdempotentInstruction(
+      args.mintAuthority.publicKey,
+      ata,
+      args.trader.publicKey,
+      args.usdcMint,
+    ),
+    createMintToInstruction(
+      args.usdcMint,
+      ata,
+      args.mintAuthority.publicKey,
+      args.usdcBaseUnits ?? 100_000_000n,
+    ),
+  );
+  await sendAndConfirmTransaction(args.conn, tx, [args.mintAuthority], {
+    commitment: "confirmed",
+  });
+}
+
+export function minRestingOrderForTick(tick: number): bigint {
+  if (!Number.isInteger(tick) || tick < 1 || tick > 999) {
+    throw new Error(`tick must be 1..999, got ${tick}`);
+  }
+  const baseUnitWad = 1_000_000_000_000n;
+  return (baseUnitWad * 1000n + BigInt(tick) - 1n) / BigInt(tick);
+}
+
+export interface OrderbookPositionState {
+  market: PublicKey;
+  user: PublicKey;
+  yesShares: bigint;
+  noShares: bigint;
+}
+
+export async function fetchOrderbookPosition(args: {
+  conn: Connection;
+  marketId: Buffer;
+  user: PublicKey;
+}): Promise<OrderbookPositionState> {
+  const pda = deriveOrderbookPositionPda(args.marketId, args.user);
+  const info = await args.conn.getAccountInfo(pda);
+  if (!info) {
+    return {
+      market: PublicKey.default,
+      user: args.user,
+      yesShares: 0n,
+      noShares: 0n,
+    };
+  }
+  const d = info.data;
+  return {
+    market: new PublicKey(d.subarray(8, 40)),
+    user: new PublicKey(d.subarray(40, 72)),
+    yesShares: d.readBigUInt64LE(72) | (d.readBigUInt64LE(80) << 64n),
+    noShares: d.readBigUInt64LE(88) | (d.readBigUInt64LE(96) << 64n),
+  };
+}
+
+export async function getTokenAccountAmount(
+  conn: Connection,
+  tokenAccount: PublicKey,
+): Promise<bigint> {
+  try {
+    return (await getAccount(conn, tokenAccount)).amount;
+  } catch {
+    return 0n;
+  }
+}
+
+export async function mintOrderbookCompleteSetViaAdapter(args: {
+  conn: Connection;
+  signer: Keypair;
+  usdcMint: PublicKey;
+  marketPda: PublicKey;
+  amount: bigint;
+}): Promise<string> {
+  const adapter = makeSolanaAdapter({ conn: args.conn, usdcMint: args.usdcMint });
+  const req = await adapter.buildOrderbookMint(
+    `sol:${args.marketPda.toBase58()}`,
+    {
+      amount: args.amount,
+      user: `sol:${args.signer.publicKey.toBase58()}`,
+    },
+  );
+  const receipt = await adapter.submit(req, makeSignerRef(args.signer));
+  return receipt.txId;
+}
+
+export function buildOrderbookFillBundle(args: {
+  marketId: Buffer;
+  usdcMint: PublicKey;
+  maker: PublicKey;
+  makerSide: 0 | 1;
+  makerTick: number;
+}): AccountMeta[] {
+  return [
+    {
+      pubkey: deriveBookSidePda(args.marketId, args.makerSide, args.makerTick),
+      isSigner: false,
+      isWritable: true,
+    },
+    {
+      pubkey: deriveOrderbookPositionPda(args.marketId, args.maker),
+      isSigner: false,
+      isWritable: true,
+    },
+    {
+      pubkey: getAssociatedTokenAddressSync(args.usdcMint, args.maker),
+      isSigner: false,
+      isWritable: true,
+    },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+  ];
+}
+
+export async function sendOrderbookBuyWithRemainingAccounts(args: {
+  conn: Connection;
+  signer: Keypair;
+  usdcMint: PublicKey;
+  marketPda: PublicKey;
+  side: 0 | 1;
+  tick: number;
+  amount: bigint;
+  escrow?: boolean;
+  matchLimit?: number;
+  remainingAccounts: AccountMeta[];
+}): Promise<string> {
+  const adapter = makeSolanaAdapter({ conn: args.conn, usdcMint: args.usdcMint });
+  const ixs = await adapter.buildOrderbookBuyTx(
+    `sol:${args.marketPda.toBase58()}`,
+    {
+      side: args.side,
+      tick: args.tick,
+      amount: args.amount,
+      escrow: args.escrow ?? false,
+      matchLimitPerTx: args.matchLimit ?? 3,
+      user: `sol:${args.signer.publicKey.toBase58()}`,
+    },
+    args.remainingAccounts,
+  );
+  const tx = new Transaction().add(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
+    ...ixs,
+  );
+  return sendAndConfirmTransaction(args.conn, tx, [args.signer], {
+    commitment: "confirmed",
+  });
+}
+
+export async function fetchTransactionLogs(
+  conn: Connection,
+  txId: string,
+): Promise<string[]> {
+  const signature = txId.replace(/^sol:/, "");
+  const tx = await conn.getTransaction(signature, {
+    commitment: "confirmed",
+    maxSupportedTransactionVersion: 0,
+  });
+  return tx?.meta?.logMessages ?? [];
+}
+
+export async function distributeMarketFeesViaAdapter(args: {
+  conn: Connection;
+  signer: Keypair;
+  usdcMint: PublicKey;
+  marketPda: PublicKey;
+  marketId: Buffer;
+}): Promise<string> {
+  const creatorAta = getAssociatedTokenAddressSync(
+    args.usdcMint,
+    args.signer.publicKey,
+  );
+  const lpYieldAuthority = deriveLpYieldAuthorityPda();
+  const lpYieldVault = getAssociatedTokenAddressSync(
+    args.usdcMint,
+    lpYieldAuthority,
+    true,
+  );
+  const createAtaTx = new Transaction().add(
+    createAssociatedTokenAccountIdempotentInstruction(
+      args.signer.publicKey,
+      creatorAta,
+      args.signer.publicKey,
+      args.usdcMint,
+    ),
+    createAssociatedTokenAccountIdempotentInstruction(
+      args.signer.publicKey,
+      lpYieldVault,
+      lpYieldAuthority,
+      args.usdcMint,
+    ),
+  );
+  await sendAndConfirmTransaction(args.conn, createAtaTx, [args.signer], {
+    commitment: "confirmed",
+  });
+  await patchProtocolTreasuryViaSurfpool({
+    conn: args.conn,
+    treasury: creatorAta,
+  });
+
+  const tx = new Transaction().add(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
+  );
+  const ix = new TransactionInstruction({
+    programId: launchpadProgramId,
+    keys: [
+      { pubkey: deriveProtocolConfigPda(), isSigner: false, isWritable: false },
+      { pubkey: args.marketPda, isSigner: false, isWritable: false },
+      {
+        pubkey: deriveFeePoolAuthorityPda(),
+        isSigner: false,
+        isWritable: false,
+      },
+      { pubkey: args.usdcMint, isSigner: false, isWritable: false },
+      {
+        pubkey: deriveMarketFeePoolPda(args.marketId),
+        isSigner: false,
+        isWritable: true,
+      },
+      { pubkey: creatorAta, isSigner: false, isWritable: true },
+      { pubkey: lpYieldVault, isSigner: false, isWritable: true },
+      { pubkey: creatorAta, isSigner: false, isWritable: true },
+      { pubkey: creatorAta, isSigner: false, isWritable: true },
+      { pubkey: args.signer.publicKey, isSigner: true, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: createHash("sha256")
+      .update("global:distribute_fees")
+      .digest()
+      .subarray(0, 8),
+  });
+  tx.add(ix);
+  return sendAndConfirmTransaction(args.conn, tx, [args.signer], {
+    commitment: "confirmed",
+  });
+}
+
+async function patchProtocolTreasuryViaSurfpool(args: {
+  conn: Connection;
+  treasury: PublicKey;
+}): Promise<void> {
+  const protocolConfig = deriveProtocolConfigPda();
+  const info = await args.conn.getAccountInfo(protocolConfig);
+  if (!info) throw new Error(`ProtocolConfig missing at ${protocolConfig}`);
+  const data = Buffer.from(info.data);
+  const treasuryOffset = 8 + 32;
+  const current = new PublicKey(
+    data.subarray(treasuryOffset, treasuryOffset + 32),
+  );
+  if (current.equals(args.treasury)) return;
+  args.treasury.toBuffer().copy(data, treasuryOffset);
+  const rpcUrl = process.env.SOLANA_RPC_URL ?? "http://127.0.0.1:8899";
+  const res = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "surfnet_setAccount",
+      params: [
+        protocolConfig.toBase58(),
+        {
+          lamports: info.lamports,
+          owner: info.owner.toBase58(),
+          data: data.toString("hex"),
+          executable: info.executable,
+        },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`surfnet_setAccount: HTTP ${res.status}`);
+  const json = (await res.json()) as { error?: { message?: string } };
+  if (json.error) {
+    throw new Error(`surfnet_setAccount failed: ${json.error.message}`);
+  }
+}
+
 export interface FreshMarketSetup {
   marketId: Buffer;
   marketPda: PublicKey;
@@ -940,6 +1253,7 @@ export async function createSeededOrderbookMarketViaAdapter(args: {
   usdcMint: PublicKey;
   existingSoothMarket?: FreshMarketSetup;
   question?: string;
+  initialB?: bigint;
   deadline?: bigint;
   bookTitle?: string;
   marketLockTimestamp?: bigint;
@@ -954,6 +1268,7 @@ export async function createSeededOrderbookMarketViaAdapter(args: {
       creator: args.creator,
       usdcMint: args.usdcMint,
       question: args.question ?? `orderbook market ${Date.now()}`,
+      initialB: args.initialB ?? 1n * 10n ** 18n,
       deadline: args.deadline ?? defaultDeadline,
     }));
 
@@ -1041,6 +1356,9 @@ export async function forceAmmGraduatedViaSurfpool(args: {
   if (!res.ok) throw new Error(`surfnet_setAccount: HTTP ${res.status}`);
   const json = (await res.json()) as { error?: { message?: string } };
   if (json.error) {
+    if (json.error.message?.includes("Method not found")) {
+      return;
+    }
     throw new Error(`surfnet_setAccount failed: ${json.error.message}`);
   }
 }

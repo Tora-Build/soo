@@ -4,7 +4,7 @@
 #   1. Kills any leftover solana-test-validator we previously started
 #      (recorded in apps/demo/.localnet.pid).
 #   2. Runs `seed-localnet.mjs prepare` to write a USDC mint JSON dump.
-#   3. Boots solana-test-validator --reset with both Sooth programs deployed
+#   3. Boots solana-test-validator --reset with all Sooth programs deployed
 #      from target/deploy/*.so AND the USDC mint preloaded at the canonical
 #      address via --account.
 #   4. Waits for the validator to be healthy.
@@ -32,21 +32,13 @@ VALIDATOR_LOG="$LOCALNET_DIR/validator.log"
 LEDGER_DIR="$LOCALNET_DIR/ledger"
 USDC_DUMP="$LOCALNET_DIR/usdc-mint-account.json"
 
-# Production declare_id! pubkeys (locked in commit d0db9fb; same across
-# devnet/localnet/mainnet per docs/decision-log.md D6). The seed script
-# reads program IDs from each IDL.address, so the validator must deploy
-# at the matching pubkeys or seed-init's first Sooth-program ix will
-# fail with "Attempt to load a program that does not exist."
-SOOTH_AMM_ID="67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k"
-SOOTH_MARKET_ID="ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n"
-SOOTH_LAUNCHPAD_ID="HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3"
-SOOTH_ADJUDICATOR_ID="4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8"
 USDC_MINT_ADDR="4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 
 AMM_SO="$REPO_ROOT/target/deploy/sooth_amm.so"
 MARKET_SO="$REPO_ROOT/target/deploy/sooth_market.so"
 LAUNCHPAD_SO="$REPO_ROOT/target/deploy/sooth_launchpad.so"
 ADJUDICATOR_SO="$REPO_ROOT/target/deploy/sooth_adjudicator.so"
+BOOK_SO="$REPO_ROOT/target/deploy/sooth_book.so"
 
 VITE_PORT="${VITE_PORT:-5175}"
 RPC_PORT="${RPC_PORT:-8899}"
@@ -63,13 +55,32 @@ if ! command -v solana-test-validator >/dev/null 2>&1; then
   exit 1
 fi
 
-for so in "$AMM_SO" "$MARKET_SO" "$LAUNCHPAD_SO" "$ADJUDICATOR_SO"; do
+for so in "$AMM_SO" "$MARKET_SO" "$LAUNCHPAD_SO" "$ADJUDICATOR_SO" "$BOOK_SO"; do
   if [[ ! -f "$so" ]]; then
     err "missing $so"
     err "Run from repo root: cd packages/programs-core && cargo build-sbf"
     exit 1
   fi
 done
+
+# The seed script reads program IDs from the built SDK IDLs/constants. Keep
+# validator preload ids aligned with that exact source of truth.
+read -r SOOTH_AMM_ID SOOTH_MARKET_ID SOOTH_LAUNCHPAD_ID SOOTH_ADJUDICATOR_ID SOOTH_BOOK_ID < <(
+  REPO_ROOT="$REPO_ROOT" node --input-type=module <<'NODE'
+const root = process.env.REPO_ROOT;
+const sdk = `${root}/packages/sdk-solana/dist`;
+const anchor = await import(new URL(`file://${sdk}/anchor/index.js`).href);
+const pdas = await import(new URL(`file://${sdk}/pdas.js`).href);
+const id = (idlAddress, fallback) => idlAddress || fallback.toBase58();
+process.stdout.write([
+  anchor.soothAmmIdl.address,
+  id(anchor.soothMarketIdl.address, pdas.SOOTH_MARKET_PROGRAM_ID),
+  id(anchor.soothLaunchpadIdl.address, pdas.SOOTH_LAUNCHPAD_PROGRAM_ID),
+  anchor.soothAdjudicatorIdl.address,
+  id(anchor.soothBookIdl.address, pdas.SOOTH_BOOK_PROGRAM_ID),
+].join(" ") + "\n");
+NODE
+)
 
 # ─── Stop a previously-launched validator (only ours) ─────────────────────
 if [[ -f "$VALIDATOR_PID_FILE" ]]; then
@@ -115,6 +126,7 @@ log "    sooth_amm         = $SOOTH_AMM_ID"
 log "    sooth_market      = $SOOTH_MARKET_ID"
 log "    sooth_launchpad   = $SOOTH_LAUNCHPAD_ID"
 log "    sooth_adjudicator = $SOOTH_ADJUDICATOR_ID"
+log "    sooth_book        = $SOOTH_BOOK_ID"
 log "  preloaded mint: $USDC_MINT_ADDR (.localnet/usdc-mint-account.json)"
 log "  ledger: $LEDGER_DIR"
 log "  log:    $VALIDATOR_LOG"
@@ -131,6 +143,7 @@ solana-test-validator \
   --bpf-program "$SOOTH_MARKET_ID" "$MARKET_SO" \
   --bpf-program "$SOOTH_LAUNCHPAD_ID" "$LAUNCHPAD_SO" \
   --bpf-program "$SOOTH_ADJUDICATOR_ID" "$ADJUDICATOR_SO" \
+  --bpf-program "$SOOTH_BOOK_ID" "$BOOK_SO" \
   --account "$USDC_MINT_ADDR" "$USDC_DUMP" \
   >"$VALIDATOR_LOG" 2>&1 &
 VALIDATOR_PID=$!

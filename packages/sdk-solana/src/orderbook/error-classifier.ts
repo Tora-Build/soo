@@ -74,11 +74,34 @@ const CATALOG: Record<string, KnownClassifiedError> = {
     message: "Internal program math overflow. Please report.",
     retriable: false,
   },
+  MarketNotOpen: {
+    category: "state",
+    message: "This market is not open for trading.",
+    retriable: false,
+  },
+  InsufficientShares: {
+    category: "validation",
+    message: "Insufficient shares for this order.",
+    retriable: false,
+  },
+  NothingToDistribute: {
+    category: "state",
+    message: "There are no fees to distribute for this market.",
+    retriable: false,
+  },
+  LegacyDrainAlreadyExecuted: {
+    category: "state",
+    message: "The legacy fee drain has already been executed.",
+    retriable: false,
+  },
 };
 
 const ALIASES: Record<string, keyof typeof CATALOG> = {
   NotGraduated: "MarketNotGraduated",
   SlippageExceeded: "Slippage",
+  MarketNotActive: "MarketNotOpen",
+  PositionInsufficient: "InsufficientShares",
+  InsufficientOutcomeShares: "InsufficientShares",
 };
 
 const NUMERIC_CODES: Record<number, keyof typeof CATALOG> = {
@@ -102,6 +125,12 @@ export function classifyError(
   if (code && CATALOG[code]) {
     return { code, ...CATALOG[code] };
   }
+
+  const textCode = codeFromText(rawProgramLog(err));
+  if (textCode && CATALOG[textCode]) {
+    return { code: textCode, ...CATALOG[textCode] };
+  }
+
   const numericCode = extracted.numericCode;
   if (numericCode !== undefined && NUMERIC_CODES[numericCode]) {
     const mapped = NUMERIC_CODES[numericCode];
@@ -114,6 +143,24 @@ export function classifyError(
     message: raw,
     retriable: false,
   };
+}
+
+function codeFromText(text: string): keyof typeof CATALOG | undefined {
+  const lowered = text.toLowerCase();
+  if (lowered.includes("fee pool is empty")) return "NothingToDistribute";
+  if (lowered.includes("legacy fee drain already executed")) {
+    return "LegacyDrainAlreadyExecuted";
+  }
+  if (lowered.includes("market is not in the open lifecycle state")) {
+    return "MarketNotOpen";
+  }
+  if (
+    lowered.includes("insufficient shares") ||
+    lowered.includes("insufficient outcome-token balance")
+  ) {
+    return "InsufficientShares";
+  }
+  return undefined;
 }
 
 function canonicalCode(code: string): keyof typeof CATALOG | string {
@@ -142,6 +189,11 @@ function extractCode(err: unknown): {
   const custom = /custom program error:\s*0x([0-9a-f]+)/i.exec(text);
   if (custom?.[1]) {
     const parsed = Number.parseInt(custom[1], 16);
+    if (Number.isFinite(parsed)) return { numericCode: parsed };
+  }
+  const decimal = /\bcode=(\d+)\b/.exec(text);
+  if (decimal?.[1]) {
+    const parsed = Number.parseInt(decimal[1], 10);
     if (Number.isFinite(parsed)) return { numericCode: parsed };
   }
   return {};

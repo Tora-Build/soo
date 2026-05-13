@@ -21,7 +21,7 @@
 //   - LockEntry PDA at the pre-sell lock_nonce now exists (account size > 0).
 //   - LockEntry.amount_usdc > 0 (proceeds were locked, not zero).
 //   - lock_vault USDC balance increased by LockEntry.amount_usdc.
-//   - market_vault USDC balance decreased by the same amount.
+//   - market_vault USDC balance decreased by locked proceeds plus market fee.
 //   - LockEntry.unlock_at is approximately now + 86_400 seconds (within
 //     a 60s tolerance for slot-time skew).
 
@@ -43,6 +43,7 @@ import {
   deriveLockEntryPda,
   deriveVaultAuthorityPda,
   deriveLockAuthorityPda,
+  deriveMarketFeePoolPda,
   fetchPosition,
   fetchLockEntry,
 } from "../helpers/sdk-helpers";
@@ -98,6 +99,7 @@ test.describe("AMM sell-yes (UI-driven, adapter-direct buy as setup)", () => {
       vaultAuthority,
       true,
     );
+    const marketFeePool = deriveMarketFeePoolPda(idBytes);
     const lockVault = getAssociatedTokenAddressSync(
       usdcMint,
       lockAuthority,
@@ -138,6 +140,10 @@ test.describe("AMM sell-yes (UI-driven, adapter-direct buy as setup)", () => {
       .then((r) => BigInt(r.value.amount));
     const lockVaultBefore = await conn
       .getTokenAccountBalance(lockVault)
+      .then((r) => BigInt(r.value.amount))
+      .catch(() => 0n);
+    const marketFeePoolBefore = await conn
+      .getTokenAccountBalance(marketFeePool)
       .then((r) => BigInt(r.value.amount))
       .catch(() => 0n);
 
@@ -208,8 +214,14 @@ test.describe("AMM sell-yes (UI-driven, adapter-direct buy as setup)", () => {
     const lockVaultAfter = await conn
       .getTokenAccountBalance(lockVault)
       .then((r) => BigInt(r.value.amount));
+    const marketFeePoolAfter = await conn
+      .getTokenAccountBalance(marketFeePool)
+      .then((r) => BigInt(r.value.amount));
+    const marketFeeDelta = marketFeePoolAfter - marketFeePoolBefore;
     expect(lockVaultAfter - lockVaultBefore).toBe(lockEntry!.amountUsdc);
-    expect(marketVaultBefore - marketVaultAfter).toBe(lockEntry!.amountUsdc);
+    expect(marketVaultBefore - marketVaultAfter).toBe(
+      lockEntry!.amountUsdc + marketFeeDelta,
+    );
 
     // 9. unlock_at ≈ now + 86_400; allow ±60s for slot-time skew.
     const nowSec = BigInt(Math.floor(Date.now() / 1000));
