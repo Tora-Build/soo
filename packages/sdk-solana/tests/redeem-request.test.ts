@@ -75,7 +75,7 @@ describe("buildClaim({kind: 'redeem'}) request shape", () => {
       marketPda?: string;
     };
     expect(meta.operation).toBe("redeem");
-    expect(meta.ixProgramId).toBe(smoke.programs.soothMarket.toBase58());
+    expect(meta.ixProgramId).toBe(smoke.programs.soothCore.toBase58());
     expect(meta.userPk).toBe(smoke.user.publicKey.toBase58());
     expect(meta.marketPda).toBe(smoke.marketPda.toBase58());
     expect(typeof meta.ixData).toBe("string");

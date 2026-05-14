@@ -1,0 +1,119 @@
+use anchor_lang::prelude::Pubkey;
+
+// ── Program ID ───────────────────────────────────────────────────────────
+
+pub const SOOTH_CORE_PROGRAM_ID: Pubkey =
+    anchor_lang::pubkey!("BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W");
+
+// ── USDC mint ────────────────────────────────────────────────────────────
+
+pub const USDC_MINT_MAINNET: Pubkey =
+    anchor_lang::pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+
+#[cfg(feature = "mainnet")]
+pub const BASE_TOKEN_MINT: Pubkey = USDC_MINT_MAINNET;
+#[cfg(not(feature = "mainnet"))]
+pub const BASE_TOKEN_MINT: Pubkey =
+    anchor_lang::pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+
+pub const USDC_MINT_DEVNET: Pubkey = BASE_TOKEN_MINT;
+
+// ── pubkey_eq — compile-time assert helper ───────────────────────────────
+
+pub const fn pubkey_eq(
+    a: anchor_lang::solana_program::pubkey::Pubkey,
+    b: anchor_lang::solana_program::pubkey::Pubkey,
+) -> bool {
+    let a = a.to_bytes();
+    let b = b.to_bytes();
+    let mut i = 0;
+    while i < 32 {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+// ── Account byte-offset constants ────────────────────────────────────────
+// Used by SPACE assertions in state types and by raw-parse helpers.
+
+pub const POSITION_DISCRIMINATOR_LEN: usize = 8;
+pub const POSITION_USER_LEN: usize = 32;
+pub const POSITION_MARKET_LEN: usize = 32;
+pub const POSITION_YES_SHARES_LEN: usize = 16;
+pub const POSITION_NO_SHARES_LEN: usize = 16;
+pub const POSITION_LOCKED_COST_USDC_LEN: usize = 8;
+pub const POSITION_LOCK_NONCE_LEN: usize = 8;
+pub const POSITION_BUMP_LEN: usize = 1;
+
+pub const POSITION_USER_OFFSET: usize = POSITION_DISCRIMINATOR_LEN;
+pub const POSITION_MARKET_OFFSET: usize = POSITION_USER_OFFSET + POSITION_USER_LEN;
+pub const POSITION_YES_SHARES_OFFSET: usize = POSITION_MARKET_OFFSET + POSITION_MARKET_LEN;
+pub const POSITION_NO_SHARES_OFFSET: usize = POSITION_YES_SHARES_OFFSET + POSITION_YES_SHARES_LEN;
+pub const POSITION_LOCKED_COST_USDC_OFFSET: usize =
+    POSITION_NO_SHARES_OFFSET + POSITION_NO_SHARES_LEN;
+pub const POSITION_LOCK_NONCE_OFFSET: usize =
+    POSITION_LOCKED_COST_USDC_OFFSET + POSITION_LOCKED_COST_USDC_LEN;
+pub const POSITION_BUMP_OFFSET: usize = POSITION_LOCK_NONCE_OFFSET + POSITION_LOCK_NONCE_LEN;
+pub const POSITION_TOTAL_LEN: usize = POSITION_BUMP_OFFSET + POSITION_BUMP_LEN;
+
+pub const LOCK_ENTRY_DISCRIMINATOR_LEN: usize = 8;
+pub const LOCK_ENTRY_USER_LEN: usize = 32;
+pub const LOCK_ENTRY_MARKET_LEN: usize = 32;
+pub const LOCK_ENTRY_AMOUNT_USDC_LEN: usize = 8;
+pub const LOCK_ENTRY_UNLOCK_AT_LEN: usize = 8;
+pub const LOCK_ENTRY_NONCE_LEN: usize = 8;
+pub const LOCK_ENTRY_BUMP_LEN: usize = 1;
+
+pub const LOCK_ENTRY_USER_OFFSET: usize = LOCK_ENTRY_DISCRIMINATOR_LEN;
+pub const LOCK_ENTRY_MARKET_OFFSET: usize = LOCK_ENTRY_USER_OFFSET + LOCK_ENTRY_USER_LEN;
+pub const LOCK_ENTRY_AMOUNT_USDC_OFFSET: usize = LOCK_ENTRY_MARKET_OFFSET + LOCK_ENTRY_MARKET_LEN;
+pub const LOCK_ENTRY_UNLOCK_AT_OFFSET: usize =
+    LOCK_ENTRY_AMOUNT_USDC_OFFSET + LOCK_ENTRY_AMOUNT_USDC_LEN;
+pub const LOCK_ENTRY_NONCE_OFFSET: usize = LOCK_ENTRY_UNLOCK_AT_OFFSET + LOCK_ENTRY_UNLOCK_AT_LEN;
+pub const LOCK_ENTRY_BUMP_OFFSET: usize = LOCK_ENTRY_NONCE_OFFSET + LOCK_ENTRY_NONCE_LEN;
+pub const LOCK_ENTRY_TOTAL_LEN: usize = LOCK_ENTRY_BUMP_OFFSET + LOCK_ENTRY_BUMP_LEN;
+
+pub const PROTOCOL_CONFIG_DISCRIMINATOR_LEN: usize = 8;
+pub const PROTOCOL_CONFIG_AUTHORITY_LEN: usize = 32;
+pub const PROTOCOL_CONFIG_TREASURY_LEN: usize = 32;
+pub const PROTOCOL_CONFIG_FEE_BPS_LEN: usize = 2;
+pub const PROTOCOL_CONFIG_B_BASE_SHARE_BPS_LEN: usize = 2;
+pub const PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_LEN: usize = 2;
+pub const PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_LEN: usize = 2;
+pub const PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_LEN: usize = 2;
+pub const PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_LEN: usize = 8;
+pub const PROTOCOL_CONFIG_BUMP_LEN: usize = 1;
+pub const PROTOCOL_CONFIG_PAUSED_LEN: usize = 1;
+pub const PROTOCOL_CONFIG_PERMISSIONLESS_ADJUDICATORS_LEN: usize = 1;
+
+pub const PROTOCOL_CONFIG_AUTHORITY_OFFSET: usize = PROTOCOL_CONFIG_DISCRIMINATOR_LEN;
+pub const PROTOCOL_CONFIG_TREASURY_OFFSET: usize =
+    PROTOCOL_CONFIG_AUTHORITY_OFFSET + PROTOCOL_CONFIG_AUTHORITY_LEN;
+pub const PROTOCOL_CONFIG_FEE_BPS_OFFSET: usize =
+    PROTOCOL_CONFIG_TREASURY_OFFSET + PROTOCOL_CONFIG_TREASURY_LEN;
+pub const PROTOCOL_CONFIG_B_BASE_SHARE_BPS_OFFSET: usize =
+    PROTOCOL_CONFIG_FEE_BPS_OFFSET + PROTOCOL_CONFIG_FEE_BPS_LEN;
+pub const PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_OFFSET: usize =
+    PROTOCOL_CONFIG_B_BASE_SHARE_BPS_OFFSET + PROTOCOL_CONFIG_B_BASE_SHARE_BPS_LEN;
+pub const PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_OFFSET: usize =
+    PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_OFFSET + PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_LEN;
+pub const PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_OFFSET: usize =
+    PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_OFFSET + PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_LEN;
+pub const PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_OFFSET: usize =
+    PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_OFFSET + PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_LEN;
+pub const PROTOCOL_CONFIG_BUMP_OFFSET: usize =
+    PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_OFFSET + PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_LEN;
+pub const PROTOCOL_CONFIG_PAUSED_OFFSET: usize =
+    PROTOCOL_CONFIG_BUMP_OFFSET + PROTOCOL_CONFIG_BUMP_LEN;
+pub const PROTOCOL_CONFIG_PERMISSIONLESS_ADJUDICATORS_OFFSET: usize =
+    PROTOCOL_CONFIG_PAUSED_OFFSET + PROTOCOL_CONFIG_PAUSED_LEN;
+pub const PROTOCOL_CONFIG_TOTAL_LEN: usize =
+    PROTOCOL_CONFIG_PERMISSIONLESS_ADJUDICATORS_OFFSET
+        + PROTOCOL_CONFIG_PERMISSIONLESS_ADJUDICATORS_LEN;
+
+const _: () = assert!(POSITION_TOTAL_LEN == 121);
+const _: () = assert!(LOCK_ENTRY_TOTAL_LEN == 97);
+const _: () = assert!(PROTOCOL_CONFIG_TOTAL_LEN == 93);

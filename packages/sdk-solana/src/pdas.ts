@@ -1,12 +1,10 @@
 // PDA derivation helpers — pure functions taking a 16-byte `marketId` and a
-// program-id pair and returning the canonical PDAs that `sooth_amm` and
-// `sooth_market` agree on.
+// program-id and returning the canonical PDAs that `sooth_core` uses.
 //
-// Seed conventions are load-bearing — they are duplicated across the on-chain
-// programs and must match exactly. The canonical source is
-// `packages/programs-core/programs/sooth_market/src/state/market.rs` (table
-// in the module comment). Any change here must be paired with the on-chain
-// constants and a workspace-wide test sweep.
+// Seed conventions are load-bearing — they must match exactly what the
+// on-chain program derives. The canonical source is
+// `packages/programs-core/programs/sooth-core/src/`. Any change here must be
+// paired with the on-chain constants and a workspace-wide test sweep.
 
 import { PublicKey } from "@solana/web3.js";
 import {
@@ -21,20 +19,7 @@ import {
 export type MarketId = Uint8Array;
 
 export interface ProgramIds {
-  soothAmm: PublicKey;
-  soothMarket: PublicKey;
-  // Optional — only required by sooth_book orderbook builders. The adapter
-  // falls back to the on-chain declare_id! when omitted.
-  soothBook?: PublicKey;
-  // Optional — only required by `buildCreateMarket` (the launchpad-program ix).
-  // Read paths and trade/sell/claim builders don't touch the launchpad, so
-  // leaving this undefined is fine in those contexts. The adapter falls back
-  // to the IDL placeholder (`SoothLP111…`) when `soothLaunchpad` is omitted
-  // — same convention as `soothAmm` / `soothMarket`.
-  soothLaunchpad?: PublicKey;
-  // Optional — only required by `buildRequestLock` / `buildAttestOutcome`
-  // (operator settle path). Same fallback convention.
-  soothAdjudicator?: PublicKey;
+  soothCore: PublicKey;
 }
 
 const enc = new TextEncoder();
@@ -49,7 +34,6 @@ const SEED_Y = enc.encode("y");
 const SEED_N = enc.encode("n");
 const SEED_PROTOCOL_CONFIG = enc.encode("protocol_config");
 const SEED_FEE_POOL_AUTHORITY = enc.encode("fee_pool_authority");
-const SEED_ADJUDICATOR_ALLOWLIST = enc.encode("adjudicator_allowlist");
 const SEED_LP = enc.encode("lp");
 const SEED_LP_MINT_AUTHORITY = enc.encode("lp_mint_authority");
 const SEED_LP_POSITION = enc.encode("lp_position");
@@ -58,15 +42,10 @@ const SEED_MARKET_BOOK = enc.encode("market_book");
 const SEED_BOOK_SIDE = enc.encode("book_side");
 const SEED_ORDERBOOK_POSITION = enc.encode("orderbook_position");
 const SEED_MARKET_FEE_POOL = enc.encode("market_fee_pool");
+const SEED_ADJUDICATOR = enc.encode("adjudicator");
 
-export const SOOTH_BOOK_PROGRAM_ID = new PublicKey(
-  "DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X",
-);
-export const SOOTH_MARKET_PROGRAM_ID = new PublicKey(
-  "5jweuZk3hGpck2teNZv5KUAuYzVEGgFoj1cyu1jffhZH",
-);
-export const SOOTH_LAUNCHPAD_PROGRAM_ID = new PublicKey(
-  "8pHPMF1U86iDQTB5ig1xyjbcDMfS1PXi8LLD4EiqNqm8",
+export const SOOTH_CORE_PROGRAM_ID = new PublicKey(
+  "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W",
 );
 
 function assertMarketId(marketId: MarketId): Buffer {
@@ -78,7 +57,7 @@ function assertMarketId(marketId: MarketId): Buffer {
   return Buffer.from(marketId);
 }
 
-// Owned by `sooth_market`. Seeds: [b"market", market_id].
+// Owned by `sooth_core`. Seeds: [b"market", market_id].
 export function deriveMarketPda(
   marketId: MarketId,
   programs: ProgramIds,
@@ -86,11 +65,11 @@ export function deriveMarketPda(
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_MARKET), id],
-    programs.soothMarket,
+    programs.soothCore,
   );
 }
 
-// Owned by `sooth_amm`. Seeds: [b"amm", market_id].
+// Owned by `sooth_core`. Seeds: [b"amm", market_id].
 export function deriveAmmStatePda(
   marketId: MarketId,
   programs: ProgramIds,
@@ -98,11 +77,11 @@ export function deriveAmmStatePda(
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_AMM), id],
-    programs.soothAmm,
+    programs.soothCore,
   );
 }
 
-// Signer-only PDA owned by `sooth_market`. Seeds: [b"vault", market_id].
+// Signer-only PDA owned by `sooth_core`. Seeds: [b"vault", market_id].
 export function deriveVaultAuthorityPda(
   marketId: MarketId,
   programs: ProgramIds,
@@ -110,11 +89,11 @@ export function deriveVaultAuthorityPda(
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_VAULT), id],
-    programs.soothMarket,
+    programs.soothCore,
   );
 }
 
-// Signer-only PDA owned by `sooth_market`. Seeds: [b"lock", market_id].
+// Signer-only PDA owned by `sooth_core`. Seeds: [b"lock", market_id].
 export function deriveLockAuthorityPda(
   marketId: MarketId,
   programs: ProgramIds,
@@ -122,11 +101,11 @@ export function deriveLockAuthorityPda(
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_LOCK), id],
-    programs.soothMarket,
+    programs.soothCore,
   );
 }
 
-// Owned by `sooth_amm`. Seeds: [b"pos", market_id, user].
+// Owned by `sooth_core`. Seeds: [b"pos", market_id, user].
 export function derivePositionPda(
   marketId: MarketId,
   user: PublicKey,
@@ -135,33 +114,30 @@ export function derivePositionPda(
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_POS), id, user.toBuffer()],
-    programs.soothAmm,
+    programs.soothCore,
   );
 }
 
-// Owned by `sooth_adjudicator`. Seeds: [b"adjudicator", market_pda]. The
-// `Adjudicator` PDA holds the per-market authority + kind + attested-outcome
-// state. Required by `request_lock` / `attest_outcome` / `dispute` ix
-// account lists.
-export function deriveAdjudicatorPda(
+// Per-market `AdjudicatorEntry` PDA owned by `sooth_core`.
+// Seeds: [b"adjudicator", market_pda]. Replaces the old allowlist approach.
+// Required by `attest_outcome` / `register_adjudicator` ix account lists.
+export function deriveAdjudicatorEntryPda(
   marketPda: PublicKey,
-  programs: ProgramIds & { soothAdjudicator: PublicKey },
+  programs: ProgramIds,
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("adjudicator"), marketPda.toBuffer()],
-    programs.soothAdjudicator,
+    [Buffer.from(SEED_ADJUDICATOR), marketPda.toBuffer()],
+    programs.soothCore,
   );
 }
 
-// Owned by `sooth_amm`. Seeds: [b"lock_entry", position.key(), nonce_le_u64].
+// Owned by `sooth_core`. Seeds: [b"lock_entry", position.key(), nonce_le_u64].
 //
-// The chosen seed scheme is documented in
-// `packages/programs-core/programs/sooth_amm/src/state/lock_entry.rs` (see
-// the "Seed scheme" section). The nonce source is `Position::lock_nonce` at
-// the moment of the sell — callers must read the on-chain `Position` first,
-// derive the LockEntry against the *current* nonce, and only then build the
-// `sell_positions` ix. The handler increments `lock_nonce` after init, so a
-// subsequent sell uses a fresh PDA.
+// The chosen seed scheme is documented in the on-chain state. The nonce
+// source is `Position::lock_nonce` at the moment of the sell — callers must
+// read the on-chain `Position` first, derive the LockEntry against the
+// *current* nonce, and only then build the `sell_positions` ix. The handler
+// increments `lock_nonce` after init, so a subsequent sell uses a fresh PDA.
 //
 // `lockNonce` is encoded as 8 little-endian bytes (matching Anchor's
 // `u64::to_le_bytes()` on the program side).
@@ -174,17 +150,16 @@ export function deriveLockEntryPda(
     throw new Error(`lockNonce must fit in u64, got ${lockNonce.toString()}`);
   }
   const nonceBytes = Buffer.alloc(8);
-  // Buffer doesn't have writeBigUInt64LE on all targets prior to Node 12+;
-  // Node 20 (engines.node) does. Use it directly.
   nonceBytes.writeBigUInt64LE(lockNonce, 0);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_LOCK_ENTRY), positionPda.toBuffer(), nonceBytes],
-    programs.soothAmm,
+    programs.soothCore,
   );
 }
 
-// Owned by spl-token. Seeds: [b"mint", market_id, b"y"|b"n"]. The mint
-// authority is the `vault_authority` PDA — verified at `initialize_market`.
+// SPL mint PDA for YES outcome tokens.
+// Seeds: [b"mint", market_id, b"y"]. Owned by spl-token program;
+// the mint authority is the `vault_authority` PDA.
 export function deriveYesMintPda(
   marketId: MarketId,
   programs: ProgramIds,
@@ -192,7 +167,7 @@ export function deriveYesMintPda(
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_MINT), id, Buffer.from(SEED_Y)],
-    programs.soothMarket,
+    programs.soothCore,
   );
 }
 
@@ -203,7 +178,7 @@ export function deriveNoMintPda(
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_MINT), id, Buffer.from(SEED_N)],
-    programs.soothMarket,
+    programs.soothCore,
   );
 }
 
@@ -247,45 +222,34 @@ export function deriveUserUsdcAta(
   return getAssociatedTokenAddressSync(usdcMint, user, true);
 }
 
-// Owned by `sooth_launchpad`. Seeds: [b"protocol_config"]. Singleton — there
+// Owned by `sooth_core`. Seeds: [b"protocol_config"]. Singleton — there
 // is exactly one of these per cluster deploy.
 export function deriveProtocolConfigPda(
-  programs: Pick<ProgramIds, "soothLaunchpad"> & {
-    soothLaunchpad: PublicKey;
-  },
+  programs: Pick<ProgramIds, "soothCore">,
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_PROTOCOL_CONFIG)],
-    programs.soothLaunchpad,
+    programs.soothCore,
   );
 }
 
-// Owned by `sooth_launchpad`. Seeds: [b"fee_pool_authority"]. Singleton —
+// Owned by `sooth_core`. Seeds: [b"fee_pool_authority"]. Singleton —
 // there is exactly one of these per cluster deploy. Used as the authority
-// (token::authority) on the global `fee_pool_vault` USDC ATA. Both
-// `trade_positions` (credits the vault) and `distribute_fees` (drains
-// it via PDA-signed CPIs) reference this PDA. See
-// `programs/sooth_launchpad/src/instructions/distribute_fees.rs`'s
-// "pool-then-distribute" rationale.
+// (token::authority) on the global `fee_pool_vault` USDC ATA.
 export function deriveFeePoolAuthorityPda(
-  programs: Pick<ProgramIds, "soothLaunchpad"> & {
-    soothLaunchpad: PublicKey;
-  },
+  programs: Pick<ProgramIds, "soothCore">,
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_FEE_POOL_AUTHORITY)],
-    programs.soothLaunchpad,
+    programs.soothCore,
   );
 }
 
-// Global fee-pool USDC ATA. Owner = `fee_pool_authority` PDA. The
-// associated-token-address derivation; not a PDA in the seed sense.
+// Global fee-pool USDC ATA. Owner = `fee_pool_authority` PDA.
 // Off-curve permitted because the owner is a PDA.
 export function deriveFeePoolVaultAta(
   usdcMint: PublicKey,
-  programs: Pick<ProgramIds, "soothLaunchpad"> & {
-    soothLaunchpad: PublicKey;
-  },
+  programs: Pick<ProgramIds, "soothCore">,
 ): PublicKey {
   const [authority] = deriveFeePoolAuthorityPda(programs);
   return getAssociatedTokenAddressSync(
@@ -297,90 +261,58 @@ export function deriveFeePoolVaultAta(
   );
 }
 
-// Owned by `sooth_market`. Seeds: [b"adjudicator_allowlist"]. Singleton —
-// there is exactly one of these per cluster deploy. Bootstrapped by
-// `sooth_market::initialize_adjudicator_allowlist` and consumed by both
-// `initialize_market` and `create_market`.
-export function deriveAdjudicatorAllowlistPda(
-  programs: ProgramIds,
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from(SEED_ADJUDICATOR_ALLOWLIST)],
-    programs.soothMarket,
-  );
-}
-
-// Per-market LP token mint owned by `sooth_launchpad`. Seeds:
-// [b"lp", market_id]. Created by `sooth_launchpad::seed_lp` (one-shot per
-// market) and credited on every pre-graduation buy via
-// `sooth_launchpad::mint_lp_for_buy` (CPI'd from
-// `sooth_amm::trade_positions`). Architecture §4.2 / §1 row 7.
+// Per-market LP token mint owned by `sooth_core`. Seeds: [b"lp", market_id].
 export function deriveLpMintPda(
   marketId: MarketId,
-  programs: Pick<ProgramIds, "soothLaunchpad"> & {
-    soothLaunchpad: PublicKey;
-  },
+  programs: Pick<ProgramIds, "soothCore">,
 ): [PublicKey, number] {
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_LP), id],
-    programs.soothLaunchpad,
+    programs.soothCore,
   );
 }
 
-// Per-market signer-only PDA owned by `sooth_launchpad`. The mint
-// authority on the per-market LP mint. Seeds: [b"lp_mint_authority",
-// market_id]. PDA-signed by `sooth_launchpad::seed_lp` (initial seed) and
-// `sooth_launchpad::mint_lp_for_buy` (per-buy LP credit).
+// Per-market signer-only PDA owned by `sooth_core`. The mint authority on the
+// per-market LP mint. Seeds: [b"lp_mint_authority", market_id].
 export function deriveLpMintAuthorityPda(
   marketId: MarketId,
-  programs: Pick<ProgramIds, "soothLaunchpad"> & {
-    soothLaunchpad: PublicKey;
-  },
+  programs: Pick<ProgramIds, "soothCore">,
 ): [PublicKey, number] {
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_LP_MINT_AUTHORITY), id],
-    programs.soothLaunchpad,
+    programs.soothCore,
   );
 }
 
-// Singleton signer-only PDA owned by `sooth_launchpad`. Seeds:
-// [b"lp_yield_authority"]. Used as the token authority on the LP-yield USDC
-// vault drained by `sooth_launchpad::redeem_lp`.
+// Singleton signer-only PDA owned by `sooth_core`. Seeds: [b"lp_yield_authority"].
+// Used as the token authority on the LP-yield USDC vault drained by `redeem_lp`.
 export function deriveLpYieldAuthority(
-  programs: Pick<ProgramIds, "soothLaunchpad"> & {
-    soothLaunchpad: PublicKey;
-  },
+  programs: Pick<ProgramIds, "soothCore">,
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_LP_YIELD_AUTHORITY)],
-    programs.soothLaunchpad,
+    programs.soothCore,
   );
 }
 
-// Per-(creator, market) LP claim record owned by `sooth_launchpad`.
-// Seeds: [b"lp_position", market_id, creator]. Created by
-// `sooth_launchpad::seed_lp` and consumed by the dismiss/refund flow.
+// Per-(creator, market) LP claim record owned by `sooth_core`.
+// Seeds: [b"lp_position", market_id, creator].
 export function deriveLpPositionPda(
   marketId: MarketId,
   creator: PublicKey,
-  programs: Pick<ProgramIds, "soothLaunchpad"> & {
-    soothLaunchpad: PublicKey;
-  },
+  programs: Pick<ProgramIds, "soothCore">,
 ): [PublicKey, number] {
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_LP_POSITION), id, creator.toBuffer()],
-    programs.soothLaunchpad,
+    programs.soothCore,
   );
 }
 
 // User's LP-token ATA. Off-curve permitted because the LP mint may have
-// PDA-owned token accounts; for a regular `user: PublicKey` this returns
-// the standard ATA address. Used by `trade_positions` (the SDK pre-creates
-// this idempotently before dispatching the buy) and by any future LP
-// redeem ix.
+// PDA-owned token accounts.
 export function deriveUserLpAta(user: PublicKey, lpMint: PublicKey): PublicKey {
   return getAssociatedTokenAddressSync(
     lpMint,
@@ -391,39 +323,35 @@ export function deriveUserLpAta(user: PublicKey, lpMint: PublicKey): PublicKey {
   );
 }
 
-// ─── sooth_book PDA helpers ──────────────────────────────────────────────
+// ─── sooth_core orderbook PDA helpers ───────────────────────────────────────
 
-type OrderbookProgramIds = Partial<
-  Pick<ProgramIds, "soothBook" | "soothMarket" | "soothLaunchpad">
->;
+type OrderbookProgramIds = Partial<Pick<ProgramIds, "soothCore">>;
 
-function orderbookProgramId<K extends keyof OrderbookProgramIds>(
+function orderbookProgramId(
   programs: OrderbookProgramIds | undefined,
-  key: K,
-  fallback: PublicKey,
 ): PublicKey {
-  return programs?.[key] ?? fallback;
+  return programs?.soothCore ?? SOOTH_CORE_PROGRAM_ID;
 }
 
-// MarketBook: one PDA per orderbook-enabled market, owned by sooth_book.
+// MarketBook: one PDA per orderbook-enabled market, owned by sooth_core.
 export function marketBookPda(
   marketId: Uint8Array,
-  programs?: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs?: Partial<Pick<ProgramIds, "soothCore">>,
 ): [PublicKey, number] {
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_MARKET_BOOK), id],
-    orderbookProgramId(programs, "soothBook", SOOTH_BOOK_PROGRAM_ID),
+    orderbookProgramId(programs),
   );
 }
 
-// BookSide: one PDA per populated (market, side, tick), owned by sooth_book.
+// BookSide: one PDA per populated (market, side, tick), owned by sooth_core.
 // side: 0 = AGAINST, 1 = FOR. Tick is encoded as Rust `u16::to_le_bytes()`.
 export function bookSidePda(
   marketId: Uint8Array,
   side: 0 | 1,
   tick: number,
-  programs?: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs?: Partial<Pick<ProgramIds, "soothCore">>,
 ): [PublicKey, number] {
   const id = assertMarketId(marketId);
   if (!Number.isInteger(tick) || tick < 0 || tick > 0xffff) {
@@ -438,37 +366,31 @@ export function bookSidePda(
       Buffer.from([side]),
       tickBuf,
     ],
-    orderbookProgramId(programs, "soothBook", SOOTH_BOOK_PROGRAM_ID),
+    orderbookProgramId(programs),
   );
 }
 
-// OrderbookPosition: one PDA per (market, user), owned by sooth_market.
+// OrderbookPosition: one PDA per (market, user), owned by sooth_core.
 export function orderbookPositionPda(
   marketId: Uint8Array,
   user: PublicKey,
-  programs?: Pick<ProgramIds, "soothMarket">,
+  programs?: Partial<Pick<ProgramIds, "soothCore">>,
 ): [PublicKey, number] {
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_ORDERBOOK_POSITION), id, user.toBuffer()],
-    orderbookProgramId(programs, "soothMarket", SOOTH_MARKET_PROGRAM_ID),
+    orderbookProgramId(programs),
   );
 }
 
-// MarketFeePool: one TokenAccount per market, owned by sooth_launchpad.
+// MarketFeePool: one TokenAccount per market, owned by sooth_core.
 export function marketFeePoolPda(
   marketId: Uint8Array,
-  programs?: Pick<ProgramIds, "soothLaunchpad"> & {
-    soothLaunchpad?: PublicKey;
-  },
+  programs?: Partial<Pick<ProgramIds, "soothCore">>,
 ): [PublicKey, number] {
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_MARKET_FEE_POOL), id],
-    orderbookProgramId(
-      programs,
-      "soothLaunchpad",
-      SOOTH_LAUNCHPAD_PROGRAM_ID,
-    ),
+    orderbookProgramId(programs),
   );
 }

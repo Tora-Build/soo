@@ -44,7 +44,7 @@ describe("program-owned sooth_market variant request shapes", () => {
     const payerRef = encodePubkeyRef(smoke.user.publicKey);
     const [destinationAuthority] = PublicKey.findProgramAddressSync(
       [Buffer.from("sooth-book-escrow")],
-      smoke.programs.soothMarket,
+      smoke.programs.soothCore,
     );
     const [yesMint] = deriveYesMintPda(smoke.marketId, smoke.programs);
     const [noMint] = deriveNoMintPda(smoke.marketId, smoke.programs);
@@ -82,7 +82,7 @@ describe("program-owned sooth_market variant request shapes", () => {
       amountStr?: string;
     };
     expect(mintMeta.operation).toBe("mintCompleteSetToProgramOwned");
-    expect(mintMeta.ixProgramId).toBe(smoke.programs.soothMarket.toBase58());
+    expect(mintMeta.ixProgramId).toBe(smoke.programs.soothCore.toBase58());
     expect(mintMeta.userPk).toBe(smoke.user.publicKey.toBase58());
     expect(mintMeta.marketPda).toBe(smoke.marketPda.toBase58());
     expect(mintMeta.amountStr).toBe("10000000");
@@ -145,7 +145,7 @@ describe("program-owned sooth_market variant request shapes", () => {
       amountNoStr?: string;
     };
     expect(redeemMeta.operation).toBe("redeemFromProgramOwned");
-    expect(redeemMeta.ixProgramId).toBe(smoke.programs.soothMarket.toBase58());
+    expect(redeemMeta.ixProgramId).toBe(smoke.programs.soothCore.toBase58());
     expect(redeemMeta.userPk).toBe(destinationAuthority.toBase58());
     expect(redeemMeta.marketPda).toBe(smoke.marketPda.toBase58());
     expect(redeemMeta.amountYesStr).toBe("5000000");
@@ -157,7 +157,6 @@ describe("program-owned sooth_market variant request shapes", () => {
     expect(redeemKeyStrs).toContain(vaultAuthority.toBase58());
     expect(redeemKeyStrs).toContain(yesMint.toBase58());
     expect(redeemKeyStrs).toContain(noMint.toBase58());
-    expect(redeemKeyStrs).toContain(smoke.usdcMint.toBase58());
     expect(redeemKeyStrs).toContain(marketVault.toBase58());
     expect(redeemKeyStrs).toContain(destinationYesAta.toBase58());
     expect(redeemKeyStrs).toContain(destinationNoAta.toBase58());

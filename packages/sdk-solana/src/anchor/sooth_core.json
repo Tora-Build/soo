@@ -1,0 +1,6662 @@
+{
+  "address": "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W",
+  "metadata": {
+    "name": "sooth_core",
+    "version": "0.0.0",
+    "spec": "0.1.0"
+  },
+  "instructions": [
+    {
+      "name": "attest_outcome",
+      "discriminator": [
+        115,
+        210,
+        81,
+        230,
+        222,
+        14,
+        85,
+        209
+      ],
+      "accounts": [
+        {
+          "name": "adjudicator_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "winning_outcome",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "buy",
+      "discriminator": [
+        102,
+        6,
+        61,
+        18,
+        1,
+        218,
+        235,
+        234
+      ],
+      "accounts": [
+        {
+          "name": "taker",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_book",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "book_side",
+          "writable": true
+        },
+        {
+          "name": "market_usdc_vault",
+          "writable": true
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  95,
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "taker_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "taker_orderbook_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  98,
+                  111,
+                  111,
+                  107,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "taker"
+              }
+            ]
+          }
+        },
+        {
+          "name": "protocol_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": "u8"
+        },
+        {
+          "name": "tick",
+          "type": "u16"
+        },
+        {
+          "name": "amount",
+          "type": "u128"
+        },
+        {
+          "name": "escrow",
+          "type": "bool"
+        },
+        {
+          "name": "match_limit",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "cancel",
+      "discriminator": [
+        232,
+        219,
+        223,
+        41,
+        219,
+        236,
+        220,
+        190
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "book_side"
+          ]
+        },
+        {
+          "name": "market_book",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "book_side",
+          "writable": true
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_usdc_vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "user_orderbook_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  98,
+                  111,
+                  111,
+                  107,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": "u8"
+        },
+        {
+          "name": "tick",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "cancel_by_id",
+      "discriminator": [
+        188,
+        241,
+        240,
+        50,
+        95,
+        134,
+        33,
+        127
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "book_side"
+          ]
+        },
+        {
+          "name": "market_book",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "book_side",
+          "writable": true
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_usdc_vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "user_orderbook_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  98,
+                  111,
+                  111,
+                  107,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "order_id",
+          "type": "u64"
+        },
+        {
+          "name": "side",
+          "type": "u8"
+        },
+        {
+          "name": "tick",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "claim_refund",
+      "discriminator": [
+        15,
+        16,
+        30,
+        161,
+        255,
+        228,
+        97,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "amm_state",
+          "docs": [
+            "AMM state for this market. Must be dismissed."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority signer-only PDA."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "docs": [
+            "AMM Position account — closed by the inline `close_dismissed_position`."
+          ],
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_unlocked",
+      "discriminator": [
+        70,
+        139,
+        1,
+        246,
+        166,
+        193,
+        64,
+        143
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "position",
+            "lock_entry"
+          ]
+        },
+        {
+          "name": "position",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock_entry",
+          "docs": [
+            "Lock entry to drain + close. Anchor's `close = user` refunds the",
+            "rent lamports to `user` and zeroes the discriminator on success."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  95,
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "position"
+              },
+              {
+                "kind": "account",
+                "path": "lock_entry.nonce",
+                "account": "LockEntry"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock_vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "position",
+            "lock_entry"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_book_side",
+      "discriminator": [
+        54,
+        206,
+        187,
+        47,
+        138,
+        35,
+        213,
+        156
+      ],
+      "accounts": [
+        {
+          "name": "closer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "book_side"
+          ]
+        },
+        {
+          "name": "market_book",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "book_side",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "compact_book_side",
+      "discriminator": [
+        254,
+        251,
+        202,
+        94,
+        166,
+        111,
+        18,
+        140
+      ],
+      "accounts": [
+        {
+          "name": "cranker",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "book_side"
+          ]
+        },
+        {
+          "name": "book_side",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "max_drops",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "create_market",
+      "discriminator": [
+        103,
+        226,
+        97,
+        235,
+        200,
+        188,
+        251,
+        254
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "docs": [
+            "Global protocol config. Checked for `paused` flag."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "args.market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "args.market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "args.market_id"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "no_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "args.market_id"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  110
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "args.market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "lock_vault",
+          "writable": true
+        },
+        {
+          "name": "amm_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "args.market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "CreateMarketArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "dismiss_market",
+      "discriminator": [
+        138,
+        225,
+        164,
+        155,
+        53,
+        68,
+        6,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "market"
+        },
+        {
+          "name": "amm_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "dispute",
+      "discriminator": [
+        216,
+        92,
+        128,
+        146,
+        202,
+        85,
+        135,
+        73
+      ],
+      "accounts": [
+        {
+          "name": "adjudicator_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "disputer",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_outcome",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "distribute_fees",
+      "discriminator": [
+        120,
+        56,
+        27,
+        7,
+        53,
+        176,
+        113,
+        186
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_pool_authority",
+          "docs": [
+            "account."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "market_fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  95,
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "b_base_yield_vault",
+          "writable": true
+        },
+        {
+          "name": "lp_yield_vault",
+          "writable": true
+        },
+        {
+          "name": "adjudicator_fee_vault",
+          "writable": true
+        },
+        {
+          "name": "protocol_treasury_vault",
+          "writable": true
+        },
+        {
+          "name": "cranker",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "distribute_fees_legacy",
+      "discriminator": [
+        50,
+        179,
+        149,
+        32,
+        120,
+        79,
+        13,
+        181
+      ],
+      "accounts": [
+        {
+          "name": "legacy_marker",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  103,
+                  97,
+                  99,
+                  121,
+                  95,
+                  102,
+                  101,
+                  101,
+                  95,
+                  100,
+                  114,
+                  97,
+                  105,
+                  110,
+                  95,
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  114
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_pool_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "fee_pool_vault",
+          "writable": true
+        },
+        {
+          "name": "b_base_yield_vault",
+          "writable": true
+        },
+        {
+          "name": "lp_yield_vault",
+          "writable": true
+        },
+        {
+          "name": "adjudicator_fee_vault",
+          "writable": true
+        },
+        {
+          "name": "protocol_treasury_vault",
+          "writable": true
+        },
+        {
+          "name": "cranker",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_market_fee_pool",
+      "discriminator": [
+        51,
+        19,
+        251,
+        120,
+        171,
+        91,
+        138,
+        115
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_pool_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "market_fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  95,
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_amm_state",
+      "discriminator": [
+        107,
+        21,
+        178,
+        73,
+        206,
+        85,
+        154,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "amm_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializeAmmStateArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_protocol",
+      "discriminator": [
+        188,
+        233,
+        252,
+        106,
+        134,
+        146,
+        202,
+        91
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializeProtocolArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "lock_for_resolution",
+      "discriminator": [
+        218,
+        72,
+        208,
+        132,
+        202,
+        195,
+        86,
+        239
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "adjudicator_entry",
+          "docs": [
+            "Per-market adjudicator record. Bound to `market` via seed derivation."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Authority that may request a lock. Must be `adjudicator_entry.authority`."
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "merge_complete_set",
+      "discriminator": [
+        245,
+        171,
+        74,
+        49,
+        59,
+        192,
+        150,
+        216
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "user_yes_ata",
+          "writable": true
+        },
+        {
+          "name": "user_no_ata",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "merge_complete_set_for_orderbook",
+      "discriminator": [
+        165,
+        89,
+        106,
+        228,
+        206,
+        10,
+        32,
+        52
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  98,
+                  111,
+                  111,
+                  107,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "mint_complete_set",
+      "discriminator": [
+        70,
+        222,
+        130,
+        148,
+        234,
+        103,
+        137,
+        61
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "user_yes_ata",
+          "writable": true
+        },
+        {
+          "name": "user_no_ata",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "mint_complete_set_for_orderbook",
+      "discriminator": [
+        177,
+        37,
+        18,
+        51,
+        114,
+        186,
+        109,
+        111
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  98,
+                  111,
+                  111,
+                  107,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "mint_complete_set_to_program_owned",
+      "discriminator": [
+        127,
+        243,
+        231,
+        31,
+        136,
+        240,
+        184,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "market_vault",
+          "writable": true
+        },
+        {
+          "name": "payer_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "destination_authority"
+        },
+        {
+          "name": "destination_yes_ata",
+          "writable": true
+        },
+        {
+          "name": "destination_no_ata",
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "pause",
+      "discriminator": [
+        211,
+        22,
+        221,
+        251,
+        74,
+        121,
+        193,
+        47
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "redeem",
+      "discriminator": [
+        184,
+        12,
+        86,
+        149,
+        70,
+        196,
+        97,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "user_yes_ata",
+          "writable": true
+        },
+        {
+          "name": "user_no_ata",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "redeem_from_program_owned",
+      "discriminator": [
+        100,
+        53,
+        160,
+        75,
+        188,
+        201,
+        91,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "recipient_usdc_ata",
+          "docs": [
+            "USDC destination ATA — may be owned by any authority."
+          ],
+          "writable": true
+        },
+        {
+          "name": "source_yes_ata",
+          "docs": [
+            "Token account holding YES shares — burned from; authority = `source_authority`."
+          ],
+          "writable": true
+        },
+        {
+          "name": "source_no_ata",
+          "docs": [
+            "Token account holding NO shares — burned from; authority = `source_authority`."
+          ],
+          "writable": true
+        },
+        {
+          "name": "source_authority",
+          "docs": [
+            "Authority over the source token accounts."
+          ],
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "redeem_lp",
+      "discriminator": [
+        12,
+        99,
+        190,
+        72,
+        228,
+        108,
+        109,
+        164
+      ],
+      "accounts": [
+        {
+          "name": "amm_state"
+        },
+        {
+          "name": "lp_mint",
+          "writable": true
+        },
+        {
+          "name": "user_lp_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "user"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "lp_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "lp_yield_vault",
+          "writable": true
+        },
+        {
+          "name": "lp_yield_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "lp_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "redeem_orderbook",
+      "discriminator": [
+        214,
+        142,
+        100,
+        85,
+        174,
+        200,
+        192,
+        15
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  100,
+                  101,
+                  114,
+                  98,
+                  111,
+                  111,
+                  107,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "register_adjudicator",
+      "discriminator": [
+        112,
+        204,
+        98,
+        86,
+        215,
+        36,
+        55,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "adjudicator_entry",
+          "docs": [
+            "New per-market `AdjudicatorEntry` PDA."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "protocol_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "request_lock",
+      "discriminator": [
+        184,
+        126,
+        124,
+        46,
+        186,
+        78,
+        238,
+        67
+      ],
+      "accounts": [
+        {
+          "name": "adjudicator_entry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "seed_lp",
+      "discriminator": [
+        94,
+        237,
+        13,
+        38,
+        220,
+        124,
+        66,
+        94
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "amm_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_mint_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator_lp_ata",
+          "writable": true
+        },
+        {
+          "name": "lp_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "SeedLpArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "sell_positions",
+      "discriminator": [
+        3,
+        151,
+        9,
+        138,
+        95,
+        252,
+        50,
+        39
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "amm_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Per-(user, market) Position. Must already exist — you can only",
+            "sell shares you've previously bought."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_vault",
+          "writable": true
+        },
+        {
+          "name": "lock_vault",
+          "writable": true
+        },
+        {
+          "name": "lock_entry",
+          "docs": [
+            "New `LockEntry` PDA. Seeds `[b\"lock_entry\", position.key(), lock_nonce.to_le_bytes()]`.",
+            "The `lock_nonce` instruction parameter must equal `position.lock_nonce`."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  95,
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "position"
+              },
+              {
+                "kind": "arg",
+                "path": "lock_nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "protocol_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  95,
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": "u8"
+        },
+        {
+          "name": "delta_shares",
+          "type": "i128"
+        },
+        {
+          "name": "min_proceeds_wad",
+          "type": "u128"
+        },
+        {
+          "name": "lock_nonce",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "settle",
+      "discriminator": [
+        175,
+        42,
+        185,
+        87,
+        144,
+        131,
+        102,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "adjudicator_entry",
+          "docs": [
+            "Per-market adjudicator record. Used to authenticate the caller."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Must be `adjudicator_entry.authority` (normal path) or",
+            "`adjudicator_entry.dispute_authority` (dispute path). The caller",
+            "(`attest_outcome` or `dispute`) enforces which key is appropriate."
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "winning_outcome",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "trade_positions",
+      "discriminator": [
+        14,
+        33,
+        158,
+        91,
+        88,
+        26,
+        89,
+        136
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "amm_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "market_vault",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+        },
+        {
+          "name": "protocol_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  95,
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_mint_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_lp_ata",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": "u8"
+        },
+        {
+          "name": "delta_shares",
+          "type": "i128"
+        },
+        {
+          "name": "max_cost_wad",
+          "type": "u128"
+        }
+      ]
+    },
+    {
+      "name": "unpause",
+      "discriminator": [
+        169,
+        144,
+        4,
+        38,
+        10,
+        141,
+        188,
+        255
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "AdjudicatorEntry",
+      "discriminator": [
+        250,
+        169,
+        54,
+        228,
+        58,
+        234,
+        100,
+        131
+      ]
+    },
+    {
+      "name": "AmmState",
+      "discriminator": [
+        66,
+        127,
+        244,
+        168,
+        102,
+        12,
+        95,
+        2
+      ]
+    },
+    {
+      "name": "BookSide",
+      "discriminator": [
+        72,
+        44,
+        225,
+        141,
+        178,
+        130,
+        97,
+        57
+      ]
+    },
+    {
+      "name": "LegacyFeeDrainMarker",
+      "discriminator": [
+        154,
+        144,
+        83,
+        192,
+        62,
+        167,
+        182,
+        197
+      ]
+    },
+    {
+      "name": "LockEntry",
+      "discriminator": [
+        16,
+        231,
+        37,
+        238,
+        93,
+        97,
+        205,
+        107
+      ]
+    },
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
+      "name": "MarketBook",
+      "discriminator": [
+        233,
+        234,
+        178,
+        35,
+        52,
+        91,
+        54,
+        29
+      ]
+    },
+    {
+      "name": "OrderbookPosition",
+      "discriminator": [
+        175,
+        28,
+        54,
+        41,
+        62,
+        215,
+        149,
+        36
+      ]
+    },
+    {
+      "name": "Position",
+      "discriminator": [
+        170,
+        188,
+        143,
+        228,
+        122,
+        64,
+        247,
+        208
+      ]
+    },
+    {
+      "name": "ProtocolConfig",
+      "discriminator": [
+        207,
+        91,
+        250,
+        28,
+        152,
+        179,
+        215,
+        209
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "AdjudicatorRegistered",
+      "discriminator": [
+        55,
+        141,
+        114,
+        235,
+        220,
+        17,
+        20,
+        25
+      ]
+    },
+    {
+      "name": "CompleteSetMerged",
+      "discriminator": [
+        191,
+        93,
+        106,
+        227,
+        82,
+        141,
+        252,
+        156
+      ]
+    },
+    {
+      "name": "CompleteSetMinted",
+      "discriminator": [
+        138,
+        100,
+        135,
+        145,
+        242,
+        178,
+        224,
+        155
+      ]
+    },
+    {
+      "name": "DisputeRaised",
+      "discriminator": [
+        246,
+        167,
+        109,
+        37,
+        142,
+        45,
+        38,
+        176
+      ]
+    },
+    {
+      "name": "DustOrderSkipped",
+      "discriminator": [
+        250,
+        13,
+        138,
+        190,
+        137,
+        145,
+        78,
+        77
+      ]
+    },
+    {
+      "name": "FeesCollected",
+      "discriminator": [
+        233,
+        23,
+        117,
+        225,
+        107,
+        178,
+        254,
+        8
+      ]
+    },
+    {
+      "name": "LiquidityProvided",
+      "discriminator": [
+        94,
+        97,
+        39,
+        34,
+        15,
+        96,
+        79,
+        135
+      ]
+    },
+    {
+      "name": "LockClaimed",
+      "discriminator": [
+        226,
+        164,
+        109,
+        42,
+        115,
+        151,
+        115,
+        59
+      ]
+    },
+    {
+      "name": "LpRedeemed",
+      "discriminator": [
+        232,
+        192,
+        98,
+        44,
+        177,
+        24,
+        2,
+        106
+      ]
+    },
+    {
+      "name": "LpSeeded",
+      "discriminator": [
+        34,
+        83,
+        34,
+        229,
+        136,
+        105,
+        240,
+        100
+      ]
+    },
+    {
+      "name": "MarketCreated",
+      "discriminator": [
+        88,
+        184,
+        130,
+        231,
+        226,
+        84,
+        6,
+        58
+      ]
+    },
+    {
+      "name": "MarketDismissed",
+      "discriminator": [
+        38,
+        151,
+        70,
+        216,
+        174,
+        16,
+        118,
+        150
+      ]
+    },
+    {
+      "name": "MarketFeesDistributed",
+      "discriminator": [
+        13,
+        149,
+        50,
+        153,
+        90,
+        37,
+        95,
+        187
+      ]
+    },
+    {
+      "name": "MarketGraduated",
+      "discriminator": [
+        66,
+        242,
+        94,
+        146,
+        88,
+        76,
+        225,
+        23
+      ]
+    },
+    {
+      "name": "MarketInitialized",
+      "discriminator": [
+        134,
+        160,
+        122,
+        87,
+        50,
+        3,
+        255,
+        81
+      ]
+    },
+    {
+      "name": "MarketLocked",
+      "discriminator": [
+        57,
+        30,
+        242,
+        116,
+        238,
+        156,
+        185,
+        189
+      ]
+    },
+    {
+      "name": "MarketSettled",
+      "discriminator": [
+        237,
+        212,
+        22,
+        175,
+        201,
+        117,
+        215,
+        99
+      ]
+    },
+    {
+      "name": "OrderCancelled",
+      "discriminator": [
+        108,
+        56,
+        128,
+        68,
+        168,
+        113,
+        168,
+        239
+      ]
+    },
+    {
+      "name": "OrderPlaced",
+      "discriminator": [
+        96,
+        130,
+        204,
+        234,
+        169,
+        219,
+        216,
+        227
+      ]
+    },
+    {
+      "name": "OutcomeAttested",
+      "discriminator": [
+        249,
+        112,
+        243,
+        78,
+        100,
+        115,
+        176,
+        160
+      ]
+    },
+    {
+      "name": "PositionSold",
+      "discriminator": [
+        117,
+        122,
+        235,
+        232,
+        80,
+        15,
+        94,
+        179
+      ]
+    },
+    {
+      "name": "PositionTraded",
+      "discriminator": [
+        47,
+        104,
+        4,
+        110,
+        61,
+        85,
+        215,
+        178
+      ]
+    },
+    {
+      "name": "ProtocolInitialized",
+      "discriminator": [
+        173,
+        122,
+        168,
+        254,
+        9,
+        118,
+        76,
+        132
+      ]
+    },
+    {
+      "name": "ProtocolPausedEvent",
+      "discriminator": [
+        0,
+        32,
+        186,
+        132,
+        252,
+        198,
+        0,
+        66
+      ]
+    },
+    {
+      "name": "Redeemed",
+      "discriminator": [
+        14,
+        29,
+        183,
+        71,
+        31,
+        165,
+        107,
+        38
+      ]
+    },
+    {
+      "name": "RefundClaimed",
+      "discriminator": [
+        136,
+        64,
+        242,
+        99,
+        4,
+        244,
+        208,
+        130
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "MarketNotOpen",
+      "msg": "Market is not in the Open lifecycle state"
+    },
+    {
+      "code": 6001,
+      "name": "MarketNotLocked",
+      "msg": "Market is not in the Locked lifecycle state"
+    },
+    {
+      "code": 6002,
+      "name": "MarketNotSettled",
+      "msg": "Market is not Settled"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidLifecycleTransition",
+      "msg": "Lifecycle transition not permitted from current state"
+    },
+    {
+      "code": 6004,
+      "name": "NotAdjudicator",
+      "msg": "Caller is not the registered adjudicator for this market"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidOutcome",
+      "msg": "Invalid outcome (must be NO=0, YES=1, or INVALID=2)"
+    },
+    {
+      "code": 6006,
+      "name": "ZeroAmount",
+      "msg": "Amount must be non-zero"
+    },
+    {
+      "code": 6007,
+      "name": "InsufficientOutcomeShares",
+      "msg": "Insufficient outcome-token balance"
+    },
+    {
+      "code": 6008,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 6009,
+      "name": "VaultAuthorityMismatch",
+      "msg": "Vault / mint authority mismatch"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidDeadline",
+      "msg": "Deadline must be greater than start_time"
+    },
+    {
+      "code": 6011,
+      "name": "AdjudicatorIsDefault",
+      "msg": "Adjudicator pubkey must not be the default (all-zero) key"
+    },
+    {
+      "code": 6012,
+      "name": "AdjudicatorNotAllowlisted",
+      "msg": "Adjudicator pubkey is not present on the on-chain allowlist"
+    },
+    {
+      "code": 6013,
+      "name": "AllowlistAuthorityMismatch",
+      "msg": "Caller is not the registered allowlist authority"
+    },
+    {
+      "code": 6014,
+      "name": "AllowlistFull",
+      "msg": "Adjudicator allowlist is full (capacity exhausted)"
+    },
+    {
+      "code": 6015,
+      "name": "AdjudicatorAlreadyAllowlisted",
+      "msg": "Adjudicator pubkey is already present on the allowlist"
+    },
+    {
+      "code": 6016,
+      "name": "AdjudicatorNotPresent",
+      "msg": "Adjudicator pubkey is not present on the allowlist"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidParentInstruction",
+      "msg": "Helper ixs must be CPI'd from sooth_amm; direct calls are rejected."
+    },
+    {
+      "code": 6018,
+      "name": "MarketNotDismissed",
+      "msg": "Market is not dismissed"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidSysvar",
+      "msg": "Invalid instructions sysvar account"
+    },
+    {
+      "code": 6020,
+      "name": "TradingClosed",
+      "msg": "Trading window has closed (now >= deadline)"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidTick",
+      "msg": "Invalid tick"
+    },
+    {
+      "code": 6022,
+      "name": "AmountTooSmallForBaseTokenDecimals",
+      "msg": "Amount too small for base token decimals"
+    },
+    {
+      "code": 6023,
+      "name": "SlippageExceeded",
+      "msg": "Slippage: cost exceeded max_cost_wad"
+    },
+    {
+      "code": 6024,
+      "name": "ZeroDelta",
+      "msg": "delta_shares must be non-zero"
+    },
+    {
+      "code": 6025,
+      "name": "InsufficientShares",
+      "msg": "Insufficient shares to sell"
+    },
+    {
+      "code": 6026,
+      "name": "MarketDismissed",
+      "msg": "Market is dismissed"
+    },
+    {
+      "code": 6027,
+      "name": "LmsrOverflow",
+      "msg": "LMSR math overflow or domain error"
+    },
+    {
+      "code": 6028,
+      "name": "InvalidLiquidity",
+      "msg": "Liquidity parameter b must be > 0"
+    },
+    {
+      "code": 6029,
+      "name": "Unauthorized",
+      "msg": "Caller is not authorized for this action (creator mismatch)"
+    },
+    {
+      "code": 6030,
+      "name": "TradingNotStarted",
+      "msg": "Trading window has not started yet (now < start_time)"
+    },
+    {
+      "code": 6031,
+      "name": "SellNotImplemented",
+      "msg": "Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3"
+    },
+    {
+      "code": 6032,
+      "name": "LockNotElapsed",
+      "msg": "Lock has not elapsed yet (now < lock_entry.unlock_at)"
+    },
+    {
+      "code": 6033,
+      "name": "LockVaultMismatch",
+      "msg": "Lock vault account does not match market.lock_vault"
+    },
+    {
+      "code": 6034,
+      "name": "TrialNotExpired",
+      "msg": "Trial period has not expired yet"
+    },
+    {
+      "code": 6035,
+      "name": "AlreadyGraduated",
+      "msg": "Market has already graduated"
+    },
+    {
+      "code": 6036,
+      "name": "AlreadyDismissed",
+      "msg": "Market has already been dismissed"
+    },
+    {
+      "code": 6037,
+      "name": "AmmStateMarketMismatch",
+      "msg": "AmmState market backlink does not match market account"
+    },
+    {
+      "code": 6038,
+      "name": "FeeBpsOutOfRange",
+      "msg": "Fee bps must not exceed 10000 (100%)"
+    },
+    {
+      "code": 6039,
+      "name": "FeeSplitMismatch",
+      "msg": "Fee split bps do not sum to 10000"
+    },
+    {
+      "code": 6040,
+      "name": "InvalidTreasury",
+      "msg": "Treasury pubkey must be non-default"
+    },
+    {
+      "code": 6041,
+      "name": "InvalidTrialPeriod",
+      "msg": "Default trial period must be > 0"
+    },
+    {
+      "code": 6042,
+      "name": "AlreadyInitialized",
+      "msg": "Protocol config already initialized"
+    },
+    {
+      "code": 6043,
+      "name": "NothingToDistribute",
+      "msg": "Fee pool is empty — nothing to distribute"
+    },
+    {
+      "code": 6044,
+      "name": "NotGraduated",
+      "msg": "Market is not graduated"
+    },
+    {
+      "code": 6045,
+      "name": "ZeroLpAmount",
+      "msg": "LP amount must be > 0"
+    },
+    {
+      "code": 6046,
+      "name": "EmptyLpSupply",
+      "msg": "LP supply is empty"
+    },
+    {
+      "code": 6047,
+      "name": "LegacyDrainAlreadyExecuted",
+      "msg": "Legacy fee drain already executed"
+    },
+    {
+      "code": 6048,
+      "name": "NotAuthority",
+      "msg": "Caller is not the registered authority for this adjudicator"
+    },
+    {
+      "code": 6049,
+      "name": "UnsupportedKind",
+      "msg": "Adjudicator kind does not support this operation"
+    },
+    {
+      "code": 6050,
+      "name": "AlreadyAttested",
+      "msg": "Adjudicator has already attested an outcome; re-attestation is not permitted"
+    },
+    {
+      "code": 6051,
+      "name": "NotAttested",
+      "msg": "Adjudicator has not yet attested an outcome"
+    },
+    {
+      "code": 6052,
+      "name": "AdjudicatorMarketMismatch",
+      "msg": "Adjudicator account does not match the supplied market"
+    },
+    {
+      "code": 6053,
+      "name": "AuthorityIsDefault",
+      "msg": "Authority pubkey must not be the default (all-zero) key"
+    },
+    {
+      "code": 6054,
+      "name": "DisputeNotImplemented",
+      "msg": "Dispute path is not implemented in v1; see architecture §4.4"
+    },
+    {
+      "code": 6055,
+      "name": "NotDisputeAuthority",
+      "msg": "Caller is not the registered dispute authority for this adjudicator"
+    },
+    {
+      "code": 6056,
+      "name": "AlreadyDisputed",
+      "msg": "Adjudicator has already been disputed; dispute is one-shot per market"
+    },
+    {
+      "code": 6057,
+      "name": "MarketAlreadySettled",
+      "msg": "Market is already settled; dispute can no longer override the outcome"
+    },
+    {
+      "code": 6058,
+      "name": "InvalidOrderId",
+      "msg": "Order id is outside the supported composite encoding range"
+    },
+    {
+      "code": 6059,
+      "name": "OrderIdSeedMismatch",
+      "msg": "Decoded order id does not match the requested side or tick"
+    },
+    {
+      "code": 6060,
+      "name": "BookSideFull",
+      "msg": "Book side is full for this tick"
+    },
+    {
+      "code": 6061,
+      "name": "BookSideNotDrained",
+      "msg": "Book side is not fully drained"
+    },
+    {
+      "code": 6062,
+      "name": "CompactBoundExceeded",
+      "msg": "Compaction drop count exceeds the per-call bound"
+    },
+    {
+      "code": 6063,
+      "name": "WrongBaseMint",
+      "msg": "Market vault uses the wrong base mint"
+    },
+    {
+      "code": 6064,
+      "name": "BaseMintDrift",
+      "msg": "MarketBook base mint does not match the market vault mint"
+    },
+    {
+      "code": 6065,
+      "name": "AccumulatorNotReset",
+      "msg": "MarketBook accumulators must be reset before placing an order"
+    },
+    {
+      "code": 6066,
+      "name": "NoCancellableOrder",
+      "msg": "No cancellable order was found"
+    },
+    {
+      "code": 6067,
+      "name": "MissingCrossingBookSide",
+      "msg": "Remaining-account bundle does not carry the crossing BookSide"
+    },
+    {
+      "code": 6068,
+      "name": "MakerAccountMismatch",
+      "msg": "Remaining-account bundle maker does not match the live order maker"
+    },
+    {
+      "code": 6069,
+      "name": "WrongBundleArity",
+      "msg": "Remaining-account bundles must contain exactly three accounts per fill"
+    },
+    {
+      "code": 6070,
+      "name": "ProtocolPaused",
+      "msg": "Protocol is paused; all state-mutating instructions are disabled"
+    },
+    {
+      "code": 6071,
+      "name": "NotYetAttested",
+      "msg": "Adjudicator has not yet attested an outcome for this market"
+    },
+    {
+      "code": 6072,
+      "name": "TradingNotClosed",
+      "msg": "Trading window has not closed yet (now < deadline)"
+    }
+  ],
+  "types": [
+    {
+      "name": "AdjudicatorEntry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": [
+              "`sooth_core::Market` account this adjudicator resolves."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "docs": [
+              "Authority gating `attest_outcome`. MUST be non-default."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "dispute_authority",
+            "docs": [
+              "Authority gating the `dispute` veto path. Defaults to `authority` at",
+              "register time; can be rotated to a guardian multisig via a future ix."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "attested_outcome",
+            "docs": [
+              "Recorded outcome iff the authority has called `attest_outcome` (or",
+              "the `dispute` veto path has overridden it). 0=NO, 1=YES, 2=INVALID."
+            ],
+            "type": {
+              "option": "u8"
+            }
+          },
+          {
+            "name": "attested_at",
+            "docs": [
+              "Unix-seconds timestamp of the original attestation."
+            ],
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "disputed",
+            "docs": [
+              "One-shot guard: once `dispute` mutates `attested_outcome` this is set",
+              "true and subsequent disputes are rejected."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "disputed_at",
+            "docs": [
+              "Unix-seconds timestamp of the dispute. `None` if not yet disputed."
+            ],
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Bump for the `AdjudicatorEntry` PDA."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AdjudicatorRegistered",
+      "docs": [
+        "Emitted by `register_adjudicator` when a new per-market `AdjudicatorEntry`",
+        "PDA is created. Mirrors EVM `AdjudicatorBase.MarketConfigured`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator_entry",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AmmState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": [
+              "Backlink to `Market` PDA."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "q_yes",
+            "docs": [
+              "LMSR q_yes — shares outstanding on the YES side."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "q_no",
+            "docs": [
+              "LMSR q_no — shares outstanding on the NO side."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "b",
+            "docs": [
+              "LMSR liquidity parameter `b` (positive i128, stored signed)."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "seed_q_yes",
+            "type": "i128"
+          },
+          {
+            "name": "seed_q_no",
+            "type": "i128"
+          },
+          {
+            "name": "fee_b_base_wad",
+            "docs": [
+              "Accumulated fee WAD for graduation threshold tracking."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "trial_end_at",
+            "docs": [
+              "Trial window end timestamp (architecture §9)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "is_graduated",
+            "type": "bool"
+          },
+          {
+            "name": "is_dismissed",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BookSide",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "tick",
+            "type": "u16"
+          },
+          {
+            "name": "head_index",
+            "type": "u32"
+          },
+          {
+            "name": "orders",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "InlineOrder"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "CompleteSetMerged",
+      "docs": [
+        "Mirror of EVM `OrderEngine.Merged` (`OrderEngine.sol:125`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc",
+            "docs": [
+              "USDC base units returned to user."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CompleteSetMinted",
+      "docs": [
+        "Mirror of EVM `OrderEngine.Minted` (`OrderEngine.sol:124`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc",
+            "docs": [
+              "USDC base units pulled from user."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CreateMarketArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market_id",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "question_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "start_time",
+            "type": "i64"
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          },
+          {
+            "name": "adjudicator",
+            "docs": [
+              "Adjudicator pubkey recorded on Market. An `AdjudicatorEntry` PDA must",
+              "be created separately via `register_adjudicator`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "initial_b",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DisputeRaised",
+      "docs": [
+        "Emitted by `dispute` when the `dispute_authority` overrides an attested",
+        "outcome. Mirrors EVM `AdjudicatorBase.MarketDisputed`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator_entry",
+            "type": "pubkey"
+          },
+          {
+            "name": "disputer",
+            "type": "pubkey"
+          },
+          {
+            "name": "previous_outcome",
+            "type": "u8"
+          },
+          {
+            "name": "new_outcome",
+            "type": "u8"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DustOrderSkipped",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "tick",
+            "type": "u16"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u128"
+          },
+          {
+            "name": "escrow",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FeesCollected",
+      "docs": [
+        "Mirror of EVM `FeeRouter.FeesDistributed`. Emitted by `distribute_fees`",
+        "when the accumulator drains to the four destinations (architecture §8)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_wad",
+            "docs": [
+              "Total fees moved out of `AmmState.fee_b_base_wad` in this call (WAD)."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "to_b_base",
+            "docs": [
+              "Slice routed to the bBase LP-yield ATA."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "to_lp_yield",
+            "type": "u64"
+          },
+          {
+            "name": "to_adjudicator",
+            "type": "u64"
+          },
+          {
+            "name": "to_protocol",
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitializeAmmStateArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "initial_b",
+            "type": "u128"
+          },
+          {
+            "name": "trial_end_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitializeProtocolArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "b_base_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "lp_yield_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "adjudicator_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "protocol_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "default_trial_period",
+            "type": "i64"
+          },
+          {
+            "name": "permissionless_adjudicators",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InlineOrder",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "maker",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u128"
+          },
+          {
+            "name": "escrow",
+            "type": "bool"
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "LegacyFeeDrainMarker",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "drained_at",
+            "docs": [
+              "Unix seconds when the legacy global fee pool was drained.",
+              "`0` means the one-shot drain has not executed."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LiquidityProvided",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "lp_amount",
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LockClaimed",
+      "docs": [
+        "Emitted by `claim_unlocked` after a successful payout. Mirrors the EVM",
+        "`LocksProcessed`/`LockEntryRemoved` event family",
+        "(`AMMEngine.sol:392-407`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "lock_entry",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LockEntry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc",
+            "docs": [
+              "USDC amount locked (net proceeds after sell fee)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "unlock_at",
+            "docs": [
+              "Unix timestamp when the lock matures and `claim_unlocked` may proceed."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "nonce",
+            "docs": [
+              "Nonce copied from `Position.lock_nonce` at sell time. Used to derive",
+              "the PDA seed so each sell creates a unique LockEntry."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LpRedeemed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "lp_burned",
+            "type": "u64"
+          },
+          {
+            "name": "usdc_paid",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LpSeeded",
+      "docs": [
+        "Emitted by `seed_lp` after the per-market `LpMint` + creator",
+        "`LpPosition` PDA + creator's LP ATA are bootstrapped and seeded",
+        "with the initial `lp_amount` allocation."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "lp_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_lp_ata",
+            "type": "pubkey"
+          },
+          {
+            "name": "lp_amount",
+            "type": "u64"
+          },
+          {
+            "name": "seed_deposit_wad",
+            "type": "u128"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market_id",
+            "docs": [
+              "Deterministic 16-byte id (truncated keccak256 of question || creator",
+              "|| nonce). Architecture §2.2."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator",
+            "docs": [
+              "The adjudicator pubkey recorded at `initialize_market` time. In the",
+              "merged program the adjudicator is also registered as an",
+              "`AdjudicatorEntry` PDA. This field remains the canonical source of",
+              "truth for the market's designated adjudicator identity."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "question_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "yes_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "no_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "docs": [
+              "USDC vault ATA — populated by `initialize_market_vaults`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "lock_vault",
+            "docs": [
+              "AMM lock-on-sell escrow vault — populated by `initialize_market_vaults`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "start_time",
+            "type": "i64"
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          },
+          {
+            "name": "lifecycle",
+            "type": {
+              "defined": {
+                "name": "MarketLifecycle"
+              }
+            }
+          },
+          {
+            "name": "winning_outcome",
+            "docs": [
+              "Set by `settle`. 0=NO, 1=YES, 2=INVALID (only meaningful when",
+              "lifecycle == Settled)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bumps stored at `initialize_market` time."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "vault_authority_bump",
+            "type": "u8"
+          },
+          {
+            "name": "lock_authority_bump",
+            "type": "u8"
+          },
+          {
+            "name": "yes_mint_bump",
+            "type": "u8"
+          },
+          {
+            "name": "no_mint_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketBook",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "base_token_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "registrar",
+            "type": "pubkey"
+          },
+          {
+            "name": "next_order_id",
+            "type": "u64"
+          },
+          {
+            "name": "bitmap_for",
+            "type": {
+              "array": [
+                "u64",
+                16
+              ]
+            }
+          },
+          {
+            "name": "bitmap_against",
+            "type": {
+              "array": [
+                "u64",
+                16
+              ]
+            }
+          },
+          {
+            "name": "pending_fees",
+            "type": "u128"
+          },
+          {
+            "name": "pending_taker_payout",
+            "type": "u128"
+          },
+          {
+            "name": "_reserved",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketCreated",
+      "docs": [
+        "Mirror of EVM `LaunchpadEngine.MarketCreated`. Emitted by `create_market`",
+        "after the four instruction legs land (architecture §4.1)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator",
+            "type": "pubkey"
+          },
+          {
+            "name": "yes_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "no_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "initial_b",
+            "docs": [
+              "Initial LMSR liquidity `b` in WAD. Stored on `AmmState` after ix4."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "start_time",
+            "type": "i64"
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketDismissed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "dismissed_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketFeesDistributed",
+      "docs": [
+        "Per-market fee distribution event emitted by `distribute_fees(market)`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_id",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "total_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "to_b_base",
+            "type": "u64"
+          },
+          {
+            "name": "to_lp_yield",
+            "type": "u64"
+          },
+          {
+            "name": "to_adjudicator",
+            "type": "u64"
+          },
+          {
+            "name": "to_protocol",
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketGraduated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "fees_accumulated_wad",
+            "type": "u128"
+          },
+          {
+            "name": "threshold_wad",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator",
+            "type": "pubkey"
+          },
+          {
+            "name": "yes_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "no_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "start_time",
+            "type": "i64"
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketLifecycle",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Initializing"
+          },
+          {
+            "name": "Open"
+          },
+          {
+            "name": "Locked"
+          },
+          {
+            "name": "Settled"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketLocked",
+      "docs": [
+        "Mirror of EVM `TruthMarket.MarketResolved` (LIVE → RESOLVING). Renamed to",
+        "\"Locked\" to match Solana lifecycle names — the semantic intent is the same:",
+        "trading halts pending adjudicator outcome. See `state/lifecycle.rs`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketSettled",
+      "docs": [
+        "Mirror of EVM `TruthMarket.MarketSettled` (`TruthMarket.sol:130`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "winning_outcome",
+            "docs": [
+              "0=NO, 1=YES, 2=INVALID per protocol-wide OUTCOME encoding."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OrderCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "tick",
+            "type": "u16"
+          },
+          {
+            "name": "maker",
+            "type": "pubkey"
+          },
+          {
+            "name": "order_id",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OrderPlaced",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": "u8"
+          },
+          {
+            "name": "tick",
+            "type": "u16"
+          },
+          {
+            "name": "maker",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u128"
+          },
+          {
+            "name": "escrow",
+            "type": "bool"
+          },
+          {
+            "name": "order_id",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OrderbookPosition",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "yes_shares",
+            "docs": [
+              "WAD-scaled YES share balance."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "no_shares",
+            "docs": [
+              "WAD-scaled NO share balance."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "_reserved",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "OutcomeAttested",
+      "docs": [
+        "Emitted by `attest_outcome` when the per-market authority signs the",
+        "resolution. Mirrors EVM `AdjudicatorBase.OutcomeAttested`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator_entry",
+            "type": "pubkey"
+          },
+          {
+            "name": "winning_outcome",
+            "docs": [
+              "0=NO, 1=YES, 2=INVALID per protocol-wide OUTCOME encoding."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "yes_shares",
+            "type": "i128"
+          },
+          {
+            "name": "no_shares",
+            "type": "i128"
+          },
+          {
+            "name": "locked_cost_usdc",
+            "docs": [
+              "Cumulative USDC cost paid by this position (used for refund on dismiss)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "lock_nonce",
+            "docs": [
+              "Per-position nonce used to derive unique `LockEntry` PDAs on each sell."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionSold",
+      "docs": [
+        "Emitted on the sell branch of `trade_positions` after the proceeds have",
+        "been moved into the per-sell `LockEntry` PDA. Mirrors the EVM",
+        "`ProceedsLocked` event (`AMMEngine.sol:1011-1013`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "docs": [
+              "0 = NO, 1 = YES."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "shares_sold",
+            "docs": [
+              "Absolute share count sold (positive). Matches `|delta_shares|`."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "lock_entry",
+            "docs": [
+              "Lock account that escrows the USDC proceeds. The corresponding",
+              "`claim_unlocked` ix takes this pubkey as input."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc",
+            "docs": [
+              "USDC base units escrowed (matches `lock_entry.amount_usdc`)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "unlock_at",
+            "docs": [
+              "Unix timestamp at which `claim_unlocked` becomes callable."
+            ],
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionTraded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "docs": [
+              "0 = NO, 1 = YES (matches protocol-wide OUTCOME encoding)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "delta_shares",
+            "docs": [
+              "Signed share delta in WAD. Positive = buy; negative = sell."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "cost_wad",
+            "docs": [
+              "Signed cost in WAD. Positive = paid; negative = proceeds (sell)."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "ts",
+            "docs": [
+              "Unix timestamp from `Clock`."
+            ],
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Authority that may call setters (pause/unpause, future update ixs)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "USDC ATA where the protocol's slice of every fee distribution lands."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_bps",
+            "docs": [
+              "Total per-trade fee in basis points (1 bp = 0.01 %)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "b_base_share_bps",
+            "docs": [
+              "4-way fee-destination split bps — must sum to 10_000."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "lp_yield_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "adjudicator_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "protocol_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "default_trial_period",
+            "docs": [
+              "Default trial period in seconds. Architecture §9."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "paused",
+            "docs": [
+              "Circuit-breaker flag. When `true`, instructions that check",
+              "`require_not_paused` will reject with `SoothCoreError::ProtocolPaused`."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "permissionless_adjudicators",
+            "docs": [
+              "When `true`, anyone can register an adjudicator for any market.",
+              "When `false`, only `config.authority` may call `register_adjudicator`."
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolInitialized",
+      "docs": [
+        "Emitted once per protocol deploy by `initialize_protocol`. Indexers can",
+        "pin the cluster's authority + treasury without re-reading the PDA."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolPausedEvent",
+      "docs": [
+        "Emitted by `pause` and `unpause`. `paused = true` means the protocol was",
+        "just paused; `paused = false` means it was just unpaused."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Redeemed",
+      "docs": [
+        "Mirror of EVM `OrderEngine.PositionSettled` (`OrderEngine.sol:430`).",
+        "Emitted by `redeem` after a successful post-settlement burn-and-pay."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "docs": [
+              "Resolved outcome at the time of redeem, copied from",
+              "`Market::winning_outcome`. 0=NO, 1=YES, 2=INVALID."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "yes_burned",
+            "docs": [
+              "YES outcome-token base units burned (0 if user held none, or if",
+              "outcome=NO)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "no_burned",
+            "docs": [
+              "NO outcome-token base units burned (0 if user held none, or if",
+              "outcome=YES)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "usdc_paid",
+            "docs": [
+              "USDC base units transferred from vault to user."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RefundClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_usdc",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SeedLpArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lp_amount",
+            "type": "u64"
+          },
+          {
+            "name": "seed_deposit_wad",
+            "type": "u128"
+          }
+        ]
+      }
+    }
+  ]
+}

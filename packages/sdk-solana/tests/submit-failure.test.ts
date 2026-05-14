@@ -42,6 +42,7 @@ import { SolanaChainAdapter } from "../src/adapter.js";
 import { SoothError } from "../src/errors.js";
 import {
   deriveAmmStatePda,
+  deriveFeePoolAuthorityPda,
   deriveLpMintAuthorityPda,
   deriveLpMintPda,
   deriveMarketVaultAta,
@@ -53,7 +54,7 @@ import {
   marketFeePoolPda,
   type ProgramIds,
 } from "../src/pdas.js";
-import { soothAmmIdl } from "../src/anchor/index.js";
+import { soothCoreIdl } from "../src/anchor/index.js";
 import { WAD } from "../src/math/lmsr.js";
 
 import { bootSmoke } from "./fixtures/setup.js";
@@ -119,8 +120,8 @@ describe("submit failure surfacing", () => {
       preflightCommitment: "confirmed",
     });
     const ammIdl = {
-      ...soothAmmIdl,
-      address: smoke.programs.soothAmm.toBase58(),
+      ...soothCoreIdl,
+      address: smoke.programs.soothCore.toBase58(),
     };
     const program = new Program(ammIdl as any, provider);
 
@@ -128,12 +129,8 @@ describe("submit failure surfacing", () => {
     // resolve these from the IDL's `pda` blocks, but the resolver hits the
     // 6-deep recursion ceiling on `market.market_id` chasing — derive
     // explicitly and pass through.
-    const [lpMint] = deriveLpMintPda(smoke.marketId, {
-      soothLaunchpad: smoke.programs.soothLaunchpad!,
-    });
-    const [lpMintAuthority] = deriveLpMintAuthorityPda(smoke.marketId, {
-      soothLaunchpad: smoke.programs.soothLaunchpad!,
-    });
+    const [lpMint] = deriveLpMintPda(smoke.marketId, smoke.programs);
+    const [lpMintAuthority] = deriveLpMintAuthorityPda(smoke.marketId, smoke.programs);
     const userLpAta = deriveUserLpAta(smoke.user.publicKey, lpMint);
 
     const badIx: TransactionInstruction = await (program.methods as any)
@@ -153,9 +150,7 @@ describe("submit failure surfacing", () => {
         // Fee path: trade_positions reads the singleton ProtocolConfig PDA
         // and credits the per-market fee pool owned by sooth_launchpad.
         // bootSmoke initialises both before this test fires the bad ix.
-        protocolConfig: deriveProtocolConfigPda({
-          soothLaunchpad: smoke.programs.soothLaunchpad!,
-        })[0],
+        protocolConfig: deriveProtocolConfigPda(smoke.programs)[0],
         marketFeePool: marketFeePoolPda(smoke.marketId, smoke.programs)[0],
         lpMint,
         lpMintAuthority,
@@ -164,12 +159,34 @@ describe("submit failure surfacing", () => {
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
         rent: SYSVAR_RENT_PUBKEY,
-        soothLaunchpadProgram: smoke.programs.soothLaunchpad!,
+        soothLaunchpadProgram: smoke.programs.soothCore,
         instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
 
-    // Pre-ix: idempotent ATA-create for `user_lp_ata`. Anchor's
+    // Pre-ix 1: init the per-market fee-pool token account. `market_fee_pool`
+    // appears in the TradePositions account struct before `user_lp_ata`, so a
+    // missing fee pool surfaces as `AccountNotInitialized = 3012` before the
+    // handler even reaches the `outcome` guard. We init it here so the fee
+    // pool exists when the bad ix runs. The whole tx rolls back on the 6001
+    // failure, so the fee pool is not persisted — that is the correct outcome.
+    const [feePoolAuthority] = deriveFeePoolAuthorityPda(smoke.programs);
+    const [feePoolPda] = marketFeePoolPda(smoke.marketId, smoke.programs);
+    const initFeePoolIx: TransactionInstruction = await (program.methods as any)
+      .initMarketFeePool()
+      .accounts({
+        market: smoke.marketPda,
+        feePoolAuthority,
+        usdcMint: smoke.usdcMint,
+        marketFeePool: feePoolPda,
+        signer: smoke.user.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: SYSVAR_RENT_PUBKEY,
+      })
+      .instruction();
+
+    // Pre-ix 2: idempotent ATA-create for `user_lp_ata`. Anchor's
     // `try_accounts` runs the LP-ATA `token::mint = lp_mint, token::
     // authority = user` constraint BEFORE the handler's `outcome`
     // validation, so a missing LP ATA would surface as
@@ -203,6 +220,15 @@ describe("submit failure surfacing", () => {
         })),
         ixProgramId: badIx.programId.toBase58(),
         preIxs: [
+          {
+            programId: initFeePoolIx.programId.toBase58(),
+            keys: initFeePoolIx.keys.map((k) => ({
+              pubkey: k.pubkey.toBase58(),
+              isSigner: k.isSigner,
+              isWritable: k.isWritable,
+            })),
+            data: Buffer.from(initFeePoolIx.data).toString("base64"),
+          },
           {
             programId: lpAtaCreateIx.programId.toBase58(),
             keys: lpAtaCreateIx.keys.map((k) => ({
@@ -239,11 +265,12 @@ describe("submit failure surfacing", () => {
     }
     expect(caught).toBeInstanceOf(SoothError);
     const err = caught as SoothError;
-    // Code 6001 = InvalidOutcome → mapped to "ProgramError" in the table
-    // (we only mark slippage/insufficient/lifecycle codes as semantic
-    // SoothError variants; the rest stay as ProgramError with the code).
+    // Code 6005 = InvalidOutcome in the merged SoothCoreError enum → mapped to
+    // "ProgramError" in the error table (we only mark slippage/insufficient/
+    // lifecycle codes as semantic SoothError variants; the rest stay as
+    // ProgramError with the code).
     expect(err.kind).toBe("ProgramError");
-    expect(err.fields.code).toBe(6001);
+    expect(err.fields.code).toBe(6005);
     // H5 2nd-pass: program errors are terminal — never retry. The classifier
     // stamps `attempt: 1` on the SoothError so callers can correlate with
     // SubmitReceipt.attempts (which is absent here because we threw).
@@ -339,7 +366,7 @@ function buildMockRequest(programs: ProgramIds, userPk: PublicKey) {
   // A trivial system-transfer-like ix data; submit doesn't execute it, the
   // mock send/confirm callbacks decide success/failure.
   const ix = new TransactionInstruction({
-    programId: programs.soothAmm,
+    programId: programs.soothCore,
     keys: [{ pubkey: userPk, isSigner: true, isWritable: true }],
     data: Buffer.alloc(8),
   });
@@ -349,7 +376,7 @@ function buildMockRequest(programs: ProgramIds, userPk: PublicKey) {
     costEstimateWad: 0n,
     accounts: [],
     meta: {
-      marketPda: programs.soothAmm.toBase58(),
+      marketPda: programs.soothCore.toBase58(),
       userPk: userPk.toBase58(),
       ixData: Buffer.from(ix.data).toString("base64"),
       ixKeys: ix.keys.map((k) => ({
@@ -372,12 +399,7 @@ describe("submit retry policy", () => {
   // (`adjudicator_allowlist` init), which is orthogonal to retry logic.
   function makeRetryAdapter(connection: Connection) {
     const programs: ProgramIds = {
-      soothAmm: new PublicKey(soothAmmIdl.address),
-      soothMarket: new PublicKey(
-        // sooth_market id from IDL; we never call into it, just need a
-        // well-formed pubkey for the adapter constructor.
-        "SoothMkt11111111111111111111111111111111111",
-      ),
+      soothCore: new PublicKey(soothCoreIdl.address),
     };
     const userKp = Keypair.generate();
     const usdcMint = new PublicKey(

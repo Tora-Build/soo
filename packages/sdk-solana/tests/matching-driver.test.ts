@@ -9,9 +9,7 @@ import {
   type SoothSolanaClient,
 } from "../src/orderbook/matching-driver.js";
 import {
-  SOOTH_BOOK_PROGRAM_ID,
-  SOOTH_LAUNCHPAD_PROGRAM_ID,
-  SOOTH_MARKET_PROGRAM_ID,
+  SOOTH_CORE_PROGRAM_ID,
 } from "../src/pdas.js";
 
 const MARKET_ID = new Uint8Array([
@@ -76,10 +74,7 @@ function mockClient(args: {
 }): SoothSolanaClient {
   return {
     programIds: {
-      soothBook: SOOTH_BOOK_PROGRAM_ID,
-      soothMarket: SOOTH_MARKET_PROGRAM_ID,
-      soothLaunchpad: SOOTH_LAUNCHPAD_PROGRAM_ID,
-      soothAmm: PublicKey.default,
+      soothCore: SOOTH_CORE_PROGRAM_ID,
     },
     usdcMint: USDC_MINT,
     resolveOrderbookMarket: async () => ({
@@ -90,7 +85,7 @@ function mockClient(args: {
     fetchBookSide: async (_market, _side, tick) => args.bookSides[tick] ?? null,
     buildOrderbookBuyTx: async (_market, _taker, bundles) => [
       new TransactionInstruction({
-        programId: SOOTH_BOOK_PROGRAM_ID,
+        programId: SOOTH_CORE_PROGRAM_ID,
         keys: bundles,
         data: Buffer.from([bundles.length]),
       }),

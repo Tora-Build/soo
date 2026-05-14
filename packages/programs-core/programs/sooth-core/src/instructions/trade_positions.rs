@@ -1,0 +1,298 @@
+//! `trade_positions` — buy YES/NO shares against the LMSR.
+//!
+//! Adapted from `sooth_amm::trade_positions`. All CPIs into other programs
+//! are replaced with direct calls:
+//!   - `sooth_launchpad::mint_lp_for_buy` → direct call to
+//!     `mint_lp_for_buy_internal`.
+//!
+//! `sooth_launchpad_program`, `instruction_sysvar`, `seeds::program` constraints
+//! removed. `protocol_config` is now typed `Account<'info, ProtocolConfig>`.
+//! `market_fee_pool` seeds no longer carry `seeds::program`.
+
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+
+use crate::error::SoothCoreError;
+use crate::events::{MarketGraduated, PositionTraded};
+use crate::math::{cost_delta, wad_mul, wad_to_usdc_ceil, MathError, LN2_WAD};
+use crate::state::{AmmState, Market, Position, ProtocolConfig};
+
+const OUTCOME_NO: u8 = 0;
+const OUTCOME_YES: u8 = 1;
+
+#[derive(Accounts)]
+pub struct TradePositions<'info> {
+    #[account(
+        seeds = [b"market", market.market_id.as_ref()],
+        bump = market.bump,
+    )]
+    pub market: Box<Account<'info, Market>>,
+
+    #[account(
+        mut,
+        seeds = [b"amm", market.market_id.as_ref()],
+        bump = amm_state.bump,
+        constraint = amm_state.market == market.key() @ SoothCoreError::MarketNotOpen,
+    )]
+    pub amm_state: Box<Account<'info, AmmState>>,
+
+    #[account(
+        init_if_needed,
+        payer = user,
+        space = Position::SPACE,
+        seeds = [b"pos", market.market_id.as_ref(), user.key().as_ref()],
+        bump,
+    )]
+    pub position: Box<Account<'info, Position>>,
+
+    /// CHECK: derived via seeds; no data.
+    #[account(
+        seeds = [b"vault", market.market_id.as_ref()],
+        bump = market.vault_authority_bump,
+    )]
+    pub vault_authority: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        token::mint = usdc_mint,
+        token::authority = user,
+    )]
+    pub user_usdc_ata: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        token::mint = usdc_mint,
+        token::authority = vault_authority,
+        constraint = market_vault.key() == market.vault @ SoothCoreError::MarketNotOpen,
+    )]
+    pub market_vault: Box<Account<'info, TokenAccount>>,
+
+    #[account(address = crate::constants::BASE_TOKEN_MINT)]
+    pub usdc_mint: Box<Account<'info, Mint>>,
+
+    #[account(
+        seeds = [b"protocol_config"],
+        bump = protocol_config.bump,
+    )]
+    pub protocol_config: Box<Account<'info, ProtocolConfig>>,
+
+    #[account(
+        mut,
+        seeds = [b"market_fee_pool", market.market_id.as_ref()],
+        bump,
+        token::mint = usdc_mint,
+    )]
+    pub market_fee_pool: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        seeds = [b"lp", market.market_id.as_ref()],
+        bump,
+    )]
+    pub lp_mint: Box<Account<'info, Mint>>,
+
+    /// CHECK: derived via seeds; signs the mint_to inside mint_lp_for_buy_internal.
+    #[account(
+        seeds = [b"lp_mint_authority", market.market_id.as_ref()],
+        bump,
+    )]
+    pub lp_mint_authority: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        token::mint = lp_mint,
+        token::authority = user,
+    )]
+    pub user_lp_ata: Box<Account<'info, TokenAccount>>,
+
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+pub fn handler(
+    ctx: Context<TradePositions>,
+    outcome: u8,
+    delta_shares: i128,
+    max_cost_wad: u128,
+) -> Result<()> {
+    require!(
+        outcome == OUTCOME_NO || outcome == OUTCOME_YES,
+        SoothCoreError::InvalidOutcome
+    );
+    require!(delta_shares != 0, SoothCoreError::ZeroDelta);
+    require!(delta_shares > 0, SoothCoreError::SellNotImplemented);
+
+    let market = &ctx.accounts.market;
+    require!(market.is_open(), SoothCoreError::MarketNotOpen);
+
+    let now = Clock::get()?.unix_timestamp;
+    require!(now >= market.start_time, SoothCoreError::TradingNotStarted);
+    require!(now < market.deadline, SoothCoreError::TradingClosed);
+
+    let (amm_q_yes, amm_q_no, amm_b, amm_is_graduated) = {
+        let amm = &ctx.accounts.amm_state;
+        require!(!amm.is_dismissed, SoothCoreError::MarketDismissed);
+        require!(amm.b > 0, SoothCoreError::InvalidLiquidity);
+        (amm.q_yes, amm.q_no, amm.b, amm.is_graduated)
+    };
+
+    let market_key = market.key();
+    let user_key = ctx.accounts.user.key();
+    let position_bump = ctx.bumps.position;
+    {
+        let position = &mut ctx.accounts.position;
+        if position.user == Pubkey::default() {
+            position.user = user_key;
+            position.market = market_key;
+            position.bump = position_bump;
+        }
+    }
+
+    let (d_yes, d_no) = if outcome == OUTCOME_YES {
+        (delta_shares, 0i128)
+    } else {
+        (0i128, delta_shares)
+    };
+
+    let cost_wad: i128 =
+        cost_delta(amm_q_yes, amm_q_no, amm_b, d_yes, d_no).map_err(map_math_err)?;
+
+    let fee_bps = ctx.accounts.protocol_config.fee_bps;
+    require!(cost_wad > 0, SoothCoreError::MathOverflow);
+    let fee_wad: u128 = (cost_wad as u128)
+        .checked_mul(fee_bps as u128)
+        .map(|v| v / 10_000)
+        .ok_or(error!(SoothCoreError::MathOverflow))?;
+
+    let total_cost_wad: u128 = (cost_wad as u128)
+        .checked_add(fee_wad)
+        .ok_or(error!(SoothCoreError::MathOverflow))?;
+    require!(
+        total_cost_wad <= max_cost_wad,
+        SoothCoreError::SlippageExceeded
+    );
+
+    let cost_usdc: u64 = wad_to_usdc_ceil(cost_wad as u128).map_err(map_math_err)?;
+    let fee_usdc: u64 = wad_to_usdc_ceil(fee_wad).map_err(map_math_err)?;
+
+    let cost_cpi = CpiContext::new(
+        ctx.accounts.token_program.to_account_info(),
+        Transfer {
+            from: ctx.accounts.user_usdc_ata.to_account_info(),
+            to: ctx.accounts.market_vault.to_account_info(),
+            authority: ctx.accounts.user.to_account_info(),
+        },
+    );
+    token::transfer(cost_cpi, cost_usdc)?;
+    ctx.accounts.position.locked_cost_usdc = ctx
+        .accounts
+        .position
+        .locked_cost_usdc
+        .checked_add(cost_usdc)
+        .ok_or(error!(SoothCoreError::MathOverflow))?;
+
+    if fee_usdc > 0 {
+        let fee_cpi = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.user_usdc_ata.to_account_info(),
+                to: ctx.accounts.market_fee_pool.to_account_info(),
+                authority: ctx.accounts.user.to_account_info(),
+            },
+        );
+        token::transfer(fee_cpi, fee_usdc)?;
+    }
+
+    ctx.accounts.amm_state.fee_b_base_wad = ctx
+        .accounts
+        .amm_state
+        .fee_b_base_wad
+        .checked_add(fee_wad)
+        .ok_or(error!(SoothCoreError::MathOverflow))?;
+
+    {
+        let amm = &mut ctx.accounts.amm_state;
+        if !amm.is_graduated {
+            let threshold_wad = wad_mul(amm.b, LN2_WAD)
+                .map_err(map_math_err)?
+                .try_into()
+                .map_err(|_| error!(SoothCoreError::MathOverflow))?;
+            if amm.fee_b_base_wad >= threshold_wad {
+                amm.is_graduated = true;
+                emit!(MarketGraduated {
+                    market: amm.market,
+                    fees_accumulated_wad: amm.fee_b_base_wad,
+                    threshold_wad,
+                });
+            }
+        }
+    }
+
+    {
+        let amm = &mut ctx.accounts.amm_state;
+        let position = &mut ctx.accounts.position;
+        if outcome == OUTCOME_YES {
+            amm.q_yes = amm
+                .q_yes
+                .checked_add(delta_shares)
+                .ok_or(error!(SoothCoreError::MathOverflow))?;
+            position.yes_shares = position
+                .yes_shares
+                .checked_add(delta_shares)
+                .ok_or(error!(SoothCoreError::MathOverflow))?;
+            require!(position.yes_shares >= 0, SoothCoreError::InsufficientShares);
+        } else {
+            amm.q_no = amm
+                .q_no
+                .checked_add(delta_shares)
+                .ok_or(error!(SoothCoreError::MathOverflow))?;
+            position.no_shares = position
+                .no_shares
+                .checked_add(delta_shares)
+                .ok_or(error!(SoothCoreError::MathOverflow))?;
+            require!(position.no_shares >= 0, SoothCoreError::InsufficientShares);
+        }
+    }
+
+    // Pre-graduation LP mint — direct call (no CPI).
+    if !amm_is_graduated && fee_usdc > 0 {
+        let market_id = ctx.accounts.market.market_id;
+        let lp_mint_authority_bump = ctx.bumps.lp_mint_authority;
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            b"lp_mint_authority",
+            market_id.as_ref(),
+            &[lp_mint_authority_bump],
+        ]];
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                anchor_spl::token::MintTo {
+                    mint: ctx.accounts.lp_mint.to_account_info(),
+                    to: ctx.accounts.user_lp_ata.to_account_info(),
+                    authority: ctx.accounts.lp_mint_authority.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            fee_usdc,
+        )?;
+    }
+
+    emit!(PositionTraded {
+        market: market_key,
+        user: user_key,
+        outcome,
+        delta_shares,
+        cost_wad,
+        ts: now,
+    });
+
+    Ok(())
+}
+
+fn map_math_err(_e: MathError) -> Error {
+    error!(SoothCoreError::MathOverflow)
+}

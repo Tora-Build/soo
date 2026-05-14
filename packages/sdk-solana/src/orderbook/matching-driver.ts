@@ -198,10 +198,10 @@ export function buildFillBundles(
   const accounts: AccountMeta[] = [];
   for (const fill of fills) {
     const [bookSide] = bookSidePda(marketId, oppSide, fill.makerTick, {
-      soothBook: client.programIds.soothBook,
+      soothCore: client.programIds.soothCore,
     });
     const [makerPosition] = orderbookPositionPda(marketId, fill.maker, {
-      soothMarket: client.programIds.soothMarket,
+      soothCore: client.programIds.soothCore,
     });
     const makerUsdcAta = getAssociatedTokenAddressSync(
       client.usdcMint,

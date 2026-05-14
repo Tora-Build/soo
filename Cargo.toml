@@ -1,15 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "packages/programs-core/programs/sooth_amm",
-    "packages/programs-core/programs/sooth_market",
-    "packages/programs-core/programs/sooth_launchpad",
-    "packages/programs-core/programs/sooth_adjudicator",
-    "packages/programs-core/programs/sooth_book",
-    "packages/programs-core/crates/sooth-account-offsets",
-    "packages/programs-core/crates/sooth-protocol-types",
-    # Future members (uncomment as the crates land):
-    #   "packages/programs-core/crates/sooth-book-matcher",
+    "packages/programs-core/programs/sooth-core",
 ]
 exclude = [
     "vendor/anchor-syn-0.30.1-fork",

@@ -11,9 +11,9 @@ import {
   type SignatureResult,
 } from "@solana/web3.js";
 
-import { soothAmmIdl, soothMarketIdl } from "../src/anchor/index.js";
+import { soothCoreIdl } from "../src/anchor/index.js";
 import { SolanaChainAdapter } from "../src/adapter.js";
-import { SOOTH_MARKET_PROGRAM_ID, type ProgramIds } from "../src/pdas.js";
+import { SOOTH_CORE_PROGRAM_ID, type ProgramIds } from "../src/pdas.js";
 
 type PriorityFeeSample = {
   slot: number;
@@ -72,11 +72,7 @@ class PriorityFeeConnection extends Connection {
 
 function makeAdapter(connection: Connection) {
   const programs: ProgramIds = {
-    soothAmm: new PublicKey(soothAmmIdl.address),
-    soothMarket:
-      soothMarketIdl.address && soothMarketIdl.address.length > 0
-        ? new PublicKey(soothMarketIdl.address)
-        : SOOTH_MARKET_PROGRAM_ID,
+    soothCore: new PublicKey(soothCoreIdl.address) ?? SOOTH_CORE_PROGRAM_ID,
   };
   const user = Keypair.generate();
   const marketPda = Keypair.generate().publicKey;
@@ -105,7 +101,7 @@ function buildMockRequest(
   marketPda: PublicKey,
 ) {
   const ix = new TransactionInstruction({
-    programId: programs.soothAmm,
+    programId: programs.soothCore,
     keys: [{ pubkey: userPk, isSigner: true, isWritable: true }],
     data: Buffer.alloc(8),
   });

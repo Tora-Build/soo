@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 
 import { SolanaChainAdapter } from "../src/adapter.js";
-import { encodePubkeyRef, deriveAdjudicatorPda } from "../src/index.js";
+import { encodePubkeyRef, deriveAdjudicatorEntryPda } from "../src/index.js";
 import { WAD } from "../src/math/lmsr.js";
 
 import { bootSmoke } from "./fixtures/setup.js";
@@ -47,16 +47,12 @@ describe("operator request shapes", () => {
       ixKeys?: Array<{ pubkey: string }>;
     };
     expect(meta.operation).toBe("requestLock");
-    expect(meta.ixProgramId).toBe(smoke.programs.soothAdjudicator!.toBase58());
+    expect(meta.ixProgramId).toBe(smoke.programs.soothCore.toBase58());
     const keys = (meta.ixKeys ?? []).map((k) => k.pubkey);
-    const [adjudicatorPda] = deriveAdjudicatorPda(smoke.marketPda, {
-      ...smoke.programs,
-      soothAdjudicator: smoke.programs.soothAdjudicator!,
-    });
-    expect(keys).toContain(adjudicatorPda.toBase58());
+    const [adjudicatorEntryPda] = deriveAdjudicatorEntryPda(smoke.marketPda, smoke.programs);
+    expect(keys).toContain(adjudicatorEntryPda.toBase58());
     expect(keys).toContain(smoke.marketPda.toBase58());
     expect(keys).toContain(smoke.user.publicKey.toBase58());
-    expect(keys).toContain(smoke.programs.soothMarket.toBase58());
   });
 
   it("buildAttestOutcome rejects invalid outcome and accepts 0/1/2", async () => {

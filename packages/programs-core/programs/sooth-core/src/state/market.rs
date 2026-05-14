@@ -1,0 +1,79 @@
+//! `Market` PDA — lifecycle, outcome, and per-market configuration.
+//!
+//! Merged from `sooth_market::state::Market`. Seeds and bumps are unchanged;
+//! the owning program is now `sooth_core`.
+
+use anchor_lang::prelude::*;
+
+use crate::state::lifecycle::MarketLifecycle;
+
+/// Protocol-wide outcome encoding. 0=NO, 1=YES, 2=INVALID.
+pub const OUTCOME_NO: u8 = 0;
+pub const OUTCOME_YES: u8 = 1;
+pub const OUTCOME_INVALID: u8 = 2;
+
+#[account]
+pub struct Market {
+    /// Deterministic 16-byte id (truncated keccak256 of question || creator
+    /// || nonce). Architecture §2.2.
+    pub market_id: [u8; 16],
+    pub creator: Pubkey,
+    /// The adjudicator pubkey recorded at `initialize_market` time. In the
+    /// merged program the adjudicator is also registered as an
+    /// `AdjudicatorEntry` PDA. This field remains the canonical source of
+    /// truth for the market's designated adjudicator identity.
+    pub adjudicator: Pubkey,
+    pub question_hash: [u8; 32],
+    pub yes_mint: Pubkey,
+    pub no_mint: Pubkey,
+    /// USDC vault ATA — populated by `initialize_market_vaults`.
+    pub vault: Pubkey,
+    /// AMM lock-on-sell escrow vault — populated by `initialize_market_vaults`.
+    pub lock_vault: Pubkey,
+    pub start_time: i64,
+    pub deadline: i64,
+    pub lifecycle: MarketLifecycle,
+    /// Set by `settle`. 0=NO, 1=YES, 2=INVALID (only meaningful when
+    /// lifecycle == Settled).
+    pub winning_outcome: u8,
+    /// PDA bumps stored at `initialize_market` time.
+    pub bump: u8,
+    pub vault_authority_bump: u8,
+    pub lock_authority_bump: u8,
+    pub yes_mint_bump: u8,
+    pub no_mint_bump: u8,
+}
+
+impl Market {
+    /// Seeds: `[b"market", market_id]` under `sooth_core::ID`.
+    pub const SPACE: usize = 8      // discriminator
+        + 16                         // market_id
+        + 32                         // creator
+        + 32                         // adjudicator
+        + 32                         // question_hash
+        + 32                         // yes_mint
+        + 32                         // no_mint
+        + 32                         // vault
+        + 32                         // lock_vault
+        + 8                          // start_time
+        + 8                          // deadline
+        + 1                          // lifecycle (Borsh enum tag)
+        + 1                          // winning_outcome
+        + 1                          // bump
+        + 1                          // vault_authority_bump
+        + 1                          // lock_authority_bump
+        + 1                          // yes_mint_bump
+        + 1; // no_mint_bump
+
+    pub fn is_open(&self) -> bool {
+        matches!(self.lifecycle, MarketLifecycle::Open)
+    }
+
+    pub fn is_locked(&self) -> bool {
+        matches!(self.lifecycle, MarketLifecycle::Locked)
+    }
+
+    pub fn is_settled(&self) -> bool {
+        matches!(self.lifecycle, MarketLifecycle::Settled)
+    }
+}

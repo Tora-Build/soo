@@ -16,7 +16,7 @@ export type { SoothErrorInit, SoothErrorKind } from "./errors.js";
 // derive accounts independently of the adapter (e.g. an indexer mirroring
 // the seed conventions).
 export {
-  deriveAdjudicatorPda,
+  deriveAdjudicatorEntryPda,
   deriveAmmStatePda,
   bookSidePda,
   deriveLockAuthorityPda,
@@ -33,9 +33,7 @@ export {
   marketBookPda,
   marketFeePoolPda,
   orderbookPositionPda,
-  SOOTH_BOOK_PROGRAM_ID,
-  SOOTH_LAUNCHPAD_PROGRAM_ID,
-  SOOTH_MARKET_PROGRAM_ID,
+  SOOTH_CORE_PROGRAM_ID,
   type MarketId,
   type ProgramIds,
 } from "./pdas.js";
@@ -66,9 +64,9 @@ export {
   LmsrMathError,
 } from "./math/lmsr.js";
 
-// IDLs are exported so consumers can build their own Anchor `Program`
+// IDL is exported so consumers can build their own Anchor `Program`
 // instances if they need read paths the adapter doesn't expose.
-export { soothAmmIdl, soothMarketIdl, soothBookIdl } from "./anchor/index.js";
+export { soothCoreIdl } from "./anchor/index.js";
 
 export {
   DEFAULT_MATCH_LIMIT_PER_TX,

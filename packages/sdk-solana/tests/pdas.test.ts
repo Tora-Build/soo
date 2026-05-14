@@ -18,28 +18,28 @@ describe("SoothBook PDA derivation parity", () => {
   it("market_book_pda_derives_correctly", () => {
     const [pda] = marketBookPda(MARKET_ID);
     expect(pda.toBase58()).toBe(
-      "BzfZpzVXn1MViui2MamX5u1zTLkH5i6a6bYXnUM8NDZD",
+      "CvDMGEcrNzGZQkoc5iMWcqHhxzDUSGje1HLVwawrfcJq",
     );
   });
 
   it("book_side_pda_tick_endianness", () => {
     const [pda] = bookSidePda(MARKET_ID, 1, 500);
     expect(pda.toBase58()).toBe(
-      "4Ne6sVgcNSfsktHyZAc5uvnHP9kx2upCwd5RJLsX7ggU",
+      "C742iAc1Xq2y6sUqhcQK6RnLRdm37DtVF1bzAx6FhYmD",
     );
   });
 
   it("orderbook_position_pda_derives_correctly", () => {
     const [pda] = orderbookPositionPda(MARKET_ID, USER);
     expect(pda.toBase58()).toBe(
-      "4TsxBcZbWhcmhjdm2Sd9g5e7taAR8Ksgm98UjxwAxjdE",
+      "HviFSKyKgVrijyWtQWScJj7UAznqGE9oCViMjD2TrVDb",
     );
   });
 
   it("market_fee_pool_pda_derives_correctly", () => {
     const [pda] = marketFeePoolPda(MARKET_ID);
     expect(pda.toBase58()).toBe(
-      "3iFiddMBgP7YjU65MiCeVUqADSmzF36NMjRhhHA3fmuC",
+      "FbaCJU5bchEn3JYvEVqJYCp63QXF5jhJFjVW84VAbd8P",
     );
   });
 });

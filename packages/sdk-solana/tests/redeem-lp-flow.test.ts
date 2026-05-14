@@ -41,16 +41,12 @@ describe("LP redemption flow", () => {
 
     await forceGraduated(smoke);
 
-    const [lpMint] = deriveLpMintPda(smoke.marketId, {
-      soothLaunchpad: smoke.programs.soothLaunchpad!,
-    });
+    const [lpMint] = deriveLpMintPda(smoke.marketId, smoke.programs);
     const creatorLpAta = deriveUserLpAta(smoke.creator.publicKey, lpMint);
     const lpSupply = (await getAccount(conn, creatorLpAta)).amount;
     expect(lpSupply).toBeGreaterThan(0n);
 
-    const [lpYieldAuthority] = deriveLpYieldAuthority({
-      soothLaunchpad: smoke.programs.soothLaunchpad!,
-    });
+    const [lpYieldAuthority] = deriveLpYieldAuthority(smoke.programs);
     const lpYieldVault = getAssociatedTokenAddressSync(
       smoke.usdcMint,
       lpYieldAuthority,

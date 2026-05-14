@@ -1,24 +1,14 @@
-// End-to-end test for `sooth_launchpad::create_market` — the one-shot
-// market-creation ix that composes the four-leg init flow
-// (initialize_market + initialize_outcome_mints + initialize_market_vaults
-// + initialize_amm_state) into a single transaction via CPI.
-//
-// This is the canonical proof that the CPI plumbing in
-// `programs/sooth_launchpad/src/instructions/create_market.rs` holds:
-// after one call from the user, all 4 expected PDAs exist with the right
-// field values.
+// End-to-end test for `sooth_core::create_market` — the one-shot
+// market-creation ix that creates Market PDA, outcome mints, vaults,
+// and AmmState in a single transaction.
 //
 // Flow:
-//   1. Boot bankrun with `sooth_launchpad`, `sooth_market`, and `sooth_amm`
-//      loaded at their `declare_id!` placeholder addresses.
+//   1. Boot bankrun with `sooth_core` loaded at its `declare_id!` address.
 //   2. Hand-write the canonical USDC mint at `USDC_MINT_DEVNET`.
-//   3. Bootstrap the adjudicator allowlist (creator = both authority and
-//      adjudicator for the demo).
-//   4. Initialize the singleton `ProtocolConfig` PDA — `create_market`
-//      reads `default_trial_period` from this.
-//   5. Build a `create_market` request via `adapter.buildCreateMarket(...)`
+//   3. Initialize the singleton `ProtocolConfig` PDA.
+//   4. Build a `create_market` request via `adapter.buildCreateMarket(...)`
 //      and submit it.
-//   6. Assert: market PDA, yes_mint, no_mint, vault, lock_vault, and
+//   5. Assert: market PDA, yes_mint, no_mint, vault, lock_vault, and
 //      amm_state PDAs all exist with expected field values.
 
 import { describe, expect, it } from "vitest";
@@ -43,13 +33,9 @@ import {
 } from "@solana/web3.js";
 import { Clock, start, type ProgramTestContext } from "solana-bankrun";
 
+import { soothCoreIdl } from "../src/anchor/index.js";
 import {
-  soothAmmIdl,
-  soothLaunchpadIdl,
-  soothMarketIdl,
-} from "../src/anchor/index.js";
-import {
-  deriveAdjudicatorAllowlistPda,
+  deriveAdjudicatorEntryPda,
   deriveAmmStatePda,
   deriveLockAuthorityPda,
   deriveLockVaultAta,
@@ -59,7 +45,7 @@ import {
   deriveProtocolConfigPda,
   deriveVaultAuthorityPda,
   deriveYesMintPda,
-  SOOTH_MARKET_PROGRAM_ID,
+  SOOTH_CORE_PROGRAM_ID,
   type ProgramIds,
 } from "../src/pdas.js";
 import { WAD } from "../src/math/lmsr.js";
@@ -69,55 +55,38 @@ import { encodePubkeyRef } from "../src/refs.js";
 import { BankrunConnection } from "./fixtures/bankrun-connection.js";
 import { resolveDeployDir } from "./fixtures/setup.js";
 
-const SOOTH_AMM_ID = new PublicKey(soothAmmIdl.address);
-const SOOTH_MARKET_ID =
-  soothMarketIdl.address && soothMarketIdl.address.length > 0
-    ? new PublicKey(soothMarketIdl.address)
-    : SOOTH_MARKET_PROGRAM_ID;
-const SOOTH_LAUNCHPAD_ID = new PublicKey(soothLaunchpadIdl.address);
+const SOOTH_CORE_ID = new PublicKey(soothCoreIdl.address) ?? SOOTH_CORE_PROGRAM_ID;
 const USDC_MINT_DEVNET = new PublicKey(
   "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
 );
 
 const PROGRAMS: ProgramIds = {
-  soothAmm: SOOTH_AMM_ID,
-  soothMarket: SOOTH_MARKET_ID,
-  soothLaunchpad: SOOTH_LAUNCHPAD_ID,
+  soothCore: SOOTH_CORE_ID,
 };
 
-describe("sooth_launchpad::create_market end-to-end", () => {
+describe("sooth_core::create_market end-to-end", () => {
   it("creates Market + outcome mints + vaults + AmmState in one tx", async () => {
-    // ─── 0. Boot bankrun with all three programs ──────────────────────
+    // ─── 0. Boot bankrun with sooth_core ──────────────────────────────────
     const soDir = resolveDeployDir();
     process.env.BPF_OUT_DIR = soDir;
-    for (const so of [
-      "sooth_amm.so",
-      "sooth_market.so",
-      "sooth_launchpad.so",
-    ]) {
-      try {
-        readFileSync(resolve(soDir, so));
-      } catch {
-        throw new Error(
-          `create-market test: missing ${so} in ${soDir}. Run \`cargo build-sbf\` for each program first.`,
-        );
-      }
+    try {
+      readFileSync(resolve(soDir, "sooth_core.so"));
+    } catch {
+      throw new Error(
+        `create-market test: missing sooth_core.so in ${soDir}. Run \`cargo build-sbf\` first.`,
+      );
     }
     const ctx = await start(
-      [
-        { name: "sooth_amm", programId: SOOTH_AMM_ID },
-        { name: "sooth_market", programId: SOOTH_MARKET_ID },
-        { name: "sooth_launchpad", programId: SOOTH_LAUNCHPAD_ID },
-      ],
+      [{ name: "sooth_core", programId: SOOTH_CORE_ID }],
       [],
       /* computeMaxUnits */ 1_400_000n,
     );
 
-    // ─── 1. USDC mint ─────────────────────────────────────────────────
+    // ─── 1. USDC mint ─────────────────────────────────────────────────────
     const mintAuthority = Keypair.generate();
     await writeMint(ctx, USDC_MINT_DEVNET, mintAuthority.publicKey);
 
-    // ─── 2. Funded creator ────────────────────────────────────────────
+    // ─── 2. Funded creator ────────────────────────────────────────────────
     const creator = Keypair.generate();
     await fundLamports(ctx, creator.publicKey, 50n * BigInt(LAMPORTS_PER_SOL));
 
@@ -136,7 +105,7 @@ describe("sooth_launchpad::create_market end-to-end", () => {
       ),
     );
 
-    // ─── 3. Anchor handles ────────────────────────────────────────────
+    // ─── 3. Anchor handles ────────────────────────────────────────────────
     const conn = new BankrunConnection(ctx);
     const wallet: Wallet = {
       publicKey: creator.publicKey,
@@ -158,69 +127,26 @@ describe("sooth_launchpad::create_market end-to-end", () => {
       commitment: "confirmed",
       preflightCommitment: "confirmed",
     });
-    const marketProgram = new Program(
-      { ...soothMarketIdl, address: SOOTH_MARKET_ID.toBase58() } as Idl,
-      provider,
-    );
-    const launchpadProgram = new Program(soothLaunchpadIdl as Idl, provider);
+    const coreProgram = new Program(soothCoreIdl as Idl, provider);
 
-    // ─── 4. Adjudicator allowlist bootstrap ──────────────────────────
-    const [allowlistPda] = deriveAdjudicatorAllowlistPda(PROGRAMS);
+    // ─── 4. Initialize the singleton ProtocolConfig ───────────────────────
+    const [configPda] = deriveProtocolConfigPda(PROGRAMS);
     await sendTx(
       ctx,
       [creator],
       await buildTx(
         ctx,
         [
-          await (marketProgram.methods as any)
-            .initializeAdjudicatorAllowlist(creator.publicKey)
-            .accounts({
-              allowlist: allowlistPda,
-              signer: creator.publicKey,
-              systemProgram: SystemProgram.programId,
-            })
-            .instruction(),
-        ],
-        creator.publicKey,
-      ),
-    );
-    await sendTx(
-      ctx,
-      [creator],
-      await buildTx(
-        ctx,
-        [
-          await (marketProgram.methods as any)
-            .addAdjudicator(creator.publicKey)
-            .accounts({
-              allowlist: allowlistPda,
-              authority: creator.publicKey,
-            })
-            .instruction(),
-        ],
-        creator.publicKey,
-      ),
-    );
-
-    // ─── 5. Initialize the singleton ProtocolConfig ──────────────────
-    const [configPda] = deriveProtocolConfigPda({
-      soothLaunchpad: SOOTH_LAUNCHPAD_ID,
-    });
-    await sendTx(
-      ctx,
-      [creator],
-      await buildTx(
-        ctx,
-        [
-          await (launchpadProgram.methods as any)
+          await (coreProgram.methods as any)
             .initializeProtocol({
               feeBps: 100, // 1%
-              treasury: creator.publicKey, // demo: creator doubles as treasury
+              treasury: creator.publicKey,
               bBaseShareBps: 5_000,
               lpYieldShareBps: 3_000,
               adjudicatorShareBps: 1_000,
               protocolShareBps: 1_000,
               defaultTrialPeriod: new BN(7 * 24 * 60 * 60),
+              permissionlessAdjudicators: true,
             })
             .accounts({
               config: configPda,
@@ -233,7 +159,7 @@ describe("sooth_launchpad::create_market end-to-end", () => {
       ),
     );
 
-    // ─── 6. Build + submit create_market via the SDK adapter ─────────
+    // ─── 5. Build + submit create_market via the SDK adapter ──────────────
     const adapter = new SolanaChainAdapter({
       node: {
         id: "create-market-test",
@@ -263,9 +189,9 @@ describe("sooth_launchpad::create_market end-to-end", () => {
 
     expect(req.kind).toBe("createMarket");
     expect(req.accounts).toBeDefined();
-    expect(req.accounts!.length).toBeGreaterThan(15);
+    expect(req.accounts!.length).toBeGreaterThan(10);
 
-    // ─── Reconstruct + sign + send the ix from the request meta ──────
+    // ─── Reconstruct + sign + send the ix from the request meta ──────────
     const meta = req.meta as {
       ixData: string;
       ixKeys: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }>;
@@ -282,7 +208,7 @@ describe("sooth_launchpad::create_market end-to-end", () => {
     };
     await sendTx(ctx, [creator], await buildTx(ctx, [ix], creator.publicKey));
 
-    // ─── 7. Assert all four PDAs exist with right field values ──────
+    // ─── 6. Assert all PDAs exist with right field values ─────────────────
     const [marketPda] = deriveMarketPda(marketId, PROGRAMS);
     const [yesMint] = deriveYesMintPda(marketId, PROGRAMS);
     const [noMint] = deriveNoMintPda(marketId, PROGRAMS);
@@ -294,7 +220,7 @@ describe("sooth_launchpad::create_market end-to-end", () => {
 
     const marketAcc = await ctx.banksClient.getAccount(marketPda);
     expect(marketAcc).toBeTruthy();
-    expect(marketAcc!.owner.toBase58()).toBe(SOOTH_MARKET_ID.toBase58());
+    expect(marketAcc!.owner.toBase58()).toBe(SOOTH_CORE_ID.toBase58());
 
     const yesMintAcc = await ctx.banksClient.getAccount(yesMint);
     expect(yesMintAcc).toBeTruthy();
@@ -314,15 +240,11 @@ describe("sooth_launchpad::create_market end-to-end", () => {
 
     const ammAcc = await ctx.banksClient.getAccount(ammStatePda);
     expect(ammAcc).toBeTruthy();
-    expect(ammAcc!.owner.toBase58()).toBe(SOOTH_AMM_ID.toBase58());
+    expect(ammAcc!.owner.toBase58()).toBe(SOOTH_CORE_ID.toBase58());
 
     // Decode AmmState to verify the args round-tripped.
-    const ammState = await (
-      new Program(soothAmmIdl as Idl, provider).account as any
-    ).ammState.fetch(ammStatePda);
+    const ammState = await (coreProgram.account as any).ammState.fetch(ammStatePda);
     expect(ammState.market.toBase58()).toBe(marketPda.toBase58());
-    // `b` is i128 stored as BN; bnToString lets us compare regardless of
-    // internal representation.
     expect(ammState.b.toString()).toBe(initialB.toString());
     expect(ammState.qYes.toString()).toBe("0");
     expect(ammState.qNo.toString()).toBe("0");
@@ -338,9 +260,7 @@ describe("sooth_launchpad::create_market end-to-end", () => {
 
     // Decode Market to verify lifecycle = Open and outcome mints/vault are
     // populated.
-    const marketState = await (marketProgram.account as any).market.fetch(
-      marketPda,
-    );
+    const marketState = await (coreProgram.account as any).market.fetch(marketPda);
     expect(marketState.creator.toBase58()).toBe(creator.publicKey.toBase58());
     expect(marketState.adjudicator.toBase58()).toBe(
       creator.publicKey.toBase58(),
@@ -357,17 +277,43 @@ describe("sooth_launchpad::create_market end-to-end", () => {
     expect(typeof marketState.vaultAuthorityBump).toBe("number");
     expect(typeof marketState.lockAuthorityBump).toBe("number");
     // Bumps stored on Market come from `find_program_address` inside
-    // `initialize_market`; we re-derive here via the same seeds.
+    // `create_market`; we re-derive here via the same seeds.
     const [, expectedVaultBump] = PublicKey.findProgramAddressSync(
       [Buffer.from("vault"), Buffer.from(marketId)],
-      SOOTH_MARKET_ID,
+      SOOTH_CORE_ID,
     );
     const [, expectedLockBump] = PublicKey.findProgramAddressSync(
       [Buffer.from("lock"), Buffer.from(marketId)],
-      SOOTH_MARKET_ID,
+      SOOTH_CORE_ID,
     );
     expect(marketState.vaultAuthorityBump).toBe(expectedVaultBump);
     expect(marketState.lockAuthorityBump).toBe(expectedLockBump);
+
+    // ─── 7. register_adjudicator ─────────────────────────────────────────
+    const [adjudicatorEntryPda] = deriveAdjudicatorEntryPda(marketPda, PROGRAMS);
+    await sendTx(
+      ctx,
+      [creator],
+      await buildTx(
+        ctx,
+        [
+          await (coreProgram.methods as any)
+            .registerAdjudicator(creator.publicKey)
+            .accounts({
+              adjudicatorEntry: adjudicatorEntryPda,
+              market: marketPda,
+              protocolConfig: configPda,
+              signer: creator.publicKey,
+              systemProgram: SystemProgram.programId,
+            })
+            .instruction(),
+        ],
+        creator.publicKey,
+      ),
+    );
+    const adjEntryAcc = await ctx.banksClient.getAccount(adjudicatorEntryPda);
+    expect(adjEntryAcc).toBeTruthy();
+    expect(adjEntryAcc!.owner.toBase58()).toBe(SOOTH_CORE_ID.toBase58());
 
     // Silence unused-var for vaultAuthority/lockAuthority/mintAuthority.
     void vaultAuthority;

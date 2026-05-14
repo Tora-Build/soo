@@ -40,13 +40,7 @@ import {
   getMint,
 } from "@solana/spl-token";
 
-import {
-  soothAdjudicatorIdl,
-  soothAmmIdl,
-  soothBookIdl,
-  soothLaunchpadIdl,
-  soothMarketIdl,
-} from "./anchor/index.js";
+import { soothCoreIdl } from "./anchor/index.js";
 import {
   costDelta,
   LN2_WAD,
@@ -55,12 +49,11 @@ import {
   WAD,
 } from "./math/lmsr.js";
 import {
-  deriveAdjudicatorAllowlistPda,
   deriveAmmStatePda,
+  deriveAdjudicatorEntryPda,
   deriveFeePoolAuthorityPda,
   deriveFeePoolVaultAta,
   deriveLockAuthorityPda,
-  deriveAdjudicatorPda,
   deriveLockEntryPda,
   deriveLockVaultAta,
   deriveLpMintPda,
@@ -79,6 +72,7 @@ import {
   marketBookPda,
   marketFeePoolPda,
   orderbookPositionPda,
+  SOOTH_CORE_PROGRAM_ID,
   type ProgramIds,
 } from "./pdas.js";
 import { decodePubkeyRef, encodeSignatureRef } from "./refs.js";
@@ -258,7 +252,7 @@ type AnchorIxBuilder = {
 
 interface SoothMarketProgramOwnedMethods {
   mintCompleteSetToProgramOwned(amount: BN): AnchorIxBuilder;
-  redeemFromProgramOwned(amountYes: BN, amountNo: BN): AnchorIxBuilder;
+  redeemFromProgramOwned(): AnchorIxBuilder;
 }
 
 type BookMarketOrderBehaviourWire =
@@ -303,23 +297,14 @@ interface SoothBookMethods {
   cancelOrder(): AnchorIxBuilder;
 }
 
-const SOOTH_BOOK_DEFAULT_PROGRAM_ID = new PublicKey(
-  "DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X",
-);
-
 const INIT_MARKET_FEE_POOL_DISCRIMINATOR = Buffer.from([
   51, 19, 251, 120, 171, 91, 138, 115,
 ]);
 
-// Adapter-private Monaco helpers retained only so the pre-W7 orderbook
-// builder stubs keep compiling while `pdas.ts` exposes the new W6 public PDA
-// surface. W7 deletes these call paths when cancel/buy/sell are rewritten.
+// Adapter-private helper for legacy Monaco-book PDA derivations.
 function legacySoothBookProgramId(
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): PublicKey {
-  if (!programs.soothBook) {
-    throw new Error("soothBook program id is required for legacy sooth_book PDAs");
-  }
   return programs.soothBook;
 }
 
@@ -351,7 +336,7 @@ function legacySeed16(seed: Uint8Array, name: string): Buffer {
 
 function deriveBookMarketPda(
   soothMarketPda: PublicKey,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("market"), soothMarketPda.toBuffer()],
@@ -361,7 +346,7 @@ function deriveBookMarketPda(
 
 function deriveBookEscrowPda(
   bookMarketPda: PublicKey,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("escrow"), bookMarketPda.toBuffer()],
@@ -371,7 +356,7 @@ function deriveBookEscrowPda(
 
 function deriveBookFundingPda(
   bookMarketPda: PublicKey,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("funding"), bookMarketPda.toBuffer()],
@@ -381,7 +366,7 @@ function deriveBookFundingPda(
 
 function deriveBookMarketLiquiditiesPda(
   bookMarketPda: PublicKey,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("liquidities"), bookMarketPda.toBuffer()],
@@ -391,7 +376,7 @@ function deriveBookMarketLiquiditiesPda(
 
 function deriveBookMarketMatchingQueuePda(
   bookMarketPda: PublicKey,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("matching"), bookMarketPda.toBuffer()],
@@ -401,7 +386,7 @@ function deriveBookMarketMatchingQueuePda(
 
 function deriveBookOrderRequestQueuePda(
   bookMarketPda: PublicKey,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("order_request"), bookMarketPda.toBuffer()],
@@ -412,7 +397,7 @@ function deriveBookOrderRequestQueuePda(
 function deriveBookMarketPositionPda(
   bookMarketPda: PublicKey,
   user: PublicKey,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("position"), bookMarketPda.toBuffer(), user.toBuffer()],
@@ -423,7 +408,7 @@ function deriveBookMarketPositionPda(
 function deriveBookLegacyMarketPositionPda(
   bookMarketPda: PublicKey,
   purchaser: PublicKey,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [purchaser.toBuffer(), bookMarketPda.toBuffer()],
@@ -434,7 +419,7 @@ function deriveBookLegacyMarketPositionPda(
 function deriveBookOrderPda(
   bookMarketPda: PublicKey,
   distinctSeed: bigint,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("order"), bookMarketPda.toBuffer(), legacyU64Bytes(distinctSeed, "distinctSeed")],
@@ -446,7 +431,7 @@ function deriveBookOrderRequestOrderPda(
   bookMarketPda: PublicKey,
   purchaser: PublicKey,
   distinctSeed: Uint8Array,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [bookMarketPda.toBuffer(), purchaser.toBuffer(), legacySeed16(distinctSeed, "distinctSeed")],
@@ -457,7 +442,7 @@ function deriveBookOrderRequestOrderPda(
 function deriveBookMarketOutcomePda(
   bookMarketPda: PublicKey,
   outcomeIndex: number,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [bookMarketPda.toBuffer(), Buffer.from(String(outcomeIndex))],
@@ -470,7 +455,7 @@ function deriveBookMarketMatchingPoolPda(
   outcomeIndex: number,
   expectedPrice: bigint,
   forOutcome: boolean,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [
@@ -487,7 +472,7 @@ function deriveBookMarketMatchingPoolPda(
 function deriveBookTradePda(
   orderPda: PublicKey,
   tradeSeed: Uint8Array,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [orderPda.toBuffer(), legacySeed16(tradeSeed, "tradeSeed")],
@@ -497,7 +482,7 @@ function deriveBookTradePda(
 
 function deriveBookMarketTypePda(
   name: string,
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("market_type"), Buffer.from(name)],
@@ -507,7 +492,7 @@ function deriveBookMarketTypePda(
 
 function deriveBookAuthorisedOperatorsPda(
   role: "MARKET" | "CRANK",
-  programs: Pick<ProgramIds, "soothBook"> & { soothBook?: PublicKey },
+  programs: { soothBook: PublicKey },
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("authorised_operators"), Buffer.from(role)],
@@ -524,12 +509,8 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
   readonly usdcMint: PublicKey;
   readonly connection: Connection;
 
-  // Anchor `Program` wrappers; built lazily because Anchor needs a Provider.
-  private readonly soothAmm: AnyProgram;
-  private readonly soothMarket: AnyProgram;
-  private readonly soothLaunchpad: AnyProgram;
-  private readonly soothAdjudicator: AnyProgram;
-  private readonly soothBook: AnyProgram;
+  // Anchor `Program` wrapper for the merged sooth_core program.
+  private readonly program: AnyProgram;
 
   // Failing-program-ID → error code table. Populated at construction from the
   // resolved program IDs. Decoders use this to disambiguate Anchor codes
@@ -546,42 +527,14 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     // (placeholder IDs from the on-chain `declare_id!` macros).
     if (opts.programIds) {
       this.programIds = {
-        ...opts.programIds,
-        // `soothLaunchpad` is optional on the public surface but the adapter
-        // needs it for `buildCreateMarket`. Fall back to the IDL placeholder.
-        soothLaunchpad:
-          opts.programIds.soothLaunchpad ??
-          new PublicKey(soothLaunchpadIdl.address),
-        // Same fallback story for sooth_adjudicator: required by
-        // buildRequestLock / buildAttestOutcome (operator path).
-        soothAdjudicator:
-          opts.programIds.soothAdjudicator ??
-          new PublicKey(soothAdjudicatorIdl.address),
-        soothBook:
-          opts.programIds.soothBook ??
-          programIdOrFallback(
-            (soothBookIdl as { address?: string }).address,
-            SOOTH_BOOK_DEFAULT_PROGRAM_ID,
-          ),
+        soothCore: opts.programIds.soothCore ?? SOOTH_CORE_PROGRAM_ID,
       };
     } else {
-      const ammStr = opts.node.programs?.soothAmm ?? soothAmmIdl.address;
-      const mktStr = opts.node.programs?.soothMarket ?? soothMarketIdl.address;
-      const bookStr =
-        (opts.node.programs as { soothBook?: string } | undefined)?.soothBook ??
-        (soothBookIdl as { address?: string }).address;
-      const lpStr =
-        (opts.node.programs as { soothLaunchpad?: string } | undefined)
-          ?.soothLaunchpad ?? soothLaunchpadIdl.address;
-      const adjStr =
-        (opts.node.programs as { soothAdjudicator?: string } | undefined)
-          ?.soothAdjudicator ?? soothAdjudicatorIdl.address;
+      const coreStr =
+        (opts.node.programs as { soothCore?: string } | undefined)?.soothCore ??
+        soothCoreIdl.address;
       this.programIds = {
-        soothAmm: new PublicKey(ammStr),
-        soothMarket: new PublicKey(mktStr),
-        soothBook: programIdOrFallback(bookStr, SOOTH_BOOK_DEFAULT_PROGRAM_ID),
-        soothLaunchpad: new PublicKey(lpStr),
-        soothAdjudicator: new PublicKey(adjStr),
+        soothCore: new PublicKey(coreStr),
       };
     }
 
@@ -619,62 +572,17 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       preflightCommitment: "confirmed",
     });
 
-    // Inject the resolved program IDs into the IDL clones so `program.programId`
+    // Inject the resolved program ID into the IDL clone so `program.programId`
     // matches the active deployment regardless of the placeholder.
-    const ammIdl = {
-      ...soothAmmIdl,
-      address: this.programIds.soothAmm.toBase58(),
-    };
-    const marketIdl = {
-      ...soothMarketIdl,
-      address: this.programIds.soothMarket.toBase58(),
-    };
-    const launchpadIdl = {
-      ...soothLaunchpadIdl,
-      address: (
-        this.programIds.soothLaunchpad ??
-        new PublicKey(soothLaunchpadIdl.address)
-      ).toBase58(),
-    };
-    const adjudicatorIdl = {
-      ...soothAdjudicatorIdl,
-      address: (
-        this.programIds.soothAdjudicator ??
-        new PublicKey(soothAdjudicatorIdl.address)
-      ).toBase58(),
-    };
-    const bookIdl = {
-      ...soothBookIdl,
-      address: (
-        this.programIds.soothBook ?? SOOTH_BOOK_DEFAULT_PROGRAM_ID
-      ).toBase58(),
-    };
-    this.soothAmm = new Program(ammIdl as Idl, provider);
-    this.soothMarket = new Program(marketIdl as Idl, provider);
-    this.soothLaunchpad = new Program(launchpadIdl as Idl, provider);
-    this.soothAdjudicator = new Program(adjudicatorIdl as Idl, provider);
-    this.soothBook = new Program(bookIdl as Idl, provider);
+    const idl = {
+      ...soothCoreIdl,
+      address: this.programIds.soothCore.toBase58(),
+    } as Idl;
+    this.program = new Program(idl, provider);
 
-    // Build the program-ID → error-table lookup. sooth_adjudicator isn't
-    // exposed as a separate `programIds` field today (the SDK doesn't build
-    // adjudicator ixs directly), but its errors can still surface via CPI
-    // from sooth_market/sooth_launchpad — pull its base58 ID off the IDL
-    // so those decode cleanly too.
+    // Build the program-ID → error-table lookup.
     this.programErrorLookup = new Map([
-      [this.programIds.soothAmm.toBase58(), SOOTH_AMM_ERROR_TABLE],
-      [this.programIds.soothMarket.toBase58(), SOOTH_MARKET_ERROR_TABLE],
-      [
-        (
-          this.programIds.soothLaunchpad ??
-          new PublicKey(soothLaunchpadIdl.address)
-        ).toBase58(),
-        SOOTH_LAUNCHPAD_ERROR_TABLE,
-      ],
-      [
-        (this.programIds.soothBook ?? SOOTH_BOOK_DEFAULT_PROGRAM_ID).toBase58(),
-        SOOTH_BOOK_ERROR_TABLE,
-      ],
-      [soothAdjudicatorIdl.address, SOOTH_ADJUDICATOR_ERROR_TABLE],
+      [this.programIds.soothCore.toBase58(), SOOTH_CORE_ERROR_TABLE],
     ]);
   }
 
@@ -689,7 +597,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
 
     // Read AmmState by deriving from market_id.
     const [ammPda] = deriveAmmStatePda(resolved.marketId, this.programIds);
-    const ammRaw = await (this.soothAmm.account as any).ammState.fetchNullable(
+    const ammRaw = await (this.program.account as any).ammState.fetchNullable(
       ammPda,
     );
     if (!ammRaw) {
@@ -747,7 +655,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     const marketPda = decodePubkeyRef(market);
     const resolved = await this.fetchMarket(marketPda);
     const [ammPda] = deriveAmmStatePda(resolved.marketId, this.programIds);
-    const ammRaw = await (this.soothAmm.account as any).ammState.fetchNullable(
+    const ammRaw = await (this.program.account as any).ammState.fetchNullable(
       ammPda,
     );
     if (!ammRaw) {
@@ -799,7 +707,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     user: PublicKey,
   ): Promise<Position> {
     const [posPda] = derivePositionPda(marketId, user, this.programIds);
-    const raw = await (this.soothAmm.account as any).position.fetchNullable(
+    const raw = await (this.program.account as any).position.fetchNullable(
       posPda,
     );
     if (!raw) {
@@ -825,7 +733,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     const marketPda = decodePubkeyRef(market);
     const resolved = await this.fetchMarket(marketPda);
     const [ammPda] = deriveAmmStatePda(resolved.marketId, this.programIds);
-    const ammRaw = await (this.soothAmm.account as any).ammState.fetchNullable(
+    const ammRaw = await (this.program.account as any).ammState.fetchNullable(
       ammPda,
     );
     if (!ammRaw) {
@@ -871,7 +779,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     const marketPda = decodePubkeyRef(market);
     const resolved = await this.fetchMarket(marketPda);
     const [ammPda] = deriveAmmStatePda(resolved.marketId, this.programIds);
-    const ammRaw = await (this.soothAmm.account as any).ammState.fetchNullable(
+    const ammRaw = await (this.program.account as any).ammState.fetchNullable(
       ammPda,
     );
     if (!ammRaw) {
@@ -919,20 +827,10 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     const userPk = decodePubkeyRef(user);
     const resolved = await this.fetchMarket(marketPda);
     const amm = await this.readAmmState(market);
-    if (!this.programIds.soothLaunchpad) {
-      throw new SoothError({
-        kind: "ProgramError",
-        msg: "readLpRedemption: programIds.soothLaunchpad is missing",
-      });
-    }
 
-    const [lpMint] = deriveLpMintPda(resolved.marketId, {
-      soothLaunchpad: this.programIds.soothLaunchpad,
-    });
+    const [lpMint] = deriveLpMintPda(resolved.marketId, this.programIds);
     const userLpAta = deriveUserLpAta(userPk, lpMint);
-    const [lpYieldAuthority] = deriveLpYieldAuthority({
-      soothLaunchpad: this.programIds.soothLaunchpad,
-    });
+    const [lpYieldAuthority] = deriveLpYieldAuthority(this.programIds);
     const lpYieldVault = getAssociatedTokenAddressSync(
       this.usdcMint,
       lpYieldAuthority,
@@ -987,14 +885,10 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     disputed: boolean;
   } | null> {
     const marketPda = decodePubkeyRef(market);
-    if (!this.programIds.soothAdjudicator) return null;
-    const [adjudicatorPda] = deriveAdjudicatorPda(marketPda, {
-      ...this.programIds,
-      soothAdjudicator: this.programIds.soothAdjudicator,
-    });
+    const [adjudicatorPda] = deriveAdjudicatorEntryPda(marketPda, this.programIds);
     const raw = await (
-      this.soothAdjudicator.account as any
-    ).adjudicator.fetchNullable(adjudicatorPda);
+      this.program.account as any
+    ).adjudicatorEntry.fetchNullable(adjudicatorPda);
     if (!raw) return null;
     const attested = raw.attestedOutcome;
     return {
@@ -1044,7 +938,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       this.programIds,
     );
     const positionRaw = await (
-      this.soothAmm.account as any
+      this.program.account as any
     ).position.fetchNullable(posPda);
     if (!positionRaw) return [];
     const lockNonce = bnToBigInt(positionRaw.lockNonce);
@@ -1105,13 +999,9 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
    * cluster instead of throwing during the read path.
    */
   private async readProtocolFeeBps(): Promise<number> {
-    const [cfgPda] = deriveProtocolConfigPda(
-      this.programIds as {
-        soothLaunchpad: PublicKey;
-      },
-    );
+    const [cfgPda] = deriveProtocolConfigPda(this.programIds);
     const raw = await (
-      this.soothLaunchpad.account as any
+      this.program.account as any
     ).protocolConfig.fetchNullable(cfgPda);
     if (!raw) {
       return 0;
@@ -1170,15 +1060,11 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       this.usdcMint,
       this.programIds,
     );
-    const launchpadProgramId = this.requireLaunchpadProgramId("buildTrade");
-
     // W7 fee routing: AMM buys credit the per-market fee pool owned by
-    // sooth_launchpad, not the old singleton fee_pool_vault ATA. The
+    // sooth_core, not the old singleton fee_pool_vault ATA. The
     // on-chain trade ix requires the token account to exist; the SDK adds
-    // the launchpad init ix only for fresh markets.
-    const [protocolConfig] = deriveProtocolConfigPda(
-      { soothLaunchpad: launchpadProgramId },
-    );
+    // the init ix only for fresh markets.
+    const [protocolConfig] = deriveProtocolConfigPda(this.programIds);
     const {
       marketFeePool,
       ix: initMarketFeePoolIx,
@@ -1187,28 +1073,21 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       marketId: resolved.marketId,
       user: userPk,
       usdcMint: this.usdcMint,
-      launchpadProgramId,
+      coreProgramId: this.programIds.soothCore,
     });
     const marketFeePoolInfo =
       await this.connection.getAccountInfo(marketFeePool);
 
     // LP-mint plumbing for the pre-graduation buy path (architecture §4.2).
-    // `trade_positions` CPIs into `sooth_launchpad::mint_lp_for_buy` on
-    // every pre-graduation buy and credits the trader's LP ATA. The
-    // launchpad-side ix is a no-op when `amm.is_graduated == true`, but
-    // Anchor still requires the accounts to be present in the account list
-    // — so we always derive and pass them.
-    const [lpMint] = deriveLpMintPda(resolved.marketId, {
-      soothLaunchpad: launchpadProgramId,
-    });
-    const [lpMintAuthority] = deriveLpMintAuthorityPda(resolved.marketId, {
-      soothLaunchpad: launchpadProgramId,
-    });
+    // `trade_positions` requires the per-market `lp_mint` ATA to exist even
+    // when the market is graduated (no-op in that case).
+    const [lpMint] = deriveLpMintPda(resolved.marketId, this.programIds);
+    const [lpMintAuthority] = deriveLpMintAuthorityPda(resolved.marketId, this.programIds);
     const userLpAta = deriveUserLpAta(userPk, lpMint);
 
     // Build the `trade_positions` instruction. Anchor's coder takes `BN`
     // for `i128` / `u128` args; we widen at the boundary.
-    const ix: TransactionInstruction = await (this.soothAmm.methods as any)
+    const ix: TransactionInstruction = await (this.program.methods as any)
       .tradePositions(
         args.outcome,
         bigIntToBn(args.deltaShares),
@@ -1231,7 +1110,6 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
         rent: SYSVAR_RENT_PUBKEY,
-        soothLaunchpadProgram: launchpadProgramId,
         instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
@@ -1373,10 +1251,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       this.usdcMint,
       this.programIds,
     );
-    const launchpadProgramId = this.requireLaunchpadProgramId("buildSell");
-    const [protocolConfig] = deriveProtocolConfigPda({
-      soothLaunchpad: launchpadProgramId,
-    });
+    const [protocolConfig] = deriveProtocolConfigPda(this.programIds);
     const {
       marketFeePool,
       ix: initMarketFeePoolIx,
@@ -1385,7 +1260,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       marketId: resolved.marketId,
       user: userPk,
       usdcMint: this.usdcMint,
-      launchpadProgramId,
+      coreProgramId: this.programIds.soothCore,
     });
     const marketFeePoolInfo =
       await this.connection.getAccountInfo(marketFeePool);
@@ -1395,7 +1270,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     // at the wrong address and Anchor would reject. Position is required to
     // exist (you can only sell shares you've previously bought).
     const positionRaw = await (
-      this.soothAmm.account as any
+      this.program.account as any
     ).position.fetchNullable(positionPda);
     if (!positionRaw) {
       throw new SoothError({
@@ -1417,11 +1292,12 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     const wireDelta = -args.deltaShares;
     const minProceedsWad = args.minProceedsWad ?? 0n;
 
-    const ix: TransactionInstruction = await (this.soothAmm.methods as any)
+    const ix: TransactionInstruction = await (this.program.methods as any)
       .sellPositions(
         args.outcome,
         bigIntToBn(wireDelta),
         bigIntToBn(minProceedsWad),
+        bigIntToBn(lockNonce),
       )
       .accounts({
         market: marketPda,
@@ -1439,18 +1315,6 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
         rent: SYSVAR_RENT_PUBKEY,
-        // Wave 1B: `sell_positions` now CPIs into `sooth_market::transfer_to_lock`
-        // for the PDA-signed `vault → lock_vault` transfer. The `vault_authority`
-        // PDA is owned by `sooth_market`, so the AMM cannot `invoke_signed`
-        // against it directly — see the matching commit on the on-chain side.
-        soothMarketProgram: this.programIds.soothMarket,
-        // Auth-gap closer: `transfer_to_lock` reads the Instructions sysvar
-        // to verify a parent `sell_positions` ix exists in the same tx. The
-        // sysvar account is forwarded through this AMM ix to the helper CPI.
-        // The IDL pin (`address = Sysvar1nstructions...`) means Anchor would
-        // resolve it automatically, but we pass explicitly to keep the
-        // intent visible at the call site.
-        instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
 
@@ -1546,7 +1410,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       );
       const userNoAta = getAssociatedTokenAddressSync(resolved.noMint, userPk);
 
-      const ix: TransactionInstruction = await (this.soothMarket.methods as any)
+      const ix: TransactionInstruction = await (this.program.methods as any)
         .redeem()
         .accounts({
           market: marketPda,
@@ -1604,7 +1468,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     );
     const userUsdcAta = deriveUserUsdcAta(userPk, this.usdcMint);
 
-    const ix: TransactionInstruction = await (this.soothAmm.methods as any)
+    const ix: TransactionInstruction = await (this.program.methods as any)
       .claimUnlocked()
       .accounts({
         market: marketPda,
@@ -1616,15 +1480,6 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
         usdcMint: this.usdcMint,
         user: userPk,
         tokenProgram: TOKEN_PROGRAM_ID,
-        // Wave 1B: `claim_unlocked` now CPIs into
-        // `sooth_market::transfer_from_lock_vault` for the PDA-signed
-        // `lock_vault → user_usdc_ata` transfer.
-        soothMarketProgram: this.programIds.soothMarket,
-        // Auth-gap closer: `transfer_from_lock_vault` reads the Instructions
-        // sysvar to verify a parent `claim_unlocked` ix exists in the same
-        // tx. Forwarded through this AMM ix to the helper CPI. See the
-        // matching comment in `buildSell`.
-        instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
 
@@ -1675,7 +1530,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     );
     const userUsdcAta = deriveUserUsdcAta(userPk, this.usdcMint);
 
-    const ix: TransactionInstruction = await (this.soothMarket.methods as any)
+    const ix: TransactionInstruction = await (this.program.methods as any)
       .claimRefund()
       .accounts({
         user: userPk,
@@ -1687,7 +1542,6 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
         position: positionPda,
         usdcMint: this.usdcMint,
         tokenProgram: TOKEN_PROGRAM_ID,
-        soothAmmProgram: this.programIds.soothAmm,
         instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
@@ -1722,7 +1576,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     const resolved = await this.fetchMarket(marketPda);
     const [ammPda] = deriveAmmStatePda(resolved.marketId, this.programIds);
 
-    const ix: TransactionInstruction = await (this.soothAmm.methods as any)
+    const ix: TransactionInstruction = await (this.program.methods as any)
       .dismissMarket()
       .accounts({
         market: marketPda,
@@ -1761,24 +1615,13 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
         msg: `buildRedeemLp: lpAmount must fit in u64 and be > 0, got ${args.lpAmount.toString()}`,
       });
     }
-    if (!this.programIds.soothLaunchpad) {
-      throw new SoothError({
-        kind: "ProgramError",
-        msg: "buildRedeemLp: programIds.soothLaunchpad is missing",
-      });
-    }
-
     const userPk = decodePubkeyRef(args.user);
     const marketPda = decodePubkeyRef(market);
     const resolved = await this.fetchMarket(marketPda);
     const [ammPda] = deriveAmmStatePda(resolved.marketId, this.programIds);
-    const [lpMint] = deriveLpMintPda(resolved.marketId, {
-      soothLaunchpad: this.programIds.soothLaunchpad,
-    });
+    const [lpMint] = deriveLpMintPda(resolved.marketId, this.programIds);
     const userLpAta = deriveUserLpAta(userPk, lpMint);
-    const [lpYieldAuthority] = deriveLpYieldAuthority({
-      soothLaunchpad: this.programIds.soothLaunchpad,
-    });
+    const [lpYieldAuthority] = deriveLpYieldAuthority(this.programIds);
     const lpYieldVault = getAssociatedTokenAddressSync(
       this.usdcMint,
       lpYieldAuthority,
@@ -1788,9 +1631,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     );
     const userUsdcAta = deriveUserUsdcAta(userPk, this.usdcMint);
 
-    const ix: TransactionInstruction = await (
-      this.soothLaunchpad.methods as any
-    )
+    const ix: TransactionInstruction = await (this.program.methods as any)
       .redeemLp(bigIntToBn(args.lpAmount))
       .accounts({
         ammState: ammPda,
@@ -1852,24 +1693,20 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       this.programIds,
     );
 
-    const methods = this.soothMarket
+    const methods = this.program
       .methods as unknown as SoothMarketProgramOwnedMethods;
     const ix: TransactionInstruction = await methods
-      .redeemFromProgramOwned(
-        bigIntToBn(args.amountYes),
-        bigIntToBn(args.amountNo),
-      )
+      .redeemFromProgramOwned()
       .accounts({
         market: marketPda,
         vaultAuthority,
         yesMint: resolved.yesMint,
         noMint: resolved.noMint,
-        usdcMint: this.usdcMint,
-        marketVault,
+        vault: marketVault,
+        recipientUsdcAta: usdcDestination,
         sourceYesAta,
         sourceNoAta,
-        usdcDestination,
-        burnAuthority: burnAuthorityPk,
+        sourceAuthority: burnAuthorityPk,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
       .instruction();
@@ -1938,7 +1775,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     );
     const payerUsdcAta = deriveUserUsdcAta(payerPk, this.usdcMint);
 
-    const methods = this.soothMarket
+    const methods = this.program
       .methods as unknown as SoothMarketProgramOwnedMethods;
     const ix: TransactionInstruction = await methods
       .mintCompleteSetToProgramOwned(bigIntToBn(args.amount))
@@ -2046,7 +1883,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     const userNoAta = getAssociatedTokenAddressSync(noMint, userPk);
 
     const methodName = kind === "mint" ? "mintCompleteSet" : "mergeCompleteSet";
-    const ix: TransactionInstruction = await (this.soothMarket.methods as any)
+    const ix: TransactionInstruction = await (this.program.methods as any)
       [methodName](bigIntToBn(args.amount))
       .accounts({
         market: marketPda,
@@ -2148,7 +1985,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       kind === "mint"
         ? "mintCompleteSetForOrderbook"
         : "mergeCompleteSetForOrderbook";
-    const builder = (this.soothMarket.methods as any)[methodName](
+    const builder = (this.program.methods as any)[methodName](
       bigIntToBn(args.amount),
     );
     const accounts =
@@ -2219,27 +2056,14 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     }
     const userPk = decodePubkeyRef(args.user);
     const marketPda = decodePubkeyRef(market);
-    if (!this.programIds.soothAdjudicator) {
-      throw new SoothError({
-        kind: "ProgramError",
-        msg: "buildRequestLock: programIds.soothAdjudicator is missing",
-      });
-    }
-    const [adjudicatorPda] = deriveAdjudicatorPda(marketPda, {
-      ...this.programIds,
-      soothAdjudicator: this.programIds.soothAdjudicator,
-    });
+    const [adjudicatorEntryPda] = deriveAdjudicatorEntryPda(marketPda, this.programIds);
 
-    const ix: TransactionInstruction = await (
-      this.soothAdjudicator.methods as any
-    )
+    const ix: TransactionInstruction = await (this.program.methods as any)
       .requestLock()
       .accounts({
-        adjudicator: adjudicatorPda,
+        adjudicatorEntry: adjudicatorEntryPda,
         market: marketPda,
         authority: userPk,
-        soothMarketProgram: this.programIds.soothMarket,
-        instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
 
@@ -2275,27 +2099,14 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     }
     const userPk = decodePubkeyRef(args.user);
     const marketPda = decodePubkeyRef(market);
-    if (!this.programIds.soothAdjudicator) {
-      throw new SoothError({
-        kind: "ProgramError",
-        msg: "buildAttestOutcome: programIds.soothAdjudicator is missing",
-      });
-    }
-    const [adjudicatorPda] = deriveAdjudicatorPda(marketPda, {
-      ...this.programIds,
-      soothAdjudicator: this.programIds.soothAdjudicator,
-    });
+    const [adjudicatorEntryPda] = deriveAdjudicatorEntryPda(marketPda, this.programIds);
 
-    const ix: TransactionInstruction = await (
-      this.soothAdjudicator.methods as any
-    )
+    const ix: TransactionInstruction = await (this.program.methods as any)
       .attestOutcome(args.winningOutcome)
       .accounts({
-        adjudicator: adjudicatorPda,
+        adjudicatorEntry: adjudicatorEntryPda,
         market: marketPda,
         authority: userPk,
-        soothMarketProgram: this.programIds.soothMarket,
-        instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
       })
       .instruction();
 
@@ -2394,7 +2205,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       bookPrograms,
     );
 
-    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const methods = this.program.methods as unknown as SoothBookMethods;
     const ix: TransactionInstruction = await methods
       .mintIntoBook(
         bigIntToBn(args.priceYes),
@@ -2419,7 +2230,6 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
         orderNo,
         marketLiquidities,
         marketPosition,
-        soothMarketProgram: this.programIds.soothMarket,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
         rent: SYSVAR_RENT_PUBKEY,
@@ -2522,7 +2332,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     );
     const purchaserUsdcAta = deriveUserUsdcAta(orderPurchaser, this.usdcMint);
 
-    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const methods = this.program.methods as unknown as SoothBookMethods;
     const ix: TransactionInstruction = await methods
       .settleRestingOrders()
       .accounts({
@@ -2541,7 +2351,6 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
         marketEscrowAuthority,
         purchaserUsdcAta,
         instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
-        soothMarketProgram: this.programIds.soothMarket,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
@@ -2613,7 +2422,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       args.marketLockOrderBehaviour ?? "none",
     );
 
-    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const methods = this.program.methods as unknown as SoothBookMethods;
     const ix: TransactionInstruction = await methods
       .createMarket(
         soothMarketPda,
@@ -2670,9 +2479,6 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
   ): Promise<OrderbookRequest> {
     assertSeed16(args.distinctSeed, "buildProcessOrderRequest: distinctSeed");
     assertU128(args.expectedPrice, "buildProcessOrderRequest: expectedPrice");
-    const launchpadProgramId = this.requireLaunchpadProgramId(
-      "buildProcessOrderRequest",
-    );
     const bookPrograms = this.bookProgramIds();
     const crankOperator = decodePubkeyRef(args.crankOperator);
     const bookMarketPda = decodePubkeyRef(args.bookMarketPda);
@@ -2707,15 +2513,9 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       bookPrograms,
     );
     const [marketEscrow] = deriveBookEscrowPda(bookMarketPda, bookPrograms);
-    const [protocolConfig] = deriveProtocolConfigPda({
-      soothLaunchpad: launchpadProgramId,
-    });
-    const [feePoolAuthority] = deriveFeePoolAuthorityPda({
-      soothLaunchpad: launchpadProgramId,
-    });
-    const feePoolVault = deriveFeePoolVaultAta(this.usdcMint, {
-      soothLaunchpad: launchpadProgramId,
-    });
+    const [protocolConfig] = deriveProtocolConfigPda(this.programIds);
+    const [feePoolAuthority] = deriveFeePoolAuthorityPda(this.programIds);
+    const feePoolVault = deriveFeePoolVaultAta(this.usdcMint, this.programIds);
     const [marketLiquidities] = deriveBookMarketLiquiditiesPda(
       bookMarketPda,
       bookPrograms,
@@ -2725,7 +2525,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       bookPrograms,
     );
 
-    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const methods = this.program.methods as unknown as SoothBookMethods;
     const ix: TransactionInstruction = await methods
       .processOrderRequest()
       .accounts({
@@ -2780,8 +2580,6 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       args.orderAgainstExpectedPrice,
       "buildMatchOrders: orderAgainstExpectedPrice",
     );
-    const launchpadProgramId =
-      this.requireLaunchpadProgramId("buildMatchOrders");
     const bookPrograms = this.bookProgramIds();
     const crankOperator = decodePubkeyRef(args.crankOperator);
     const bookMarketPda = decodePubkeyRef(args.bookMarketPda);
@@ -2847,21 +2645,15 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       ASSOCIATED_TOKEN_PROGRAM_ID,
     );
     const [marketEscrow] = deriveBookEscrowPda(bookMarketPda, bookPrograms);
-    const [protocolConfig] = deriveProtocolConfigPda({
-      soothLaunchpad: launchpadProgramId,
-    });
-    const [feePoolAuthority] = deriveFeePoolAuthorityPda({
-      soothLaunchpad: launchpadProgramId,
-    });
-    const feePoolVault = deriveFeePoolVaultAta(this.usdcMint, {
-      soothLaunchpad: launchpadProgramId,
-    });
+    const [protocolConfig] = deriveProtocolConfigPda(this.programIds);
+    const [feePoolAuthority] = deriveFeePoolAuthorityPda(this.programIds);
+    const feePoolVault = deriveFeePoolVaultAta(this.usdcMint, this.programIds);
     const [marketLiquidities] = deriveBookMarketLiquiditiesPda(
       bookMarketPda,
       bookPrograms,
     );
 
-    const methods = this.soothBook.methods as unknown as SoothBookMethods;
+    const methods = this.program.methods as unknown as SoothBookMethods;
     const ix: TransactionInstruction = await methods
       .matchOrders(
         Array.from(args.tradeForSeed),
@@ -3151,12 +2943,11 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       userPk,
       this.programIds,
     );
-    const [protocolConfig] = deriveProtocolConfigPda({
-      soothLaunchpad: this.requireLaunchpadProgramId(method),
-    });
+    const [protocolConfig] = deriveProtocolConfigPda(this.programIds);
 
     const data = concatBuffers([
-      anchorSighash(args.side === 1 ? "buy_yes" : "buy_no"),
+      anchorSighash("buy"),
+      encodeU8(args.side),
       encodeU16(args.tick),
       encodeU128(args.amount),
       encodeBool(args.escrow),
@@ -3176,14 +2967,12 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       readonly(SystemProgram.programId),
       readonly(TOKEN_PROGRAM_ID),
       readonly(SYSVAR_RENT_PUBKEY),
-      readonly(this.programIds.soothMarket),
-      readonly(SYSVAR_INSTRUCTIONS_PUBKEY),
       ...remainingAccounts,
     ];
 
     return {
       ix: new TransactionInstruction({
-        programId: this.bookProgramIds().soothBook,
+        programId: this.programIds.soothCore,
         keys,
         data,
       }),
@@ -3242,13 +3031,11 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       readonly(SystemProgram.programId),
       readonly(TOKEN_PROGRAM_ID),
       readonly(SYSVAR_RENT_PUBKEY),
-      readonly(this.programIds.soothMarket),
-      readonly(SYSVAR_INSTRUCTIONS_PUBKEY),
     ];
 
     return {
       ix: new TransactionInstruction({
-        programId: this.bookProgramIds().soothBook,
+        programId: this.programIds.soothCore,
         keys,
         data,
       }),
@@ -3306,7 +3093,6 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
 
     // ── PDA derivations ───────────────────────────────────────────────
     const [marketPda] = deriveMarketPda(marketId, this.programIds);
-    const [allowlistPda] = deriveAdjudicatorAllowlistPda(this.programIds);
     const [vaultAuthority] = deriveVaultAuthorityPda(marketId, this.programIds);
     const [yesMint] = deriveYesMintPda(marketId, this.programIds);
     const [noMint] = deriveNoMintPda(marketId, this.programIds);
@@ -3322,15 +3108,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       this.programIds,
     );
     const [ammStatePda] = deriveAmmStatePda(marketId, this.programIds);
-    if (!this.programIds.soothLaunchpad) {
-      throw new SoothError({
-        kind: "ProgramError",
-        msg: "buildCreateMarket: programIds.soothLaunchpad is missing",
-      });
-    }
-    const [configPda] = deriveProtocolConfigPda({
-      soothLaunchpad: this.programIds.soothLaunchpad,
-    });
+    const [configPda] = deriveProtocolConfigPda(this.programIds);
 
     // ── Build the ix via Anchor's coder ────────────────────────────────
     //
@@ -3338,9 +3116,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     //   market_id: [u8;16], question_hash: [u8;32], start_time: i64,
     //   deadline: i64, adjudicator: pubkey, initial_b: u128
     // Order matters for borsh — we pass the object Anchor's coder expects.
-    const ix: TransactionInstruction = await (
-      this.soothLaunchpad.methods as any
-    )
+    const ix: TransactionInstruction = await (this.program.methods as any)
       .createMarket({
         marketId: Array.from(marketId),
         questionHash: Array.from(questionHash),
@@ -3352,7 +3128,6 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       .accounts({
         config: configPda,
         market: marketPda,
-        adjudicatorAllowlist: allowlistPda,
         vaultAuthority,
         yesMint,
         noMint,
@@ -3362,8 +3137,6 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
         lockVault,
         ammState: ammStatePda,
         creator: userPk,
-        soothMarketProgram: this.programIds.soothMarket,
-        soothAmmProgram: this.programIds.soothAmm,
         tokenProgram: TOKEN_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -3787,7 +3560,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
   // ─── Internals ──────────────────────────────────────────────────────────
 
   private async fetchMarket(marketPda: PublicKey): Promise<ResolvedMarket> {
-    const raw = await (this.soothMarket.account as any).market.fetchNullable(
+    const raw = await (this.program.account as any).market.fetchNullable(
       marketPda,
     );
     if (!raw) {
@@ -3827,24 +3600,14 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
 
   private bookProgramIds(): { soothBook: PublicKey } {
     return {
-      soothBook: this.programIds.soothBook ?? SOOTH_BOOK_DEFAULT_PROGRAM_ID,
+      soothBook: this.programIds.soothCore,
     };
-  }
-
-  private requireLaunchpadProgramId(method: string): PublicKey {
-    if (!this.programIds.soothLaunchpad) {
-      throw new SoothError({
-        kind: "ProgramError",
-        msg: `${method}: programIds.soothLaunchpad is missing`,
-      });
-    }
-    return this.programIds.soothLaunchpad;
   }
 
   private async fetchBookOrderPurchaser(
     orderPda: PublicKey,
   ): Promise<PublicKey> {
-    const accounts = this.soothBook.account as unknown as {
+    const accounts = this.program.account as unknown as {
       order: {
         fetchNullable(pda: PublicKey): Promise<{ purchaser: PublicKey } | null>;
       };
@@ -4025,15 +3788,16 @@ function decodeOrderId(orderId: bigint): { side: 0 | 1; tick: number } {
   return { side, tick };
 }
 
-const SOOTH_BOOK_SIGHASH = {
-  buy_yes: Buffer.from("7c4c7182b170bb68", "hex"),
-  buy_no: Buffer.from("59f0f410c4c9bea3", "hex"),
+// Discriminators for sooth_core orderbook instructions (from the IDL).
+// `buy` discriminator: [102, 6, 61, 18, 1, 218, 235, 234]
+const SOOTH_CORE_SIGHASH = {
+  buy: Buffer.from([102, 6, 61, 18, 1, 218, 235, 234]),
   cancel: Buffer.from("e8dbdf29dbecdcbe", "hex"),
   cancel_by_id: Buffer.from("bcf1f0325f86217f", "hex"),
 } as const;
 
-function anchorSighash(name: keyof typeof SOOTH_BOOK_SIGHASH): Buffer {
-  return Buffer.from(SOOTH_BOOK_SIGHASH[name]);
+function anchorSighash(name: keyof typeof SOOTH_CORE_SIGHASH): Buffer {
+  return Buffer.from(SOOTH_CORE_SIGHASH[name]);
 }
 
 function concatBuffers(parts: readonly Buffer[]): Buffer {
@@ -4252,18 +4016,18 @@ function buildInitMarketFeePoolIx(args: {
   marketId: Uint8Array;
   user: PublicKey;
   usdcMint: PublicKey;
-  launchpadProgramId: PublicKey;
+  coreProgramId: PublicKey;
 }): { marketFeePool: PublicKey; ix: TransactionInstruction } {
   const [feePoolAuthority] = deriveFeePoolAuthorityPda({
-    soothLaunchpad: args.launchpadProgramId,
+    soothCore: args.coreProgramId,
   });
   const [marketFeePool] = marketFeePoolPda(args.marketId, {
-    soothLaunchpad: args.launchpadProgramId,
+    soothCore: args.coreProgramId,
   });
   return {
     marketFeePool,
     ix: new TransactionInstruction({
-      programId: args.launchpadProgramId,
+      programId: args.coreProgramId,
       keys: [
         { pubkey: args.market, isSigner: false, isWritable: false },
         { pubkey: feePoolAuthority, isSigner: false, isWritable: false },
@@ -4388,263 +4152,82 @@ async function getTokenAmountOrZero(
 // failing-program-ID the decoder picks the wrong message and the caller
 // chases the wrong root cause.
 //
-// All four tables mirror `programs/<name>/src/error.rs`. Reorder an enum
-// and the corresponding table needs the same change.
-
-const SOOTH_AMM_ERROR_TABLE: Record<number, { kind: string; msg: string }> = {
-  6000: {
-    kind: "SlippageExceeded",
-    msg: "Slippage: cost exceeded max_cost_wad",
-  },
-  6001: {
-    kind: "ProgramError",
-    msg: "Invalid outcome (must be NO=0 or YES=1)",
-  },
-  6002: { kind: "ProgramError", msg: "delta_shares must be non-zero" },
-  6003: { kind: "InsufficientShares", msg: "Insufficient shares to sell" },
-  6004: {
-    kind: "MarketNotActive",
-    msg: "Market is not in the Open lifecycle state",
-  },
-  6005: { kind: "MarketNotActive", msg: "Market is dismissed" },
-  6006: { kind: "ProgramError", msg: "LMSR math overflow or domain error" },
-  6007: { kind: "ProgramError", msg: "Liquidity parameter b must be > 0" },
-  6008: {
-    kind: "ProgramError",
-    msg: "Caller is not authorized for this action",
-  },
-  6009: {
-    kind: "TradingNotStarted",
-    msg: "Trading window has not started yet",
-  },
-  6010: { kind: "TradingClosed", msg: "Trading window has closed" },
-  6011: {
-    kind: "SellNotImplemented",
-    msg: "Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3",
-  },
-  6012: {
-    kind: "LockNotElapsed",
-    msg: "Lock has not elapsed yet (now < lock_entry.unlock_at)",
-  },
-  6013: {
-    kind: "LockVaultMismatch",
-    msg: "Lock vault account does not match market.lock_vault",
-  },
-  6014: {
-    kind: "TrialNotExpired",
-    msg: "Trial period has not expired yet",
-  },
-  6015: { kind: "AlreadyGraduated", msg: "Market has already graduated" },
-  6016: {
-    kind: "AlreadyDismissed",
-    msg: "Market has already been dismissed",
-  },
-  6017: {
-    kind: "ProgramError",
-    msg: "AmmState market backlink does not match market account",
-  },
+// Error table mirrors `sooth_core/src/error.rs` SoothCoreError enum.
+// All merged program errors are now under a single namespace.
+const SOOTH_CORE_ERROR_TABLE: Record<number, { kind: string; msg: string }> = {
+  6000: { kind: "MarketNotActive", msg: "Market is not in the Open lifecycle state" },
+  6001: { kind: "ProgramError", msg: "Market is not in the Locked lifecycle state" },
+  6002: { kind: "ProgramError", msg: "Market is not Settled" },
+  6003: { kind: "ProgramError", msg: "Lifecycle transition not permitted from current state" },
+  6004: { kind: "ProgramError", msg: "Caller is not the registered adjudicator for this market" },
+  6005: { kind: "ProgramError", msg: "Invalid outcome (must be NO=0, YES=1, or INVALID=2)" },
+  6006: { kind: "ProgramError", msg: "Amount must be non-zero" },
+  6007: { kind: "InsufficientShares", msg: "Insufficient outcome-token balance" },
+  6008: { kind: "ProgramError", msg: "Math overflow" },
+  6009: { kind: "ProgramError", msg: "Vault / mint authority mismatch" },
+  6010: { kind: "ProgramError", msg: "Deadline must be greater than start_time" },
+  6011: { kind: "ProgramError", msg: "Adjudicator pubkey must not be the default (all-zero) key" },
+  6012: { kind: "ProgramError", msg: "Adjudicator pubkey is not present on the on-chain allowlist" },
+  6013: { kind: "ProgramError", msg: "Caller is not the registered allowlist authority" },
+  6014: { kind: "ProgramError", msg: "Adjudicator allowlist is full (capacity exhausted)" },
+  6015: { kind: "ProgramError", msg: "Adjudicator pubkey is already present on the allowlist" },
+  6016: { kind: "ProgramError", msg: "Adjudicator pubkey is not present on the allowlist" },
+  6017: { kind: "ProgramError", msg: "Helper ixs must be CPI'd from sooth_amm; direct calls are rejected." },
   6018: { kind: "MarketNotDismissed", msg: "Market is not dismissed" },
-  6019: {
-    kind: "ProgramError",
-    msg: "Helper ix must be CPI'd from sooth_market::claim_refund",
-  },
-};
-
-const SOOTH_MARKET_ERROR_TABLE: Record<number, { kind: string; msg: string }> =
-  {
-    6000: {
-      kind: "MarketNotActive",
-      msg: "Market is not in the Open lifecycle state",
-    },
-    6001: {
-      kind: "ProgramError",
-      msg: "Market is not in the Locked lifecycle state",
-    },
-    6002: { kind: "ProgramError", msg: "Market is not Settled" },
-    6003: {
-      kind: "ProgramError",
-      msg: "Lifecycle transition not permitted from current state",
-    },
-    6004: {
-      kind: "ProgramError",
-      msg: "Caller is not the registered adjudicator for this market",
-    },
-    6005: {
-      kind: "ProgramError",
-      msg: "Invalid outcome (must be NO=0, YES=1, or INVALID=2)",
-    },
-    6006: { kind: "ProgramError", msg: "Amount must be non-zero" },
-    6007: {
-      kind: "InsufficientShares",
-      msg: "Insufficient outcome-token balance",
-    },
-    6008: { kind: "ProgramError", msg: "Math overflow" },
-    6009: { kind: "ProgramError", msg: "Vault / mint authority mismatch" },
-    6010: {
-      kind: "ProgramError",
-      msg: "Deadline must be greater than start_time",
-    },
-    6011: {
-      kind: "ProgramError",
-      msg: "Adjudicator pubkey must not be the default (all-zero) key",
-    },
-    6012: {
-      kind: "ProgramError",
-      msg: "Adjudicator pubkey is not present on the on-chain allowlist",
-    },
-    6013: {
-      kind: "ProgramError",
-      msg: "Caller is not the registered allowlist authority",
-    },
-    6014: {
-      kind: "ProgramError",
-      msg: "Adjudicator allowlist is full (capacity exhausted)",
-    },
-    6015: {
-      kind: "ProgramError",
-      msg: "Adjudicator pubkey is already present on the allowlist",
-    },
-    6016: {
-      kind: "ProgramError",
-      msg: "Adjudicator pubkey is not present on the allowlist",
-    },
-    6017: {
-      kind: "ProgramError",
-      msg: "Helper ixs must be CPI'd from sooth_amm; direct calls are rejected.",
-    },
-    6018: { kind: "MarketNotDismissed", msg: "Market is not dismissed" },
-  };
-
-const SOOTH_LAUNCHPAD_ERROR_TABLE: Record<
-  number,
-  { kind: string; msg: string }
-> = {
-  6000: {
-    kind: "ProgramError",
-    msg: "Caller is not the registered protocol authority",
-  },
-  6001: {
-    kind: "ProgramError",
-    msg: "Fee bps must not exceed 10000 (100%)",
-  },
-  6002: { kind: "ProgramError", msg: "Fee split bps do not sum to 10000" },
-  6003: { kind: "ProgramError", msg: "Treasury pubkey must be non-default" },
-  6004: { kind: "ProgramError", msg: "Default trial period must be > 0" },
-  6005: {
-    kind: "ProgramError",
-    msg: "Market is already graduated; LP-mint flow disabled",
-  },
-  6006: { kind: "ProgramError", msg: "Math overflow" },
-  6007: {
-    kind: "ProgramError",
-    msg: "Protocol config already initialized",
-  },
-  6008: {
-    kind: "ProgramError",
-    msg: "Fee pool is empty — nothing to distribute",
-  },
-  6009: { kind: "NotGraduated", msg: "Market is not graduated" },
-  6010: { kind: "ProgramError", msg: "LP amount must be > 0" },
-  6011: { kind: "ProgramError", msg: "LP supply is empty" },
-  6012: { kind: "ProgramError", msg: "Legacy fee drain already executed" },
-};
-
-const SOOTH_BOOK_ERROR_TABLE: Record<number, { kind: string; msg: string }> = {
-  6000: { kind: "ProgramError", msg: "Tick is outside the supported orderbook range" },
-  6001: {
-    kind: "ProgramError",
-    msg: "Order id is outside the supported composite encoding range",
-  },
-  6002: {
-    kind: "ProgramError",
-    msg: "Decoded order id does not match the requested side or tick",
-  },
-  6003: { kind: "ProgramError", msg: "Arithmetic overflow" },
-  6004: { kind: "ProgramError", msg: "Order amount must be greater than zero" },
-  6005: { kind: "ProgramError", msg: "Book side is full for this tick" },
-  6006: { kind: "ProgramError", msg: "Book side is not fully drained" },
-  6007: {
-    kind: "ProgramError",
-    msg: "Compaction drop count exceeds the per-call bound",
-  },
-  6008: { kind: "ProgramError", msg: "Market vault uses the wrong base mint" },
-  6009: {
-    kind: "ProgramError",
-    msg: "MarketBook base mint does not match the market vault mint",
-  },
-  6010: {
-    kind: "ProgramError",
-    msg: "MarketBook accumulators must be reset before placing an order",
-  },
-  6011: { kind: "ProgramError", msg: "No cancellable order was found" },
-  6012: {
-    kind: "ProgramError",
-    msg: "Fill return data was not set by sooth_market",
-  },
-  6013: { kind: "ProgramError", msg: "Fill return data came from the wrong program" },
-  6014: { kind: "ProgramError", msg: "Fill return data could not be decoded" },
-  6015: {
-    kind: "ProgramError",
-    msg: "Remaining-account bundle does not carry the crossing BookSide",
-  },
-  6016: {
-    kind: "ProgramError",
-    msg: "Remaining-account bundle maker does not match the live order maker",
-  },
-  6017: {
-    kind: "ProgramError",
-    msg: "Remaining-account bundles must contain exactly five accounts per fill",
-  },
-};
-
-const SOOTH_ADJUDICATOR_ERROR_TABLE: Record<
-  number,
-  { kind: string; msg: string }
-> = {
-  6000: {
-    kind: "ProgramError",
-    msg: "Caller is not the registered authority for this adjudicator",
-  },
-  6001: {
-    kind: "ProgramError",
-    msg: "Adjudicator kind does not support this operation",
-  },
-  6002: {
-    kind: "ProgramError",
-    msg: "Adjudicator has already attested an outcome; re-attestation is not permitted",
-  },
-  6003: {
-    kind: "ProgramError",
-    msg: "Adjudicator has not yet attested an outcome",
-  },
-  6004: {
-    kind: "ProgramError",
-    msg: "Invalid outcome (must be NO=0, YES=1, or INVALID=2)",
-  },
-  6005: {
-    kind: "ProgramError",
-    msg: "Adjudicator account does not match the supplied market",
-  },
-  6006: {
-    kind: "ProgramError",
-    msg: "Authority pubkey must not be the default (all-zero) key",
-  },
-  6007: {
-    kind: "NotImplemented",
-    msg: "Dispute path is not implemented in v1; see architecture §4.4",
-  },
-  6008: {
-    kind: "ProgramError",
-    msg: "Caller is not the registered dispute authority for this adjudicator",
-  },
-  6009: {
-    kind: "ProgramError",
-    msg: "Adjudicator has already been disputed; dispute is one-shot per market",
-  },
-  6010: {
-    kind: "ProgramError",
-    msg: "Market is already settled; dispute can no longer override the outcome",
-  },
+  6019: { kind: "ProgramError", msg: "Invalid instructions sysvar account" },
+  6020: { kind: "TradingClosed", msg: "Trading window has closed (now >= deadline)" },
+  6021: { kind: "InvalidTick", msg: "Invalid tick" },
+  6022: { kind: "ProgramError", msg: "Amount too small for base token decimals" },
+  6023: { kind: "SlippageExceeded", msg: "Slippage: cost exceeded max_cost_wad" },
+  6024: { kind: "ProgramError", msg: "delta_shares must be non-zero" },
+  6025: { kind: "InsufficientShares", msg: "Insufficient shares to sell" },
+  6026: { kind: "MarketNotActive", msg: "Market is dismissed" },
+  6027: { kind: "ProgramError", msg: "LMSR math overflow or domain error" },
+  6028: { kind: "ProgramError", msg: "Liquidity parameter b must be > 0" },
+  6029: { kind: "ProgramError", msg: "Caller is not authorized for this action (creator mismatch)" },
+  6030: { kind: "TradingNotStarted", msg: "Trading window has not started yet (now < start_time)" },
+  6031: { kind: "SellNotImplemented", msg: "Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3" },
+  6032: { kind: "LockNotElapsed", msg: "Lock has not elapsed yet (now < lock_entry.unlock_at)" },
+  6033: { kind: "LockVaultMismatch", msg: "Lock vault account does not match market.lock_vault" },
+  6034: { kind: "TrialNotExpired", msg: "Trial period has not expired yet" },
+  6035: { kind: "AlreadyGraduated", msg: "Market has already graduated" },
+  6036: { kind: "AlreadyDismissed", msg: "Market has already been dismissed" },
+  6037: { kind: "ProgramError", msg: "AmmState market backlink does not match market account" },
+  6038: { kind: "ProgramError", msg: "Fee bps must not exceed 10000 (100%)" },
+  6039: { kind: "ProgramError", msg: "Fee split bps do not sum to 10000" },
+  6040: { kind: "ProgramError", msg: "Treasury pubkey must be non-default" },
+  6041: { kind: "ProgramError", msg: "Default trial period must be > 0" },
+  6042: { kind: "ProgramError", msg: "Protocol config already initialized" },
+  6043: { kind: "ProgramError", msg: "Fee pool is empty — nothing to distribute" },
+  6044: { kind: "NotGraduated", msg: "Market is not graduated" },
+  6045: { kind: "ProgramError", msg: "LP amount must be > 0" },
+  6046: { kind: "ProgramError", msg: "LP supply is empty" },
+  6047: { kind: "ProgramError", msg: "Legacy fee drain already executed" },
+  6048: { kind: "ProgramError", msg: "Caller is not the registered authority for this adjudicator" },
+  6049: { kind: "ProgramError", msg: "Adjudicator kind does not support this operation" },
+  6050: { kind: "ProgramError", msg: "Adjudicator has already attested an outcome; re-attestation is not permitted" },
+  6051: { kind: "ProgramError", msg: "Adjudicator has not yet attested an outcome" },
+  6052: { kind: "ProgramError", msg: "Adjudicator account does not match the supplied market" },
+  6053: { kind: "ProgramError", msg: "Authority pubkey must not be the default (all-zero) key" },
+  6054: { kind: "NotImplemented", msg: "Dispute path is not implemented in v1; see architecture §4.4" },
+  6055: { kind: "ProgramError", msg: "Caller is not the registered dispute authority for this adjudicator" },
+  6056: { kind: "ProgramError", msg: "Adjudicator has already been disputed; dispute is one-shot per market" },
+  6057: { kind: "ProgramError", msg: "Market is already settled; dispute can no longer override the outcome" },
+  6058: { kind: "ProgramError", msg: "Order id is outside the supported composite encoding range" },
+  6059: { kind: "ProgramError", msg: "Decoded order id does not match the requested side or tick" },
+  6060: { kind: "ProgramError", msg: "Book side is full for this tick" },
+  6061: { kind: "ProgramError", msg: "Book side is not fully drained" },
+  6062: { kind: "ProgramError", msg: "Compaction drop count exceeds the per-call bound" },
+  6063: { kind: "ProgramError", msg: "Market vault uses the wrong base mint" },
+  6064: { kind: "ProgramError", msg: "MarketBook base mint does not match the market vault mint" },
+  6065: { kind: "ProgramError", msg: "MarketBook accumulators must be reset before placing an order" },
+  6066: { kind: "ProgramError", msg: "No cancellable order was found" },
+  6067: { kind: "ProgramError", msg: "Remaining-account bundle does not carry the crossing BookSide" },
+  6068: { kind: "ProgramError", msg: "Remaining-account bundle maker does not match the live order maker" },
+  6069: { kind: "ProgramError", msg: "Remaining-account bundles must contain exactly three accounts per fill" },
+  6070: { kind: "ProgramError", msg: "Protocol is paused; all state-mutating instructions are disabled" },
+  6071: { kind: "ProgramError", msg: "Adjudicator has not yet attested an outcome for this market" },
+  6072: { kind: "ProgramError", msg: "Trading window has not closed yet (now < deadline)" },
 };
 
 // Lookup of failing-program-ID base58 → which error table to consult. Built
@@ -4655,16 +4238,12 @@ type ProgramErrorLookup = Map<
   Record<number, { kind: string; msg: string }>
 >;
 
-// Exported for tests so they can assert per-program code disambiguation
-// without round-tripping through the full submit() retry loop.
+// Exported for tests so they can assert error code disambiguation.
 export const __testing = {
   decodeSubmitError: (...args: Parameters<typeof decodeSubmitError>) =>
     decodeSubmitError(...args),
   extractFailingProgramId,
-  SOOTH_AMM_ERROR_TABLE,
-  SOOTH_MARKET_ERROR_TABLE,
-  SOOTH_LAUNCHPAD_ERROR_TABLE,
-  SOOTH_ADJUDICATOR_ERROR_TABLE,
+  SOOTH_CORE_ERROR_TABLE,
 };
 
 function decodeSubmitError(
