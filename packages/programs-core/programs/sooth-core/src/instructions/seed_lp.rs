@@ -1,9 +1,6 @@
 //! `seed_lp` — bootstrap LP-mint hook.
 //!
-//! Adapted from `sooth_launchpad::seed_lp`. Changes:
-//!   - `market` and `amm_state` seeds have no `seeds::program`.
-//!   - `lp_position` owner check uses `crate::ID` (not `sooth_launchpad::ID`).
-//!   - All other logic preserved verbatim.
+//! `lp_position` owner check uses `crate::ID`.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program::invoke_signed;

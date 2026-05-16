@@ -1,6 +1,5 @@
 //! `unpause` — clear the protocol circuit-breaker (`ProtocolConfig.paused = false`).
 //!
-//! New instruction — not present in the multi-program architecture.
 //! Auth: `config.authority` must sign.
 //! Idempotent (no error if already unpaused).
 

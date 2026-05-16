@@ -1,17 +1,11 @@
 //! `create_market` — user-facing one-shot market creation flow.
 //!
-//! Adapted from `sooth_launchpad::create_market`. The 4 CPIs into separate
-//! programs are replaced with inlined account setup — the same work each
-//! separate leg did, now done directly because everything is in one program:
+//! Sets up, in order:
 //!
-//! 1. Init `Market` PDA (lifecycle = Initializing → Open after leg 3)
+//! 1. Init `Market` PDA (lifecycle = Initializing → Open after step 3)
 //! 2. Init `yes_mint` and `no_mint` SPL mints
 //! 3. Init `market_vault` and `lock_vault` ATAs (lifecycle → Open)
 //! 4. Init `AmmState` PDA
-//!
-//! `adjudicator_allowlist` removed (AdjudicatorEntry is separate).
-//! `sooth_market_program`, `sooth_amm_program`, and all `seeds::program`
-//! constraints removed. `compute_trial_end_at` preserved verbatim.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program::invoke_signed;
@@ -370,8 +364,6 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
 ///
 ///   trial_duration = min(0.3 × (deadline - now), default_trial_period)
 ///   trial_end_at   = now + trial_duration
-///
-/// Preserved verbatim from `sooth_launchpad::create_market`.
 pub(crate) fn compute_trial_end_at(now: i64, deadline: i64, default_trial_period: i64) -> i64 {
     let until_deadline = deadline.saturating_sub(now);
     if until_deadline <= 0 {

@@ -1,7 +1,6 @@
 //! `mint_complete_set` — pull USDC from user, mint YES + NO outcome tokens.
 //!
-//! Adapted from `sooth_market::mint_complete_set`. USDC mint address is
-//! from `crate::constants::BASE_TOKEN_MINT`.
+//! USDC mint address is from `crate::constants::BASE_TOKEN_MINT`.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount, Transfer};

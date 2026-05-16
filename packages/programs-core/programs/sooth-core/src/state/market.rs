@@ -1,7 +1,4 @@
 //! `Market` PDA — lifecycle, outcome, and per-market configuration.
-//!
-//! Merged from `sooth_market::state::Market`. Seeds and bumps are unchanged;
-//! the owning program is now `sooth_core`.
 
 use anchor_lang::prelude::*;
 
@@ -18,10 +15,10 @@ pub struct Market {
     /// || nonce). Architecture §2.2.
     pub market_id: [u8; 16],
     pub creator: Pubkey,
-    /// The adjudicator pubkey recorded at `initialize_market` time. In the
-    /// merged program the adjudicator is also registered as an
-    /// `AdjudicatorEntry` PDA. This field remains the canonical source of
-    /// truth for the market's designated adjudicator identity.
+    /// The adjudicator pubkey recorded at `initialize_market` time. The
+    /// adjudicator is also registered as an `AdjudicatorEntry` PDA. This
+    /// field remains the canonical source of truth for the market's
+    /// designated adjudicator identity.
     pub adjudicator: Pubkey,
     pub question_hash: [u8; 32],
     pub yes_mint: Pubkey,

@@ -513,9 +513,8 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
   private readonly program: AnyProgram;
 
   // Failing-program-ID → error code table. Populated at construction from the
-  // resolved program IDs. Decoders use this to disambiguate Anchor codes
-  // (e.g. 6012 means LockNotElapsed in sooth_amm but
-  // AdjudicatorNotAllowlisted in sooth_market).
+  // resolved program IDs. Decoders consult it only when the failing program is
+  // sooth_core, so codes from unrelated programs are never misdecoded.
   private readonly programErrorLookup: ProgramErrorLookup;
   private readonly priorityFeeCache = new Map<string, PriorityFeeCacheEntry>();
 
@@ -4145,89 +4144,69 @@ async function getTokenAmountOrZero(
 // confirmation.value.err) to a SoothError. Anchor returns program errors as
 // `{ InstructionError: [ixIndex, { Custom: code }] }`.
 //
-// Anchor numbers each program's user errors starting at 6000 in the order
-// they appear in `error.rs`. The same numeric code (e.g. 6012) can mean
-// completely different things across programs — `sooth_amm::LockNotElapsed`
-// vs `sooth_market::AdjudicatorNotAllowlisted`. Without disambiguation by
-// failing-program-ID the decoder picks the wrong message and the caller
-// chases the wrong root cause.
+// Anchor numbers user errors starting at 6000 in the order they appear in
+// `error.rs`. The decoder still keys by failing-program-ID so a code from an
+// unrelated program (SPL, system) is never misread as a sooth_core error.
 //
-// Error table mirrors `sooth_core/src/error.rs` SoothCoreError enum.
-// All merged program errors are now under a single namespace.
+// Error table mirrors `sooth_core/src/error.rs` SoothCoreError enum order.
 const SOOTH_CORE_ERROR_TABLE: Record<number, { kind: string; msg: string }> = {
   6000: { kind: "MarketNotActive", msg: "Market is not in the Open lifecycle state" },
-  6001: { kind: "ProgramError", msg: "Market is not in the Locked lifecycle state" },
-  6002: { kind: "ProgramError", msg: "Market is not Settled" },
-  6003: { kind: "ProgramError", msg: "Lifecycle transition not permitted from current state" },
-  6004: { kind: "ProgramError", msg: "Caller is not the registered adjudicator for this market" },
-  6005: { kind: "ProgramError", msg: "Invalid outcome (must be NO=0, YES=1, or INVALID=2)" },
-  6006: { kind: "ProgramError", msg: "Amount must be non-zero" },
-  6007: { kind: "InsufficientShares", msg: "Insufficient outcome-token balance" },
-  6008: { kind: "ProgramError", msg: "Math overflow" },
-  6009: { kind: "ProgramError", msg: "Vault / mint authority mismatch" },
-  6010: { kind: "ProgramError", msg: "Deadline must be greater than start_time" },
-  6011: { kind: "ProgramError", msg: "Adjudicator pubkey must not be the default (all-zero) key" },
-  6012: { kind: "ProgramError", msg: "Adjudicator pubkey is not present on the on-chain allowlist" },
-  6013: { kind: "ProgramError", msg: "Caller is not the registered allowlist authority" },
-  6014: { kind: "ProgramError", msg: "Adjudicator allowlist is full (capacity exhausted)" },
-  6015: { kind: "ProgramError", msg: "Adjudicator pubkey is already present on the allowlist" },
-  6016: { kind: "ProgramError", msg: "Adjudicator pubkey is not present on the allowlist" },
-  6017: { kind: "ProgramError", msg: "Helper ixs must be CPI'd from sooth_amm; direct calls are rejected." },
-  6018: { kind: "MarketNotDismissed", msg: "Market is not dismissed" },
-  6019: { kind: "ProgramError", msg: "Invalid instructions sysvar account" },
-  6020: { kind: "TradingClosed", msg: "Trading window has closed (now >= deadline)" },
-  6021: { kind: "InvalidTick", msg: "Invalid tick" },
-  6022: { kind: "ProgramError", msg: "Amount too small for base token decimals" },
-  6023: { kind: "SlippageExceeded", msg: "Slippage: cost exceeded max_cost_wad" },
-  6024: { kind: "ProgramError", msg: "delta_shares must be non-zero" },
-  6025: { kind: "InsufficientShares", msg: "Insufficient shares to sell" },
-  6026: { kind: "MarketNotActive", msg: "Market is dismissed" },
-  6027: { kind: "ProgramError", msg: "LMSR math overflow or domain error" },
-  6028: { kind: "ProgramError", msg: "Liquidity parameter b must be > 0" },
-  6029: { kind: "ProgramError", msg: "Caller is not authorized for this action (creator mismatch)" },
-  6030: { kind: "TradingNotStarted", msg: "Trading window has not started yet (now < start_time)" },
-  6031: { kind: "SellNotImplemented", msg: "Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3" },
-  6032: { kind: "LockNotElapsed", msg: "Lock has not elapsed yet (now < lock_entry.unlock_at)" },
-  6033: { kind: "LockVaultMismatch", msg: "Lock vault account does not match market.lock_vault" },
-  6034: { kind: "TrialNotExpired", msg: "Trial period has not expired yet" },
-  6035: { kind: "AlreadyGraduated", msg: "Market has already graduated" },
-  6036: { kind: "AlreadyDismissed", msg: "Market has already been dismissed" },
-  6037: { kind: "ProgramError", msg: "AmmState market backlink does not match market account" },
-  6038: { kind: "ProgramError", msg: "Fee bps must not exceed 10000 (100%)" },
-  6039: { kind: "ProgramError", msg: "Fee split bps do not sum to 10000" },
-  6040: { kind: "ProgramError", msg: "Treasury pubkey must be non-default" },
-  6041: { kind: "ProgramError", msg: "Default trial period must be > 0" },
-  6042: { kind: "ProgramError", msg: "Protocol config already initialized" },
-  6043: { kind: "ProgramError", msg: "Fee pool is empty — nothing to distribute" },
-  6044: { kind: "NotGraduated", msg: "Market is not graduated" },
-  6045: { kind: "ProgramError", msg: "LP amount must be > 0" },
-  6046: { kind: "ProgramError", msg: "LP supply is empty" },
-  6047: { kind: "ProgramError", msg: "Legacy fee drain already executed" },
-  6048: { kind: "ProgramError", msg: "Caller is not the registered authority for this adjudicator" },
-  6049: { kind: "ProgramError", msg: "Adjudicator kind does not support this operation" },
-  6050: { kind: "ProgramError", msg: "Adjudicator has already attested an outcome; re-attestation is not permitted" },
-  6051: { kind: "ProgramError", msg: "Adjudicator has not yet attested an outcome" },
-  6052: { kind: "ProgramError", msg: "Adjudicator account does not match the supplied market" },
-  6053: { kind: "ProgramError", msg: "Authority pubkey must not be the default (all-zero) key" },
-  6054: { kind: "NotImplemented", msg: "Dispute path is not implemented in v1; see architecture §4.4" },
-  6055: { kind: "ProgramError", msg: "Caller is not the registered dispute authority for this adjudicator" },
-  6056: { kind: "ProgramError", msg: "Adjudicator has already been disputed; dispute is one-shot per market" },
-  6057: { kind: "ProgramError", msg: "Market is already settled; dispute can no longer override the outcome" },
-  6058: { kind: "ProgramError", msg: "Order id is outside the supported composite encoding range" },
-  6059: { kind: "ProgramError", msg: "Decoded order id does not match the requested side or tick" },
-  6060: { kind: "ProgramError", msg: "Book side is full for this tick" },
-  6061: { kind: "ProgramError", msg: "Book side is not fully drained" },
-  6062: { kind: "ProgramError", msg: "Compaction drop count exceeds the per-call bound" },
-  6063: { kind: "ProgramError", msg: "Market vault uses the wrong base mint" },
-  6064: { kind: "ProgramError", msg: "MarketBook base mint does not match the market vault mint" },
-  6065: { kind: "ProgramError", msg: "MarketBook accumulators must be reset before placing an order" },
-  6066: { kind: "ProgramError", msg: "No cancellable order was found" },
-  6067: { kind: "ProgramError", msg: "Remaining-account bundle does not carry the crossing BookSide" },
-  6068: { kind: "ProgramError", msg: "Remaining-account bundle maker does not match the live order maker" },
-  6069: { kind: "ProgramError", msg: "Remaining-account bundles must contain exactly three accounts per fill" },
-  6070: { kind: "ProgramError", msg: "Protocol is paused; all state-mutating instructions are disabled" },
-  6071: { kind: "ProgramError", msg: "Adjudicator has not yet attested an outcome for this market" },
-  6072: { kind: "ProgramError", msg: "Trading window has not closed yet (now < deadline)" },
+  6001: { kind: "ProgramError", msg: "Market is not Settled" },
+  6002: { kind: "ProgramError", msg: "Lifecycle transition not permitted from current state" },
+  6003: { kind: "ProgramError", msg: "Invalid outcome (must be NO=0, YES=1, or INVALID=2)" },
+  6004: { kind: "ProgramError", msg: "Amount must be non-zero" },
+  6005: { kind: "InsufficientShares", msg: "Insufficient outcome-token balance" },
+  6006: { kind: "ProgramError", msg: "Math overflow" },
+  6007: { kind: "ProgramError", msg: "Vault / mint authority mismatch" },
+  6008: { kind: "ProgramError", msg: "Deadline must be greater than start_time" },
+  6009: { kind: "ProgramError", msg: "Adjudicator pubkey must not be the default (all-zero) key" },
+  6010: { kind: "MarketNotDismissed", msg: "Market is not dismissed" },
+  6011: { kind: "TradingClosed", msg: "Trading window has closed (now >= deadline)" },
+  6012: { kind: "InvalidTick", msg: "Invalid tick" },
+  6013: { kind: "ProgramError", msg: "Amount too small for base token decimals" },
+  6014: { kind: "SlippageExceeded", msg: "Slippage: cost exceeded max_cost_wad" },
+  6015: { kind: "ProgramError", msg: "delta_shares must be non-zero" },
+  6016: { kind: "InsufficientShares", msg: "Insufficient shares to sell" },
+  6017: { kind: "MarketNotActive", msg: "Market is dismissed" },
+  6018: { kind: "ProgramError", msg: "Liquidity parameter b must be > 0" },
+  6019: { kind: "ProgramError", msg: "Caller is not authorized for this action (creator mismatch)" },
+  6020: { kind: "TradingNotStarted", msg: "Trading window has not started yet (now < start_time)" },
+  6021: { kind: "SellNotImplemented", msg: "Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3" },
+  6022: { kind: "LockNotElapsed", msg: "Lock has not elapsed yet (now < lock_entry.unlock_at)" },
+  6023: { kind: "LockVaultMismatch", msg: "Lock vault account does not match market.lock_vault" },
+  6024: { kind: "TrialNotExpired", msg: "Trial period has not expired yet" },
+  6025: { kind: "AlreadyGraduated", msg: "Market has already graduated" },
+  6026: { kind: "AlreadyDismissed", msg: "Market has already been dismissed" },
+  6027: { kind: "ProgramError", msg: "AmmState market backlink does not match market account" },
+  6028: { kind: "ProgramError", msg: "Fee bps must not exceed 10000 (100%)" },
+  6029: { kind: "ProgramError", msg: "Fee split bps do not sum to 10000" },
+  6030: { kind: "ProgramError", msg: "Treasury pubkey must be non-default" },
+  6031: { kind: "ProgramError", msg: "Default trial period must be > 0" },
+  6032: { kind: "ProgramError", msg: "Fee pool is empty — nothing to distribute" },
+  6033: { kind: "NotGraduated", msg: "Market is not graduated" },
+  6034: { kind: "ProgramError", msg: "LP amount must be > 0" },
+  6035: { kind: "ProgramError", msg: "LP supply is empty" },
+  6036: { kind: "ProgramError", msg: "Legacy fee drain already executed" },
+  6037: { kind: "ProgramError", msg: "Caller is not the registered authority for this adjudicator" },
+  6038: { kind: "ProgramError", msg: "Adjudicator has already attested an outcome; re-attestation is not permitted" },
+  6039: { kind: "ProgramError", msg: "Adjudicator account does not match the supplied market" },
+  6040: { kind: "ProgramError", msg: "Adjudicator has already been disputed; dispute is one-shot per market" },
+  6041: { kind: "ProgramError", msg: "Market is already settled; dispute can no longer override the outcome" },
+  6042: { kind: "ProgramError", msg: "Order id is outside the supported composite encoding range" },
+  6043: { kind: "ProgramError", msg: "Decoded order id does not match the requested side or tick" },
+  6044: { kind: "ProgramError", msg: "Book side is full for this tick" },
+  6045: { kind: "ProgramError", msg: "Book side is not fully drained" },
+  6046: { kind: "ProgramError", msg: "Compaction drop count exceeds the per-call bound" },
+  6047: { kind: "ProgramError", msg: "Market vault uses the wrong base mint" },
+  6048: { kind: "ProgramError", msg: "MarketBook base mint does not match the market vault mint" },
+  6049: { kind: "ProgramError", msg: "MarketBook accumulators must be reset before placing an order" },
+  6050: { kind: "ProgramError", msg: "No cancellable order was found" },
+  6051: { kind: "ProgramError", msg: "Remaining-account bundle does not carry the crossing BookSide" },
+  6052: { kind: "ProgramError", msg: "Remaining-account bundle maker does not match the live order maker" },
+  6053: { kind: "ProgramError", msg: "Remaining-account bundles must contain exactly three accounts per fill" },
+  6054: { kind: "ProgramError", msg: "Protocol is paused; all state-mutating instructions are disabled" },
+  6055: { kind: "ProgramError", msg: "Adjudicator has not yet attested an outcome for this market" },
+  6056: { kind: "ProgramError", msg: "Trading window has not closed yet (now < deadline)" },
 };
 
 // Lookup of failing-program-ID base58 → which error table to consult. Built
@@ -4265,9 +4244,8 @@ function decodeSubmitError(
       });
     }
     // No program-ID match (or unknown code) — surface the bare code with
-    // the failing program ID if we recovered one. Don't guess at
-    // semantics; that's how the LockNotElapsed/AdjudicatorNotAllowlisted
-    // confusion got into the wild.
+    // the failing program ID if we recovered one. Don't guess at semantics:
+    // a code from a non-sooth_core program must not be mapped to this table.
     return new SoothError({
       kind: "ProgramError",
       code,
@@ -4427,11 +4405,10 @@ function isRetryableNetworkText(text: string): boolean {
 // `.message`. We try the structured shape first, then fall back to a regex
 // over the message.
 //
-// Why we need this: Anchor numbers user errors per-program starting at
-// 6000. The same numeric code (e.g. 6012) means
-// `sooth_amm::LockNotElapsed` in one program and
-// `sooth_market::AdjudicatorNotAllowlisted` in another. Without the
-// failing-program-ID the decoder either guesses wrong or refuses to decode.
+// Why we need this: Anchor numbers user errors starting at 6000. A code in
+// that range can also originate from an unrelated program in the same
+// transaction (SPL token, system). The failing-program-ID lets the decoder
+// apply the sooth_core table only when sooth_core is the program that failed.
 function extractFailingProgramId(raw: unknown): string | undefined {
   const PROGRAM_FAILED_RE = /Program ([1-9A-HJ-NP-Za-km-z]{32,44}) failed:/;
   const logs = (raw as { logs?: unknown })?.logs;

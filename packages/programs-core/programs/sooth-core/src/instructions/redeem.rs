@@ -1,6 +1,4 @@
 //! `redeem` — exchange winning outcome tokens for USDC at the resolved rate.
-//!
-//! Adapted from `sooth_market::redeem`.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};

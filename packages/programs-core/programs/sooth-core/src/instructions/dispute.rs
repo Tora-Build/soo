@@ -1,12 +1,4 @@
 //! `dispute` — veto branch on an attested outcome.
-//!
-//! Adapted from `sooth_adjudicator::dispute`. Changes:
-//!   - CPI to `sooth_market::settle` replaced with direct call to
-//!     `settle::settle_internal`.
-//!   - `sooth_market_program` and `instruction_sysvar` removed.
-//!   - `Adjudicator` replaced with `AdjudicatorEntry`.
-//!   - `market` lifecycle check uses `crate::state::MarketLifecycle` directly.
-//!   - `seeds::program` constraints removed.
 
 use anchor_lang::prelude::*;
 
@@ -84,7 +76,6 @@ pub fn handler(ctx: Context<Dispute>, new_outcome: u8) -> Result<()> {
         entry.disputed_at = Some(now);
     }
 
-    // Direct call — no CPI.
     settle_internal(&mut ctx.accounts.market, new_outcome)?;
 
     emit!(DisputeRaised {

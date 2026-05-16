@@ -1,7 +1,4 @@
 //! `compact_book_side` — trim trailing zero-amount orders from a `BookSide`.
-//!
-//! Adapted from `sooth_book::compact_book_side`. `seeds::program` removed
-//! from `market`. `market` typed from this crate. Logic unchanged.
 
 use anchor_lang::prelude::*;
 

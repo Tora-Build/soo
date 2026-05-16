@@ -1,9 +1,8 @@
 //! LMSR cost function — `exp_wad`, `ln_wad`, and the log-sum-exp shifted
 //! `cost_delta` used by `trade_positions`.
 //!
-//! Ported verbatim from `_spikes/lmsr-cu/src/{math.rs, lib.rs}` (the spike
-//! that resolved decision D4). The math model is the standard binary-outcome
-//! LMSR with `b` (liquidity parameter) in WAD:
+//! The math model is the standard binary-outcome LMSR with `b` (liquidity
+//! parameter) in WAD:
 //!
 //! ```text
 //! C(q_yes, q_no, b) = b · ln( exp(q_yes/b) + exp(q_no/b) )
@@ -11,8 +10,8 @@
 //!
 //! ## Numerical stability
 //!
-//! The "tail 100× cheaper than 10×" property documented in the spike's
-//! benchmark comes from the **log-sum-exp shift**: subtract `m = max(q_yes/b,
+//! The "tail 100× cheaper than 10×" property comes from the **log-sum-exp
+//! shift**: subtract `m = max(q_yes/b,
 //! q_no/b)` before exp, add it back outside ln. Both exp arguments end up ≤
 //! 0; for very imbalanced markets the smaller side falls below the
 //! `EXP_MAX_INPUT_WAD` saturation clamp and short-circuits to 0 without
@@ -247,7 +246,7 @@ mod tests {
         assert!(dc < delta);
     }
 
-    /// Golden-value pin captured from the spike. `cost_delta(q=0, q=0, b=1000·WAD,
+    /// Golden-value pin. `cost_delta(q=0, q=0, b=1000·WAD,
     /// d_yes=10·WAD, d_no=0)` — the small-buy case from the bench grid.
     #[test]
     fn cost_delta_golden_small_buy() {

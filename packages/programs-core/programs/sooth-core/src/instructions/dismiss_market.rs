@@ -1,6 +1,4 @@
 //! `dismiss_market` — creator flips AmmState.is_dismissed after trial window.
-//!
-//! Adapted from `sooth_amm::dismiss_market`. No `seeds::program` needed.
 
 use anchor_lang::prelude::*;
 

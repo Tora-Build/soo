@@ -1,6 +1,6 @@
 // decodeSubmitError must disambiguate Anchor error codes by failing-program
-// ID. With the single merged `sooth_core` program, every error code has one
-// canonical meaning. These tests verify:
+// ID. With a single `sooth_core` program, every error code has one canonical
+// meaning. These tests verify:
 //   1. Known sooth_core codes are correctly decoded (kind + code preserved).
 //   2. Unknown program IDs → bare ProgramError, code preserved.
 //   3. Missing logs → falls back to ProgramError without guessing.
@@ -27,50 +27,50 @@ function makeErr(programId: string, hexCode: string, logs?: string[]): Error {
   return err;
 }
 
-describe("decodeSubmitError with merged sooth_core error table", () => {
-  it("sooth_core code 6032 (0x1790) → LockNotElapsed", () => {
-    // 6032 = 0x1790
+describe("decodeSubmitError with sooth_core error table", () => {
+  it("sooth_core code 6022 (0x1786) → LockNotElapsed", () => {
+    // 6022 = 0x1786 — LockNotElapsed
     const e = __testing.decodeSubmitError(
-      makeErr(CORE_ID, "1790"),
+      makeErr(CORE_ID, "1786"),
       "sig1",
       lookup,
     );
     expect(e.kind).toBe("LockNotElapsed");
-    expect(e.fields.code).toBe(0x1790);
+    expect(e.fields.code).toBe(0x1786);
   });
 
-  it("sooth_core code 6012 (0x177c) → ProgramError with allowlist msg", () => {
-    // 6012 = 0x177c — AdjudicatorNotOnAllowlist
+  it("sooth_core code 6007 (0x1777) → ProgramError with authority-mismatch msg", () => {
+    // 6007 = 0x1777 — VaultAuthorityMismatch
     const e = __testing.decodeSubmitError(
-      makeErr(CORE_ID, "177c"),
+      makeErr(CORE_ID, "1777"),
       "sig2",
       lookup,
     );
     expect(e.kind).toBe("ProgramError");
-    expect(e.fields.code).toBe(0x177c);
-    expect(e.fields.msg).toMatch(/allowlist/i);
+    expect(e.fields.code).toBe(0x1777);
+    expect(e.fields.msg).toMatch(/authority mismatch/i);
   });
 
-  it("sooth_core code 6035 (0x1793) → AlreadyGraduated", () => {
-    // 6035 = 0x1793 — AlreadyGraduated
+  it("sooth_core code 6025 (0x1789) → AlreadyGraduated", () => {
+    // 6025 = 0x1789 — AlreadyGraduated
     const e = __testing.decodeSubmitError(
-      makeErr(CORE_ID, "1793"),
+      makeErr(CORE_ID, "1789"),
       "sig3",
       lookup,
     );
     expect(e.kind).toBe("AlreadyGraduated");
-    expect(e.fields.code).toBe(0x1793);
+    expect(e.fields.code).toBe(0x1789);
   });
 
-  it("sooth_core code 6054 (0x17a6) → NotImplemented", () => {
-    // 6054 = 0x17a6 — DisputeNotImplemented
+  it("sooth_core code 6021 (0x1785) → SellNotImplemented", () => {
+    // 6021 = 0x1785 — SellNotImplemented
     const e = __testing.decodeSubmitError(
-      makeErr(CORE_ID, "17a6"),
+      makeErr(CORE_ID, "1785"),
       "sig4",
       lookup,
     );
-    expect(e.kind).toBe("NotImplemented");
-    expect(e.fields.code).toBe(0x17a6);
+    expect(e.kind).toBe("SellNotImplemented");
+    expect(e.fields.code).toBe(0x1785);
   });
 
   it("unknown program ID → bare ProgramError, code preserved, no false mapping", () => {

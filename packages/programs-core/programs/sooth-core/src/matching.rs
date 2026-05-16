@@ -1,11 +1,9 @@
 //! `matching` — tick-level order matching engine for the CLOB.
 //!
-//! Adapted from `sooth_book::matching`. All inter-program CPIs are removed:
-//! `fill_order` is now a direct call to `fill_order_internal` which returns
-//! `(fee_base_delta, taker_payout_delta)` as a tuple. `decode_fill_return_data`
-//! is removed. `MatchAccounts` drops `sooth_market_program` and
-//! `instruction_sysvar`. FILL_BUNDLE_LEN changes from 5 to 3 (book_side,
-//! maker_position, maker_usdc_ata per fill). Both owner checks use `crate::ID`.
+//! `fill_order` is a direct call to `fill_order_internal`, which returns
+//! `(fee_base_delta, taker_payout_delta)` as a tuple. `FILL_BUNDLE_LEN` is 3
+//! (book_side, maker_position, maker_usdc_ata per fill). Both owner checks
+//! use `crate::ID`.
 
 use anchor_lang::prelude::*;
 use anchor_lang::{AccountDeserialize, Discriminator};
@@ -152,7 +150,7 @@ pub fn match_at_tick<'info>(
         )?;
         let fill = remaining.min(maker_amount);
 
-        // Direct call — no CPI. Returns (fee_base_delta, taker_payout_delta).
+        // Returns (fee_base_delta, taker_payout_delta).
         let (fee_base_delta, taker_payout_delta) = crate::instructions::fill_order_internal(
             accounts.market,
             accounts.vault_authority,
@@ -211,7 +209,6 @@ pub fn match_at_tick<'info>(
 }
 
 /// Number of accounts per fill bundle: [book_side, maker_position, maker_usdc_ata].
-/// Reduced from 5 in sooth_book (no instruction_sysvar or extra placeholder).
 pub const FILL_BUNDLE_LEN: usize = 3;
 
 fn validate_fill_bundle<'info>(

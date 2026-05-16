@@ -1,7 +1,5 @@
 //! `merge_complete_set_for_orderbook` — debit shares from OrderbookPosition,
 //! return USDC to user.
-//!
-//! Adapted from `sooth_market::merge_complete_set_for_orderbook`.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};

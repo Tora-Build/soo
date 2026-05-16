@@ -1,7 +1,4 @@
 //! `AmmState` — per-market LMSR AMM cursor.
-//!
-//! Copied verbatim from `sooth_amm::state::AmmState`. Seeds and layout
-//! are unchanged; the owning program is now `sooth_core`.
 
 use anchor_lang::prelude::*;
 

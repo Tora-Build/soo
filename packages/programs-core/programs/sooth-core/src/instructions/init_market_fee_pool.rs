@@ -1,7 +1,4 @@
 //! `init_market_fee_pool` — create the per-market USDC fee-pool token account.
-//!
-//! Adapted from `sooth_launchpad::init_market_fee_pool`. `seeds::program`
-//! removed from `market` and `fee_pool_authority`.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};

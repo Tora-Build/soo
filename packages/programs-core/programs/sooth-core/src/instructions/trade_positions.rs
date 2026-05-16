@@ -1,13 +1,4 @@
 //! `trade_positions` — buy YES/NO shares against the LMSR.
-//!
-//! Adapted from `sooth_amm::trade_positions`. All CPIs into other programs
-//! are replaced with direct calls:
-//!   - `sooth_launchpad::mint_lp_for_buy` → direct call to
-//!     `mint_lp_for_buy_internal`.
-//!
-//! `sooth_launchpad_program`, `instruction_sysvar`, `seeds::program` constraints
-//! removed. `protocol_config` is now typed `Account<'info, ProtocolConfig>`.
-//! `market_fee_pool` seeds no longer carry `seeds::program`.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -258,7 +249,7 @@ pub fn handler(
         }
     }
 
-    // Pre-graduation LP mint — direct call (no CPI).
+    // Pre-graduation LP mint.
     if !amm_is_graduated && fee_usdc > 0 {
         let market_id = ctx.accounts.market.market_id;
         let lp_mint_authority_bump = ctx.bumps.lp_mint_authority;

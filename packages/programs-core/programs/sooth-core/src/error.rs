@@ -1,30 +1,21 @@
-//! Merged error codes for `sooth_core`.
+//! Error codes for `sooth_core`.
 //!
-//! All error variants from sooth_market, sooth_amm, sooth_launchpad,
-//! sooth_adjudicator, and sooth_book are unified here.  Discriminants
-//! are ordered by origin program, then by likelihood-of-occurrence.
-//! Don't reorder once we ship.
+//! Discriminants are ABI-stable — don't reorder once shipped.
 
 use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum SoothCoreError {
-    // ── sooth_market ─────────────────────────────────────────────────────────
+    // ── Market lifecycle ─────────────────────────────────────────────────────
 
     #[msg("Market is not in the Open lifecycle state")]
     MarketNotOpen,
-
-    #[msg("Market is not in the Locked lifecycle state")]
-    MarketNotLocked,
 
     #[msg("Market is not Settled")]
     MarketNotSettled,
 
     #[msg("Lifecycle transition not permitted from current state")]
     InvalidLifecycleTransition,
-
-    #[msg("Caller is not the registered adjudicator for this market")]
-    NotAdjudicator,
 
     #[msg("Invalid outcome (must be NO=0, YES=1, or INVALID=2)")]
     InvalidOutcome,
@@ -47,29 +38,8 @@ pub enum SoothCoreError {
     #[msg("Adjudicator pubkey must not be the default (all-zero) key")]
     AdjudicatorIsDefault,
 
-    #[msg("Adjudicator pubkey is not present on the on-chain allowlist")]
-    AdjudicatorNotAllowlisted,
-
-    #[msg("Caller is not the registered allowlist authority")]
-    AllowlistAuthorityMismatch,
-
-    #[msg("Adjudicator allowlist is full (capacity exhausted)")]
-    AllowlistFull,
-
-    #[msg("Adjudicator pubkey is already present on the allowlist")]
-    AdjudicatorAlreadyAllowlisted,
-
-    #[msg("Adjudicator pubkey is not present on the allowlist")]
-    AdjudicatorNotPresent,
-
-    #[msg("Helper ixs must be CPI'd from sooth_amm; direct calls are rejected.")]
-    InvalidParentInstruction,
-
     #[msg("Market is not dismissed")]
     MarketNotDismissed,
-
-    #[msg("Invalid instructions sysvar account")]
-    InvalidSysvar,
 
     #[msg("Trading window has closed (now >= deadline)")]
     TradingClosed,
@@ -80,7 +50,7 @@ pub enum SoothCoreError {
     #[msg("Amount too small for base token decimals")]
     AmountTooSmallForBaseTokenDecimals,
 
-    // ── sooth_amm ────────────────────────────────────────────────────────────
+    // ── AMM ──────────────────────────────────────────────────────────────────
 
     #[msg("Slippage: cost exceeded max_cost_wad")]
     SlippageExceeded,
@@ -93,9 +63,6 @@ pub enum SoothCoreError {
 
     #[msg("Market is dismissed")]
     MarketDismissed,
-
-    #[msg("LMSR math overflow or domain error")]
-    LmsrOverflow,
 
     #[msg("Liquidity parameter b must be > 0")]
     InvalidLiquidity,
@@ -127,7 +94,7 @@ pub enum SoothCoreError {
     #[msg("AmmState market backlink does not match market account")]
     AmmStateMarketMismatch,
 
-    // ── sooth_launchpad ───────────────────────────────────────────────────────
+    // ── Market creation / LP ─────────────────────────────────────────────────
 
     #[msg("Fee bps must not exceed 10000 (100%)")]
     FeeBpsOutOfRange,
@@ -140,9 +107,6 @@ pub enum SoothCoreError {
 
     #[msg("Default trial period must be > 0")]
     InvalidTrialPeriod,
-
-    #[msg("Protocol config already initialized")]
-    AlreadyInitialized,
 
     #[msg("Fee pool is empty — nothing to distribute")]
     NothingToDistribute,
@@ -159,31 +123,16 @@ pub enum SoothCoreError {
     #[msg("Legacy fee drain already executed")]
     LegacyDrainAlreadyExecuted,
 
-    // ── sooth_adjudicator ─────────────────────────────────────────────────────
+    // ── Adjudicator / resolution ─────────────────────────────────────────────
 
     #[msg("Caller is not the registered authority for this adjudicator")]
     NotAuthority,
 
-    #[msg("Adjudicator kind does not support this operation")]
-    UnsupportedKind,
-
     #[msg("Adjudicator has already attested an outcome; re-attestation is not permitted")]
     AlreadyAttested,
 
-    #[msg("Adjudicator has not yet attested an outcome")]
-    NotAttested,
-
     #[msg("Adjudicator account does not match the supplied market")]
     AdjudicatorMarketMismatch,
-
-    #[msg("Authority pubkey must not be the default (all-zero) key")]
-    AuthorityIsDefault,
-
-    #[msg("Dispute path is not implemented in v1; see architecture §4.4")]
-    DisputeNotImplemented,
-
-    #[msg("Caller is not the registered dispute authority for this adjudicator")]
-    NotDisputeAuthority,
 
     #[msg("Adjudicator has already been disputed; dispute is one-shot per market")]
     AlreadyDisputed,
@@ -191,7 +140,7 @@ pub enum SoothCoreError {
     #[msg("Market is already settled; dispute can no longer override the outcome")]
     MarketAlreadySettled,
 
-    // ── sooth_book ────────────────────────────────────────────────────────────
+    // ── Orderbook (CLOB) ─────────────────────────────────────────────────────
 
     #[msg("Order id is outside the supported composite encoding range")]
     InvalidOrderId,
@@ -229,7 +178,7 @@ pub enum SoothCoreError {
     #[msg("Remaining-account bundles must contain exactly three accounts per fill")]
     WrongBundleArity,
 
-    // ── sooth_core (new) ──────────────────────────────────────────────────────
+    // ── Protocol / circuit-breaker ───────────────────────────────────────────
 
     #[msg("Protocol is paused; all state-mutating instructions are disabled")]
     ProtocolPaused,

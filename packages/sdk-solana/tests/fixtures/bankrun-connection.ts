@@ -124,9 +124,9 @@ export class BankrunConnection extends Connection {
     // attach `meta.logMessages` to the thrown error on failure. Real RPC's
     // `SendTransactionError` carries those logs on `.logs`; the SDK's
     // failing-program-ID extractor scans them for `Program <ID> failed:`
-    // lines to disambiguate Anchor error codes across programs (e.g. 6012
-    // means LockNotElapsed in sooth_amm but AdjudicatorNotAllowlisted in
-    // sooth_market). Matching that shape here keeps the test rig honest.
+    // lines so an Anchor code is only decoded against the sooth_core table
+    // when sooth_core is the program that failed. Matching that shape here
+    // keeps the test rig honest.
     const resWithMeta = await this._banks.tryProcessTransaction(tx);
     if (resWithMeta.result !== null) {
       const logs = resWithMeta.meta?.logMessages ?? [];

@@ -1,9 +1,4 @@
 //! `claim_refund` — refund a dismissed-market AMM Position.
-//!
-//! Adapted from `sooth_market::claim_refund`. The CPI to
-//! `sooth_amm::close_dismissed_position` is replaced with a direct call to
-//! `close_dismissed_position_internal`. `sooth_amm_program` and
-//! `instruction_sysvar` are removed from the account list.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -171,7 +166,7 @@ fn read_and_validate_position(
 }
 
 /// Close a position account by zeroing its data and moving its lamports to
-/// the user. This replaces the CPI to `sooth_amm::close_dismissed_position`.
+/// the user.
 fn close_position_account(position: &UncheckedAccount, user: &Signer) -> Result<()> {
     let dest = user.to_account_info();
     let src = position.to_account_info();

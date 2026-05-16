@@ -69,13 +69,6 @@ describe("classifyError", () => {
     expect(out.retriable).toBe(false);
   });
 
-  it("classifies InvalidParentInstruction", () => {
-    const out = classifyError(anchorErr("InvalidParentInstruction"));
-    expect(out.code).toBe("InvalidParentInstruction");
-    expect(out.category).toBe("auth");
-    expect(out.retriable).toBe(false);
-  });
-
   it("classifies WrongBaseMint", () => {
     const out = classifyError(anchorErr("WrongBaseMint"));
     expect(out.code).toBe("WrongBaseMint");
@@ -111,7 +104,7 @@ describe("classifyError", () => {
 
   it("classifies NothingToDistribute by program log text", () => {
     const out = classifyError(
-      new Error("SoothError: ProgramError code=6008 msg=Fee pool is empty — nothing to distribute"),
+      new Error("SoothError: ProgramError code=6032 msg=Fee pool is empty — nothing to distribute"),
     );
     expect(out.code).toBe("NothingToDistribute");
     expect(out.category).toBe("state");
@@ -119,7 +112,7 @@ describe("classifyError", () => {
 
   it("classifies LegacyDrainAlreadyExecuted by program log text", () => {
     const out = classifyError(
-      new Error("SoothError: ProgramError code=6012 msg=Legacy fee drain already executed"),
+      new Error("SoothError: ProgramError code=6036 msg=Legacy fee drain already executed"),
     );
     expect(out.code).toBe("LegacyDrainAlreadyExecuted");
     expect(out.category).toBe("state");

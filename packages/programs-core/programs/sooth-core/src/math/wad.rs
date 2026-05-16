@@ -1,8 +1,7 @@
-//! WAD (1e18) fixed-point primitives, ported from `_spikes/lmsr-cu/src/math.rs`.
+//! WAD (1e18) fixed-point primitives.
 //!
-//! Two operations carry a 256-bit intermediate via paired u128 limbs (the
-//! spike's hand-roll, kept verbatim — no `ethnum` dep). See spike's module
-//! comment for the precision rationale.
+//! Two operations carry a 256-bit intermediate via paired u128 limbs
+//! (hand-rolled, no `ethnum` dep) to preserve precision.
 
 use core::convert::TryInto;
 
@@ -25,7 +24,7 @@ pub enum MathError {
 }
 
 /// Multiply two WAD numbers, returning a WAD number. 256-bit intermediate via
-/// 64-bit limbs; rounding toward zero. Lifted verbatim from the spike.
+/// 64-bit limbs; rounding toward zero.
 #[inline(always)]
 pub fn wad_mul(a: i128, b: i128) -> Result<i128, MathError> {
     let neg = (a < 0) ^ (b < 0);
@@ -74,7 +73,7 @@ pub fn wad_mul(a: i128, b: i128) -> Result<i128, MathError> {
     Ok(if neg { -qi } else { qi })
 }
 
-/// Divide two WAD numbers: (a * WAD) / b. Spike's verbatim port.
+/// Divide two WAD numbers: (a * WAD) / b.
 #[inline(always)]
 pub fn wad_div(a: i128, b: i128) -> Result<i128, MathError> {
     if b == 0 {
@@ -115,8 +114,8 @@ pub fn wad_div(a: i128, b: i128) -> Result<i128, MathError> {
 ///
 /// Used at trade entry (cost charged to the user) per architecture §4.2 line
 /// 168. The protocol always charges the user the ceiling so dust accrues to
-/// the vault rather than the trader. The mirror op `wad_to_usdc_floor` (used
-/// at redemption) lives in `sooth_market` once that program exists.
+/// the vault rather than the trader. The mirror op `wad_to_usdc_floor` is
+/// used at redemption.
 #[inline(always)]
 pub fn wad_to_usdc_ceil(wad: u128) -> Result<u64, MathError> {
     // ceil(wad / 1e12) without overflowing: (wad + scalar - 1) / scalar.

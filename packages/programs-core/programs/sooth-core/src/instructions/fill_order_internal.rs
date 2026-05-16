@@ -1,10 +1,6 @@
-//! `fill_order_internal` — direct (non-CPI) fill handler for the CLOB.
-//!
-//! Adapted from `sooth_market::fill_order`. Parent-ix introspection removed.
-//! `set_return_data` removed. Returns `(fee_base_delta, taker_payout_delta)`
-//! as a plain tuple directly to the caller.
-//!
-//! `protocol_config` is now a typed `Account<'info, ProtocolConfig>`.
+//! `fill_order_internal` — fill handler for the CLOB. Returns
+//! `(fee_base_delta, taker_payout_delta)` as a plain tuple directly to the
+//! caller.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};

@@ -1,14 +1,6 @@
 //! `attest_outcome` — Manual variant. The per-market authority signs a
 //! `winning_outcome`, which mutates AdjudicatorEntry state and calls
 //! `settle_internal` to drive the market `Locked` → `Settled`.
-//!
-//! Adapted from `sooth_adjudicator::attest_outcome`. Changes:
-//!   - CPI to `sooth_market::settle` replaced with direct call to
-//!     `settle::settle_internal`.
-//!   - `sooth_market_program` and `instruction_sysvar` removed.
-//!   - `Adjudicator` + `AdjudicatorKind` replaced with `AdjudicatorEntry`
-//!     (no kind field — v1 supports Manual variant only via this ix).
-//!   - `market` seeds have no `seeds::program`.
 
 use anchor_lang::prelude::*;
 
@@ -71,7 +63,6 @@ pub fn handler(ctx: Context<AttestOutcome>, winning_outcome: u8) -> Result<()> {
         entry.attested_at = Some(now);
     }
 
-    // Direct call — no CPI.
     settle_internal(&mut ctx.accounts.market, winning_outcome)?;
 
     emit!(OutcomeAttested {

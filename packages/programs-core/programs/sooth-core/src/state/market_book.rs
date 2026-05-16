@@ -1,7 +1,4 @@
 //! `MarketBook` — per-market CLOB state.
-//!
-//! Adapted from `sooth_book::state::MarketBook`. Seeds and layout are unchanged;
-//! the owning program is now `sooth_core`.
 
 use anchor_lang::prelude::*;
 

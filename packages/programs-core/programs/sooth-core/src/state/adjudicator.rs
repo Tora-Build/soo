@@ -1,9 +1,7 @@
 //! `AdjudicatorEntry` — per-market resolution-authority record.
 //!
-//! This replaces both `sooth_market::AdjudicatorAllowlist` (the old singleton
-//! allowlist) and `sooth_adjudicator::Adjudicator` (the old per-market PDA
-//! in a separate program). In the merged `sooth_core`, a single PDA per
-//! market records the adjudicator identity + attestation state.
+//! A single PDA per market records the adjudicator identity + attestation
+//! state.
 //!
 //! ## PDA seed convention
 //!

@@ -1,11 +1,7 @@
 //! `claim_unlocked` — drain a single `LockEntry` after its 24h lock elapses.
 //!
-//! Adapted from `sooth_amm::claim_unlocked`. The CPI into
-//! `sooth_market::transfer_from_lock_vault` is replaced with a direct
-//! PDA-signed `token::transfer` from `lock_vault → user_usdc_ata`, signed by
-//! `lock_authority` which is now a PDA owned by this program.
-//! `sooth_market_program` and `instruction_sysvar` accounts are removed.
-//! `seeds::program` constraints removed.
+//! Transfers from `lock_vault → user_usdc_ata` via a PDA-signed
+//! `token::transfer`, signed by the `lock_authority` PDA.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};

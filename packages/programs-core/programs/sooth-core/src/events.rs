@@ -1,25 +1,9 @@
 //! Events emitted by `sooth_core`.
 //!
-//! Merged from sooth_market, sooth_amm, sooth_launchpad, sooth_adjudicator,
-//! and sooth_book. Solana logs are best-effort (architecture §3); indexers
-//! must subscribe live or rely on the Geyser/webhook pipeline.
+//! Solana logs are best-effort (architecture §3); indexers must subscribe
+//! live or rely on the Geyser/webhook pipeline.
 
 use anchor_lang::prelude::*;
-
-// ── sooth_market ─────────────────────────────────────────────────────────────
-
-#[event]
-pub struct MarketInitialized {
-    pub market: Pubkey,
-    pub creator: Pubkey,
-    pub adjudicator: Pubkey,
-    pub yes_mint: Pubkey,
-    pub no_mint: Pubkey,
-    pub vault: Pubkey,
-    pub start_time: i64,
-    pub deadline: i64,
-    pub ts: i64,
-}
 
 /// Mirror of EVM `OrderEngine.Minted` (`OrderEngine.sol:124`).
 #[event]
@@ -86,7 +70,7 @@ pub struct RefundClaimed {
     pub amount_usdc: u64,
 }
 
-// ── sooth_amm ─────────────────────────────────────────────────────────────────
+// ── AMM ──────────────────────────────────────────────────────────────────────
 
 #[event]
 pub struct PositionTraded {
@@ -114,16 +98,6 @@ pub struct MarketDismissed {
     pub market: Pubkey,
     pub creator: Pubkey,
     pub dismissed_at: i64,
-}
-
-// Stubbed for now — referenced from the architecture spec but not wired in
-// this scaffold. See architecture §8 (fee router).
-#[event]
-pub struct LiquidityProvided {
-    pub market: Pubkey,
-    pub user: Pubkey,
-    pub lp_amount: u64,
-    pub ts: i64,
 }
 
 /// Emitted on the sell branch of `trade_positions` after the proceeds have
@@ -158,7 +132,7 @@ pub struct LockClaimed {
     pub ts: i64,
 }
 
-// ── sooth_launchpad ───────────────────────────────────────────────────────────
+// ── Market creation / LP ─────────────────────────────────────────────────────
 
 /// Mirror of EVM `LaunchpadEngine.MarketCreated`. Emitted by `create_market`
 /// after the four instruction legs land (architecture §4.1).
@@ -236,7 +210,7 @@ pub struct LpRedeemed {
     pub usdc_paid: u64,
 }
 
-// ── sooth_adjudicator ─────────────────────────────────────────────────────────
+// ── Adjudicator / resolution ─────────────────────────────────────────────────
 
 /// Emitted by `register_adjudicator` when a new per-market `AdjudicatorEntry`
 /// PDA is created. Mirrors EVM `AdjudicatorBase.MarketConfigured`.
@@ -271,7 +245,7 @@ pub struct DisputeRaised {
     pub ts: i64,
 }
 
-// ── sooth_book ────────────────────────────────────────────────────────────────
+// ── Orderbook (CLOB) ─────────────────────────────────────────────────────────
 
 #[event]
 pub struct OrderPlaced {
@@ -303,7 +277,7 @@ pub struct DustOrderSkipped {
     pub escrow: bool,
 }
 
-// ── sooth_core (new) ──────────────────────────────────────────────────────────
+// ── Protocol / circuit-breaker ───────────────────────────────────────────────
 
 /// Emitted by `pause` and `unpause`. `paused = true` means the protocol was
 /// just paused; `paused = false` means it was just unpaused.

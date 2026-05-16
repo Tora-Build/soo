@@ -1,9 +1,8 @@
 //! `lock_for_resolution` — halt trading; market enters Locked state pending
 //! adjudicator outcome.
 //!
-//! Adapted from `sooth_market::lock_for_resolution`. Parent-ix introspection
-//! is removed (everything is in one program). Auth is via `AdjudicatorEntry`
-//! directly — the signer must be `adjudicator_entry.authority`.
+//! Auth is via `AdjudicatorEntry` directly — the signer must be
+//! `adjudicator_entry.authority`.
 
 use anchor_lang::prelude::*;
 

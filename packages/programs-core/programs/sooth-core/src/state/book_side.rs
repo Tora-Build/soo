@@ -1,7 +1,4 @@
 //! `BookSide` — per-tick resting order list for the CLOB.
-//!
-//! Adapted from `sooth_book::state::BookSide`. Seeds and layout are unchanged;
-//! the owning program is now `sooth_core`.
 
 use anchor_lang::prelude::*;
 

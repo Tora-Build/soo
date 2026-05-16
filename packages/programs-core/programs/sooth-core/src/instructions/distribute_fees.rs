@@ -1,9 +1,5 @@
 //! `distribute_fees` — drain one market's fee-pool USDC vault and split the
 //! proceeds across the four destinations per architecture §8 / SoothBook §9.5.
-//!
-//! Adapted from `sooth_launchpad::distribute_fees`. `market` is now typed
-//! `Account<'info, Market>` (no `seeds::program`). `compute_fee_split` is
-//! preserved verbatim.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -72,8 +68,7 @@ pub(crate) struct FeeSplit {
 }
 
 /// Compute 4-way fee split. Floor division for first three slices, remainder
-/// to protocol (no dust loss). Preserved verbatim from
-/// `sooth_launchpad::distribute_fees::compute_fee_split`.
+/// to protocol (no dust loss).
 pub(crate) fn compute_fee_split(total: u64, cfg: &ProtocolConfig) -> Result<FeeSplit> {
     let b_base_bps = cfg.b_base_share_bps as u128;
     let lp_yield_bps = cfg.lp_yield_share_bps as u128;

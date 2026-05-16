@@ -1,7 +1,6 @@
 //! `buy` — place or match a YES (SIDE_FOR=0) or NO (SIDE_AGAINST=1) order on the CLOB.
 //!
-//! Merged from `buy_yes.rs` + `buy_no.rs`. The `side` parameter selects which
-//! book_side PDA is opened; everything else is identical.
+//! The `side` parameter selects which book_side PDA is opened.
 
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;

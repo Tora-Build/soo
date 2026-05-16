@@ -1,6 +1,4 @@
 //! `MarketLifecycle` — state machine for the market lifecycle.
-//!
-//! Copied verbatim from `sooth_market::state::lifecycle`.
 
 use anchor_lang::prelude::*;
 

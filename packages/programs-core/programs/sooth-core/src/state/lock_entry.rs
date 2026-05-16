@@ -1,7 +1,4 @@
 //! `LockEntry` — 24h lock escrow for AMM sell proceeds.
-//!
-//! Copied verbatim from `sooth_amm::state::LockEntry`. Seeds and layout
-//! are unchanged; the owning program is now `sooth_core`.
 
 use anchor_lang::prelude::*;
 

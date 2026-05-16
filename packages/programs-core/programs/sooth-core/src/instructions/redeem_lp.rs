@@ -1,7 +1,4 @@
 //! `redeem_lp` — burn post-graduation LP shares for pro-rata USDC yield.
-//!
-//! Adapted from `sooth_launchpad::redeem_lp`. `amm_state` seeds have no
-//! `seeds::program`. `AmmState` is now this program's own type.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};

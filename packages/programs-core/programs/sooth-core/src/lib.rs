@@ -1,10 +1,9 @@
-//! `sooth_core` — merged Sooth Protocol program.
+//! `sooth_core` — the Sooth Protocol program.
 //!
-//! Consolidates sooth_market, sooth_amm, sooth_launchpad, sooth_adjudicator,
-//! and sooth_book into a single Anchor program. All inter-program CPIs are
-//! replaced with direct Rust function calls. Parent-ix introspection removed
-//! for all internal flows. AdjudicatorAllowlist replaced by per-market
-//! AdjudicatorEntry PDAs.
+//! A single Anchor program covering market lifecycle, the LMSR AMM, the CLOB,
+//! LP/launchpad flows, and adjudication. Subsystems call each other as plain
+//! Rust functions, not CPIs. Resolution authority is a per-market
+//! `AdjudicatorEntry` PDA.
 
 #![allow(clippy::result_large_err)]
 #![allow(unexpected_cfgs)]

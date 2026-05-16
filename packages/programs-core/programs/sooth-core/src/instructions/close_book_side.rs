@@ -1,7 +1,4 @@
 //! `close_book_side` — permissionlessly close a fully-drained `BookSide`.
-//!
-//! Adapted from `sooth_book::close_book_side`. `seeds::program` removed from
-//! `market`. `market` typed from this crate. Logic unchanged.
 
 use anchor_lang::prelude::*;
 

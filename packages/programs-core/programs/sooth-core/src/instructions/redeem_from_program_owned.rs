@@ -1,6 +1,4 @@
 //! `redeem_from_program_owned` — variant of redeem for split-destination flows.
-//!
-//! Adapted from `sooth_market::redeem_from_program_owned`.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};

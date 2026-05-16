@@ -1,14 +1,6 @@
 //! `register_adjudicator` — create the per-market `AdjudicatorEntry` PDA.
 //!
-//! Adapted from `sooth_adjudicator::register_adjudicator`. Changes:
-//!   - `Adjudicator` + `AdjudicatorKind` replaced with `AdjudicatorEntry`
-//!     (no `kind` field in the merged design).
-//!   - `AdjudicatorAllowlist` check removed (allowlist replaced by
-//!     per-market `AdjudicatorEntry`).
-//!   - `seeds::program` removed from `market`.
-//!   - No `AdjudicatorKind` argument.
-//!   - v1 auth: `signer.key() == market.creator` (same collapsed-role as
-//!     original v1 adjudicator).
+//! v1 auth: `signer.key() == market.creator`.
 
 use anchor_lang::prelude::*;
 

@@ -1,6 +1,6 @@
 // H5 (Codex): submit-failure path. The buy smoke covers the green path;
 // this file proves that a guaranteed-fail tx (here: outcome=2, which fails
-// the on-chain `outcome == NO || outcome == YES` guard with code 6001
+// the on-chain `outcome == NO || outcome == YES` guard with code 6003
 // `InvalidOutcome`) raises a `SoothError` instead of being swallowed.
 //
 // Without the fix, `submit` returned a SubmitReceipt for failed txs because
@@ -61,7 +61,7 @@ import { bootSmoke } from "./fixtures/setup.js";
 import { BankrunConnection } from "./fixtures/bankrun-connection.js";
 
 describe("submit failure surfacing", () => {
-  it("InvalidOutcome (code 6001) raises SoothError, not silent receipt", async () => {
+  it("InvalidOutcome (code 6003) raises SoothError, not silent receipt", async () => {
     const smoke = await bootSmoke({
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
@@ -135,7 +135,7 @@ describe("submit failure surfacing", () => {
 
     const badIx: TransactionInstruction = await (program.methods as any)
       .tradePositions(
-        2, // INVALID outcome — guard returns 6001 InvalidOutcome
+        2, // INVALID outcome — guard returns 6003 InvalidOutcome
         new BN((1n * WAD).toString()),
         new BN((10n * WAD).toString()),
       )
@@ -168,7 +168,7 @@ describe("submit failure surfacing", () => {
     // appears in the TradePositions account struct before `user_lp_ata`, so a
     // missing fee pool surfaces as `AccountNotInitialized = 3012` before the
     // handler even reaches the `outcome` guard. We init it here so the fee
-    // pool exists when the bad ix runs. The whole tx rolls back on the 6001
+    // pool exists when the bad ix runs. The whole tx rolls back on the 6003
     // failure, so the fee pool is not persisted — that is the correct outcome.
     const [feePoolAuthority] = deriveFeePoolAuthorityPda(smoke.programs);
     const [feePoolPda] = marketFeePoolPda(smoke.marketId, smoke.programs);
@@ -191,7 +191,7 @@ describe("submit failure surfacing", () => {
     // authority = user` constraint BEFORE the handler's `outcome`
     // validation, so a missing LP ATA would surface as
     // `AccountNotInitialized = 3012` rather than the `InvalidOutcome
-    // = 6001` we want to assert. Match the same pre-ix `buildTrade`
+    // = 6003` we want to assert. Match the same pre-ix `buildTrade`
     // ships through `meta.preIxs`.
     const lpAtaCreateIx = createAssociatedTokenAccountIdempotentInstruction(
       smoke.user.publicKey,
@@ -265,12 +265,12 @@ describe("submit failure surfacing", () => {
     }
     expect(caught).toBeInstanceOf(SoothError);
     const err = caught as SoothError;
-    // Code 6005 = InvalidOutcome in the merged SoothCoreError enum → mapped to
+    // Code 6003 = InvalidOutcome in the SoothCoreError enum → mapped to
     // "ProgramError" in the error table (we only mark slippage/insufficient/
     // lifecycle codes as semantic SoothError variants; the rest stay as
     // ProgramError with the code).
     expect(err.kind).toBe("ProgramError");
-    expect(err.fields.code).toBe(6005);
+    expect(err.fields.code).toBe(6003);
     // H5 2nd-pass: program errors are terminal — never retry. The classifier
     // stamps `attempt: 1` on the SoothError so callers can correlate with
     // SubmitReceipt.attempts (which is absent here because we threw).
@@ -455,9 +455,9 @@ describe("submit retry policy", () => {
   it("terminal program error: throws on attempt 1, no retry", async () => {
     const conn = new MockConnection({
       send: () => {
-        // Anchor user-error 6001 = InvalidOutcome → 0x1771 hex.
+        // Anchor user-error 6003 = InvalidOutcome → 0x1773 hex.
         return new Error(
-          "Transaction simulation failed: Error processing Instruction 0: custom program error: 0x1771",
+          "Transaction simulation failed: Error processing Instruction 0: custom program error: 0x1773",
         );
       },
     });
@@ -472,7 +472,7 @@ describe("submit retry policy", () => {
     expect(caught).toBeInstanceOf(SoothError);
     const err = caught as SoothError;
     expect(err.kind).toBe("ProgramError");
-    expect(err.fields.code).toBe(6001);
+    expect(err.fields.code).toBe(6003);
     expect(err.fields.attempt).toBe(1);
     // Mock observed exactly one send — no retry on terminal program error.
     expect(conn.attempts).toBe(1);

@@ -1,7 +1,5 @@
 //! `mint_complete_set_to_program_owned` — pull USDC from payer, mint YES + NO
 //! into accounts owned by a separate destination authority.
-//!
-//! Adapted from `sooth_market::mint_complete_set_to_program_owned`.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount, Transfer};

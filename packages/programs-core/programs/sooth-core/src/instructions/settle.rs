@@ -1,8 +1,7 @@
 //! `settle` — finalize a Locked market with the adjudicator's winning outcome.
 //!
-//! Adapted from `sooth_market::settle`. Parent-ix introspection removed.
-//! This is called directly from `attest_outcome` and `dispute` (both in the
-//! same program), so the signer is the adjudicator `authority`.
+//! Called from `attest_outcome` and `dispute`, so the signer is the
+//! adjudicator `authority`.
 
 use anchor_lang::prelude::*;
 

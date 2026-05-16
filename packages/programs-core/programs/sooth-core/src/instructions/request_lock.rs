@@ -1,13 +1,7 @@
 //! `request_lock` — adjudicator-side entry point that transitions a market
 //! from `Open` → `Locked`.
 //!
-//! Adapted from `sooth_adjudicator::request_lock`. Changes:
-//!   - The CPI into `sooth_market::lock_for_resolution` is replaced with a
-//!     direct call to `lock_for_resolution::handler_internal`.
-//!   - `sooth_market_program` and `instruction_sysvar` accounts removed.
-//!   - `Adjudicator` PDA replaced with `AdjudicatorEntry`.
-//!   - Auth: `authority.key() == adjudicator_entry.authority` (unchanged
-//!     semantics, different struct field path).
+//! Auth: `authority.key() == adjudicator_entry.authority`.
 
 use anchor_lang::prelude::*;
 

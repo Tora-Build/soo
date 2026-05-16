@@ -1,7 +1,6 @@
 //! `ProtocolConfig` — singleton on-chain protocol configuration.
 //!
-//! Merged from `sooth_launchpad::state::ProtocolConfig`. Adds `paused: bool`
-//! for the circuit-breaker pattern requested in the merge spec.
+//! Includes `paused: bool` for the circuit-breaker.
 //!
 //! ## Fee split (mirrors EVM `FeeRouter` defaults)
 //!

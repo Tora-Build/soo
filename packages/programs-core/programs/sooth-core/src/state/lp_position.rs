@@ -1,6 +1,4 @@
 //! `LpPosition` — per-(creator, market) LP claim record.
-//!
-//! Copied verbatim from `sooth_launchpad::state::LpPosition`.
 
 use anchor_lang::prelude::*;
 

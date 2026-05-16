@@ -1,7 +1,4 @@
 //! `Position` — per-(user, market) AMM position.
-//!
-//! Copied verbatim from `sooth_amm::state::Position`. Seeds and layout
-//! are unchanged; the owning program is now `sooth_core`.
 
 use anchor_lang::prelude::*;
 

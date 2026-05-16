@@ -1,6 +1,4 @@
 //! Book math — tick constants and helpers for the CLOB orderbook.
-//!
-//! Adapted from `sooth_book::math`. `CoreError` → `SoothCoreError`.
 
 use anchor_lang::prelude::*;
 

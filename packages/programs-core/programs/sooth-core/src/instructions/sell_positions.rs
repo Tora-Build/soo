@@ -1,16 +1,8 @@
 //! `sell_positions` — sell YES/NO shares against the LMSR with lock-on-sell.
 //!
-//! Adapted from `sooth_amm::sell_positions`. All CPIs into other programs
-//! are replaced with direct PDA-signed token transfers:
-//!   - `sooth_market::transfer_fee_to_market_pool` → direct PDA-signed
-//!     `token::transfer(market_vault → market_fee_pool)`.
-//!   - `sooth_market::transfer_to_lock` → direct PDA-signed
-//!     `token::transfer(market_vault → lock_vault)`.
-//!
-//! `sooth_market_program`, `instruction_sysvar`, `seeds::program` constraints
-//! removed. `protocol_config` is now typed `Account<'info, ProtocolConfig>`.
-//! `market_fee_pool` seeds no longer carry `seeds::program`.
-//! `lock_authority` is now a PDA owned by this program.
+//! Uses PDA-signed token transfers:
+//!   - `token::transfer(market_vault → market_fee_pool)`.
+//!   - `token::transfer(market_vault → lock_vault)`.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};

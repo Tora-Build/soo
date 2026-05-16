@@ -1,6 +1,4 @@
 //! `LegacyFeeDrainMarker` — one-shot guard for the pre-W5 global fee pool drain.
-//!
-//! Copied verbatim from `sooth_launchpad::state::LegacyFeeDrainMarker`.
 
 use anchor_lang::prelude::*;
 

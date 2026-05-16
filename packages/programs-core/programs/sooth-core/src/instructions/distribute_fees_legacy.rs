@@ -1,9 +1,6 @@
 //! `distribute_fees_legacy` — one-shot drain for the pre-W5 global fee pool.
 //!
-//! Adapted from `sooth_launchpad::distribute_fees_legacy`. No changes to logic;
-//! `seeds::program` constraints removed, `ProtocolConfig` is now `sooth_core`'s
-//! own type, `compute_fee_split` is imported from this crate's
-//! `distribute_fees` module.
+//! `compute_fee_split` is imported from this crate's `distribute_fees` module.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};

@@ -54,11 +54,6 @@ const CATALOG: Record<string, KnownClassifiedError> = {
       "Price moved against you. Adjust your slippage tolerance or wait for stable prices.",
     retriable: false,
   },
-  InvalidParentInstruction: {
-    category: "auth",
-    message: "Internal: parent-ix gate rejected. Please report.",
-    retriable: false,
-  },
   WrongBaseMint: {
     category: "protocol-internal",
     message: "Mint mismatch detected. Please report.",
@@ -105,16 +100,16 @@ const ALIASES: Record<string, keyof typeof CATALOG> = {
 };
 
 const NUMERIC_CODES: Record<number, keyof typeof CATALOG> = {
-  // sooth_book::CoreError, Anchor user errors start at 6000.
-  6002: "OrderIdSeedMismatch",
-  6003: "MathOverflow",
-  6005: "BookSideFull",
-  6008: "WrongBaseMint",
-  6009: "BaseMintDrift",
-  6010: "AccumulatorNotReset",
-  6015: "MissingCrossingBookSide",
-  6016: "MakerAccountMismatch",
-  6017: "WrongBundleArity",
+  // sooth_core SoothCoreError ordinals (Anchor user errors start at 6000).
+  6006: "MathOverflow",
+  6043: "OrderIdSeedMismatch",
+  6044: "BookSideFull",
+  6047: "WrongBaseMint",
+  6048: "BaseMintDrift",
+  6049: "AccumulatorNotReset",
+  6051: "MissingCrossingBookSide",
+  6052: "MakerAccountMismatch",
+  6053: "WrongBundleArity",
 };
 
 export function classifyError(

@@ -1,6 +1,5 @@
 //! `pause` — set the protocol circuit-breaker (`ProtocolConfig.paused = true`).
 //!
-//! New instruction — not present in the multi-program architecture.
 //! Auth: `config.authority` must sign. Permissionless callers are rejected.
 //! Idempotent (no error if already paused).
 

@@ -1,6 +1,4 @@
 //! Order ID encoding/decoding for the CLOB.
-//!
-//! Adapted from `sooth_book::state::order_id`. CoreError → SoothCoreError.
 
 use anchor_lang::prelude::*;
 

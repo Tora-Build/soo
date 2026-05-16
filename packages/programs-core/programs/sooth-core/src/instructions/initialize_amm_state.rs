@@ -1,7 +1,4 @@
 //! `initialize_amm_state` — create the per-market AMM cursor.
-//!
-//! Adapted from `sooth_amm::initialize_amm_state`. `seeds::program` on
-//! `market` is removed (everything is now in the same program).
 
 use anchor_lang::prelude::*;
 

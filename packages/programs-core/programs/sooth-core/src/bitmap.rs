@@ -1,6 +1,6 @@
 //! `TickBitmap` — 1000-tick bitset for the CLOB orderbook.
 //!
-//! Copied verbatim from `sooth_book::bitmap`. Pure math, no program dependencies.
+//! Pure math, no program dependencies.
 
 use crate::math::book::{MAX_TICK, MIN_TICK};
 

@@ -1,7 +1,4 @@
 //! `cancel_by_id` — cancel a specific order by its 64-bit order ID.
-//!
-//! Adapted from `sooth_book::cancel_by_id`. Same CPI-to-direct adaptations
-//! as `cancel.rs`. `seeds::program` removed. `market` typed from this crate.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount};

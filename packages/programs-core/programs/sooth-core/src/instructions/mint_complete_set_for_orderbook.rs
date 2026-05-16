@@ -1,7 +1,5 @@
 //! `mint_complete_set_for_orderbook` — pull USDC from user, credit shares
 //! to the user's `OrderbookPosition` (no SPL outcome tokens minted).
-//!
-//! Adapted from `sooth_market::mint_complete_set_for_orderbook`.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};

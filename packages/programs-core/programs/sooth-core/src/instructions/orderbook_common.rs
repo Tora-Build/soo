@@ -1,8 +1,4 @@
 //! Orderbook helpers shared by the CLOB instructions.
-//!
-//! Adapted from `sooth_market::instructions::orderbook_common`.
-//! In `sooth_core`, `protocol_config` is a typed `Account<'info, ProtocolConfig>`,
-//! so `read_fee_bps` reads the field directly instead of raw-parsing bytes.
 
 use anchor_lang::prelude::*;
 

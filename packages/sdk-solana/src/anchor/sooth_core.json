@@ -4409,19 +4409,6 @@
       ]
     },
     {
-      "name": "LiquidityProvided",
-      "discriminator": [
-        94,
-        97,
-        39,
-        34,
-        15,
-        96,
-        79,
-        135
-      ]
-    },
-    {
       "name": "LockClaimed",
       "discriminator": [
         226,
@@ -4510,19 +4497,6 @@
         76,
         225,
         23
-      ]
-    },
-    {
-      "name": "MarketInitialized",
-      "discriminator": [
-        134,
-        160,
-        122,
-        87,
-        50,
-        3,
-        255,
-        81
       ]
     },
     {
@@ -4677,361 +4651,281 @@
     },
     {
       "code": 6001,
-      "name": "MarketNotLocked",
-      "msg": "Market is not in the Locked lifecycle state"
-    },
-    {
-      "code": 6002,
       "name": "MarketNotSettled",
       "msg": "Market is not Settled"
     },
     {
-      "code": 6003,
+      "code": 6002,
       "name": "InvalidLifecycleTransition",
       "msg": "Lifecycle transition not permitted from current state"
     },
     {
-      "code": 6004,
-      "name": "NotAdjudicator",
-      "msg": "Caller is not the registered adjudicator for this market"
-    },
-    {
-      "code": 6005,
+      "code": 6003,
       "name": "InvalidOutcome",
       "msg": "Invalid outcome (must be NO=0, YES=1, or INVALID=2)"
     },
     {
-      "code": 6006,
+      "code": 6004,
       "name": "ZeroAmount",
       "msg": "Amount must be non-zero"
     },
     {
-      "code": 6007,
+      "code": 6005,
       "name": "InsufficientOutcomeShares",
       "msg": "Insufficient outcome-token balance"
     },
     {
-      "code": 6008,
+      "code": 6006,
       "name": "MathOverflow",
       "msg": "Math overflow"
     },
     {
-      "code": 6009,
+      "code": 6007,
       "name": "VaultAuthorityMismatch",
       "msg": "Vault / mint authority mismatch"
     },
     {
-      "code": 6010,
+      "code": 6008,
       "name": "InvalidDeadline",
       "msg": "Deadline must be greater than start_time"
     },
     {
-      "code": 6011,
+      "code": 6009,
       "name": "AdjudicatorIsDefault",
       "msg": "Adjudicator pubkey must not be the default (all-zero) key"
     },
     {
-      "code": 6012,
-      "name": "AdjudicatorNotAllowlisted",
-      "msg": "Adjudicator pubkey is not present on the on-chain allowlist"
-    },
-    {
-      "code": 6013,
-      "name": "AllowlistAuthorityMismatch",
-      "msg": "Caller is not the registered allowlist authority"
-    },
-    {
-      "code": 6014,
-      "name": "AllowlistFull",
-      "msg": "Adjudicator allowlist is full (capacity exhausted)"
-    },
-    {
-      "code": 6015,
-      "name": "AdjudicatorAlreadyAllowlisted",
-      "msg": "Adjudicator pubkey is already present on the allowlist"
-    },
-    {
-      "code": 6016,
-      "name": "AdjudicatorNotPresent",
-      "msg": "Adjudicator pubkey is not present on the allowlist"
-    },
-    {
-      "code": 6017,
-      "name": "InvalidParentInstruction",
-      "msg": "Helper ixs must be CPI'd from sooth_amm; direct calls are rejected."
-    },
-    {
-      "code": 6018,
+      "code": 6010,
       "name": "MarketNotDismissed",
       "msg": "Market is not dismissed"
     },
     {
-      "code": 6019,
-      "name": "InvalidSysvar",
-      "msg": "Invalid instructions sysvar account"
-    },
-    {
-      "code": 6020,
+      "code": 6011,
       "name": "TradingClosed",
       "msg": "Trading window has closed (now >= deadline)"
     },
     {
-      "code": 6021,
+      "code": 6012,
       "name": "InvalidTick",
       "msg": "Invalid tick"
     },
     {
-      "code": 6022,
+      "code": 6013,
       "name": "AmountTooSmallForBaseTokenDecimals",
       "msg": "Amount too small for base token decimals"
     },
     {
-      "code": 6023,
+      "code": 6014,
       "name": "SlippageExceeded",
       "msg": "Slippage: cost exceeded max_cost_wad"
     },
     {
-      "code": 6024,
+      "code": 6015,
       "name": "ZeroDelta",
       "msg": "delta_shares must be non-zero"
     },
     {
-      "code": 6025,
+      "code": 6016,
       "name": "InsufficientShares",
       "msg": "Insufficient shares to sell"
     },
     {
-      "code": 6026,
+      "code": 6017,
       "name": "MarketDismissed",
       "msg": "Market is dismissed"
     },
     {
-      "code": 6027,
-      "name": "LmsrOverflow",
-      "msg": "LMSR math overflow or domain error"
-    },
-    {
-      "code": 6028,
+      "code": 6018,
       "name": "InvalidLiquidity",
       "msg": "Liquidity parameter b must be > 0"
     },
     {
-      "code": 6029,
+      "code": 6019,
       "name": "Unauthorized",
       "msg": "Caller is not authorized for this action (creator mismatch)"
     },
     {
-      "code": 6030,
+      "code": 6020,
       "name": "TradingNotStarted",
       "msg": "Trading window has not started yet (now < start_time)"
     },
     {
-      "code": 6031,
+      "code": 6021,
       "name": "SellNotImplemented",
       "msg": "Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3"
     },
     {
-      "code": 6032,
+      "code": 6022,
       "name": "LockNotElapsed",
       "msg": "Lock has not elapsed yet (now < lock_entry.unlock_at)"
     },
     {
-      "code": 6033,
+      "code": 6023,
       "name": "LockVaultMismatch",
       "msg": "Lock vault account does not match market.lock_vault"
     },
     {
-      "code": 6034,
+      "code": 6024,
       "name": "TrialNotExpired",
       "msg": "Trial period has not expired yet"
     },
     {
-      "code": 6035,
+      "code": 6025,
       "name": "AlreadyGraduated",
       "msg": "Market has already graduated"
     },
     {
-      "code": 6036,
+      "code": 6026,
       "name": "AlreadyDismissed",
       "msg": "Market has already been dismissed"
     },
     {
-      "code": 6037,
+      "code": 6027,
       "name": "AmmStateMarketMismatch",
       "msg": "AmmState market backlink does not match market account"
     },
     {
-      "code": 6038,
+      "code": 6028,
       "name": "FeeBpsOutOfRange",
       "msg": "Fee bps must not exceed 10000 (100%)"
     },
     {
-      "code": 6039,
+      "code": 6029,
       "name": "FeeSplitMismatch",
       "msg": "Fee split bps do not sum to 10000"
     },
     {
-      "code": 6040,
+      "code": 6030,
       "name": "InvalidTreasury",
       "msg": "Treasury pubkey must be non-default"
     },
     {
-      "code": 6041,
+      "code": 6031,
       "name": "InvalidTrialPeriod",
       "msg": "Default trial period must be > 0"
     },
     {
-      "code": 6042,
-      "name": "AlreadyInitialized",
-      "msg": "Protocol config already initialized"
-    },
-    {
-      "code": 6043,
+      "code": 6032,
       "name": "NothingToDistribute",
       "msg": "Fee pool is empty — nothing to distribute"
     },
     {
-      "code": 6044,
+      "code": 6033,
       "name": "NotGraduated",
       "msg": "Market is not graduated"
     },
     {
-      "code": 6045,
+      "code": 6034,
       "name": "ZeroLpAmount",
       "msg": "LP amount must be > 0"
     },
     {
-      "code": 6046,
+      "code": 6035,
       "name": "EmptyLpSupply",
       "msg": "LP supply is empty"
     },
     {
-      "code": 6047,
+      "code": 6036,
       "name": "LegacyDrainAlreadyExecuted",
       "msg": "Legacy fee drain already executed"
     },
     {
-      "code": 6048,
+      "code": 6037,
       "name": "NotAuthority",
       "msg": "Caller is not the registered authority for this adjudicator"
     },
     {
-      "code": 6049,
-      "name": "UnsupportedKind",
-      "msg": "Adjudicator kind does not support this operation"
-    },
-    {
-      "code": 6050,
+      "code": 6038,
       "name": "AlreadyAttested",
       "msg": "Adjudicator has already attested an outcome; re-attestation is not permitted"
     },
     {
-      "code": 6051,
-      "name": "NotAttested",
-      "msg": "Adjudicator has not yet attested an outcome"
-    },
-    {
-      "code": 6052,
+      "code": 6039,
       "name": "AdjudicatorMarketMismatch",
       "msg": "Adjudicator account does not match the supplied market"
     },
     {
-      "code": 6053,
-      "name": "AuthorityIsDefault",
-      "msg": "Authority pubkey must not be the default (all-zero) key"
-    },
-    {
-      "code": 6054,
-      "name": "DisputeNotImplemented",
-      "msg": "Dispute path is not implemented in v1; see architecture §4.4"
-    },
-    {
-      "code": 6055,
-      "name": "NotDisputeAuthority",
-      "msg": "Caller is not the registered dispute authority for this adjudicator"
-    },
-    {
-      "code": 6056,
+      "code": 6040,
       "name": "AlreadyDisputed",
       "msg": "Adjudicator has already been disputed; dispute is one-shot per market"
     },
     {
-      "code": 6057,
+      "code": 6041,
       "name": "MarketAlreadySettled",
       "msg": "Market is already settled; dispute can no longer override the outcome"
     },
     {
-      "code": 6058,
+      "code": 6042,
       "name": "InvalidOrderId",
       "msg": "Order id is outside the supported composite encoding range"
     },
     {
-      "code": 6059,
+      "code": 6043,
       "name": "OrderIdSeedMismatch",
       "msg": "Decoded order id does not match the requested side or tick"
     },
     {
-      "code": 6060,
+      "code": 6044,
       "name": "BookSideFull",
       "msg": "Book side is full for this tick"
     },
     {
-      "code": 6061,
+      "code": 6045,
       "name": "BookSideNotDrained",
       "msg": "Book side is not fully drained"
     },
     {
-      "code": 6062,
+      "code": 6046,
       "name": "CompactBoundExceeded",
       "msg": "Compaction drop count exceeds the per-call bound"
     },
     {
-      "code": 6063,
+      "code": 6047,
       "name": "WrongBaseMint",
       "msg": "Market vault uses the wrong base mint"
     },
     {
-      "code": 6064,
+      "code": 6048,
       "name": "BaseMintDrift",
       "msg": "MarketBook base mint does not match the market vault mint"
     },
     {
-      "code": 6065,
+      "code": 6049,
       "name": "AccumulatorNotReset",
       "msg": "MarketBook accumulators must be reset before placing an order"
     },
     {
-      "code": 6066,
+      "code": 6050,
       "name": "NoCancellableOrder",
       "msg": "No cancellable order was found"
     },
     {
-      "code": 6067,
+      "code": 6051,
       "name": "MissingCrossingBookSide",
       "msg": "Remaining-account bundle does not carry the crossing BookSide"
     },
     {
-      "code": 6068,
+      "code": 6052,
       "name": "MakerAccountMismatch",
       "msg": "Remaining-account bundle maker does not match the live order maker"
     },
     {
-      "code": 6069,
+      "code": 6053,
       "name": "WrongBundleArity",
       "msg": "Remaining-account bundles must contain exactly three accounts per fill"
     },
     {
-      "code": 6070,
+      "code": 6054,
       "name": "ProtocolPaused",
       "msg": "Protocol is paused; all state-mutating instructions are disabled"
     },
     {
-      "code": 6071,
+      "code": 6055,
       "name": "NotYetAttested",
       "msg": "Adjudicator has not yet attested an outcome for this market"
     },
     {
-      "code": 6072,
+      "code": 6056,
       "name": "TradingNotClosed",
       "msg": "Trading window has not closed yet (now < deadline)"
     }
@@ -5575,30 +5469,6 @@
       }
     },
     {
-      "name": "LiquidityProvided",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "market",
-            "type": "pubkey"
-          },
-          {
-            "name": "user",
-            "type": "pubkey"
-          },
-          {
-            "name": "lp_amount",
-            "type": "u64"
-          },
-          {
-            "name": "ts",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
       "name": "LockClaimed",
       "docs": [
         "Emitted by `claim_unlocked` after a successful payout. Mirrors the EVM",
@@ -6045,50 +5915,6 @@
           {
             "name": "threshold_wad",
             "type": "u128"
-          }
-        ]
-      }
-    },
-    {
-      "name": "MarketInitialized",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "market",
-            "type": "pubkey"
-          },
-          {
-            "name": "creator",
-            "type": "pubkey"
-          },
-          {
-            "name": "adjudicator",
-            "type": "pubkey"
-          },
-          {
-            "name": "yes_mint",
-            "type": "pubkey"
-          },
-          {
-            "name": "no_mint",
-            "type": "pubkey"
-          },
-          {
-            "name": "vault",
-            "type": "pubkey"
-          },
-          {
-            "name": "start_time",
-            "type": "i64"
-          },
-          {
-            "name": "deadline",
-            "type": "i64"
-          },
-          {
-            "name": "ts",
-            "type": "i64"
           }
         ]
       }

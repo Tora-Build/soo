@@ -1,11 +1,8 @@
 use anchor_lang::prelude::Pubkey;
 
-// ── Program ID ───────────────────────────────────────────────────────────
-
-pub const SOOTH_CORE_PROGRAM_ID: Pubkey =
-    anchor_lang::pubkey!("BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W");
-
-// ── USDC mint ────────────────────────────────────────────────────────────
+// ── Base token mint ──────────────────────────────────────────────────────
+// The program ID is registered by `declare_id!` in lib.rs; use Anchor's
+// `crate::ID` where the program's own pubkey is needed.
 
 pub const USDC_MINT_MAINNET: Pubkey =
     anchor_lang::pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
@@ -15,26 +12,6 @@ pub const BASE_TOKEN_MINT: Pubkey = USDC_MINT_MAINNET;
 #[cfg(not(feature = "mainnet"))]
 pub const BASE_TOKEN_MINT: Pubkey =
     anchor_lang::pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
-
-pub const USDC_MINT_DEVNET: Pubkey = BASE_TOKEN_MINT;
-
-// ── pubkey_eq — compile-time assert helper ───────────────────────────────
-
-pub const fn pubkey_eq(
-    a: anchor_lang::solana_program::pubkey::Pubkey,
-    b: anchor_lang::solana_program::pubkey::Pubkey,
-) -> bool {
-    let a = a.to_bytes();
-    let b = b.to_bytes();
-    let mut i = 0;
-    while i < 32 {
-        if a[i] != b[i] {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
 
 // ── Account byte-offset constants ────────────────────────────────────────
 // Used by SPACE assertions in state types and by raw-parse helpers.

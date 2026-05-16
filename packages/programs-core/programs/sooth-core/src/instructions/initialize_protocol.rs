@@ -1,8 +1,6 @@
 //! `initialize_protocol` — singleton init for the cluster's `ProtocolConfig`.
 //!
-//! Adapted from `sooth_launchpad::initialize_protocol`.
-//! Adds `paused: false` initialization for the circuit-breaker field.
-//! All other logic is verbatim.
+//! Initializes `paused: false` for the circuit-breaker field.
 
 use anchor_lang::prelude::*;
 

@@ -1,11 +1,4 @@
 //! `cancel` — cancel the first cancellable order for `(user, side, tick)`.
-//!
-//! Adapted from `sooth_book::cancel`. Changes:
-//!   - `sooth_market_program` and `instruction_sysvar` removed.
-//!   - `seeds::program` removed from `market`, `vault_authority`,
-//!     `user_orderbook_position`.
-//!   - `deposit_for_order` / `credit_shares` are called directly (not CPI).
-//!   - `market` is typed `Account<'info, Market>` from this crate.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
