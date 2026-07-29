@@ -153,19 +153,63 @@ function hexFromBytes(bytes: Uint8Array): Hex {
   for (const b of bytes) out += b.toString(16).padStart(2, "0");
   return `0x${out}` as Hex;
 }
+
+/**
+ * Deterministic 32-byte id for inputs that are NOT market pubkeys.
+ *
+ * Upstream also packs synthetic placeholder addresses (deployments.json uses
+ * `0x…0a01` etc. to satisfy `!!engineAddress` gates), and those must not blow
+ * up — they only ever become React keys, toast ids and localStorage keys. Four
+ * FNV-1a passes with distinct offset bases fill the 32 bytes without the
+ * half-mirroring the previous implementation had, and the digest is taken over
+ * the raw UTF-8 bytes rather than a hex misparse of them.
+ *
+ * Non-cryptographic and deliberately so; nothing security-relevant reaches it.
+ */
+function foldToBytes32(text: string): Hex {
+  const bytes = new TextEncoder().encode(text);
+  const MASK = (1n << 64n) - 1n;
+  const PRIME = 0x100000001b3n;
+  const BASES = [
+    0xcbf29ce484222325n,
+    0x9dcf9f0a1b2c3d4fn,
+    0x27220a95a8b1c3d7n,
+    0x1f5e3d2c4b6a7089n,
+  ];
+  let out = "";
+  for (const base of BASES) {
+    let h = base;
+    for (const b of bytes) {
+      h = (h ^ BigInt(b)) & MASK;
+      h = (h * PRIME) & MASK;
+    }
+    out += h.toString(16).padStart(16, "0");
+  }
+  return `0x${out}` as Hex;
+}
+
 export function keccak256(input: Hex | Uint8Array): Hex {
   if (input instanceof Uint8Array) {
+    // A 32-byte buffer is already an identifier.
     if (input.length === 32) return hexFromBytes(input);
-    throw new Error(
-      `chain-shim keccak256: expected a 32-byte market pubkey, got ${input.length} bytes`,
-    );
+    return foldToBytes32(hexFromBytes(input));
   }
-  // `encodePacked` hands us "0x" + <base58 pubkey>. Decode it back to the
-  // 32 bytes it always was.
+
+  // `encodePacked` hands us "0x" + <base58 pubkey> for real markets. Decode it
+  // back to the 32 bytes it always was — that is the identity path, and the
+  // one that MUST agree with packages/sooth-data/src/market-key.ts.
   const text = input.startsWith("0x") ? input.slice(2) : input;
-  const bytes = new PublicKey(text).toBytes();
-  return hexFromBytes(bytes);
+  try {
+    const bytes = new PublicKey(text).toBytes();
+    if (bytes.length === 32) return hexFromBytes(bytes);
+  } catch {
+    // Not a pubkey — a synthetic placeholder address, an empty "0x", or an
+    // upstream bytes32 key. Must not throw: these flow through the same
+    // hook paths as real markets.
+  }
+  return foldToBytes32(text);
 }
+
 export function encodePacked(
   _types: readonly string[],
   values: readonly unknown[],

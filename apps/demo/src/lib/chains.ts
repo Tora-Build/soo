@@ -360,9 +360,19 @@ export function isSolanaChain(chain: AllowedChain): boolean {
   return chain.type === "solana";
 }
 
-// Default chain. Resolved at runtime from `demoConfig.node.cluster` so the
-// header shows the cluster the dapp is actually pointing at.
+// Default chain, resolved from the RPC the dapp is actually pointing at.
 //   localnet → 902, devnet → 901, mainnet → 900
+//
+// The fallback MUST match `demoConfig.node.rpcUrl`'s fallback (config.ts uses
+// devnet). It previously returned 900 when VITE_SOLANA_RPC_URL was unset,
+// while the node defaulted to devnet — so the two disagreed, and 900 has no
+// entry in deployments.json at all (present: 901, 902, plus the EVM chains).
+// Every contract address then resolved to undefined, which silently disabled
+// every engine-gated hook: the AMM page mounted but no quote, liquidity or
+// market-state read ever fired. That is exactly how the demo integration
+// tests fail, since vitest sets no env.
+const DEVNET_FALLBACK_CHAIN_ID = 901;
+
 function defaultChainIdFromConfig(): number {
   const env = (
     import.meta as unknown as { env?: Record<string, string | undefined> }
@@ -371,7 +381,8 @@ function defaultChainIdFromConfig(): number {
   if (rpc.startsWith("http://127.0.0.1") || rpc.startsWith("http://localhost"))
     return 902;
   if (rpc.includes("devnet")) return 901;
-  return 900;
+  if (rpc.includes("mainnet")) return 900;
+  return DEVNET_FALLBACK_CHAIN_ID;
 }
 
 export const DEFAULT_CHAIN_ID = defaultChainIdFromConfig();
