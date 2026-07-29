@@ -48,9 +48,19 @@ export interface SvmAccount {
   rentEpoch: bigint;
 }
 
+export interface SvmInnerInstruction {
+  /** Index of the top-level instruction this is a child of. */
+  index: number;
+  programIdIndex: number;
+  data: Uint8Array;
+}
+
 export interface SvmTxMeta {
   logMessages: string[];
   computeUnitsConsumed: bigint;
+  /** Inner (CPI) instructions, which is where durable events live — see the
+   *  sooth_log crate. Empty if the runtime did not record any. */
+  innerInstructions: SvmInnerInstruction[];
 }
 
 /** Result shape mirroring LiteSVM's tryProcessTransaction. */
@@ -76,9 +86,29 @@ function toKitTransaction(tx: Transaction): any {
 function readMeta(res: any): SvmTxMeta | null {
   try {
     const meta = typeof res.meta === "function" ? res.meta() : res;
+    // innerInstructions() is Array<Array<InnerInstruction>>, outer index =
+    // the top-level instruction the children belong to. That index is what a
+    // consumer needs to prove an event came from the right parent.
+    const inner: SvmInnerInstruction[] = [];
+    try {
+      const groups = meta.innerInstructions?.() ?? [];
+      groups.forEach((group: any[], index: number) => {
+        for (const entry of group ?? []) {
+          const compiled = entry.instruction();
+          inner.push({
+            index,
+            programIdIndex: compiled.programIdIndex(),
+            data: compiled.data(),
+          });
+        }
+      });
+    } catch {
+      /* runtime did not record inner instructions */
+    }
     return {
       logMessages: meta.logs?.() ?? [],
       computeUnitsConsumed: meta.computeUnitsConsumed?.() ?? 0n,
+      innerInstructions: inner,
     };
   } catch {
     return null;

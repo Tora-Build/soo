@@ -42,6 +42,7 @@ import {
   marketBookPda,
   marketFeePoolPda,
   orderbookPositionPda,
+  SOOTH_LOG_PROGRAM_ID,
 } from "../../src/pdas.js";
 
 import { LiteSvmConnection } from "./svm.js";
@@ -232,6 +233,7 @@ export async function buyTx(
       systemProgram: SystemProgram.programId,
       tokenProgram: TOKEN_PROGRAM_ID,
       rent: SYSVAR_RENT_PUBKEY,
+      soothLogProgram: SOOTH_LOG_PROGRAM_ID,
     })
     .remainingAccounts(
       args.remaining.map((pubkey) => ({

@@ -188,4 +188,7 @@ pub enum SoothCoreError {
 
     #[msg("Trading window has not closed yet (now < deadline)")]
     TradingNotClosed,
+
+    #[msg("Serialized event payload exceeds the 10 KiB instruction-data limit")]
+    EventTooLarge,
 }

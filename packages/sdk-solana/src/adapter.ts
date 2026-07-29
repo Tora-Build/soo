@@ -72,6 +72,7 @@ import {
   marketBookPda,
   marketFeePoolPda,
   orderbookPositionPda,
+  soothLogProgramId,
   SOOTH_CORE_PROGRAM_ID,
   type ProgramIds,
 } from "./pdas.js";
@@ -2972,6 +2973,9 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       readonly(SystemProgram.programId),
       readonly(TOKEN_PROGRAM_ID),
       readonly(SYSVAR_RENT_PUBKEY),
+      // Durable-log sink. `buy` invokes it with the batched OrdersFilled
+      // payload, which lands in meta.innerInstructions for indexers.
+      readonly(soothLogProgramId(this.programIds)),
       ...remainingAccounts,
     ];
 

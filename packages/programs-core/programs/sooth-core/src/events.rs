@@ -258,6 +258,36 @@ pub struct OrderPlaced {
     pub order_id: u64,
 }
 
+/// One maker fill inside a `buy`. Ticks are recorded as (yes, no) rather than
+/// (taker, maker) so a consumer never has to know which side the taker was on
+/// to price the trade.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
+pub struct FillRecord {
+    pub maker: Pubkey,
+    pub maker_order_id: u64,
+    pub yes_tick: u16,
+    pub no_tick: u16,
+    pub amount: u128,
+    /// Rebate to the taker when yes_tick + no_tick > NUM_TICKS.
+    pub surplus: u128,
+    pub ts: i64,
+}
+
+/// All fills from one `buy`, batched into a single event.
+///
+/// Batched deliberately: the P0.1 spike showed per-fill emission OOMs the
+/// 32 KB heap. Emitted by `invoke`ing `sooth_log`, not `emit!`/`emit_cpi!` —
+/// see that program's docs for why. Consumers must verify this arrives as a
+/// direct inner instruction of a successful `sooth_core::buy`; `sooth_log`
+/// itself is permissionless.
+#[event]
+pub struct OrdersFilled {
+    pub market: Pubkey,
+    pub taker: Pubkey,
+    pub taker_side: u8,
+    pub fills: Vec<FillRecord>,
+}
+
 #[event]
 pub struct OrderCancelled {
     pub market: Pubkey,

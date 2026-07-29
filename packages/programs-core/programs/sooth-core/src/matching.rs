@@ -11,6 +11,7 @@ use anchor_spl::token::{Token, TokenAccount};
 use crate::constants::BASE_TOKEN_MINT;
 
 use crate::error::SoothCoreError;
+use crate::events::FillRecord;
 use crate::math::{MAX_TICK, NUM_TICKS};
 use crate::state::{
     BookSide, InlineOrder, Market, MarketBook, OrderbookPosition, ProtocolConfig,
@@ -45,6 +46,7 @@ pub fn match_buy<'info>(
     taker_escrow: bool,
     mut match_limit: u32,
     remaining_accounts: &[AccountInfo<'info>],
+    fills: &mut Vec<FillRecord>,
 ) -> Result<u128> {
     require!(
         remaining_accounts.len() % FILL_BUNDLE_LEN == 0,
@@ -69,6 +71,7 @@ pub fn match_buy<'info>(
             amount,
             taker_escrow,
             match_limit,
+            fills,
         )?;
         amount = result.remaining;
         match_limit = result.match_limit_remaining;
@@ -96,6 +99,7 @@ pub fn match_at_tick<'info>(
     mut remaining: u128,
     taker_escrow: bool,
     mut match_limit: u32,
+    fills: &mut Vec<FillRecord>,
 ) -> Result<MatchTickResult> {
     let bundle_count = remaining_accounts.len() / FILL_BUNDLE_LEN;
     if fill_index >= bundle_count {
@@ -181,6 +185,23 @@ pub fn match_at_tick<'info>(
             .pending_taker_payout
             .checked_add(taker_payout_delta)
             .ok_or(error!(SoothCoreError::MathOverflow))?;
+
+        // Ticks are stored as (yes, no) regardless of which side the taker
+        // took, so consumers can price the trade without re-deriving sides.
+        let (yes_tick, no_tick) = if taker_side == 0 {
+            (taker_tick, opp_tick)
+        } else {
+            (opp_tick, taker_tick)
+        };
+        fills.push(FillRecord {
+            maker,
+            maker_order_id: order.id,
+            yes_tick,
+            no_tick,
+            amount: fill,
+            surplus: taker_payout_delta,
+            ts: Clock::get()?.unix_timestamp,
+        });
 
         let remaining_maker_amount = maker_amount
             .checked_sub(fill)

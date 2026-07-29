@@ -22,10 +22,12 @@ export const MAX_TICK = 999;
  * now ships a 256 KB #[global_allocator], and the measured envelope is:
  *
  *   fills   CU        writable   bytes
- *   3       ~125k     16         943
- *   4       ~169k     19         1042
- *   5       ~189k     22         1141
- *   6       —         —          1240  ← over PACKET_DATA_SIZE (1232)
+ *   3       ~124k     16         976
+ *   5       ~199k     22         1174
+ *   6       —         —          1273  ← over PACKET_DATA_SIZE (1232)
+ *
+ * (Bytes include the sooth_log_program account from the durable-event work,
+ * +33/tx flat; the OrdersFilled payload rides in an inner instruction.)
  *
  * So the hard ceiling is 5, set by transaction size — not compute (14% of
  * budget at 5) and not account locks. Each fill costs ~99 bytes.
@@ -33,7 +35,7 @@ export const MAX_TICK = 999;
  * We default to 4 rather than 5 deliberately. Those measurements use the bare
  * compute-budget preamble; a real submit also carries a priority-fee
  * instruction and may prepend `initMarketFeePool`, which alone is far larger
- * than the ~91 bytes of headroom 5 fills would leave. 4 keeps ~190 bytes of
+ * than the 58 bytes of headroom 5 fills would leave. 4 keeps ~160 bytes of
  * slack while still improving depth 33% over the old limit.
  *
  * Callers who know their transaction shape can pass `matchLimitPerTx: 5`.

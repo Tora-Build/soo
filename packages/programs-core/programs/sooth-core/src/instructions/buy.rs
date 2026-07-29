@@ -5,10 +5,12 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 use anchor_spl::token::{Token, TokenAccount};
+use anchor_lang::{Discriminator, InstructionData};
+use sooth_log::program::SoothLog;
 use crate::constants::BASE_TOKEN_MINT;
 
 use crate::error::SoothCoreError;
-use crate::events::{DustOrderSkipped, OrderPlaced};
+use crate::events::{DustOrderSkipped, FillRecord, OrderPlaced, OrdersFilled};
 use crate::matching::{match_buy, MatchAccounts};
 use crate::math::{min_resting_order_for_tick, resting_cost_base, MAX_TICK, MIN_TICK, NUM_TICKS};
 use crate::state::{
@@ -97,6 +99,13 @@ pub struct BuyOrder<'info> {
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,
+
+    /// Durable-log sink. Receives the batched `OrdersFilled` payload as an
+    /// inner instruction; see the `sooth_log` crate for why a second program
+    /// is unavoidable. Address-pinned — the program is permissionless, so
+    /// authenticity is a consumer-side check, not an on-chain one.
+    #[account(address = sooth_log::ID)]
+    pub sooth_log_program: Program<'info, SoothLog>,
 }
 
 pub fn handler<'info>(
@@ -108,7 +117,8 @@ pub fn handler<'info>(
     match_limit_arg: u32,
 ) -> Result<()> {
     let remaining_accounts = ctx.remaining_accounts;
-    buy_handler(
+    let mut fills: Vec<FillRecord> = Vec::new();
+    let result = buy_handler(
         &ctx.accounts.taker,
         ctx.accounts.market.as_ref(),
         ctx.accounts.market_book.as_mut(),
@@ -129,7 +139,62 @@ pub fn handler<'info>(
         escrow,
         match_limit_arg,
         remaining_accounts,
+        &mut fills,
+    );
+    result?;
+
+    emit_orders_filled(
+        &ctx.accounts.sooth_log_program,
+        ctx.accounts.market.key(),
+        ctx.accounts.taker.key(),
+        side,
+        fills,
     )
+}
+
+/// Serialize the batched fill event and record it as an inner instruction.
+///
+/// Not `emit!` (truncated by the runtime, dropped by RPC providers) and not
+/// `emit_cpi!` (allocates per event; the P0.1 spike proved it OOMs this path
+/// even batched). A plain `invoke` into the no-op `sooth_log` program costs
+/// one serialization and leaves the payload permanently in
+/// `meta.innerInstructions`.
+fn emit_orders_filled<'info>(
+    sooth_log_program: &Program<'info, SoothLog>,
+    market: Pubkey,
+    taker: Pubkey,
+    taker_side: u8,
+    fills: Vec<FillRecord>,
+) -> Result<()> {
+    if fills.is_empty() {
+        return Ok(());
+    }
+    let event = OrdersFilled {
+        market,
+        taker,
+        taker_side,
+        fills,
+    };
+    let mut payload = Vec::with_capacity(64 + 96 * event.fills.len());
+    payload.extend_from_slice(&OrdersFilled::DISCRIMINATOR);
+    event
+        .serialize(&mut payload)
+        .map_err(|_| error!(SoothCoreError::MathOverflow))?;
+    // Instruction data is capped at 10 KiB; a fill is ~96 bytes and the
+    // transaction-size limit caps fills per tx at 5, so this is unreachable
+    // in practice and exists so a future change fails loudly rather than
+    // silently truncating.
+    require!(payload.len() <= 10 * 1024, SoothCoreError::EventTooLarge);
+
+    anchor_lang::solana_program::program::invoke(
+        &anchor_lang::solana_program::instruction::Instruction {
+            program_id: sooth_log::ID,
+            accounts: vec![],
+            data: sooth_log::instruction::Log { _data: payload }.data(),
+        },
+        &[sooth_log_program.to_account_info()],
+    )?;
+    Ok(())
 }
 
 pub(crate) fn buy_handler<'info>(
@@ -153,6 +218,7 @@ pub(crate) fn buy_handler<'info>(
     escrow: bool,
     match_limit_arg: u32,
     remaining_accounts: &[AccountInfo<'info>],
+    fills: &mut Vec<FillRecord>,
 ) -> Result<()> {
     require_not_paused(protocol_config)?;
     require!(
@@ -205,6 +271,7 @@ pub(crate) fn buy_handler<'info>(
         escrow,
         match_limit,
         remaining_accounts,
+        fills,
     )?;
 
     if remaining == 0 {

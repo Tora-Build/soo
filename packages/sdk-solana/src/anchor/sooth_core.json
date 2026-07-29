@@ -298,6 +298,16 @@
         {
           "name": "rent",
           "address": "SysvarRent111111111111111111111111111111111"
+        },
+        {
+          "name": "sooth_log_program",
+          "docs": [
+            "Durable-log sink. Receives the batched `OrdersFilled` payload as an",
+            "inner instruction; see the `sooth_log` crate for why a second program",
+            "is unavoidable. Address-pinned — the program is permissionless, so",
+            "authenticity is a consumer-side check, not an on-chain one."
+          ],
+          "address": "6TVeQ2JzYUXNsUG7kJpGvQ2Y6kKCxNkkAWSFrEG4vb59"
         }
       ],
       "args": [
@@ -4552,6 +4562,19 @@
       ]
     },
     {
+      "name": "OrdersFilled",
+      "discriminator": [
+        71,
+        6,
+        206,
+        44,
+        193,
+        220,
+        148,
+        85
+      ]
+    },
+    {
       "name": "OutcomeAttested",
       "discriminator": [
         249,
@@ -4928,6 +4951,11 @@
       "code": 6056,
       "name": "TradingNotClosed",
       "msg": "Trading window has not closed yet (now < deadline)"
+    },
+    {
+      "code": 6057,
+      "name": "EventTooLarge",
+      "msg": "Serialized event payload exceeds the 10 KiB instruction-data limit"
     }
   ],
   "types": [
@@ -5351,6 +5379,50 @@
           {
             "name": "to_protocol",
             "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FillRecord",
+      "docs": [
+        "One maker fill inside a `buy`. Ticks are recorded as (yes, no) rather than",
+        "(taker, maker) so a consumer never has to know which side the taker was on",
+        "to price the trade."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "maker",
+            "type": "pubkey"
+          },
+          {
+            "name": "maker_order_id",
+            "type": "u64"
+          },
+          {
+            "name": "yes_tick",
+            "type": "u16"
+          },
+          {
+            "name": "no_tick",
+            "type": "u16"
+          },
+          {
+            "name": "amount",
+            "type": "u128"
+          },
+          {
+            "name": "surplus",
+            "docs": [
+              "Rebate to the taker when yes_tick + no_tick > NUM_TICKS."
+            ],
+            "type": "u128"
           },
           {
             "name": "ts",
@@ -6084,6 +6156,45 @@
                 "u8",
                 16
               ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "OrdersFilled",
+      "docs": [
+        "All fills from one `buy`, batched into a single event.",
+        "",
+        "Batched deliberately: the P0.1 spike showed per-fill emission OOMs the",
+        "32 KB heap. Emitted by `invoke`ing `sooth_log`, not `emit!`/`emit_cpi!` —",
+        "see that program's docs for why. Consumers must verify this arrives as a",
+        "direct inner instruction of a successful `sooth_core::buy`; `sooth_log`",
+        "itself is permissionless."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "taker",
+            "type": "pubkey"
+          },
+          {
+            "name": "taker_side",
+            "type": "u8"
+          },
+          {
+            "name": "fills",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "FillRecord"
+                }
+              }
             }
           }
         ]

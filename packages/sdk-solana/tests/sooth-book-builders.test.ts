@@ -16,6 +16,10 @@ import {
   orderbookPositionPda,
 } from "../src/pdas.js";
 import { encodePubkeyRef } from "../src/refs.js";
+
+// 13 program accounts + sooth_log_program. Named so the durable-event work
+// that added the 14th does not read as an unexplained off-by-one later.
+const BUY_ACCOUNT_COUNT = 14;
 import { DEFAULT_MATCH_LIMIT_PER_TX } from "../src/orderbook/matching-driver.js";
 
 import { LiteSvmConnection } from "./fixtures/svm.js";
@@ -88,7 +92,7 @@ describe("sooth_book builder request shapes", () => {
     expect(req.kind).toBe("orderbook");
     expect(meta.ixProgramId).toBe(bookPrograms.soothBook.toBase58());
     expect(discriminator(meta)).toEqual(hexDiscriminator("66063d1201daebea"));
-    expect(req.accounts).toHaveLength(13);
+    expect(req.accounts).toHaveLength(BUY_ACCOUNT_COUNT);
     expect(meta.operation).toBe("buyYes");
     expect(meta.side).toBe(1);
     expect(meta.tick).toBe(tick);
@@ -131,7 +135,7 @@ describe("sooth_book builder request shapes", () => {
 
     const meta = req.meta as BuiltMeta;
     expect(discriminator(meta)).toEqual(hexDiscriminator("66063d1201daebea"));
-    expect(req.accounts).toHaveLength(13);
+    expect(req.accounts).toHaveLength(BUY_ACCOUNT_COUNT);
     expect(meta.operation).toBe("buyNo");
 
     const [bookSide] = bookSidePda(smoke.marketId, 0, tick, smoke.programs);

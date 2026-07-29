@@ -11,11 +11,15 @@
 // fill then also pays a vault → maker SPL transfer):
 //
 //   fills   CU        writable   bytes
-//   1       ~67k      10         ~745
-//   3       ~131k     16         ~943
-//   4       ~169k     19         ~1042
-//   5       ~194k     22         ~1141
-//   6       —         —          1240  ← rejected, over PACKET_DATA_SIZE
+//   1       ~78k      10         778
+//   3       ~124k     16         976
+//   5       ~199k     22         1174
+//   6       —         —          1273  ← rejected, over PACKET_DATA_SIZE
+//
+// Byte figures include the sooth_log_program account added by the P0.1
+// durable-event work (+33 bytes/tx, flat — the OrdersFilled payload itself
+// rides in an INNER instruction and does not count against the outer
+// transaction). That left 58 bytes of headroom at the 5-fill maximum.
 //
 // Three conclusions, all of which correct the received picture:
 //

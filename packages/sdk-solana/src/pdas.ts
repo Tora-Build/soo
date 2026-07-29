@@ -20,6 +20,10 @@ export type MarketId = Uint8Array;
 
 export interface ProgramIds {
   soothCore: PublicKey;
+  /** Durable-log sink invoked by `buy`. Defaults to the canonical id; a
+   *  program cannot CPI into itself, so this cannot be folded into
+   *  `soothCore` however much the single-program design would prefer it. */
+  soothLog?: PublicKey;
 }
 
 const enc = new TextEncoder();
@@ -47,6 +51,17 @@ const SEED_ADJUDICATOR = enc.encode("adjudicator");
 export const SOOTH_CORE_PROGRAM_ID = new PublicKey(
   "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W",
 );
+
+/** `sooth_log` — no-op durable event sink. Must match its `declare_id!`. */
+export const SOOTH_LOG_PROGRAM_ID = new PublicKey(
+  "6TVeQ2JzYUXNsUG7kJpGvQ2Y6kKCxNkkAWSFrEG4vb59",
+);
+
+export function soothLogProgramId(
+  programs?: Partial<Pick<ProgramIds, "soothLog">>,
+): PublicKey {
+  return programs?.soothLog ?? SOOTH_LOG_PROGRAM_ID;
+}
 
 function assertMarketId(marketId: MarketId): Buffer {
   if (marketId.length !== 16) {

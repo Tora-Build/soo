@@ -66,6 +66,7 @@ import {
   deriveYesMintPda,
   marketFeePoolPda,
   SOOTH_CORE_PROGRAM_ID,
+  SOOTH_LOG_PROGRAM_ID,
   type ProgramIds,
 } from "../../src/pdas.js";
 import { WAD } from "../../src/math/lmsr.js";
@@ -127,7 +128,15 @@ export async function bootSmoke(
     );
   }
 
-  const ctx = startSvm([{ name: "sooth_core", programId: SOOTH_CORE_ID }], soDir);
+  // sooth_log must be deployed too: `buy` invokes it for the durable
+  // OrdersFilled record, and a missing program aborts the instruction.
+  const ctx = startSvm(
+    [
+      { name: "sooth_core", programId: SOOTH_CORE_ID },
+      { name: "sooth_log", programId: SOOTH_LOG_PROGRAM_ID },
+    ],
+    soDir,
+  );
 
   // ─── Mint a fresh USDC at the canonical devnet address ────────────────
   // We can't use the real devnet USDC mint because `create_market` and
