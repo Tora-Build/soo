@@ -54,9 +54,14 @@ describe("256 KB allocator caller contract", () => {
 
     // Same instruction that succeeds elsewhere in the suite — the ONLY
     // difference is the missing compute-budget preamble.
+    // Match only "Access violation" — the suffix differs by runtime version.
+    // LiteSVM and solana-test-validator say "in heap section at address
+    // 0x30003ff68 of size 8"; live devnet says "writing 8 bytes at address
+    // 0x30003ff68 (in unallocated ...)". Both are the same fault, and pinning
+    // the full LiteSVM phrasing would have made this test lie about devnet.
     await expect(
       sendTx(ctx, [user], order, { skipHeapFrame: true }),
-    ).rejects.toThrow(/Access violation in heap section/);
+    ).rejects.toThrow(/Access violation/);
   });
 
   it("the same order succeeds with the frame", async () => {

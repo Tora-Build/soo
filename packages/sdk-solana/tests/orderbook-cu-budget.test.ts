@@ -25,7 +25,9 @@
 //
 // 1. The 256 KB allocator (lib.rs) moved the ceiling from 3 fills to 5. Before
 //    it, a 4-fill buy died with "memory allocation failed, out of memory" on
-//    the stock 32 KB heap while using only ~16% of the CU budget.
+//    the stock 32 KB heap while using only ~16% of the CU budget. Verified
+//    on live devnet: without requestHeapFrame the same instruction faults
+//    with an access violation at 0x30003ff68; with it, it lands.
 //
 // 2. The binding constraint is now TRANSACTION SIZE, not compute and not the
 //    writable-account budget. At the 5-fill maximum we are at 14% of the CU
