@@ -169,7 +169,7 @@ const PROGRAMS = {
 // constraint. The mint MUST exist at this address on the validator or
 // initialize_market_vaults / trade_positions will fail.
 const USDC_MINT_DEVNET = new PublicKey(
-  "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK",
+  "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX",
 );
 
 const MINT_AUTHORITY_PATH = resolve(LOCALNET_DIR, "mint-authority.json");

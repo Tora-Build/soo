@@ -12,20 +12,28 @@ pub const USDC_MINT_MAINNET: Pubkey =
 ///
 /// This overrides the original "no need for our own mock; use real USDC"
 /// decision. Circle's devnet USDC (`4zMMC9srt…`) is only obtainable through
-/// faucet.circle.com — captcha + GitHub-auth gated, with no programmatic
-/// call — which makes demo and e2e funding flows impossible to automate.
-/// This mint's authority is the demo's `apps/demo/.localnet/mint-authority.json`
-/// (`6PfiTm…`, untracked), so the in-browser `/faucet` mints on both localnet
-/// and devnet. Mainnet remains real Circle USDC.
+/// faucet.circle.com — captcha + GitHub-auth gated, with no programmatic call
+/// — which makes demo and e2e funding flows impossible to automate. Mainnet
+/// remains real Circle USDC.
 ///
-/// The value matches `origin/main`'s `sooth-protocol-types::ids` so both
-/// branches share one devnet mint and devnet state stays interoperable.
+/// Authority: `apps/demo/.localnet/mint-authority.json`
+/// (`EXJ7ZiAXvSpNGzhHEFBewUaJ4fdZtAfuFBRhYsQPV5Y9`, untracked — back it up,
+/// losing it means minting stops and this constant has to change again).
+///
+/// This is deliberately NOT main's mint. main pinned
+/// `H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK`, which does exist on devnet
+/// with ~1.3M supply, but its authority (`6PfiTm…`) lives only in main's
+/// untracked `.localnet/` and was never shared. Without it no new tokens can
+/// be minted, so devnet funding was impossible — a mint you cannot mint from
+/// is worse than a fresh one. The cost of diverging is that devnet token
+/// balances are not shared between the two branches.
 ///
 /// Note this is pinned by `address = BASE_TOKEN_MINT` account constraints
 /// throughout the program, so a mismatch is a hard transaction failure, not a
-/// UI inconsistency — every off-chain reference must move in lockstep.
+/// UI inconsistency — every off-chain reference must move in lockstep, and
+/// changing it requires redeploying the program.
 pub const USDC_MINT_DEVNET: Pubkey =
-    anchor_lang::pubkey!("H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK");
+    anchor_lang::pubkey!("ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX");
 
 #[cfg(feature = "mainnet")]
 pub const BASE_TOKEN_MINT: Pubkey = USDC_MINT_MAINNET;

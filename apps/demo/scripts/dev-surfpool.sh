@@ -22,7 +22,7 @@
 #      to their declared addresses (per Anchor.toml [programs.localnet]).
 #   6. Wait for RPC health.
 #   7. Curl `surfnet_setAccount` to load the canonical USDC mint at
-#      H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK. (Surfpool's
+#      ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX. (Surfpool's
 #      `--snapshot` flag would handle this declaratively but means
 #      pre-baking a JSON file; cheatcode keeps the script self-contained.)
 #   8. `seed-localnet.mjs init` (unchanged — still talks to 8899 via RPC).
@@ -47,7 +47,7 @@ SURFPOOL_PID_FILE="$DEMO_DIR/.surfpool.pid"
 SURFPOOL_LOG="$LOCALNET_DIR/surfpool.log"
 USDC_DUMP="$LOCALNET_DIR/usdc-mint-account.json"
 
-USDC_MINT_ADDR="H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
+USDC_MINT_ADDR="ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
 
 VITE_PORT="${VITE_PORT:-5175}"
 RPC_PORT="${RPC_PORT:-8899}"

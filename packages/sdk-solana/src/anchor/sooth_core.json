@@ -785,7 +785,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "token_program",
@@ -925,7 +925,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "user",
@@ -1240,7 +1240,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "vault",
@@ -1522,7 +1522,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "market_fee_pool",
@@ -1692,7 +1692,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "fee_pool_vault",
@@ -1798,7 +1798,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "market_fee_pool",
@@ -2569,7 +2569,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "market_vault",
@@ -3705,7 +3705,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "protocol_config",
@@ -4005,7 +4005,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "protocol_config",

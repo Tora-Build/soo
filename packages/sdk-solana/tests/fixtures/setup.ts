@@ -143,7 +143,7 @@ export async function bootSmoke(
   // `trade_positions` constrain `usdc_mint` against `USDC_MINT_DEVNET`.
   // We hand-write the mint *at that address* using setAccount.
   const USDC_MINT_DEVNET = new PublicKey(
-    "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK",
+    "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX",
   );
   const mintAuthority = Keypair.generate();
   await writeMint(ctx, USDC_MINT_DEVNET, mintAuthority.publicKey);

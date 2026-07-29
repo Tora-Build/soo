@@ -13,7 +13,7 @@
 // `--with-market`, the named adjudicator is allowlisted, and the wallet has
 // USDC to fund the (small) initial vault. By default we skip the market
 // step on devnet because the canonical USDC mint
-// (`H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK`) is not freely mintable
+// (`ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX`) is not freely mintable
 // from a faucet — operators wanting an end-to-end seeded market should
 // fund the wallet with devnet USDC out-of-band first.
 //
@@ -88,7 +88,7 @@ const PROGRAMS = {
 // Canonical devnet USDC mint — pinned in every program's `usdc_mint`
 // `address = ...` constraint via `sooth_protocol_types::USDC_MINT_DEVNET`.
 const USDC_MINT_DEVNET = new PublicKey(
-  "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK",
+  "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX",
 );
 
 const ENV_LOCAL_PATH = resolve(DEMO_ROOT, ".env.local");

@@ -32,7 +32,7 @@ VALIDATOR_LOG="$LOCALNET_DIR/validator.log"
 LEDGER_DIR="$LOCALNET_DIR/ledger"
 USDC_DUMP="$LOCALNET_DIR/usdc-mint-account.json"
 
-USDC_MINT_ADDR="H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
+USDC_MINT_ADDR="ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
 
 AMM_SO="$REPO_ROOT/target/deploy/sooth_amm.so"
 MARKET_SO="$REPO_ROOT/target/deploy/sooth_market.so"
