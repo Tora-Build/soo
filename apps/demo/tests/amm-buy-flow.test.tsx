@@ -216,9 +216,9 @@ test("AMM buy YES end-to-end against LiteSVM", async () => {
   // to the fee paid. The chain-shim wires the LP-ATA-create + LP-mint
   // accounts through `buildTrade` → `submit`; this assertion confirms the
   // end-to-end SDK adapter wiring delivered the LP-mint side-effect.
-  const [lpMint] = deriveLpMintPda(smoke.marketId, {
-    soothLaunchpad: smoke.programs.soothLaunchpad!,
-  });
+  // The LP mint PDA moved under sooth_core with the 5→1 merge; there is no
+  // separate launchpad program to key off any more.
+  const [lpMint] = deriveLpMintPda(smoke.marketId, smoke.programs);
   const userLpAta = deriveUserLpAta(smoke.user.publicKey, lpMint);
   const lpAtaInfo = await conn.getAccountInfo(userLpAta);
   expect(lpAtaInfo).toBeTruthy();

@@ -55,7 +55,7 @@ import {
   WAD_TO_USDC_SCALAR,
   DEFAULT_MATCH_LIMIT_PER_TX,
   submitOrderbookBuyMultiTx,
-  soothMarketIdl,
+  soothCoreIdl,
   type SolanaChainAdapter,
   type SignerRef,
   type SoothRequest,
@@ -378,8 +378,8 @@ export async function dispatchAmmRead(
           { commitment: "confirmed", preflightCommitment: "confirmed" },
         );
         const programIdl = {
-          ...soothMarketIdl,
-          address: ctx.adapter.programIds.soothMarket.toBase58(),
+          ...soothCoreIdl,
+          address: ctx.adapter.programIds.soothCore.toBase58(),
         };
         const program = new Program(programIdl as Idl, provider);
         const market = (await (program.account as any).market.fetchNullable(
@@ -779,76 +779,30 @@ async function dispatchAddAdjudicator(
   const explicit = typeof args[0] === "string" ? args[0] : undefined;
   const adjudicatorPk = new PublicKey(explicit ?? ctx.userBase58);
 
-  const rawBytes = (
-    import.meta as unknown as { env: Record<string, string | undefined> }
-  ).env?.VITE_TEST_AUTHORITY_BYTES;
-  if (!rawBytes) {
-    throw new Error(
-      "VITE_TEST_AUTHORITY_BYTES required to auto-register adjudicators on localnet (regenerate .env.local via pnpm dev:localnet)",
-    );
-  }
-  let authority: Keypair;
-  try {
-    authority = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(rawBytes)));
-  } catch (e) {
-    throw new Error(
-      `VITE_TEST_AUTHORITY_BYTES is not a valid JSON byte array: ${(e as Error).message}`,
-    );
-  }
-
-  const marketProgramId = ctx.adapter.programIds.soothMarket;
-  const [allowlistPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("adjudicator_allowlist")],
-    marketProgramId,
-  );
-
-  // Build a one-shot Anchor program with the authority wallet so we can
-  // sign the ix directly. The adapter's own `soothMarket` program uses a
-  // stub wallet — fine for builds, useless for real signs.
-  // @coral-xyz/anchor's `Wallet` class is CJS-only; reproduce the minimal
-  // wallet shape inline to keep the ESM path clean.
-  const wallet = {
-    publicKey: authority.publicKey,
-    payer: authority,
-    signTransaction: async <T>(tx: T): Promise<T> => {
-      (tx as { partialSign(...kp: Keypair[]): void }).partialSign(authority);
-      return tx;
-    },
-    signAllTransactions: async <T>(txs: T[]): Promise<T[]> => {
-      for (const tx of txs)
-        (tx as { partialSign(...kp: Keypair[]): void }).partialSign(authority);
-      return txs;
-    },
-  };
-  const provider = new AnchorProvider(ctx.adapter.connection, wallet as never, {
-    commitment: "confirmed",
-    preflightCommitment: "confirmed",
-  });
-  const programIdl = {
-    ...soothMarketIdl,
-    address: marketProgramId.toBase58(),
-  };
-  const program = new Program(programIdl as Idl, provider);
-
-  try {
-    const sig = await (program.methods as any)
-      .addAdjudicator(adjudicatorPk)
-      .accounts({
-        allowlist: allowlistPda,
-        authority: authority.publicKey,
-      })
-      .signers([authority])
-      .rpc();
-    return synthHashFromSignature(sig as string);
-  } catch (e) {
-    const msg = (e as Error).message ?? String(e);
-    if (msg.includes("AdjudicatorAlreadyAllowlisted")) {
-      // Idempotent — the precondition is satisfied. Return a synthetic
-      // sig so the upstream `writeContract` Hash slot stays well-typed.
-      return synthHashFromSignature("1".repeat(64));
-    }
-    throw e;
-  }
+  // The allowlist this used to write no longer exists.
+  //
+  // Upstream EVM has `AdjudicatorRegistry.addAdjudicator`, and the pre-merge
+  // Solana port mirrored it with a global 16-slot `AdjudicatorAllowlist` PDA
+  // (seed "adjudicator_allowlist") plus authority-gated add/remove
+  // instructions. The 5→1 merge deleted all of that: sooth_core registers
+  // adjudicators PER MARKET via `register_adjudicator`, gated by the single
+  // `ProtocolConfig.permissionless_adjudicators` flag.
+  //
+  // So the precondition this call existed to establish — "this adjudicator is
+  // permitted" — is already true whenever `permissionless_adjudicators` is
+  // set, which it is on our devnet and localnet configs. Registration itself
+  // happens at market creation, not here.
+  //
+  // Reporting success is therefore honest rather than a stub: there is nothing
+  // to do. Pointing it at sooth_core would compile and then fail at runtime
+  // with InstructionFallbackNotFound, since no `add_adjudicator` instruction
+  // exists to dispatch to.
+  //
+  // If permissionless registration is ever turned off, this needs to become a
+  // real `register_adjudicator` call taking a market — which means it needs a
+  // market argument it does not currently receive.
+  void adjudicatorPk;
+  return synthHashFromSignature("1".repeat(64));
 }
 
 /**

@@ -9,15 +9,17 @@
 // a local validator + the localnet seed flow which writes its own
 // `.env.local` overrides on top.
 
-import { type SoothNode, soothAmmIdl, soothMarketIdl } from "@sooth/sdk-solana";
+import { type SoothNode, soothCoreIdl } from "@sooth/sdk-solana";
 
 const DEFAULT_DEVNET_RPC = "https://api.devnet.solana.com";
 const USDC_MINT_DEVNET = "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX";
-// Sourced from the IDL `address` fields, which in turn mirror each program's
+// Sourced from the IDL `address` field, which mirrors the program's
 // `declare_id!`. Keeps the config in lockstep with deploy keypair rotations
 // without a second hand-pinned constant.
-const SOOTH_AMM_ID = soothAmmIdl.address;
-const SOOTH_MARKET_ID = soothMarketIdl.address;
+//
+// One program now, not five: the 5→1 merge folded sooth_amm, sooth_market,
+// sooth_book, sooth_launchpad and sooth_adjudicator into sooth_core.
+const SOOTH_CORE_ID = soothCoreIdl.address;
 
 export interface DemoConfig {
   node: SoothNode;
@@ -36,8 +38,11 @@ export const demoConfig: DemoConfig = {
     cluster: "devnet",
     rpcUrl: env?.VITE_SOLANA_RPC_URL ?? DEFAULT_DEVNET_RPC,
     programs: {
-      soothAmm: env?.VITE_SOOTH_AMM_ID ?? SOOTH_AMM_ID,
-      soothMarket: env?.VITE_SOOTH_MARKET_ID ?? SOOTH_MARKET_ID,
+      // The adapter reads `soothCore` and `usdcMint` — nothing else. The
+      // previous `soothAmm`/`soothMarket` keys were silently ignored after
+      // the merge, which meant VITE_SOOTH_*_ID overrides did nothing and the
+      // demo always fell back to the SDK's compiled-in default id.
+      soothCore: env?.VITE_SOOTH_CORE_ID ?? SOOTH_CORE_ID,
       usdcMint: env?.VITE_USDC_MINT ?? USDC_MINT_DEVNET,
     },
   },

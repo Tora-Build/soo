@@ -37,10 +37,21 @@ export interface SoothNode {
   cluster?: "devnet" | "mainnet-beta" | "testnet";
   rpcUrl: string;
   // Sooth program addresses — base58, Solana-only.
+  //
+  // The 5→1 merge left one program, `soothCore`; `soothLog` stays separate
+  // because a program cannot CPI into itself. The pre-merge keys are retained
+  // as deprecated so existing node descriptors still typecheck — the adapter
+  // reads only `soothCore` and `usdcMint`, so leaving the old ones set is a
+  // silent no-op rather than an error.
   programs?: {
-    soothAmm?: string;
-    soothMarket?: string;
+    soothCore?: string;
+    soothLog?: string;
     usdcMint?: string;
+    /** @deprecated merged into `soothCore`; ignored by the adapter. */
+    soothAmm?: string;
+    /** @deprecated merged into `soothCore`; ignored by the adapter. */
+    soothMarket?: string;
+    /** @deprecated merged into `soothCore`; ignored by the adapter. */
     soothBook?: string;
   };
 }
