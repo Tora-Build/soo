@@ -9,6 +9,8 @@
 
 use anchor_lang::prelude::*;
 
+use crate::error::SoothCoreError;
+
 use crate::constants::PROTOCOL_CONFIG_TOTAL_LEN;
 
 /// Singleton PDA seed.
@@ -40,13 +42,43 @@ pub struct ProtocolConfig {
     /// PDA bump.
     pub bump: u8,
 
-    /// Circuit-breaker flag. When `true`, instructions that check
-    /// `require_not_paused` will reject with `SoothCoreError::ProtocolPaused`.
+    /// Circuit-breaker flag. When `true`, `require_not_paused` rejects with
+    /// `SoothCoreError::ProtocolPaused`.
+    ///
+    /// Scope is a TRADING halt, not a total freeze — see `require_not_paused`.
     pub paused: bool,
 
     /// When `true`, anyone can register an adjudicator for any market.
     /// When `false`, only `config.authority` may call `register_adjudicator`.
     pub permissionless_adjudicators: bool,
+}
+
+/// Reject the call if the protocol circuit-breaker is engaged.
+///
+/// Deliberately scoped to a **trading halt**, not a total freeze. Gated:
+/// `buy`, `trade_positions`, `sell_positions`, `seed_lp`, `create_market` —
+/// i.e. anything that opens a new position, adds liquidity, or creates a
+/// market.
+///
+/// NOT gated, by design:
+///   - `cancel` / `cancel_by_id` — a maker must always be able to pull a
+///     resting order; blocking this strands collateral in the book.
+///   - `redeem*`, `claim_unlocked`, `claim_refund`, `redeem_lp`,
+///     `merge_complete_set*` — exit paths. A pause that traps user funds is
+///     its own failure mode, so exits stay open.
+///   - resolution and admin flow (`request_lock`, `lock_for_resolution`,
+///     `attest_outcome`, `dispute`, `settle`, `dismiss_market`) — a paused
+///     protocol must still be able to wind markets down.
+///   - `distribute_fees*` — cranks that move already-accrued fees; halting
+///     them protects nothing and can strand balances.
+///
+/// `mint_complete_set*` is also ungated. It is economically neutral (deposit
+/// N, receive N YES + N NO, always worth N together) and its account structs
+/// do not currently carry `ProtocolConfig`; adding it would change the frozen
+/// instruction shape. Revisit if that account is ever added for other reasons.
+pub fn require_not_paused(config: &ProtocolConfig) -> Result<()> {
+    require!(!config.paused, SoothCoreError::ProtocolPaused);
+    Ok(())
 }
 
 impl ProtocolConfig {

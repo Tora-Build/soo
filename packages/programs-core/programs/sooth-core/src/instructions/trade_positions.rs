@@ -6,7 +6,7 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 use crate::error::SoothCoreError;
 use crate::events::{MarketGraduated, PositionTraded};
 use crate::math::{cost_delta, wad_mul, wad_to_usdc_ceil, MathError, LN2_WAD};
-use crate::state::{AmmState, Market, Position, ProtocolConfig};
+use crate::state::{require_not_paused, AmmState, Market, Position, ProtocolConfig};
 
 const OUTCOME_NO: u8 = 0;
 const OUTCOME_YES: u8 = 1;
@@ -110,6 +110,7 @@ pub fn handler(
     delta_shares: i128,
     max_cost_wad: u128,
 ) -> Result<()> {
+    require_not_paused(&ctx.accounts.protocol_config)?;
     require!(
         outcome == OUTCOME_NO || outcome == OUTCOME_YES,
         SoothCoreError::InvalidOutcome

@@ -12,8 +12,8 @@ use crate::events::{DustOrderSkipped, OrderPlaced};
 use crate::matching::{match_buy, MatchAccounts};
 use crate::math::{min_resting_order_for_tick, resting_cost_base, MAX_TICK, MIN_TICK, NUM_TICKS};
 use crate::state::{
-    encode_order_id, BookSide, InlineOrder, Market, MarketBook, ProtocolConfig,
-    MAX_ORDERS_PER_TICK,
+    encode_order_id, require_not_paused, BookSide, InlineOrder, Market, MarketBook,
+    ProtocolConfig, MAX_ORDERS_PER_TICK,
 };
 
 #[derive(Accounts)]
@@ -154,6 +154,7 @@ pub(crate) fn buy_handler<'info>(
     match_limit_arg: u32,
     remaining_accounts: &[AccountInfo<'info>],
 ) -> Result<()> {
+    require_not_paused(protocol_config)?;
     require!(
         (MIN_TICK..=MAX_TICK).contains(&tick),
         SoothCoreError::InvalidTick

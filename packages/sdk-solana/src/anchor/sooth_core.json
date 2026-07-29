@@ -4917,7 +4917,7 @@
     {
       "code": 6054,
       "name": "ProtocolPaused",
-      "msg": "Protocol is paused; all state-mutating instructions are disabled"
+      "msg": "Protocol is paused; trading, new liquidity and market creation are disabled"
     },
     {
       "code": 6055,
@@ -6325,8 +6325,10 @@
           {
             "name": "paused",
             "docs": [
-              "Circuit-breaker flag. When `true`, instructions that check",
-              "`require_not_paused` will reject with `SoothCoreError::ProtocolPaused`."
+              "Circuit-breaker flag. When `true`, `require_not_paused` rejects with",
+              "`SoothCoreError::ProtocolPaused`.",
+              "",
+              "Scope is a TRADING halt, not a total freeze — see `require_not_paused`."
             ],
             "type": "bool"
           },

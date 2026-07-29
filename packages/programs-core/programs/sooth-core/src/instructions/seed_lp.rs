@@ -11,7 +11,7 @@ use anchor_spl::token::{self, InitializeMint, Mint, MintTo, Token};
 
 use crate::error::SoothCoreError;
 use crate::events::LpSeeded;
-use crate::state::{AmmState, LpPosition, Market, ProtocolConfig};
+use crate::state::{require_not_paused, AmmState, LpPosition, Market, ProtocolConfig};
 
 const LP_MINT_DECIMALS: u8 = 6;
 
@@ -80,6 +80,7 @@ pub struct SeedLp<'info> {
 }
 
 pub fn handler(ctx: Context<SeedLp>, args: SeedLpArgs) -> Result<()> {
+    require_not_paused(&ctx.accounts.config)?;
     require!(
         !ctx.accounts.amm_state.is_graduated,
         SoothCoreError::AlreadyGraduated

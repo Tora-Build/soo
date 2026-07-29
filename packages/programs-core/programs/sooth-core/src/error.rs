@@ -180,7 +180,7 @@ pub enum SoothCoreError {
 
     // ── Protocol / circuit-breaker ───────────────────────────────────────────
 
-    #[msg("Protocol is paused; all state-mutating instructions are disabled")]
+    #[msg("Protocol is paused; trading, new liquidity and market creation are disabled")]
     ProtocolPaused,
 
     #[msg("Adjudicator has not yet attested an outcome for this market")]

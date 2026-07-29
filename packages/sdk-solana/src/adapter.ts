@@ -4253,7 +4253,7 @@ const SOOTH_CORE_ERROR_TABLE: Record<number, { kind: string; msg: string }> = {
   6051: { kind: "ProgramError", msg: "Remaining-account bundle does not carry the crossing BookSide" },
   6052: { kind: "ProgramError", msg: "Remaining-account bundle maker does not match the live order maker" },
   6053: { kind: "ProgramError", msg: "Remaining-account bundles must contain exactly three accounts per fill" },
-  6054: { kind: "ProgramError", msg: "Protocol is paused; all state-mutating instructions are disabled" },
+  6054: { kind: "ProgramError", msg: "Protocol is paused; trading, new liquidity and market creation are disabled" },
   6055: { kind: "ProgramError", msg: "Adjudicator has not yet attested an outcome for this market" },
   6056: { kind: "ProgramError", msg: "Trading window has not closed yet (now < deadline)" },
 };

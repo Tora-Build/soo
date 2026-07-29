@@ -31,4 +31,6 @@ pub use market_book::MarketBook;
 pub use order_id::{encode_order_id, require_order_id_matches};
 pub use orderbook_position::OrderbookPosition;
 pub use position::Position;
-pub use protocol_config::{ProtocolConfig, MAX_FEE_BPS, PROTOCOL_CONFIG_SEED};
+pub use protocol_config::{
+    require_not_paused, ProtocolConfig, MAX_FEE_BPS, PROTOCOL_CONFIG_SEED,
+};

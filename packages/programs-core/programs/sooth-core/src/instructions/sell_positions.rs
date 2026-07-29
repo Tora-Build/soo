@@ -10,7 +10,9 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 use crate::error::SoothCoreError;
 use crate::events::PositionSold;
 use crate::math::{cost_delta, wad_to_usdc_floor, MathError};
-use crate::state::{AmmState, LockEntry, Market, Position, ProtocolConfig};
+use crate::state::{
+    require_not_paused, AmmState, LockEntry, Market, Position, ProtocolConfig,
+};
 
 const LOCK_DURATION_SECS: i64 = 24 * 60 * 60;
 
@@ -122,6 +124,7 @@ pub fn handler(
     min_proceeds_wad: u128,
     lock_nonce: u64,
 ) -> Result<()> {
+    require_not_paused(&ctx.accounts.protocol_config)?;
     require!(
         outcome == OUTCOME_NO || outcome == OUTCOME_YES,
         SoothCoreError::InvalidOutcome
