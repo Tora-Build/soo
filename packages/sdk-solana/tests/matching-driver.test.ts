@@ -2,7 +2,7 @@ import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildOrderbookBuyMultiTx,
+  submitOrderbookBuyMultiTx,
   simulateMatch,
   FILL_BUNDLE_LEN,
   type BookSideSnapshot,
@@ -141,7 +141,7 @@ describe("matching driver", () => {
     expect(sim.predictedFills.map((f) => f.makerTick)).toEqual([800, 500]);
   });
 
-  it("build_multi_tx_splits_at_match_limit_per_tx", async () => {
+  it("submit_multi_tx_splits_at_match_limit_per_tx", async () => {
     const client = mockClient({
       marketBook: () => ({
         bitmapFor: bitmap(),
@@ -150,25 +150,33 @@ describe("matching driver", () => {
       bookSides: { 900: sideWithOrders(900, Array(7).fill(1n)) },
     });
 
-    const txs = await buildOrderbookBuyMultiTx(client, MARKET, {
-      side: 1,
-      tick: 1000,
-      amount: 7n,
-      escrow: false,
-      matchLimitPerTx: 3,
-    });
+    const submitted: TransactionInstruction[][] = [];
+    const { batchesSubmitted } = await submitOrderbookBuyMultiTx(
+      client,
+      MARKET,
+      {
+        side: 1,
+        tick: 1000,
+        amount: 7n,
+        escrow: false,
+        matchLimitPerTx: 3,
+      },
+      async (ixs) => {
+        submitted.push(ixs);
+      },
+    );
 
-    expect(txs).toHaveLength(3);
-    expect(txs.map((tx) => tx[0].keys.length / FILL_BUNDLE_LEN)).toEqual([
+    expect(batchesSubmitted).toBe(3);
+    expect(submitted.map((tx) => tx[0].keys.length / FILL_BUNDLE_LEN)).toEqual([
       3, 3, 1,
     ]);
     // Arity must divide exactly, or the program rejects with WrongBundleArity.
-    for (const tx of txs) {
+    for (const tx of submitted) {
       expect(tx[0].keys.length % FILL_BUNDLE_LEN).toBe(0);
     }
   });
 
-  it("build_multi_tx_zero_fills_for_no_cross_order", async () => {
+  it("submit_multi_tx_zero_fills_for_no_cross_order", async () => {
     const client = mockClient({
       marketBook: () => ({
         bitmapFor: bitmap(),
@@ -183,19 +191,28 @@ describe("matching driver", () => {
       amount: 7n,
       escrow: false,
     });
-    const txs = await buildOrderbookBuyMultiTx(client, MARKET, {
-      side: 1,
-      tick: 1000,
-      amount: 7n,
-      escrow: false,
-      matchLimitPerTx: 3,
-    });
+    const submitted: TransactionInstruction[][] = [];
+    const { batchesSubmitted } = await submitOrderbookBuyMultiTx(
+      client,
+      MARKET,
+      {
+        side: 1,
+        tick: 1000,
+        amount: 7n,
+        escrow: false,
+        matchLimitPerTx: 3,
+      },
+      async (ixs) => {
+        submitted.push(ixs);
+      },
+    );
 
     expect(sim.bundlesNeeded).toBe(0);
-    expect(txs).toEqual([]);
+    expect(batchesSubmitted).toBe(0);
+    expect(submitted).toEqual([]);
   });
 
-  it("build_multi_tx_re_reads_bitmap_between_txs", async () => {
+  it("submit_multi_tx_re_reads_bitmap_between_txs", async () => {
     let reads = 0;
     const client = mockClient({
       marketBook: () => {
@@ -211,20 +228,71 @@ describe("matching driver", () => {
       },
     });
 
-    const txs = await buildOrderbookBuyMultiTx(client, MARKET, {
-      side: 1,
-      tick: 1000,
-      amount: 4n,
-      escrow: false,
-      matchLimitPerTx: 3,
-    });
+    const txs: TransactionInstruction[][] = [];
+    await submitOrderbookBuyMultiTx(
+      client,
+      MARKET,
+      {
+        side: 1,
+        tick: 1000,
+        amount: 4n,
+        escrow: false,
+        matchLimitPerTx: 3,
+      },
+      async (ixs) => {
+        txs.push(ixs);
+      },
+    );
 
     expect(txs).toHaveLength(2);
-    expect(txs[0][0].keys[0].pubkey.equals(txs[1][0].keys[0].pubkey)).toBe(
+    expect(txs[0]![0]!.keys[0]!.pubkey.equals(txs[1]![0]!.keys[0]!.pubkey)).toBe(
       false,
     );
     expect(reads).toBe(2);
     // Second tx carries exactly one fill bundle, rebuilt from the re-read bitmap.
-    expect(txs[1][0].keys).toHaveLength(FILL_BUNDLE_LEN);
+    expect(txs[1]![0]!.keys).toHaveLength(FILL_BUNDLE_LEN);
+  });
+
+  // H1 regression (audit W9). The bug was that every batch was planned before
+  // anything was submitted, so BookSide.head_index never advanced and each
+  // batch selected the same makers — batch 2+ then died on-chain with
+  // MakerAccountMismatch. Ordering, not just output, is the contract here:
+  // each read must be preceded by every earlier batch's submit.
+  it("submit_multi_tx_calls_submit_before_re_reading_state_h1_regression", async () => {
+    const events: string[] = [];
+    const client = mockClient({
+      marketBook: () => {
+        events.push("read");
+        return { bitmapFor: bitmap(), bitmapAgainst: bitmap(900) };
+      },
+      bookSides: { 900: sideWithOrders(900, Array(7).fill(1n)) },
+    });
+
+    const { batchesSubmitted } = await submitOrderbookBuyMultiTx(
+      client,
+      MARKET,
+      {
+        side: 1,
+        tick: 1000,
+        amount: 7n,
+        escrow: false,
+        matchLimitPerTx: 3,
+      },
+      async () => {
+        events.push("submit");
+      },
+    );
+
+    expect(batchesSubmitted).toBe(3);
+    // Strict alternation. A prebuild-then-submit implementation produces
+    // read,read,read,submit,submit,submit and fails here.
+    expect(events).toEqual([
+      "read",
+      "submit",
+      "read",
+      "submit",
+      "read",
+      "submit",
+    ]);
   });
 });

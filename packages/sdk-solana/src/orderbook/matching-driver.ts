@@ -142,19 +142,41 @@ export async function planMatch(
   };
 }
 
-export async function buildOrderbookBuyMultiTx(
+/**
+ * Submit a multi-transaction orderbook buy that crosses more makers than fit
+ * in one transaction.
+ *
+ * Each batch is planned against the LIVE `BookSide.head_index` — read fresh
+ * from chain — and submitted via `submit` BEFORE the next batch is planned, so
+ * batch N+1 sees the book as it stands after batch N's fills advanced the head.
+ *
+ * This interleave is mandatory, not stylistic (audit finding H1). The previous
+ * `buildOrderbookBuyMultiTx` prebuilt every batch in one loop and returned them
+ * for the caller to submit afterwards. Because nothing landed between
+ * iterations, `head_index` never moved, so every batch selected the SAME makers.
+ * Once batch 1 landed, batch 2's bundles pointed at already-filled orders and
+ * the matcher rejected them with `MakerAccountMismatch` (6052) — which broke
+ * the documented "SDK does multi-tx for deeper crosses" mitigation for any
+ * cross past `matchLimitPerTx`.
+ *
+ * Solana requires this dance because every account a transaction touches must
+ * be named up front, so the maker list cannot be discovered mid-execution the
+ * way EVM's `_match` walks a storage mapping.
+ */
+export async function submitOrderbookBuyMultiTx(
   client: SoothSolanaClient,
   market: MarketRef,
   taker: MatchTaker & { matchLimitPerTx: number; user?: AddressRef },
-): Promise<Array<TransactionInstruction[]>> {
+  submit: (ixs: TransactionInstruction[]) => Promise<unknown>,
+): Promise<{ batchesSubmitted: number }> {
   const matchLimitPerTx =
     taker.matchLimitPerTx > 0
       ? Math.floor(taker.matchLimitPerTx)
       : DEFAULT_MATCH_LIMIT_PER_TX;
-  if (matchLimitPerTx <= 0) return [];
+  if (matchLimitPerTx <= 0) return { batchesSubmitted: 0 };
 
   let remaining = taker.amount;
-  const txs: Array<TransactionInstruction[]> = [];
+  let batchesSubmitted = 0;
   while (remaining > 0n) {
     const { marketState, fills } = await collectPredictedFills(client, market, {
       ...taker,
@@ -187,12 +209,15 @@ export async function buildOrderbookBuyMultiTx(
       },
       remainingAccounts,
     );
-    txs.push(ixs);
+    // Submit before looping — the next collectPredictedFills() must observe
+    // this batch's effect on head_index. See the H1 note above.
+    await submit(ixs);
+    batchesSubmitted += 1;
     remaining -= chunkAmount;
 
     if (chunk.length < matchLimitPerTx) break;
   }
-  return txs;
+  return { batchesSubmitted };
 }
 
 export function buildFillBundles(

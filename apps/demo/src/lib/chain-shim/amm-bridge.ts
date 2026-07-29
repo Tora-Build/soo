@@ -54,7 +54,7 @@ import {
   WAD,
   WAD_TO_USDC_SCALAR,
   DEFAULT_MATCH_LIMIT_PER_TX,
-  buildOrderbookBuyMultiTx,
+  submitOrderbookBuyMultiTx,
   soothMarketIdl,
   type SolanaChainAdapter,
   type SignerRef,
@@ -1158,16 +1158,21 @@ async function dispatchOrderbookWrite(
   const user = `sol:${userBase58}`;
   const escrow = typeof args[3] === "boolean" ? args[3] : false;
 
-  const batches = await buildOrderbookBuyMultiTx(ctx.adapter, ctx.marketRef, {
-    side,
-    tick,
-    amount: sharesWad,
-    escrow,
-    matchLimitPerTx,
-    user,
-  });
-  if (batches.length > 0) {
-    return submitInstructionBatches(ctx.adapter, batches, signer, userBase58);
+  let lastSignature = "";
+  const { batchesSubmitted } = await submitOrderbookBuyMultiTx(
+    ctx.adapter,
+    ctx.marketRef,
+    { side, tick, amount: sharesWad, escrow, matchLimitPerTx, user },
+    async (ixs) => {
+      const receipt = await ctx.adapter.submit(
+        requestFromInstructions(ixs, userBase58),
+        signer,
+      );
+      lastSignature = receipt.txId.replace(/^sol:/, "");
+    },
+  );
+  if (batchesSubmitted > 0) {
+    return synthHashFromSignature(lastSignature);
   }
 
   const req = await ctx.adapter.buildOrderbookBuy(ctx.marketRef, {
@@ -1253,23 +1258,6 @@ function decodeCompositeOrderId(orderId: bigint): { side: 0 | 1; tick: number } 
     );
   }
   return { side, tick };
-}
-
-async function submitInstructionBatches(
-  adapter: SolanaChainAdapter,
-  batches: Array<TransactionInstruction[]>,
-  signer: SignerRef,
-  userBase58: string,
-): Promise<string> {
-  let lastSignature = "";
-  for (const batch of batches) {
-    const receipt = await adapter.submit(
-      requestFromInstructions(batch, userBase58),
-      signer,
-    );
-    lastSignature = receipt.txId.replace(/^sol:/, "");
-  }
-  return synthHashFromSignature(lastSignature);
 }
 
 function requestFromInstructions(

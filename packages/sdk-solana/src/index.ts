@@ -70,7 +70,8 @@ export { soothCoreIdl } from "./anchor/index.js";
 
 export {
   DEFAULT_MATCH_LIMIT_PER_TX,
-  buildOrderbookBuyMultiTx,
+  FILL_BUNDLE_LEN,
+  submitOrderbookBuyMultiTx,
   planMatch,
   simulateMatch,
 } from "./orderbook/matching-driver.js";
