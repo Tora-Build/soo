@@ -1,5 +1,5 @@
 // AMM sell-flow integration test — symmetric counterpart to
-// `amm-buy-flow.test.tsx`. Boots bankrun, seeds a position via a real buy,
+// `amm-buy-flow.test.tsx`. Boots LiteSVM, seeds a position via a real buy,
 // switches the upstream `<SimpleTradingPanel>` to SELL mode, clicks the
 // SELL button, and asserts:
 //
@@ -37,7 +37,7 @@ import {
   type SignerRef,
 } from "@sooth/sdk-solana";
 import { bootSmoke } from "../../../packages/sdk-solana/tests/fixtures/setup";
-import { BankrunConnection } from "../../../packages/sdk-solana/tests/fixtures/bankrun-connection";
+import { LiteSvmConnection } from "../../../packages/sdk-solana/tests/fixtures/svm";
 
 beforeAll(() => {
   if (typeof window !== "undefined" && !window.matchMedia) {
@@ -67,14 +67,14 @@ afterEach(() => {
   cleanup();
 });
 
-test("AMM sell YES end-to-end against bankrun", async () => {
+test("AMM sell YES end-to-end against LiteSVM", async () => {
   const t0 = Date.now();
   const smoke = await bootSmoke({
     bWad: 1_000n * WAD,
     userUsdcBaseUnits: 100_000_000n,
   });
 
-  const conn = new BankrunConnection(smoke.ctx);
+  const conn = new LiteSvmConnection(smoke.ctx);
   const adapter = new SolanaChainAdapter({
     node: {
       id: "demo-bankrun",

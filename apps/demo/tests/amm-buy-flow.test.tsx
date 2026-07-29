@@ -2,7 +2,7 @@
 //
 // Mounts upstream's `<AMM />` page (factored through `<AMMPageBody />` and
 // `<SimpleTradingPanel />`) under the production provider stack with a
-// bankrun-backed `SolanaChainAdapter` injected via `<DemoProvider override>`.
+// LiteSVM-backed `SolanaChainAdapter` injected via `<DemoProvider override>`.
 // The test exercises the buy path end-to-end:
 //
 //   1. Boot bankrun via `bootSmoke()` — same fixture the SDK smoke test uses.
@@ -43,7 +43,7 @@ import {
 // The package's `exports` field only ships `.` so we reach into the source
 // tree via a relative monorepo path. This keeps a single fixture authority.
 import { bootSmoke } from "../../../packages/sdk-solana/tests/fixtures/setup";
-import { BankrunConnection } from "../../../packages/sdk-solana/tests/fixtures/bankrun-connection";
+import { LiteSvmConnection } from "../../../packages/sdk-solana/tests/fixtures/svm";
 import {
   deriveLpMintPda,
   deriveUserLpAta,
@@ -80,14 +80,14 @@ afterEach(() => {
   cleanup();
 });
 
-test("AMM buy YES end-to-end against bankrun", async () => {
+test("AMM buy YES end-to-end against LiteSVM", async () => {
   const t0 = Date.now();
   const smoke = await bootSmoke({
     bWad: 1_000n * WAD,
     userUsdcBaseUnits: 100_000_000n, // 100 USDC
   });
 
-  const conn = new BankrunConnection(smoke.ctx);
+  const conn = new LiteSvmConnection(smoke.ctx);
   const adapter = new SolanaChainAdapter({
     node: {
       id: "demo-bankrun",
@@ -261,7 +261,7 @@ test("Outcome toggle invalidates the quote before submit (no stale-quote race)",
     userUsdcBaseUnits: 100_000_000n,
   });
 
-  const conn = new BankrunConnection(smoke.ctx);
+  const conn = new LiteSvmConnection(smoke.ctx);
   const adapter = new SolanaChainAdapter({
     node: {
       id: "demo-bankrun",

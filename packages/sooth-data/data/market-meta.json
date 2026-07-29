@@ -1,0 +1,20 @@
+{
+  "9hV7hkfos2B3jNnRt36RhX94j9EN5QY9FpMm8sBP9T4o": {
+    "questionHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "question": "Will the v1 localnet demo show real orderbook data?",
+    "event": "V1 localnet acceptance",
+    "category": "demo",
+    "rule": "Resolves YES when the orderbook + price chart render from sooth-data",
+    "createdAt": 1779000000,
+    "deadline": 1779600000
+  },
+  "81eJEhLC4XA2hsPbCcoefqWm5cU3tDV67K85SCt2KaxH": {
+    "questionHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "question": "Will the devnet demo show real graduated market data?",
+    "event": "V1 devnet acceptance",
+    "category": "demo",
+    "rule": "Resolves YES when the orderbook + price chart render from sooth-data on devnet",
+    "createdAt": 1779291472,
+    "deadline": 1779896272
+  }
+}

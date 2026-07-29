@@ -1,7 +1,7 @@
 // Portfolio display integration test.
 //
 // Mounts upstream's `<Portfolio />` page under the production provider stack
-// with a bankrun-backed `SolanaChainAdapter` injected via `<DemoProvider
+// with a LiteSVM-backed `SolanaChainAdapter` injected via `<DemoProvider
 // override>`. After seeding a market and executing a buy via the adapter,
 // the portfolio bridge should:
 //
@@ -38,7 +38,7 @@ import {
   type SignerRef,
 } from "@sooth/sdk-solana";
 import { bootSmoke } from "../../../packages/sdk-solana/tests/fixtures/setup";
-import { BankrunConnection } from "../../../packages/sdk-solana/tests/fixtures/bankrun-connection";
+import { LiteSvmConnection } from "../../../packages/sdk-solana/tests/fixtures/svm";
 
 beforeAll(() => {
   // happy-dom shims (matchMedia / ResizeObserver) — same as amm-buy-flow.
@@ -76,7 +76,7 @@ test("Portfolio renders the user's AMM position from bankrun", async () => {
     userUsdcBaseUnits: 100_000_000n, // 100 USDC
   });
 
-  const conn = new BankrunConnection(smoke.ctx);
+  const conn = new LiteSvmConnection(smoke.ctx);
   const adapter = new SolanaChainAdapter({
     node: {
       id: "demo-bankrun",

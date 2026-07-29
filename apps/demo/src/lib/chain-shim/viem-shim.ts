@@ -10,6 +10,8 @@
 // have viable Solana equivalents and are implemented here directly so we
 // don't take a runtime dep on viem itself.
 
+import { PublicKey } from "@solana/web3.js";
+
 // ─── Types upstream code references at compile time ─────────────────────────
 
 // Match viem's template literal types so upstream code that narrows to
@@ -129,38 +131,40 @@ export function encodeAbiParameters(
   return "0x";
 }
 
-// `keccak256` and `encodePacked` are used to derive `marketKey` from an
-// EVM market address. In the Solana fork those values become opaque
-// identifiers; we still need *something* deterministic so toasts and
-// localStorage keys don't collide. We use a non-cryptographic FNV-1a
-// hash here — the value is not security-relevant in the Solana fork.
-function fnv1a(buf: Uint8Array): bigint {
-  let h = 0xcbf29ce484222325n;
-  const PRIME = 0x100000001b3n;
-  const MASK = (1n << 64n) - 1n;
-  for (const b of buf) {
-    h = (h ^ BigInt(b)) & MASK;
-    h = (h * PRIME) & MASK;
-  }
-  return h;
-}
-function bytesFromHex(s: Hex): Uint8Array {
-  const t = s.startsWith("0x") ? s.slice(2) : s;
-  const out = new Uint8Array(Math.ceil(t.length / 2));
-  for (let i = 0; i < out.length; i++) {
-    out[i] = parseInt(t.slice(i * 2, i * 2 + 2), 16) || 0;
-  }
-  return out;
+// `keccak256` and `encodePacked` derive `marketKey` from a market address.
+// Upstream (EVM) hashes because a 20-byte address needs widening to bytes32.
+// A Solana market address is ALREADY 32 bytes, so no hash is needed — the
+// pubkey's own bytes are the identifier. That is a bijection: zero collisions,
+// and invertible, which lets the data service resolve any market without a
+// metadata table.
+//
+// This MUST stay byte-identical to packages/sooth-data/src/market-key.ts
+// (deriveMarketKey). If the two disagree, every fills lookup 404s.
+//
+// The previous implementation folded FNV-1a over `bytesFromHex("0x" + base58)`,
+// which parsed a BASE58 string as hex: only 21 of 58 base58 characters are
+// hex-valid and the rest became `parseInt(...) || 0` = zero, destroying ~64%
+// of the input before hashing. It then emitted 0x${a}${b}${a}${b}, mirroring
+// the first 128 bits into the last. It only survived because the market set
+// was two hand-seeded entries; a collision would have served one market's
+// fills under another's key.
+function hexFromBytes(bytes: Uint8Array): Hex {
+  let out = "";
+  for (const b of bytes) out += b.toString(16).padStart(2, "0");
+  return `0x${out}` as Hex;
 }
 export function keccak256(input: Hex | Uint8Array): Hex {
-  const buf =
-    typeof input === "string" ? bytesFromHex(input) : (input as Uint8Array);
-  // Fold FNV-1a into a 32-byte deterministic identifier.
-  const a = fnv1a(buf);
-  const b = fnv1a(new Uint8Array([...buf].reverse()));
-  const aHex = a.toString(16).padStart(16, "0");
-  const bHex = b.toString(16).padStart(16, "0");
-  return ("0x" + aHex + bHex + aHex + bHex) as Hex;
+  if (input instanceof Uint8Array) {
+    if (input.length === 32) return hexFromBytes(input);
+    throw new Error(
+      `chain-shim keccak256: expected a 32-byte market pubkey, got ${input.length} bytes`,
+    );
+  }
+  // `encodePacked` hands us "0x" + <base58 pubkey>. Decode it back to the
+  // 32 bytes it always was.
+  const text = input.startsWith("0x") ? input.slice(2) : input;
+  const bytes = new PublicKey(text).toBytes();
+  return hexFromBytes(bytes);
 }
 export function encodePacked(
   _types: readonly string[],

@@ -1,0 +1,32 @@
+{
+  "name": "@sooth/sooth-data",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Thin Sooth Solana data service for demo orderbook slices",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "vitest run",
+    "seed:meta": "tsx src/seed-meta.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.8",
+    "@solana/web3.js": "^1.98.0",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,5 +1,5 @@
 // Minimal render test for the faithful Solana fork. The previous lean
-// happy-path test exercised a full bankrun-backed buy. After the re-fork,
+// happy-path test exercised a full LiteSVM-backed buy. After the re-fork,
 // the demo's React tree contains 100+ components from upstream that consume
 // EVM contract reads through the chain-shim sentinel — a deep integration
 // test against the upstream pages would be brittle and lower-signal than
