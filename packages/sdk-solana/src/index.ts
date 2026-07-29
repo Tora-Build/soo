@@ -34,6 +34,7 @@ export {
   marketFeePoolPda,
   orderbookPositionPda,
   SOOTH_CORE_PROGRAM_ID,
+  SOOTH_LOG_PROGRAM_ID,
   type MarketId,
   type ProgramIds,
 } from "./pdas.js";

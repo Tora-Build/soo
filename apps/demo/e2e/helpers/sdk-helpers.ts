@@ -37,7 +37,8 @@ import {
 } from "@solana/spl-token";
 import anchor from "@coral-xyz/anchor";
 import {
-  SOOTH_MARKET_PROGRAM_ID,
+  SOOTH_CORE_PROGRAM_ID,
+  SOOTH_LOG_PROGRAM_ID,
   SolanaChainAdapter,
   type SignerRef,
 } from "@sooth/sdk-solana";
@@ -59,15 +60,10 @@ function loadIdl(name: string): any {
   );
 }
 
-export const ammIdl = loadIdl("sooth_amm");
-export const marketIdl = loadIdl("sooth_market");
-export const launchpadIdl = loadIdl("sooth_launchpad");
-export const adjudicatorIdl = loadIdl("sooth_adjudicator");
-export const bookIdl = loadIdl("sooth_book");
-
-const SOOTH_BOOK_DEFAULT_PROGRAM_ID = new PublicKey(
-  "DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X",
-);
+// One program, not five. The 5→1 merge folded sooth_amm, sooth_market,
+// sooth_book, sooth_launchpad and sooth_adjudicator into sooth_core; sooth_log
+// stays separate because a program cannot CPI into itself.
+export const coreIdl = loadIdl("sooth_core");
 
 function programIdOrFallback(idlAddress: unknown, fallback: PublicKey): PublicKey {
   return typeof idlAddress === "string" && idlAddress.length > 0
@@ -75,19 +71,35 @@ function programIdOrFallback(idlAddress: unknown, fallback: PublicKey): PublicKe
     : fallback;
 }
 
-export const ammProgramId = new PublicKey(ammIdl.address);
-export const marketProgramId = programIdOrFallback(
-  marketIdl.address,
-  SOOTH_MARKET_PROGRAM_ID,
+export const coreProgramId = programIdOrFallback(
+  coreIdl.address,
+  SOOTH_CORE_PROGRAM_ID,
 );
-export const launchpadProgramId = new PublicKey(launchpadIdl.address);
-export const adjudicatorProgramId = new PublicKey(adjudicatorIdl.address);
-export const bookProgramId = programIdOrFallback(
-  bookIdl.address,
-  SOOTH_BOOK_DEFAULT_PROGRAM_ID,
-);
-const bookProgramIdl = { ...bookIdl, address: bookProgramId.toBase58() };
-const marketProgramIdl = { ...marketIdl, address: marketProgramId.toBase58() };
+
+/** Durable-event sink invoked by `buy`. No IDL is shipped for it — the e2e
+ *  path only needs the address to put in the buy account list. */
+export const logProgramId = SOOTH_LOG_PROGRAM_ID;
+
+const coreProgramIdl = { ...coreIdl, address: coreProgramId.toBase58() };
+
+/**
+ * Compute-budget preamble every sooth_core transaction needs.
+ *
+ * The heap frame is MANDATORY, not an optimisation: sooth_core installs a
+ * 256 KB `#[global_allocator]` and the runtime only maps that region when the
+ * transaction asks for it. Because the allocator hands out addresses from the
+ * top of the region, omitting the frame makes the FIRST allocation land
+ * outside mapped memory and the program aborts with "Access violation in heap
+ * section" — on every instruction, not just multi-fill buys. @sooth/sdk-solana
+ * does this on all its paths; these adapter-direct helpers must too.
+ */
+export const SOOTH_CORE_HEAP_BYTES = 256 * 1024;
+
+export function heapFrameIx(): TransactionInstruction {
+  return ComputeBudgetProgram.requestHeapFrame({
+    bytes: SOOTH_CORE_HEAP_BYTES,
+  });
+}
 
 // ─── Test wallet keypair ────────────────────────────────────────────────
 //
@@ -177,7 +189,12 @@ function makeProvider(
   });
 }
 
+/** All subsystems live in one program now, so these are the same handle. The
+ *  five names are kept so call sites still read as which subsystem they mean
+ *  — `programs.amm.methods.tradePositions` says more than `programs.core`
+ *  does — but they are deliberately one object, not five. */
 export interface ProgramHandles {
+  core: anchor.Program;
   amm: anchor.Program;
   market: anchor.Program;
   launchpad: anchor.Program;
@@ -190,12 +207,14 @@ export function makePrograms(
   signer: Keypair,
 ): ProgramHandles {
   const provider = makeProvider(conn, signer);
+  const core = new anchor.Program(coreProgramIdl, provider);
   return {
-    amm: new anchor.Program(ammIdl, provider),
-    market: new anchor.Program(marketProgramIdl, provider),
-    launchpad: new anchor.Program(launchpadIdl, provider),
-    adjudicator: new anchor.Program(adjudicatorIdl, provider),
-    book: new anchor.Program(bookProgramIdl, provider),
+    core,
+    amm: core,
+    market: core,
+    launchpad: core,
+    adjudicator: core,
+    book: core,
   };
 }
 
@@ -204,25 +223,25 @@ export function makePrograms(
 export function deriveMarketPda(marketId: Buffer): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("market"), marketId],
-    marketProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveAmmStatePda(marketId: Buffer): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("amm"), marketId],
-    ammProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveVaultAuthorityPda(marketId: Buffer): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("vault"), marketId],
-    marketProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveLockAuthorityPda(marketId: Buffer): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("lock"), marketId],
-    marketProgramId,
+    coreProgramId,
   )[0];
 }
 export function derivePositionPda(
@@ -231,7 +250,7 @@ export function derivePositionPda(
 ): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("pos"), marketId, user.toBuffer()],
-    ammProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveLockEntryPda(
@@ -242,61 +261,61 @@ export function deriveLockEntryPda(
   nonceBytes.writeBigUInt64LE(lockNonce, 0);
   return PublicKey.findProgramAddressSync(
     [Buffer.from("lock_entry"), positionPda.toBuffer(), nonceBytes],
-    ammProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveYesMintPda(marketId: Buffer): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("mint"), marketId, Buffer.from("y")],
-    marketProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveNoMintPda(marketId: Buffer): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("mint"), marketId, Buffer.from("n")],
-    marketProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveProtocolConfigPda(): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("protocol_config")],
-    launchpadProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveFeePoolAuthorityPda(): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("fee_pool_authority")],
-    launchpadProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveLpMintPda(marketId: Buffer): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("lp"), marketId],
-    launchpadProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveLpMintAuthorityPda(marketId: Buffer): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("lp_mint_authority"), marketId],
-    launchpadProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveLpYieldAuthorityPda(): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("lp_yield_authority")],
-    launchpadProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveAdjudicatorPda(marketPda: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("adjudicator"), marketPda.toBuffer()],
-    adjudicatorProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveMarketBookPda(marketId: Buffer): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("market_book"), marketId],
-    bookProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveBookSidePda(
@@ -308,7 +327,7 @@ export function deriveBookSidePda(
   tickBuf.writeUInt16LE(tick, 0);
   return PublicKey.findProgramAddressSync(
     [Buffer.from("book_side"), marketId, Buffer.from([side]), tickBuf],
-    bookProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveOrderbookPositionPda(
@@ -317,13 +336,13 @@ export function deriveOrderbookPositionPda(
 ): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("orderbook_position"), marketId, user.toBuffer()],
-    marketProgramId,
+    coreProgramId,
   )[0];
 }
 export function deriveMarketFeePoolPda(marketId: Buffer): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("market_fee_pool"), marketId],
-    launchpadProgramId,
+    coreProgramId,
   )[0];
 }
 
@@ -598,6 +617,7 @@ export async function buyViaAdapter(args: {
   const tx = new Transaction();
   tx.add(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+    heapFrameIx(),
     // Repeated setup buys can otherwise produce identical signatures when
     // Surfpool returns the same recent blockhash for the same signer + ix.
     ComputeBudgetProgram.setComputeUnitPrice({
@@ -626,7 +646,6 @@ export async function buyViaAdapter(args: {
       usdcMint,
       protocolConfig,
       marketFeePool: deriveMarketFeePoolPda(marketId),
-      feePoolVault,
       lpMint,
       lpMintAuthority,
       userLpAta,
@@ -634,8 +653,6 @@ export async function buyViaAdapter(args: {
       systemProgram: SystemProgram.programId,
       tokenProgram: TOKEN_PROGRAM_ID,
       rent: SYSVAR_RENT_PUBKEY,
-      soothLaunchpadProgram: launchpadProgramId,
-      instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
     })
     .instruction();
   tx.add(ix);
@@ -689,6 +706,7 @@ export async function sellViaAdapter(args: {
 
   const tx = new Transaction();
   tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+  tx.add(heapFrameIx());
   const ix = await (programs.amm.methods as any)
     .sellPositions(outcome, bn(-deltaShares), bn(minProceedsWad))
     .accounts({
@@ -707,8 +725,6 @@ export async function sellViaAdapter(args: {
       systemProgram: SystemProgram.programId,
       tokenProgram: TOKEN_PROGRAM_ID,
       rent: SYSVAR_RENT_PUBKEY,
-      soothMarketProgram: marketProgramId,
-      instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
     })
     .instruction();
   tx.add(ix);
@@ -741,6 +757,7 @@ export async function claimUnlockedViaAdapter(args: {
 
   const tx = new Transaction();
   tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }));
+  tx.add(heapFrameIx());
   const ix = await (programs.amm.methods as any)
     .claimUnlocked()
     .accounts({
@@ -753,8 +770,6 @@ export async function claimUnlockedViaAdapter(args: {
       usdcMint,
       user: signer.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
-      soothMarketProgram: marketProgramId,
-      instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
     })
     .instruction();
   tx.add(ix);
@@ -785,6 +800,7 @@ export async function mintCompleteSetViaAdapter(args: {
 
   const tx = new Transaction();
   tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }));
+  tx.add(heapFrameIx());
   // Idempotent ATA creates for outcome tokens — neither mint_complete_set
   // nor merge_complete_set initialise the ATAs themselves.
   tx.add(
@@ -842,6 +858,7 @@ export async function mergeCompleteSetViaAdapter(args: {
 
   const tx = new Transaction();
   tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }));
+  tx.add(heapFrameIx());
   const ix = await (programs.market.methods as any)
     .mergeCompleteSet(bn(amount))
     .accounts({
@@ -1068,6 +1085,7 @@ export async function sendOrderbookBuyWithRemainingAccounts(args: {
   );
   const tx = new Transaction().add(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
+    heapFrameIx(),
     ...ixs,
   );
   return sendAndConfirmTransaction(args.conn, tx, [args.signer], {
@@ -1128,9 +1146,10 @@ export async function distributeMarketFeesViaAdapter(args: {
 
   const tx = new Transaction().add(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
+    heapFrameIx(),
   );
   const ix = new TransactionInstruction({
-    programId: launchpadProgramId,
+    programId: coreProgramId,
     keys: [
       { pubkey: deriveProtocolConfigPda(), isSigner: false, isWritable: false },
       { pubkey: args.marketPda, isSigner: false, isWritable: false },
@@ -1313,11 +1332,8 @@ export function makeSolanaAdapter(args: {
       rpcUrl: process.env.SOLANA_RPC_URL ?? "http://127.0.0.1:8899",
     },
     programIds: {
-      soothAmm: ammProgramId,
-      soothMarket: marketProgramId,
-      soothLaunchpad: launchpadProgramId,
-      soothAdjudicator: adjudicatorProgramId,
-      soothBook: bookProgramId,
+      soothCore: coreProgramId,
+      soothLog: logProgramId,
     },
     usdcMint: args.usdcMint,
     connection: args.conn,
@@ -1373,7 +1389,7 @@ export async function initMarketFeePoolViaAdapter(args: {
   const marketFeePool = deriveMarketFeePoolPda(args.marketId);
   if (await args.conn.getAccountInfo(marketFeePool)) return;
   const ix = new TransactionInstruction({
-    programId: launchpadProgramId,
+    programId: coreProgramId,
     keys: [
       { pubkey: args.marketPda, isSigner: false, isWritable: false },
       {
@@ -1390,9 +1406,14 @@ export async function initMarketFeePoolViaAdapter(args: {
     ],
     data: Buffer.from("3313fb78ab5b8a73", "hex"),
   });
-  await sendAndConfirmTransaction(args.conn, new Transaction().add(ix), [
-    args.signer,
-  ]);
+  // init_market_fee_pool is a sooth_core instruction, so it needs the heap
+  // frame like every other one — this transaction is hand-built rather than
+  // going through a compute-budget preamble, which is how it was missed.
+  await sendAndConfirmTransaction(
+    args.conn,
+    new Transaction().add(heapFrameIx(), ix),
+    [args.signer],
+  );
 }
 
 export async function placeOrderbookBuyViaAdapter(args: {
@@ -1487,11 +1508,12 @@ export async function createMarketViaAdapter(args: {
   const protocolConfig = deriveProtocolConfigPda();
   const allowlist = PublicKey.findProgramAddressSync(
     [Buffer.from("adjudicator_allowlist")],
-    marketProgramId,
+    coreProgramId,
   )[0];
 
   const tx = new Transaction();
   tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
+  tx.add(heapFrameIx());
   const ix = await (programs.launchpad.methods as any)
     .createMarket({
       marketId: Array.from(marketId),
@@ -1504,7 +1526,6 @@ export async function createMarketViaAdapter(args: {
     .accounts({
       config: protocolConfig,
       market: marketPda,
-      adjudicatorAllowlist: allowlist,
       vaultAuthority,
       yesMint,
       noMint,
@@ -1514,8 +1535,6 @@ export async function createMarketViaAdapter(args: {
       lockVault,
       ammState: ammStatePda,
       creator: creator.publicKey,
-      soothMarketProgram: marketProgramId,
-      soothAmmProgram: ammProgramId,
       tokenProgram: TOKEN_PROGRAM_ID,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
@@ -1543,11 +1562,13 @@ export async function registerAdjudicatorViaAdapter(args: {
   const adjudicatorPda = deriveAdjudicatorPda(marketPda);
   const tx = new Transaction();
   tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }));
+  tx.add(heapFrameIx());
   const ix = await (programs.adjudicator.methods as any)
-    .registerAdjudicator(authority, { manual: {} })
+    .registerAdjudicator(authority)
     .accounts({
-      adjudicator: adjudicatorPda,
+      adjudicatorEntry: adjudicatorPda,
       market: marketPda,
+      protocolConfig: deriveProtocolConfigPda(),
       signer: signer.publicKey,
       systemProgram: SystemProgram.programId,
     })
@@ -1571,7 +1592,7 @@ export async function seedLpViaAdapter(args: {
   const lpMintAuthority = deriveLpMintAuthorityPda(marketId);
   const lpPosition = PublicKey.findProgramAddressSync(
     [Buffer.from("lp_position"), marketId, creator.publicKey.toBuffer()],
-    launchpadProgramId,
+    coreProgramId,
   )[0];
   const protocolConfig = deriveProtocolConfigPda();
   const creatorLpAta = getAssociatedTokenAddressSync(lpMint, creator.publicKey);
@@ -1581,6 +1602,7 @@ export async function seedLpViaAdapter(args: {
 
   const tx = new Transaction();
   tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+  tx.add(heapFrameIx());
   const ix = await (programs.launchpad.methods as any)
     .seedLp({
       lpAmount: bn(initialB / 1_000_000_000_000n),
@@ -1618,6 +1640,7 @@ export async function dismissMarketViaAdapter(args: {
   const ammState = deriveAmmStatePda(marketId);
   const tx = new Transaction();
   tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }));
+  tx.add(heapFrameIx());
   const ix = await (programs.amm.methods as any)
     .dismissMarket()
     .accounts({
@@ -1647,14 +1670,13 @@ export async function requestLockViaAdapter(args: {
 
   const tx = new Transaction();
   tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }));
+  tx.add(heapFrameIx());
   const ix = await (programs.adjudicator.methods as any)
     .requestLock()
     .accounts({
-      adjudicator: adjudicatorPda,
+      adjudicatorEntry: adjudicatorPda,
       market: marketPda,
       authority: authority.publicKey,
-      soothMarketProgram: marketProgramId,
-      instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
     })
     .instruction();
   tx.add(ix);
@@ -1675,14 +1697,13 @@ export async function attestOutcomeViaAdapter(args: {
 
   const tx = new Transaction();
   tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }));
+  tx.add(heapFrameIx());
   const ix = await (programs.adjudicator.methods as any)
     .attestOutcome(winningOutcome)
     .accounts({
-      adjudicator: adjudicatorPda,
+      adjudicatorEntry: adjudicatorPda,
       market: marketPda,
       authority: authority.publicKey,
-      soothMarketProgram: marketProgramId,
-      instructionSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
     })
     .instruction();
   tx.add(ix);
@@ -1712,6 +1733,7 @@ export async function redeemViaAdapter(args: {
 
   const tx = new Transaction();
   tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }));
+  tx.add(heapFrameIx());
   // Idempotent: ensure outcome ATAs exist before redeem reads them.
   tx.add(
     createAssociatedTokenAccountIdempotentInstruction(

@@ -1,0 +1,12 @@
+{
+  // e2e/ was covered by NO tsconfig, which is how sdk-helpers.ts kept
+  // readFileSync-ing five IDL JSONs that the 5→1 merge had deleted: Playwright
+  // transpiles each spec at runtime, so nothing ever type-checked the helpers
+  // and the breakage only surfaced when a spec actually ran.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["e2e/**/*", "playwright.config.ts"]
+}

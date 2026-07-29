@@ -24,7 +24,7 @@ import {
   decodeAnchorError,
 } from "../helpers/onchain";
 import { loadFixture, testPubkey, marketIdBytes } from "../helpers/fixture";
-import { ammIdl, buyViaAdapter, loadTestKeypair } from "../helpers/sdk-helpers";
+import { coreIdl, buyViaAdapter, loadTestKeypair } from "../helpers/sdk-helpers";
 
 const POSITION_YES_SHARES_OFFSET = 72;
 const SLIPPAGE_EXCEEDED_CODE = 6000;
@@ -97,7 +97,7 @@ test.describe("AMM buy slippage rejection (adapter-direct)", () => {
       });
       const decoded = decodeAnchorError(
         status.value?.err,
-        ammIdl.errors as Array<{ code: number; name: string; msg: string }>,
+        coreIdl.errors as Array<{ code: number; name: string; msg: string }>,
       );
       expect(decoded?.code).toBe(SLIPPAGE_EXCEEDED_CODE);
       expect(decoded?.name).toBe("SlippageExceeded");

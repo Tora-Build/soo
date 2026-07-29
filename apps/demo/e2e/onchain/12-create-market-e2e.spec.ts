@@ -15,7 +15,7 @@
 import { test, expect } from "@playwright/test";
 import { PublicKey } from "@solana/web3.js";
 import { makeConnection } from "../helpers/onchain";
-import { fetchMarket, marketProgramId } from "../helpers/sdk-helpers";
+import { fetchMarket, coreProgramId } from "../helpers/sdk-helpers";
 
 test.describe("create-market (UI-driven via /launchpad)", () => {
   test("LAUNCH a fresh market via /launchpad: PDA created, lifecycle=Open", async ({
@@ -91,7 +91,7 @@ test.describe("create-market (UI-driven via /launchpad)", () => {
 
     const acc = await conn.getAccountInfo(newMarketPda);
     expect(acc).not.toBeNull();
-    expect(acc!.owner.toBase58()).toBe(marketProgramId.toBase58());
+    expect(acc!.owner.toBase58()).toBe(coreProgramId.toBase58());
 
     const marketAddressForUi = `0x${newMarketPdaStr}`;
     const shortened = `${marketAddressForUi.slice(0, 6)}…${marketAddressForUi.slice(-4)}`;
