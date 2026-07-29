@@ -4,7 +4,7 @@
 // `InvalidOutcome`) raises a `SoothError` instead of being swallowed.
 //
 // Without the fix, `submit` returned a SubmitReceipt for failed txs because
-// `confirmation.value.err` was never inspected. The bankrun shim's
+// `confirmation.value.err` was never inspected. The LiteSVM shim's
 // `processTransaction` throws on failure with a string carrying
 // "custom program error: 0x..", so the regex-based decoder runs through
 // the `sendRawTransaction` catch path — equivalent to the live
@@ -13,7 +13,7 @@
 // H5 2nd-pass (Codex): bounded retry/resend. The new `submit()` distinguishes
 // retryable failures (BlockhashNotFound, RPC blips) from terminal ones
 // (program errors 6000-6011, signature/balance issues). The retry tests
-// below use a `MockConnection` rather than bankrun because bankrun's
+// below use a `MockConnection` rather than LiteSVM because LiteSVM's
 // in-memory ledger doesn't simulate blockhash expiry.
 
 import { describe, expect, it } from "vitest";
@@ -59,7 +59,7 @@ import { soothCoreIdl } from "../src/anchor/index.js";
 import { WAD } from "../src/math/lmsr.js";
 
 import { bootSmoke } from "./fixtures/setup.js";
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 
 describe("submit failure surfacing", () => {
   it("InvalidOutcome (code 6003) raises SoothError, not silent receipt", async () => {
@@ -67,7 +67,7 @@ describe("submit failure surfacing", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = new SolanaChainAdapter({
       node: {
         id: "submit-fail",
@@ -415,7 +415,7 @@ function buildMockRequest(programs: ProgramIds, userPk: PublicKey) {
 }
 
 describe("submit retry policy", () => {
-  // The retry tests don't need a live bankrun chain — only a Keypair for the
+  // The retry tests don't need a live SVM chain — only a Keypair for the
   // signer and stable program IDs to construct an adapter. Generating these
   // locally also avoids the smoke fixture's pre-existing setup dependency
   // (`adjudicator_allowlist` init), which is orthogonal to retry logic.

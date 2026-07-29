@@ -1,36 +1,50 @@
-// Compute-unit and writable-account budget for a crossing buy.
+// Resource budget for a crossing buy: compute units, writable accounts, and
+// transaction wire size.
 //
 // This restores the contract of `sooth_book/tests/cu_measurement.rs`, which
-// the 5→1 merge deleted. It was the ONLY mechanical check on the resource
-// envelope the merge was supposed to improve, so without it nobody can say
-// whether collapsing the programs bought any headroom — the instrument was
-// removed before the reading was taken.
+// the 5→1 merge deleted — the only mechanical check on the resource envelope
+// the merge was supposed to improve. Ported to the LiteSVM harness rather
+// than restored verbatim: the original is 648 lines of Rust wired to five
+// hardcoded program IDs that no longer exist.
 //
-// Ported to bankrun rather than restored verbatim: the original is 648 lines
-// of LiteSVM wired to five hardcoded program IDs (BOOK/MARKET/AMM/LAUNCHPAD/
-// LOG) and hand-written account state. Those IDs no longer exist. The
-// assertions are what matter, and they carry over exactly.
+// WHAT THE NUMBERS SAY (measured, escrowed makers = worst case, since each
+// fill then also pays a vault → maker SPL transfer):
 //
-// Ceilings are inherited from the original so a regression trips at the same
-// point it would have on main:
+//   fills   CU        writable   bytes
+//   1       ~67k      10         ~745
+//   3       ~131k     16         ~943
+//   4       ~169k     19         ~1042
+//   5       ~194k     22         ~1141
+//   6       —         —          1240  ← rejected, over PACKET_DATA_SIZE
 //
-//   CU_CEILING = 800_000              against a 1.4M per-tx budget
-//   WRITABLE_CEILING = 28             of the ~32 lockable accounts per tx
+// Three conclusions, all of which correct the received picture:
 //
-// The writable ceiling is the one that actually binds. Per
-// docs/spec/sooth_book.md §13 Q2 a fill costs 6 writable accounts, which is
-// what caps matching at ~3.7 fills per transaction and forces the multi-tx
-// driver. Compute was never close.
+// 1. The 256 KB allocator (lib.rs) moved the ceiling from 3 fills to 5. Before
+//    it, a 4-fill buy died with "memory allocation failed, out of memory" on
+//    the stock 32 KB heap while using only ~16% of the CU budget.
 //
-// Worst case = escrowed makers. On the escrow path each fill also transfers
-// vault → maker USDC (fill_order_internal), so three escrowed makers cost
-// three SPL CPIs the non-escrow path does not pay.
+// 2. The binding constraint is now TRANSACTION SIZE, not compute and not the
+//    writable-account budget. At the 5-fill maximum we are at 14% of the CU
+//    budget and 22 writable accounts. Each additional fill costs ~99 bytes
+//    (3 accounts × 32, plus index bytes), so the 1232-byte packet limit bites
+//    first.
+//
+// 3. Marginal cost is 3 writable accounts per fill, not the 6 that
+//    docs/spec/sooth_book.md §13 Q2 assumes. MarketBook, the taker position
+//    and the market vault are shared across fills rather than per-fill. The
+//    spec's "~3.7 fills per transaction" figure is derived from that 6 and is
+//    therefore wrong in both directions: the mechanism is size, not locks.
+//
+// CU varies a few percent run to run because bootSmoke randomizes market_id,
+// so find_program_address needs a different number of bump iterations. Treat
+// logged values as indicative and the ceilings as the contract.
 
 import { describe, expect, it } from "vitest";
 
 import { bootSmoke } from "./fixtures/setup.js";
 import {
   BASE_UNIT_WAD,
+  MAX_TX_BYTES,
   SHARES,
   anchorProgram,
   buyTx,
@@ -42,106 +56,29 @@ import {
   sendTxMeasured,
 } from "./fixtures/orderbook.js";
 
+// Inherited from the deleted cu_measurement.rs so a regression trips where it
+// would have on main.
 const CU_CEILING = 800_000;
 const WRITABLE_CEILING = 28;
 
-// Measured on develop @ the 5→1 merge, for reference when judging what the
-// event pipeline (sooth_log + batched OrdersFilled) costs once it lands:
-//
-//   1 fill   ~85-105k CU, 10 writable
-//   3 fills  ~165-185k CU, 16 writable
-//   4 fills  heap OOM (see the last test)
-//
-// Marginal cost is ~3 writable accounts per additional fill, not the 6 the
-// spec's §13 Q2 arithmetic assumes — MarketBook, the taker position and the
-// market vault are shared across fills rather than per-fill.
-//
-// CU varies ~10% run to run: bootSmoke randomizes market_id, so
-// find_program_address needs a different number of bump iterations each time.
-// Treat the logged values as indicative and the ceilings as the contract.
+/** Deepest cross that fits in one transaction. */
+const MAX_FILLS_PER_TX = 5;
 
 const MAKER_SIDE = 1;
 const TAKER_SIDE = 0;
 const TAKER_TICK = 950;
-const MAKER_TICKS = [900, 850, 800];
 
 /** Collateral each maker deposits to hold shares for an escrowed order. */
 const MAKER_SET_BASE_UNITS = SHARES / BASE_UNIT_WAD;
 
-describe("orderbook CU + writable-account budget", () => {
-  it("3-fill worst case stays inside the CU and writable ceilings", async () => {
-    const smoke = await bootSmoke();
-    const { ctx } = smoke;
-    const taker = smoke.user;
-    const program = anchorProgram(ctx, taker);
-    await initMarketFeePool(ctx, program, smoke, smoke.creator);
-
-    // Three escrowed makers, one per tick — the expensive path.
-    const makers = [];
-    for (const tick of MAKER_TICKS) {
-      const maker = await createFundedMaker(smoke, 10_000n);
-      await mintCompleteSetForOrderbook(
-        ctx,
-        program,
-        smoke,
-        maker,
-        MAKER_SET_BASE_UNITS,
-      );
-      await sendTx(
-        ctx,
-        [maker],
-        await buyTx(program, smoke, {
-          signer: maker,
-          side: MAKER_SIDE,
-          tick,
-          amount: SHARES,
-          matchLimit: 0,
-          remaining: [],
-          escrow: true,
-        }),
-      );
-      makers.push({ maker, tick });
-    }
-
-    // Bundles in bitmap-descending consumption order: 900, 850, 800.
-    const bundles = makers.flatMap(({ maker, tick }) =>
-      fillBundle(smoke, MAKER_SIDE, tick, maker.publicKey),
-    );
-
-    const cost = await sendTxMeasured(
-      ctx,
-      [taker],
-      await buyTx(program, smoke, {
-        signer: taker,
-        side: TAKER_SIDE,
-        tick: TAKER_TICK,
-        amount: 3n * SHARES,
-        matchLimit: 3,
-        remaining: bundles,
-      }),
-    );
-
-    // Recorded so the numbers are visible in CI output, not just the pass/fail.
-    // These are the baseline for judging what the event pipeline costs when it
-    // lands (sooth_log + batched OrdersFilled).
-    console.log(`SOOTH_CORE_3_FILL_WORST_CASE_CU=${cost.computeUnits}`);
-    console.log(
-      `SOOTH_CORE_3_FILL_WRITABLE_ACCOUNTS=${cost.writableAccounts}`,
-    );
-
-    expect(cost.computeUnits).toBeGreaterThan(0);
-    expect(cost.computeUnits).toBeLessThanOrEqual(CU_CEILING);
-    expect(cost.writableAccounts).toBeLessThanOrEqual(WRITABLE_CEILING);
-  });
-
-  it("records the single-fill baseline", async () => {
-    const smoke = await bootSmoke();
-    const { ctx } = smoke;
-    const taker = smoke.user;
-    const program = anchorProgram(ctx, taker);
-    await initMarketFeePool(ctx, program, smoke, smoke.creator);
-
-    const maker = await createFundedMaker(smoke, 10_000n);
+/** Rest `count` escrowed makers on descending ticks and return their fill
+ *  bundles in bitmap-consumption order. */
+async function restEscrowedMakers(smoke: any, program: any, count: number) {
+  const { ctx } = smoke;
+  const makers = [];
+  for (let i = 0; i < count; i++) {
+    const tick = 900 - i * 10;
+    const maker = await createFundedMaker(smoke, 100_000n);
     await mintCompleteSetForOrderbook(
       ctx,
       program,
@@ -155,13 +92,29 @@ describe("orderbook CU + writable-account budget", () => {
       await buyTx(program, smoke, {
         signer: maker,
         side: MAKER_SIDE,
-        tick: 900,
+        tick,
         amount: SHARES,
         matchLimit: 0,
         remaining: [],
         escrow: true,
       }),
     );
+    makers.push({ maker, tick });
+  }
+  return makers.flatMap(({ maker, tick }) =>
+    fillBundle(smoke, MAKER_SIDE, tick, maker.publicKey),
+  );
+}
+
+describe("orderbook resource budget", () => {
+  it("the 5-fill maximum stays inside every ceiling", async () => {
+    const smoke = await bootSmoke();
+    const { ctx } = smoke;
+    const taker = smoke.user;
+    const program = anchorProgram(ctx, taker);
+    await initMarketFeePool(ctx, program, smoke, smoke.creator);
+
+    const bundles = await restEscrowedMakers(smoke, program, MAX_FILLS_PER_TX);
 
     const cost = await sendTxMeasured(
       ctx,
@@ -170,71 +123,66 @@ describe("orderbook CU + writable-account budget", () => {
         signer: taker,
         side: TAKER_SIDE,
         tick: TAKER_TICK,
-        amount: SHARES,
-        matchLimit: 1,
-        remaining: fillBundle(smoke, MAKER_SIDE, 900, maker.publicKey),
+        amount: BigInt(MAX_FILLS_PER_TX) * SHARES,
+        matchLimit: MAX_FILLS_PER_TX,
+        remaining: bundles,
       }),
     );
 
-    console.log(`SOOTH_CORE_1_FILL_BASELINE_CU=${cost.computeUnits}`);
-    console.log(`SOOTH_CORE_1_FILL_WRITABLE_ACCOUNTS=${cost.writableAccounts}`);
+    console.log(`SOOTH_CORE_5_FILL_CU=${cost.computeUnits}`);
+    console.log(`SOOTH_CORE_5_FILL_WRITABLE=${cost.writableAccounts}`);
+    console.log(`SOOTH_CORE_5_FILL_BYTES=${cost.serializedBytes}`);
 
     expect(cost.computeUnits).toBeGreaterThan(0);
     expect(cost.computeUnits).toBeLessThanOrEqual(CU_CEILING);
-  });
+    expect(cost.writableAccounts).toBeLessThanOrEqual(WRITABLE_CEILING);
+    expect(cost.serializedBytes).toBeLessThanOrEqual(MAX_TX_BYTES);
+  }, 60_000);
 
-  // ⚠️ CHARACTERIZATION. Documents the ceiling as it stands, not as it should
-  // be. If this test starts failing because 4 fills now succeed, that is
-  // progress — update the documented ceiling rather than restoring the limit.
-  //
-  // Measured: a 4-fill buy dies with "memory allocation failed, out of memory"
-  // at ~226k CU (16% of the 1.4M budget) and ~19 writable accounts (of ~32).
-  // So neither compute nor the writable budget is what binds on develop today
-  // — the 32 KB BPF heap is. Its bump allocator never frees mid-instruction,
-  // so per-fill allocations accumulate until the 4th fill exhausts it.
-  //
-  // main does not have this ceiling: beb6900 installed a 256 KB
-  // BumpAllocator256 as #[global_allocator] on sooth_book, which the 5→1 merge
-  // dropped. Porting it is therefore not only an event-pipeline prerequisite
-  // (P0.1) — it is what currently caps matching depth at 3.
-  it("4 fills currently exhaust the 32 KB BPF heap", async () => {
+  it("records the 3-fill and single-fill baselines", async () => {
+    for (const fills of [1, 3]) {
+      const smoke = await bootSmoke();
+      const { ctx } = smoke;
+      const taker = smoke.user;
+      const program = anchorProgram(ctx, taker);
+      await initMarketFeePool(ctx, program, smoke, smoke.creator);
+
+      const bundles = await restEscrowedMakers(smoke, program, fills);
+      const cost = await sendTxMeasured(
+        ctx,
+        [taker],
+        await buyTx(program, smoke, {
+          signer: taker,
+          side: TAKER_SIDE,
+          tick: TAKER_TICK,
+          amount: BigInt(fills) * SHARES,
+          matchLimit: fills,
+          remaining: bundles,
+        }),
+      );
+
+      console.log(
+        `SOOTH_CORE_${fills}_FILL cu=${cost.computeUnits} writable=${cost.writableAccounts} bytes=${cost.serializedBytes}`,
+      );
+      expect(cost.computeUnits).toBeLessThanOrEqual(CU_CEILING);
+      expect(cost.serializedBytes).toBeLessThanOrEqual(MAX_TX_BYTES);
+    }
+  }, 60_000);
+
+  // ⚠️ CHARACTERIZATION. Pins WHY the ceiling is 5 so a future change that
+  // moves it is deliberate. If this starts failing because 6 fills fit, that
+  // is progress — update MAX_FILLS_PER_TX and the table above.
+  it("6 fills exceed the 1232-byte packet limit", async () => {
     const smoke = await bootSmoke();
     const { ctx } = smoke;
     const taker = smoke.user;
     const program = anchorProgram(ctx, taker);
     await initMarketFeePool(ctx, program, smoke, smoke.creator);
 
-    const ticks = [900, 875, 850, 825];
-    const makers = [];
-    for (const tick of ticks) {
-      const maker = await createFundedMaker(smoke, 10_000n);
-      await mintCompleteSetForOrderbook(
-        ctx,
-        program,
-        smoke,
-        maker,
-        MAKER_SET_BASE_UNITS,
-      );
-      await sendTx(
-        ctx,
-        [maker],
-        await buyTx(program, smoke, {
-          signer: maker,
-          side: MAKER_SIDE,
-          tick,
-          amount: SHARES,
-          matchLimit: 0,
-          remaining: [],
-          escrow: true,
-        }),
-      );
-      makers.push({ maker, tick });
-    }
+    const bundles = await restEscrowedMakers(smoke, program, 6);
 
-    const bundles = makers.flatMap(({ maker, tick }) =>
-      fillBundle(smoke, MAKER_SIDE, tick, maker.publicKey),
-    );
-
+    // web3.js enforces PACKET_DATA_SIZE at serialization, which is the same
+    // limit the cluster enforces on the wire.
     await expect(
       sendTxMeasured(
         ctx,
@@ -243,11 +191,11 @@ describe("orderbook CU + writable-account budget", () => {
           signer: taker,
           side: TAKER_SIDE,
           tick: TAKER_TICK,
-          amount: 4n * SHARES,
-          matchLimit: 4,
+          amount: 6n * SHARES,
+          matchLimit: 6,
           remaining: bundles,
         }),
       ),
-    ).rejects.toThrow(/memory allocation failed, out of memory/);
-  });
+    ).rejects.toThrow(/Transaction too large: \d+ > 1232/);
+  }, 60_000);
 });

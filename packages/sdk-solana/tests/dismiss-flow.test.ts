@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { Clock } from "solana-bankrun";
+import { Clock } from "./fixtures/svm.js";
 import { Transaction } from "@solana/web3.js";
 
 import { SolanaChainAdapter } from "../src/adapter.js";
 import { WAD } from "../src/math/lmsr.js";
 import { encodePubkeyRef } from "../src/refs.js";
 
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 import { bootSmoke } from "./fixtures/setup.js";
 
 describe("dismiss market flow", () => {
@@ -15,7 +15,7 @@ describe("dismiss market flow", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = buildAdapter(smoke, conn, "dismiss-flow");
 
     const marketRef = encodePubkeyRef(smoke.marketPda);
@@ -49,7 +49,7 @@ describe("dismiss market flow", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = buildAdapter(smoke, conn, "dismiss-pretrial");
 
     const req = await adapter.buildDismissMarket(
@@ -67,7 +67,7 @@ describe("dismiss market flow", () => {
 
 function buildAdapter(
   smoke: Awaited<ReturnType<typeof bootSmoke>>,
-  conn: BankrunConnection,
+  conn: LiteSvmConnection,
   id: string,
 ): SolanaChainAdapter {
   return new SolanaChainAdapter({

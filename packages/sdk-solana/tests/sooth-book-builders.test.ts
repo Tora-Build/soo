@@ -16,8 +16,9 @@ import {
   orderbookPositionPda,
 } from "../src/pdas.js";
 import { encodePubkeyRef } from "../src/refs.js";
+import { DEFAULT_MATCH_LIMIT_PER_TX } from "../src/orderbook/matching-driver.js";
 
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 import { bootSmoke, type SmokeContext } from "./fixtures/setup.js";
 
 type BuiltMeta = {
@@ -59,7 +60,7 @@ describe("sooth_book builder request shapes", () => {
       },
       programIds: smoke.programs,
       usdcMint: smoke.usdcMint,
-      connection: new BankrunConnection(smoke.ctx),
+      connection: new LiteSvmConnection(smoke.ctx),
     });
     bookPrograms = { soothBook: adapter.programIds.soothCore };
     [bookMarketPda] = deriveBookMarketPda(smoke.marketPda, bookPrograms);
@@ -92,7 +93,9 @@ describe("sooth_book builder request shapes", () => {
     expect(meta.side).toBe(1);
     expect(meta.tick).toBe(tick);
     expect(meta.amountStr).toBe(String(amount));
-    expect(meta.matchLimit).toBe(3);
+    // Reference the constant, not a literal — this drifted when the 256 KB
+    // allocator raised the per-tx fill ceiling.
+    expect(meta.matchLimit).toBe(DEFAULT_MATCH_LIMIT_PER_TX);
 
     const [marketBook] = marketBookPda(smoke.marketId, smoke.programs);
     const [bookSide] = bookSidePda(smoke.marketId, 1, tick, smoke.programs);

@@ -15,7 +15,34 @@ import type { AddressRef, MarketRef } from "../types.js";
 export const NUM_TICKS = 1000;
 export const MIN_TICK = 1;
 export const MAX_TICK = 999;
-export const DEFAULT_MATCH_LIMIT_PER_TX = 3;
+/**
+ * Fills attempted per transaction.
+ *
+ * Was 3, because the stock 32 KB BPF heap OOM'd at the 4th fill. sooth_core
+ * now ships a 256 KB #[global_allocator], and the measured envelope is:
+ *
+ *   fills   CU        writable   bytes
+ *   3       ~125k     16         943
+ *   4       ~169k     19         1042
+ *   5       ~189k     22         1141
+ *   6       —         —          1240  ← over PACKET_DATA_SIZE (1232)
+ *
+ * So the hard ceiling is 5, set by transaction size — not compute (14% of
+ * budget at 5) and not account locks. Each fill costs ~99 bytes.
+ *
+ * We default to 4 rather than 5 deliberately. Those measurements use the bare
+ * compute-budget preamble; a real submit also carries a priority-fee
+ * instruction and may prepend `initMarketFeePool`, which alone is far larger
+ * than the ~91 bytes of headroom 5 fills would leave. 4 keeps ~190 bytes of
+ * slack while still improving depth 33% over the old limit.
+ *
+ * Callers who know their transaction shape can pass `matchLimitPerTx: 5`.
+ */
+export const DEFAULT_MATCH_LIMIT_PER_TX = 4;
+
+/** Hard ceiling: 6 fills serialize to 1240 bytes and are rejected on the
+ *  wire. See tests/orderbook-cu-budget.test.ts. */
+export const MAX_FILLS_PER_TX = 5;
 
 /// Accounts appended per predicted fill: [book_side, maker_position, maker_usdc_ata].
 /// MUST stay in sync with `FILL_BUNDLE_LEN` in

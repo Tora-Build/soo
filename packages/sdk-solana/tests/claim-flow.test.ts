@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { Transaction } from "@solana/web3.js";
 import { getAccount } from "@solana/spl-token";
-import { Clock } from "solana-bankrun";
+import { Clock } from "./fixtures/svm.js";
 
 import { SolanaChainAdapter } from "../src/adapter.js";
 import { encodePubkeyRef } from "../src/refs.js";
@@ -21,7 +21,7 @@ import {
 } from "../src/pdas.js";
 
 import { bootSmoke } from "./fixtures/setup.js";
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 
 // Wave 1B fix landed — see the matching note at the top of
 // `sell-flow.test.ts`. Both `sell_positions` and `claim_unlocked` now CPI
@@ -34,7 +34,7 @@ describe("AMM claim_unlocked flow", () => {
       userUsdcBaseUnits: 100_000_000n,
     });
 
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = new SolanaChainAdapter({
       node: {
         id: "claim-flow",
@@ -130,11 +130,11 @@ describe("AMM claim_unlocked flow", () => {
 
     // ─── 4. Warp the clock past unlock_at ───────────────────────────────
     // Two things happen here:
-    //   1. `warpToSlot` advances the bank to a fresh slot. Bankrun caches the
+    //   1. `warpToSlot` advances the bank to a fresh slot. LiteSVM caches the
     //      most-recent blockhash per slot; without an advance, the late-claim
     //      tx would land on the *same* blockhash as the early-claim tx.
     //      That makes the two tx messages byte-identical (same ix, same
-    //      accounts, same recent_blockhash) → identical signature → bankrun's
+    //      accounts, same recent_blockhash) → identical signature → the SVM's
     //      dedup rejects the second send with "transaction has already been
     //      processed". This was the root cause of the ~50% flake rate.
     //   2. `setClock` overwrites the clock sysvar's `unix_timestamp` so the

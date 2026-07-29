@@ -15,7 +15,7 @@ import { encodePubkeyRef, deriveAdjudicatorEntryPda } from "../src/index.js";
 import { WAD } from "../src/math/lmsr.js";
 
 import { bootSmoke } from "./fixtures/setup.js";
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 
 describe("operator request shapes", () => {
   it("buildRequestLock emits the right ix + account list", async () => {
@@ -23,7 +23,7 @@ describe("operator request shapes", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = new SolanaChainAdapter({
       node: {
         id: "operator-shape",
@@ -60,7 +60,7 @@ describe("operator request shapes", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = new SolanaChainAdapter({
       node: {
         id: "attest-shape",

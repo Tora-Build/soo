@@ -124,7 +124,7 @@ export interface SolanaAdapterOptions {
   // bypasses string parsing in hot paths.
   programIds?: ProgramIds;
   usdcMint?: PublicKey;
-  // Pre-built `Connection` to reuse (e.g. when running under bankrun where
+  // Pre-built `Connection` to reuse (e.g. when running under the test SVM where
   // the connection is replaced by a custom client).
   connection?: Connection;
 }
@@ -1141,6 +1141,12 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     // Generous CU bump — `trade_positions` benched ~75-80k per the spike but
     // `init_if_needed` on the first Position adds rent payer overhead.
     tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+    // sooth_core ships a 256 KB custom #[global_allocator] (see its lib.rs).
+    // The runtime only maps that heap when the transaction asks, and the
+    // allocator addresses from the TOP of the region — so without this every
+    // sooth_core instruction faults with "Access violation in heap section".
+    // Unconditional: the merged program means every instruction shares it.
+    tx.add(ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }));
     for (const preIx of preIxs) tx.add(preIx);
     tx.add(ix as TransactionInstruction);
     tx.feePayer = userPk;
@@ -3309,6 +3315,12 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       );
       const tx = new Transaction();
       tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+      // sooth_core ships a 256 KB custom #[global_allocator] (see its lib.rs).
+      // The runtime only maps that heap when the transaction asks, and the
+      // allocator addresses from the TOP of the region — so without this every
+      // sooth_core instruction faults with "Access violation in heap section".
+      // Unconditional: the merged program means every instruction shares it.
+      tx.add(ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }));
       // Priority fee = recent p50 for this market's locked writable account
       // plus the existing byte-level salt. The salt remains load-bearing:
       // two identical writes in the same blockhash window must still hash
@@ -3493,6 +3505,12 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
 
     const tx = new Transaction();
     tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+    // sooth_core ships a 256 KB custom #[global_allocator] (see its lib.rs).
+    // The runtime only maps that heap when the transaction asks, and the
+    // allocator addresses from the TOP of the region — so without this every
+    // sooth_core instruction faults with "Access violation in heap section".
+    // Unconditional: the merged program means every instruction shares it.
+    tx.add(ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }));
     for (const pre of preIxs) tx.add(pre);
     tx.add(ix);
     tx.feePayer = userPk;
@@ -3593,7 +3611,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       });
       percentileMicroLamports = percentile50MicroLamports(fees);
     } catch {
-      // Local bankrun shims and transient RPC failures may not expose recent
+      // Local SVM shims and transient RPC failures may not expose recent
       // fee data. Falling back to the salt-only path keeps submit usable.
       percentileMicroLamports = 0;
     }

@@ -27,7 +27,7 @@ import {
 import { WAD } from "../src/math/lmsr.js";
 
 import { bootSmoke } from "./fixtures/setup.js";
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 
 describe("complete-set parity (mint ↔ merge)", () => {
   it("mint 10 USDC → 10·WAD YES + 10·WAD NO; merge reverses cleanly", async () => {
@@ -35,7 +35,7 @@ describe("complete-set parity (mint ↔ merge)", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n, // 100 USDC
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     conn.setSimSigners([smoke.user]);
     const adapter = new SolanaChainAdapter({
       node: {

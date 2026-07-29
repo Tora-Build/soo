@@ -3,7 +3,7 @@
 // and AmmState in a single transaction.
 //
 // Flow:
-//   1. Boot bankrun with `sooth_core` loaded at its `declare_id!` address.
+//   1. Boot LiteSVM with `sooth_core` loaded at its `declare_id!` address.
 //   2. Hand-write the canonical USDC mint at `USDC_MINT_DEVNET`.
 //   3. Initialize the singleton `ProtocolConfig` PDA.
 //   4. Build a `create_market` request via `adapter.buildCreateMarket(...)`
@@ -24,6 +24,7 @@ import {
 } from "@coral-xyz/anchor";
 import { TOKEN_PROGRAM_ID, MintLayout } from "@solana/spl-token";
 import {
+  ComputeBudgetProgram,
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
@@ -31,7 +32,7 @@ import {
   Transaction,
   type VersionedTransaction,
 } from "@solana/web3.js";
-import { Clock, start, type ProgramTestContext } from "solana-bankrun";
+import { Clock, startSvm, type SvmContext } from "./fixtures/svm.js";
 
 import { soothCoreIdl } from "../src/anchor/index.js";
 import {
@@ -52,7 +53,7 @@ import { WAD } from "../src/math/lmsr.js";
 import { SolanaChainAdapter } from "../src/adapter.js";
 import { encodePubkeyRef } from "../src/refs.js";
 
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 import { resolveDeployDir } from "./fixtures/setup.js";
 
 const SOOTH_CORE_ID = new PublicKey(soothCoreIdl.address) ?? SOOTH_CORE_PROGRAM_ID;
@@ -66,7 +67,7 @@ const PROGRAMS: ProgramIds = {
 
 describe("sooth_core::create_market end-to-end", () => {
   it("creates Market + outcome mints + vaults + AmmState in one tx", async () => {
-    // ─── 0. Boot bankrun with sooth_core ──────────────────────────────────
+    // ─── 0. Boot LiteSVM with sooth_core ──────────────────────────────────
     const soDir = resolveDeployDir();
     process.env.BPF_OUT_DIR = soDir;
     try {
@@ -76,10 +77,9 @@ describe("sooth_core::create_market end-to-end", () => {
         `create-market test: missing sooth_core.so in ${soDir}. Run \`cargo build-sbf\` first.`,
       );
     }
-    const ctx = await start(
+    const ctx = startSvm(
       [{ name: "sooth_core", programId: SOOTH_CORE_ID }],
-      [],
-      /* computeMaxUnits */ 1_400_000n,
+      soDir,
     );
 
     // ─── 1. USDC mint ─────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ describe("sooth_core::create_market end-to-end", () => {
     const creator = Keypair.generate();
     await fundLamports(ctx, creator.publicKey, 50n * BigInt(LAMPORTS_PER_SOL));
 
-    // Bankrun boots at unix_timestamp = 0; advance to a sane "now" so
+    // LiteSVM boots at unix_timestamp = 0; advance to a sane "now" so
     // `compute_trial_end_at` doesn't trivially short-circuit. 1_000_000s
     // is the same baseline the smoke test uses.
     const now = 1_000_000;
@@ -106,7 +106,7 @@ describe("sooth_core::create_market end-to-end", () => {
     );
 
     // ─── 3. Anchor handles ────────────────────────────────────────────────
-    const conn = new BankrunConnection(ctx);
+    const conn = new LiteSvmConnection(ctx);
     const wallet: Wallet = {
       publicKey: creator.publicKey,
       signTransaction: async <T extends Transaction | VersionedTransaction>(
@@ -325,7 +325,7 @@ describe("sooth_core::create_market end-to-end", () => {
 // ─── Internals (mirrored from fixtures/setup.ts) ───────────────────────────
 
 function setAcc(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   address: PublicKey,
   init: {
     executable: boolean;
@@ -338,19 +338,19 @@ function setAcc(
   ctx.setAccount(address, {
     executable: init.executable,
     owner: init.owner,
-    lamports: init.lamports as unknown as number,
+    lamports: init.lamports,
     data: init.data,
-    rentEpoch: (init.rentEpoch ?? 0n) as unknown as number,
+    rentEpoch: init.rentEpoch ?? 0n,
   });
 }
 
 async function fundLamports(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   to: PublicKey,
   lamports: bigint,
 ): Promise<void> {
   const acc = await ctx.banksClient.getAccount(to);
-  const existing = acc ? BigInt(acc.lamports as unknown as number) : 0n;
+  const existing = acc ? acc.lamports : 0n;
   setAcc(ctx, to, {
     executable: false,
     owner: SystemProgram.programId,
@@ -360,7 +360,7 @@ async function fundLamports(
 }
 
 async function writeMint(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   mint: PublicKey,
   authority: PublicKey,
 ): Promise<void> {
@@ -388,7 +388,7 @@ async function writeMint(
 }
 
 async function sendTx(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   signers: Keypair[],
   tx: Transaction,
 ): Promise<void> {
@@ -403,11 +403,13 @@ async function sendTx(
 }
 
 async function buildTx(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   ixs: Array<import("@solana/web3.js").TransactionInstruction>,
   feePayer: PublicKey,
 ): Promise<Transaction> {
   const tx = new Transaction();
+  // Caller contract for sooth_core's 256 KB allocator — see fixtures/svm.ts.
+  tx.add(ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }));
   for (const ix of ixs) tx.add(ix);
   const blockhash = await ctx.banksClient.getLatestBlockhash();
   if (!blockhash) throw new Error("no blockhash");

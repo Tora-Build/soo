@@ -18,7 +18,7 @@ import {
 import { encodePubkeyRef } from "../src/refs.js";
 import { WAD } from "../src/math/lmsr.js";
 
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 import { bootSmoke } from "./fixtures/setup.js";
 
 describe("program-owned sooth_market variant request shapes", () => {
@@ -27,7 +27,7 @@ describe("program-owned sooth_market variant request shapes", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = new SolanaChainAdapter({
       node: {
         id: "program-owned-variants",

@@ -30,7 +30,7 @@ import {
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 
 import { bootSmoke } from "./fixtures/setup.js";
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 
 describe("buildClaim({kind: 'redeem'}) request shape", () => {
   it("produces redeem ix with the right accounts + operation marker", async () => {
@@ -38,7 +38,7 @@ describe("buildClaim({kind: 'redeem'}) request shape", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = new SolanaChainAdapter({
       node: {
         id: "redeem-shape",

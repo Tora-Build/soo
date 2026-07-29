@@ -6,7 +6,7 @@
 // fork of `sooth-alpha/apps/demo` will exercise.
 //
 // Flow:
-//   1. Boot bankrun with both Sooth programs (loaded at their `declare_id!`
+//   1. Boot LiteSVM with the Sooth program (loaded at their `declare_id!`
 //      placeholder addresses).
 //   2. Initialize a fresh USDC mint at the canonical devnet address (so the
 //      `usdc_mint` constraint in `trade_positions` is satisfied).
@@ -19,7 +19,7 @@
 //   7. Call `adapter.buildTrade({ side: "buy", outcome: YES, deltaShares,
 //      maxCostWad })` to produce an unsigned `TradeRequest`.
 //   8. Call `adapter.submit(req, signer)` — signs via the test user, sends
-//      via the bankrun-backed Connection shim, "confirms" (no-op).
+//      via the LiteSVM-backed Connection shim, "confirms" (no-op).
 //   9. Call `adapter.readSnapshot` + `adapter.readPosition` and assert:
 //      - `position.yesShares === deltaShares`
 //      - `amm_state.q_yes === deltaShares`
@@ -39,7 +39,7 @@ import { encodePubkeyRef } from "../src/refs.js";
 import { WAD, wadToUsdcCeil } from "../src/math/lmsr.js";
 
 import { bootSmoke } from "./fixtures/setup.js";
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 
 describe("AMM buy smoke", () => {
   it("buy YES (~1% of b) end-to-end", async () => {
@@ -50,7 +50,7 @@ describe("AMM buy smoke", () => {
     });
     const tBoot = Date.now() - t0;
 
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = new SolanaChainAdapter({
       node: {
         id: "smoke",

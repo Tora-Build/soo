@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getAccount } from "@solana/spl-token";
-import { Clock } from "solana-bankrun";
+import { Clock } from "./fixtures/svm.js";
 import { Transaction } from "@solana/web3.js";
 
 import { SolanaChainAdapter } from "../src/adapter.js";
@@ -8,7 +8,7 @@ import { WAD, wadToUsdcCeil } from "../src/math/lmsr.js";
 import { derivePositionPda, deriveUserUsdcAta } from "../src/pdas.js";
 import { encodePubkeyRef } from "../src/refs.js";
 
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 import { bootSmoke } from "./fixtures/setup.js";
 
 describe("dismissed-market refund flow", () => {
@@ -17,7 +17,7 @@ describe("dismissed-market refund flow", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = buildAdapter(smoke, conn, "claim-refund-flow");
     const marketRef = encodePubkeyRef(smoke.marketPda);
     const userRef = encodePubkeyRef(smoke.user.publicKey);
@@ -98,7 +98,7 @@ describe("dismissed-market refund flow", () => {
 
 function buildAdapter(
   smoke: Awaited<ReturnType<typeof bootSmoke>>,
-  conn: BankrunConnection,
+  conn: LiteSvmConnection,
   id: string,
 ): SolanaChainAdapter {
   return new SolanaChainAdapter({

@@ -1,4 +1,4 @@
-// Shared smoke-test setup. Boots bankrun with the merged `sooth_core`
+// Shared smoke-test setup. Boots LiteSVM with the merged `sooth_core`
 // program deployed at its `declare_id!` address, prepares a USDC mint, and
 // pre-funds a test user. Drives the real on-chain init instructions end-to-
 // end (create_market → register_adjudicator → seed_lp) — no `setAccount`
@@ -11,10 +11,10 @@
 //
 // USDC mint sleight-of-hand:
 //   The on-chain `usdc_mint` accounts are constrained to the canonical
-//   `USDC_MINT_DEVNET` address. Bankrun lets us hand-write a Mint account
+//   `USDC_MINT_DEVNET` address. LiteSVM lets us hand-write a Mint account
 //   *at that address* with our own mint authority — that's the one
 //   non-bypass setAccount we keep, because it's a fixture (devnet USDC isn't
-//   on bankrun) rather than a workaround for a missing on-chain feature.
+//   on LiteSVM) rather than a workaround for a missing on-chain feature.
 
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -35,6 +35,7 @@ import {
   createMintToInstruction,
 } from "@solana/spl-token";
 import {
+  ComputeBudgetProgram,
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
@@ -44,7 +45,7 @@ import {
   TransactionInstruction,
   type VersionedTransaction,
 } from "@solana/web3.js";
-import { Clock, start, type ProgramTestContext } from "solana-bankrun";
+import { Clock, startSvm, type SvmContext } from "./svm.js";
 
 import { soothCoreIdl } from "../../src/anchor/index.js";
 import {
@@ -68,7 +69,7 @@ import {
   type ProgramIds,
 } from "../../src/pdas.js";
 import { WAD } from "../../src/math/lmsr.js";
-import { BankrunConnection } from "./bankrun-connection.js";
+import { LiteSvmConnection } from "./svm.js";
 
 // Workspace root, derived from this file's location.
 const __filename = fileURLToPath(import.meta.url);
@@ -83,7 +84,7 @@ export const PROGRAMS: ProgramIds = {
 };
 
 export interface SmokeContext {
-  ctx: ProgramTestContext;
+  ctx: SvmContext;
   programs: ProgramIds;
   usdcMint: PublicKey;
   user: Keypair;
@@ -101,7 +102,7 @@ export interface SmokeOptions {
   userUsdcBaseUnits?: bigint;
 }
 
-// Boot bankrun with sooth_core + the SPL token program. Returns a context
+// Boot LiteSVM with sooth_core deployed. Returns a context
 // pre-loaded with:
 //   - a USDC mint owned by `payer`
 //   - a funded test `user` Keypair with USDC ATA
@@ -115,14 +116,9 @@ export async function bootSmoke(
   const bWad = opts.bWad ?? 1_000n * WAD;
   const userUsdc = opts.userUsdcBaseUnits ?? 100_000_000n; // 100 USDC
 
-  // Resolve .so paths and load bytes. `start()` accepts the program name
-  // alone; bankrun's underlying `solana-program-test` searches
-  // `BPF_OUT_DIR`. We point that env var at the workspace's
-  // `target/deploy/` before calling `start`.
+  // startSvm loads the .so directly and fails fast with a clear message if it
+  // is missing (i.e. `anchor build` has not been run for this commit).
   const soDir = resolveDeployDir();
-  process.env.BPF_OUT_DIR = soDir;
-  // Sanity-check that the .so file exists; fail fast with a clear message
-  // if it doesn't (means `cargo build-sbf` hasn't been run for this commit).
   try {
     readFileSync(resolve(soDir, "sooth_core.so"));
   } catch {
@@ -131,11 +127,7 @@ export async function bootSmoke(
     );
   }
 
-  const ctx = await start(
-    [{ name: "sooth_core", programId: SOOTH_CORE_ID }],
-    [],
-    /* computeMaxUnits */ 1_400_000n,
-  );
+  const ctx = startSvm([{ name: "sooth_core", programId: SOOTH_CORE_ID }], soDir);
 
   // ─── Mint a fresh USDC at the canonical devnet address ────────────────
   // We can't use the real devnet USDC mint because `create_market` and
@@ -185,10 +177,10 @@ export async function bootSmoke(
     ),
   );
 
-  // ─── Build Anchor `Program` handle bound to bankrun ─────────────────────
-  // Anchor needs a Provider; the BankrunConnection forwards getAccountInfo /
-  // sendRawTransaction / etc. to bankrun's BanksClient.
-  const conn = new BankrunConnection(ctx);
+  // ─── Build Anchor `Program` handle bound to LiteSVM ────────────────────
+  // Anchor needs a Provider; the LiteSvmConnection forwards getAccountInfo /
+  // sendRawTransaction / etc. to the LiteSVM client.
+  const conn = new LiteSvmConnection(ctx);
   const wallet: Wallet = {
     publicKey: creator.publicKey,
     signTransaction: async <T extends Transaction | VersionedTransaction>(
@@ -255,6 +247,18 @@ export async function bootSmoke(
   const startTime = 1_000_000;
   const deadline = startTime + 7 * 24 * 60 * 60;
 
+  // Set the clock BEFORE create_market so the market is created at a sane
+  // `now`. This matters because `trial_end_at` is computed from the creation
+  // timestamp (create_market.rs::compute_trial_end_at).
+  //
+  // The previous LiteSVM fixture got this wrong and nobody noticed: LiteSVM's
+  // genesis clock is real wall-clock time (~1.79e9), so create_market ran
+  // against a deadline of 1_604_800 that had ALREADY PASSED, and the clock
+  // was then warped backwards into the trading window. `until_deadline <= 0`
+  // made trial_end_at collapse to `now`, which is why trial-period assertions
+  // happened to pass. LiteSVM boots at 0, which surfaced the inconsistency.
+  warpClockTo(ctx, BigInt(startTime));
+
   await sendTx(
     ctx,
     [creator],
@@ -317,21 +321,12 @@ export async function bootSmoke(
     ),
   );
 
-  // ─── Advance bankrun's clock past `startTime` ──────────────────────────
+  // ─── Advance the clock past `startTime` ────────────────────────────────
   // C1 (Codex) added a `start_time <= now < deadline` guard to
-  // `trade_positions`. Bankrun boots with `unix_timestamp = 0`; warp the
+  // `trade_positions`. The SVM boots with `unix_timestamp = 0`; warp the
   // sysvar clock to a slot inside the trading window so the buy path can
   // execute. We pick `startTime + 1` as the smallest legal value.
-  const existingClock = await ctx.banksClient.getClock();
-  ctx.setClock(
-    new Clock(
-      existingClock.slot,
-      existingClock.epochStartTimestamp,
-      existingClock.epoch,
-      existingClock.leaderScheduleEpoch,
-      BigInt(startTime + 1),
-    ),
-  );
+  warpClockTo(ctx, BigInt(startTime + 1));
 
   // ─── 3. seed_lp — bootstrap per-market LP mint + creator allocation ────
   const [lpMint] = deriveLpMintPda(marketId, PROGRAMS);
@@ -382,6 +377,21 @@ export async function bootSmoke(
   };
 }
 
+/** Move the sysvar clock to an absolute unix timestamp, preserving slot and
+ *  epoch fields. */
+export function warpClockTo(ctx: SvmContext, unixTimestamp: bigint): void {
+  const clock = ctx.svm.getClock();
+  ctx.setClock(
+    new Clock(
+      clock.slot,
+      clock.epochStartTimestamp,
+      clock.epoch,
+      clock.leaderScheduleEpoch,
+      unixTimestamp,
+    ),
+  );
+}
+
 export function resolveDeployDir(): string {
   const candidates = [
     resolve(REPO_ROOT, "target", "deploy"),
@@ -406,12 +416,12 @@ function bigIntToBn(v: bigint): BN {
   return new BN(v.toString());
 }
 
-// bankrun's TS surface declares `AccountInfo<Uint8Array>` (web3 shape) where
+// Centralized account writer. LiteSVM takes bigint lamports directly, where
 // `lamports` is `number` and `rentEpoch` is `number`. The underlying NAPI
 // binding actually accepts bigint at runtime — and we want bigint for
 // lamport math anyway. Centralize the cast so individual writers stay clean.
 function setAcc(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   address: PublicKey,
   init: {
     executable: boolean;
@@ -424,19 +434,19 @@ function setAcc(
   ctx.setAccount(address, {
     executable: init.executable,
     owner: init.owner,
-    lamports: init.lamports as unknown as number,
+    lamports: init.lamports,
     data: init.data,
-    rentEpoch: (init.rentEpoch ?? 0n) as unknown as number,
+    rentEpoch: init.rentEpoch ?? 0n,
   });
 }
 
 async function fundLamports(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   to: PublicKey,
   lamports: bigint,
 ): Promise<void> {
   const acc = await ctx.banksClient.getAccount(to);
-  const existing = acc ? BigInt(acc.lamports as unknown as number) : 0n;
+  const existing = acc ? acc.lamports : 0n;
   setAcc(ctx, to, {
     executable: false,
     owner: SystemProgram.programId,
@@ -446,7 +456,7 @@ async function fundLamports(
 }
 
 async function writeMint(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   mint: PublicKey,
   authority: PublicKey,
 ): Promise<void> {
@@ -474,7 +484,7 @@ async function writeMint(
 }
 
 async function sendTx(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   signers: Keypair[],
   tx: Transaction,
 ): Promise<void> {
@@ -490,11 +500,14 @@ async function sendTx(
 
 // Assemble a Transaction from a list of instructions.
 async function buildTx(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   ixs: Array<TransactionInstruction>,
   feePayer: PublicKey,
 ): Promise<Transaction> {
   const tx = new Transaction();
+  // Caller contract for sooth_core's 256 KB allocator — see svm.ts. Without
+  // this EVERY sooth_core instruction faults, not just multi-fill buys.
+  tx.add(ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }));
   for (const ix of ixs) tx.add(ix);
   const blockhash = await ctx.banksClient.getLatestBlockhash();
   if (!blockhash) throw new Error("no blockhash");

@@ -1,4 +1,4 @@
-// Shared scaffolding for on-chain CLOB tests (bankrun).
+// Shared scaffolding for on-chain CLOB tests (LiteSVM).
 //
 // bootSmoke() leaves off where the orderbook begins: it creates the market and
 // seeds the AMM, but `buy` additionally needs a live `market_fee_pool` (which
@@ -19,16 +19,17 @@ import {
   getAccount,
 } from "@solana/spl-token";
 import {
+  ComputeBudgetProgram,
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
   Transaction,
-  type TransactionInstruction,
+  TransactionInstruction,
   type VersionedTransaction,
 } from "@solana/web3.js";
-import type { ProgramTestContext } from "solana-bankrun";
+import type { SvmContext } from "./svm.js";
 
 import { soothCoreIdl } from "../../src/anchor/index.js";
 import {
@@ -43,7 +44,7 @@ import {
   orderbookPositionPda,
 } from "../../src/pdas.js";
 
-import { BankrunConnection } from "./bankrun-connection.js";
+import { LiteSvmConnection } from "./svm.js";
 import type { SmokeContext } from "./setup.js";
 
 // Share amounts are WAD-scaled u128; collateral is 6-decimal USDC.
@@ -55,7 +56,7 @@ export const BASE_UNIT_WAD = 1_000_000_000_000n;
 export const SHARES = 1_000n * BASE_UNIT_WAD;
 
 /** Anchor error codes for the CLOB matcher, from sooth_core's error enum.
- *  bankrun surfaces failures as `custom program error: 0x…`, so tests match
+ *  the SVM surfaces failures as `custom program error: 0x…`, so tests match
  *  on the hex code rather than the name. */
 export const CLOB_ERROR = {
   MissingCrossingBookSide: 6051,
@@ -64,16 +65,16 @@ export const CLOB_ERROR = {
   ProtocolPaused: 6054,
 } as const;
 
-/** Matcher for a specific on-chain error code in a bankrun rejection. */
+/** Matcher for a specific on-chain error code in a LiteSVM rejection. */
 export function customError(code: number): RegExp {
   return new RegExp(`custom program error: 0x${code.toString(16)}\\b`, "i");
 }
 
 export function anchorProgram(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   payer: Keypair,
 ): Program {
-  const conn = new BankrunConnection(ctx);
+  const conn = new LiteSvmConnection(ctx);
   const wallet: Wallet = {
     publicKey: payer.publicKey,
     signTransaction: async <T extends Transaction | VersionedTransaction>(
@@ -145,7 +146,7 @@ export async function createFundedMaker(
 
 /** `buy` requires a live market_fee_pool; create_market does not create one. */
 export async function initMarketFeePool(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   program: Program,
   smoke: SmokeContext,
   payer: Keypair,
@@ -247,7 +248,7 @@ export async function buyTx(
 /** Engage or release the protocol circuit-breaker. `authority` must be the
  *  ProtocolConfig authority (bootSmoke sets this to `creator`). */
 export async function setPaused(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   program: Program,
   smoke: SmokeContext,
   authority: Keypair,
@@ -351,32 +352,79 @@ export function liveAmount(bookSide: {
 }
 
 export async function usdcBalance(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   owner: PublicKey,
   smoke: SmokeContext,
 ): Promise<bigint> {
-  const conn = new BankrunConnection(ctx);
+  const conn = new LiteSvmConnection(ctx);
   const ata = deriveUserUsdcAta(owner, smoke.usdcMint);
   const account = await getAccount(conn as any, ata);
   return account.amount;
 }
 
+/** sooth_core installs a 256 KB #[global_allocator]; the runtime only maps it
+ *  when the transaction requests the frame. Every raw-instruction path must
+ *  prepend this, exactly as the SDK adapter does — omitting it faults with
+ *  "Access violation in heap section". */
+export function heapFrameIx(): TransactionInstruction {
+  return ComputeBudgetProgram.requestHeapFrame({
+    bytes: SOOTH_CORE_HEAP_BYTES,
+  });
+}
+
+/** Per-transaction CU cap for raw test transactions. Solana's default is
+ *  200k per instruction, which a 4-fill buy already brushes against — the
+ *  real budget is 1.4M, so raise it explicitly rather than measuring against
+ *  an artificial ceiling. Mirrors what the SDK adapter and main's
+ *  cu_measurement.rs both do. */
+/** Must equal SOOTH_CORE_HEAP_LEN in the program's lib.rs. */
+export const SOOTH_CORE_HEAP_BYTES = 256 * 1024;
+
+export const TEST_CU_LIMIT = 1_400_000;
+
+/** Maximum wire size of a Solana transaction (PACKET_DATA_SIZE). */
+export const MAX_TX_BYTES = 1232;
+
+/** Prepend the compute-budget preamble every sooth_core transaction needs:
+ *  the 256 KB heap frame (mandatory — see heapFrameIx) and a realistic CU
+ *  cap. */
+export function withHeapFrame(tx: Transaction): Transaction {
+  const framed = new Transaction()
+    .add(ComputeBudgetProgram.setComputeUnitLimit({ units: TEST_CU_LIMIT }))
+    .add(heapFrameIx());
+  for (const ix of tx.instructions) framed.add(ix);
+  return framed;
+}
+
+export interface SendOpts {
+  /** Send WITHOUT the heap frame. Only for the test that deliberately proves
+   *  the caller contract is load-bearing. */
+  skipHeapFrame?: boolean;
+}
+
 export async function sendTx(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   signers: Keypair[],
   tx: Transaction,
+  opts: SendOpts = {},
 ): Promise<void> {
+  const sending = opts.skipHeapFrame ? tx : withHeapFrame(tx);
   const blockhash = await ctx.banksClient.getLatestBlockhash();
   if (!blockhash) throw new Error("no blockhash");
-  tx.recentBlockhash = blockhash[0];
-  tx.feePayer = signers[0]!.publicKey;
-  tx.sign(...signers);
-  await ctx.banksClient.processTransaction(tx);
+  sending.recentBlockhash = blockhash[0];
+  sending.feePayer = signers[0]!.publicKey;
+  sending.sign(...signers);
+  await ctx.banksClient.processTransaction(sending);
 }
 
 export interface TxCost {
   /** Compute units the transaction actually consumed. */
   computeUnits: number;
+  /** Wire size of the signed transaction. A real cluster rejects anything
+   *  over 1232 bytes (PACKET_DATA_SIZE); LiteSVM does not enforce this, so
+   *  tests must check it explicitly or they will validate transactions that
+   *  could never be submitted. */
+  serializedBytes: number;
   /** Distinct writable accounts in the compiled message. This is the budget
    *  that caps fills per transaction (~3.7), not compute — see
    *  docs/spec/sooth_book.md §13 Q2. */
@@ -386,24 +434,27 @@ export interface TxCost {
 /** Send and report what it cost. Throws with program logs on failure, same as
  *  sendTx, so a measured transaction can never silently record a failed run. */
 export async function sendTxMeasured(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   signers: Keypair[],
   tx: Transaction,
+  opts: SendOpts = {},
 ): Promise<TxCost> {
+  const sending = opts.skipHeapFrame ? tx : withHeapFrame(tx);
   const blockhash = await ctx.banksClient.getLatestBlockhash();
   if (!blockhash) throw new Error("no blockhash");
-  tx.recentBlockhash = blockhash[0];
-  tx.feePayer = signers[0]!.publicKey;
-  tx.sign(...signers);
+  sending.recentBlockhash = blockhash[0];
+  sending.feePayer = signers[0]!.publicKey;
+  sending.sign(...signers);
 
-  const writableAccounts = countWritableAccounts(tx);
-  const res = await ctx.banksClient.tryProcessTransaction(tx);
+  const writableAccounts = countWritableAccounts(sending);
+  const res = await ctx.banksClient.tryProcessTransaction(sending);
   if (res.result !== null) {
     const logs = (res.meta?.logMessages ?? []).join("\n");
     throw new Error(`measured tx failed: ${res.result}\n${logs}`);
   }
   return {
     computeUnits: Number(res.meta?.computeUnitsConsumed ?? 0),
+    serializedBytes: sending.serialize({ verifySignatures: false }).length,
     writableAccounts,
   };
 }
@@ -427,7 +478,7 @@ export function countWritableAccounts(tx: Transaction): number {
  *  by depositing collateral. Escrowed resting orders settle against these
  *  shares, so a maker must hold them before resting with `escrow: true`. */
 export async function mintCompleteSetForOrderbook(
-  ctx: ProgramTestContext,
+  ctx: SvmContext,
   program: Program,
   smoke: SmokeContext,
   user: Keypair,

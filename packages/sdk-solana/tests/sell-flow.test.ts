@@ -1,6 +1,6 @@
 // Sell-flow integration test: TS adapter → on-chain `sell_positions` ix.
 //
-// Wires up bankrun, executes a buy through `buildTrade` to seed a Position,
+// Wires up LiteSVM, executes a buy through `buildTrade` to seed a Position,
 // then exercises the new `buildSell` + `submit` path. Asserts that:
 //
 //   - Position.yes_shares decreases by the sold amount.
@@ -27,7 +27,7 @@ import {
 } from "../src/pdas.js";
 
 import { bootSmoke } from "./fixtures/setup.js";
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 
 // Wave 1B fix landed: `sell_positions` (and `claim_unlocked`) now CPI into
 // `sooth_market::transfer_to_lock` / `::transfer_from_lock_vault` for the
@@ -43,7 +43,7 @@ describe("AMM sell flow", () => {
       userUsdcBaseUnits: 100_000_000n,
     });
 
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = new SolanaChainAdapter({
       node: {
         id: "sell-flow",
@@ -150,7 +150,7 @@ describe("AMM sell flow", () => {
     const nonceOnAcc = lockEntryAcc!.data.readBigUInt64LE(88);
     expect(amountUsdc).toBeGreaterThan(0n);
     expect(nonceOnAcc).toBe(0n);
-    // bankrun fixture warps clock to startTime+1 == 1_000_001; LOCK_DURATION_SECS = 86400.
+    // LiteSVM fixture warps clock to startTime+1 == 1_000_001; LOCK_DURATION_SECS = 86400.
     expect(unlockAt).toBe(1_000_001n + 86_400n);
 
     // ─── 5. lock_vault USDC matches LockEntry.amount_usdc ───────────────
@@ -174,7 +174,7 @@ describe("AMM sell flow", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = new SolanaChainAdapter({
       node: {
         id: "sell-validate",
@@ -204,7 +204,7 @@ describe("AMM sell flow", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = new SolanaChainAdapter({
       node: {
         id: "sell-no-pos",

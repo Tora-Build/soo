@@ -79,10 +79,10 @@ describe("protocol pause (circuit-breaker)", () => {
     // only need to prove the guard fires, so any well-formed call suffices.
     // A paused protocol must reject before argument validation.
     const { SolanaChainAdapter } = await import("../src/adapter.js");
-    const { BankrunConnection } = await import(
-      "./fixtures/bankrun-connection.js"
+    const { LiteSvmConnection } = await import(
+      "./fixtures/svm.js"
     );
-    const conn = new BankrunConnection(ctx);
+    const conn = new LiteSvmConnection(ctx);
     const adapter = new SolanaChainAdapter({
       node: {
         id: "pause",

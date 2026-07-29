@@ -12,6 +12,66 @@ use anchor_lang::prelude::*;
 
 declare_id!("BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W");
 
+// ── 256 KB bump allocator ────────────────────────────────────────────────
+//
+// Solana's default allocator hardcodes a 32 KB heap and never frees, so
+// allocations accumulate for the whole instruction. The multi-fill `buy`
+// path needs roughly 5 KB + 8 KB per fill, which capped matching at THREE
+// fills: a 4-fill buy died with "memory allocation failed, out of memory" at
+// only ~226k CU (16% of budget) and ~19 writable accounts (of ~32). Neither
+// compute nor the account budget was binding — the heap was.
+//
+// This mirrors solana_program's own BumpAllocator (down-bumping, never
+// frees) over a 256 KB region, the maximum `request_heap_frame` permits.
+// The default allocator is suppressed by the `custom-heap` feature.
+//
+// ⚠️ CALLER CONTRACT: every transaction must prepend
+// `ComputeBudgetInstruction::request_heap_frame(256 * 1024)`. The runtime
+// only maps the larger region when asked, and this allocator hands out
+// addresses from the TOP of that region — so without the frame the very
+// first allocation points outside mapped memory and the program aborts with
+// "Access violation in heap section". The mapped size cannot be queried at
+// runtime, so this cannot be detected and reported nicely.
+//
+// Because sooth_core is a single merged program, this applies to EVERY
+// instruction, not just multi-fill buys. `SolanaChainAdapter` prepends the
+// frame on all paths; hand-rolled callers must do the same.
+#[cfg(all(feature = "custom-heap", target_os = "solana"))]
+#[global_allocator]
+static SOOTH_CORE_ALLOC: BumpAllocator256 = BumpAllocator256;
+
+/// Heap size this program's allocator assumes, and therefore the exact value
+/// callers must pass to `request_heap_frame`.
+pub const SOOTH_CORE_HEAP_LEN: usize = 256 * 1024;
+
+#[cfg(all(feature = "custom-heap", target_os = "solana"))]
+struct BumpAllocator256;
+
+#[cfg(all(feature = "custom-heap", target_os = "solana"))]
+unsafe impl core::alloc::GlobalAlloc for BumpAllocator256 {
+    #[inline]
+    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
+        const HEAP_START: usize = 0x3_0000_0000;
+        // The first machine word of the region holds the bump cursor.
+        let pos_ptr = HEAP_START as *mut usize;
+        let mut pos = *pos_ptr;
+        if pos == 0 {
+            pos = HEAP_START + SOOTH_CORE_HEAP_LEN;
+        }
+        pos = pos.saturating_sub(layout.size());
+        pos &= !(layout.align().wrapping_sub(1));
+        // Refuse to hand back the cursor slot itself.
+        if pos < HEAP_START + core::mem::size_of::<*mut u8>() {
+            return core::ptr::null_mut();
+        }
+        *pos_ptr = pos;
+        pos as *mut u8
+    }
+
+    #[inline]
+    unsafe fn dealloc(&self, _: *mut u8, _: core::alloc::Layout) {}
+}
+
 pub mod bitmap;
 pub mod constants;
 pub mod error;

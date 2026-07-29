@@ -5,7 +5,7 @@ import { SolanaChainAdapter } from "../src/adapter.js";
 import { LN2_WAD, WAD } from "../src/math/lmsr.js";
 import { encodePubkeyRef } from "../src/refs.js";
 
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 import { bootSmoke } from "./fixtures/setup.js";
 
 describe("readGraduationProgress", () => {
@@ -14,7 +14,7 @@ describe("readGraduationProgress", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     const adapter = new SolanaChainAdapter({
       node: {
         id: "read-graduation",

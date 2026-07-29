@@ -17,7 +17,7 @@ import { encodePubkeyRef } from "../src/refs.js";
 import { WAD } from "../src/math/lmsr.js";
 
 import { bootSmoke } from "./fixtures/setup.js";
-import { BankrunConnection } from "./fixtures/bankrun-connection.js";
+import { LiteSvmConnection } from "./fixtures/svm.js";
 
 describe("preflight", () => {
   it("ok=true with positive gasEstimate on a sim'd buy", async () => {
@@ -25,7 +25,7 @@ describe("preflight", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     conn.setSimSigners([smoke.user]);
     const adapter = new SolanaChainAdapter({
       node: {
@@ -65,7 +65,7 @@ describe("preflight", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     conn.setSimSigners([smoke.user]);
     const adapter = new SolanaChainAdapter({
       node: {
@@ -104,7 +104,7 @@ describe("preflight", () => {
       bWad: 1_000n * WAD,
       userUsdcBaseUnits: 100_000_000n,
     });
-    const conn = new BankrunConnection(smoke.ctx);
+    const conn = new LiteSvmConnection(smoke.ctx);
     conn.setSimSigners([smoke.user]);
     const adapter = new SolanaChainAdapter({
       node: {
