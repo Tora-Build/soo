@@ -9,6 +9,7 @@ import {
   type Commitment,
   type RpcResponseAndContext,
   type SignatureResult,
+  type SignatureStatus,
 } from "@solana/web3.js";
 
 import { soothCoreIdl } from "../src/anchor/index.js";
@@ -67,6 +68,22 @@ class PriorityFeeConnection extends Connection {
     _commitment?: Commitment,
   ): Promise<RpcResponseAndContext<SignatureResult>> {
     return { context: { slot: 0 }, value: { err: null } };
+  }
+
+  // The adapter confirms by polling getSignatureStatus over HTTP; without
+  // this override it would fall through to the real Connection and fetch.
+  override async getSignatureStatus(
+    _signature: string,
+  ): Promise<RpcResponseAndContext<SignatureStatus | null>> {
+    return {
+      context: { slot: 0 },
+      value: {
+        slot: 0,
+        confirmations: 0,
+        err: null,
+        confirmationStatus: "confirmed",
+      },
+    };
   }
 }
 

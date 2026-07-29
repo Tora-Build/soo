@@ -23,6 +23,8 @@ import {
   type Commitment,
   type RpcResponseAndContext,
   type SignatureResult,
+  type SignatureStatus,
+  type GetBlockHeightConfig,
 } from "@solana/web3.js";
 
 type Wireable = Transaction | VersionedTransaction;
@@ -140,12 +142,44 @@ export class BankrunConnection extends Connection {
 
   // confirmTransaction is a no-op in bankrun: `processTransaction` already
   // waited. We return a satisfied result.
+  //
+  // The adapter no longer calls this — it polls getSignatureStatus over HTTP
+  // instead — but it is kept so any caller still using the standard
+  // Connection API works against the rig.
   override async confirmTransaction(
     _strategy: any,
     _commitment?: Commitment,
   ): Promise<RpcResponseAndContext<SignatureResult>> {
     return { context: { slot: 0 }, value: { err: null } };
   }
+
+  // The adapter's confirmBySignatureStatus polls this. Without an override it
+  // would fall through to the real `Connection` and hit the network. In
+  // bankrun `sendRawTransaction` has already processed the transaction (and
+  // throws on failure), so any signature we are asked about has landed
+  // successfully — report it confirmed immediately.
+  override async getSignatureStatus(
+    _signature: string,
+  ): Promise<RpcResponseAndContext<SignatureStatus | null>> {
+    return {
+      context: { slot: 0 },
+      value: {
+        slot: 0,
+        confirmations: 0,
+        err: null,
+        confirmationStatus: "confirmed",
+      },
+    };
+  }
+
+  // Only consulted on the not-yet-visible branch of confirmBySignatureStatus,
+  // which bankrun never reaches. Overridden anyway so a future change cannot
+  // silently start making network calls from the test rig.
+  // Declared as a property (not a method) on `Connection`, so the override
+  // must be a property assignment too.
+  override getBlockHeight = async (
+    _commitmentOrConfig?: Commitment | GetBlockHeightConfig,
+  ): Promise<number> => 0;
 
   override async getMinimumBalanceForRentExemption(
     dataLength: number,

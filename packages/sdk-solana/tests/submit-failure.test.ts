@@ -30,6 +30,7 @@ import {
   type Commitment,
   type RpcResponseAndContext,
   type SignatureResult,
+  type SignatureStatus,
 } from "@solana/web3.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -349,6 +350,27 @@ class MockConnection extends Connection {
     return { context: { slot: 0 }, value: { err: null } };
   }
 
+  // The adapter confirms via getSignatureStatus polling rather than the
+  // websocket-backed confirmTransaction. Drive it from the same `confirm`
+  // script hook so existing test scenarios keep their meaning:
+  //   Error   → thrown, i.e. the tx never became visible (retryable)
+  //   { err } → landed but reverted
+  //   default → landed cleanly
+  override async getSignatureStatus(
+    signature: string,
+  ): Promise<RpcResponseAndContext<SignatureStatus | null>> {
+    const result = this.script.confirm?.(this.attempts, signature);
+    if (result instanceof Error) throw result;
+    const err =
+      result && typeof result === "object" && "err" in result
+        ? (result as SignatureResult).err
+        : null;
+    return {
+      context: { slot: 0 },
+      value: { slot: 0, confirmations: 0, err, confirmationStatus: "confirmed" },
+    };
+  }
+
   // The constructor still calls into the base path for getAccountInfo etc.
   // We don't expect submit to use them; if it does the test will surface a
   // network error from the real RPC URL — caught by the test wrapper.
@@ -523,5 +545,36 @@ describe("submit retry policy", () => {
     }
     expect(caught).toBeInstanceOf(SoothError);
     expect(conn.attempts).toBe(5);
+  }, 30_000);
+
+  // Regression: confirmation must not go through `confirmTransaction`, which
+  // subscribes via websocket `signatureSubscribe`. Alchemy's HTTP endpoint
+  // answers that with "Method not found", so confirmation threw a spurious
+  // timeout and submit retried a tx that had ALREADY landed — the replayed
+  // non-idempotent InitMarketFeePool preIx then failed with Custom(0),
+  // surfacing "Trade failed: code=0" for a trade that actually executed.
+  //
+  // This connection reproduces exactly that RPC: confirmTransaction throws,
+  // getSignatureStatus answers normally. A correct adapter never calls the
+  // former, so the landed tx confirms on attempt 1.
+  it("confirms via getSignatureStatus, never websocket confirmTransaction", async () => {
+    let confirmTransactionCalls = 0;
+    class WsRejectingConnection extends MockConnection {
+      override async confirmTransaction(): Promise<never> {
+        confirmTransactionCalls += 1;
+        throw new Error("failed to get signature status: Method not found");
+      }
+    }
+
+    const conn = new WsRejectingConnection({});
+    const { adapter, signer, req } = makeRetryAdapter(conn);
+
+    const receipt = await adapter.submit(req as any, signer);
+
+    expect(confirmTransactionCalls).toBe(0);
+    // Landed on the first send, so no resend and no replayed preIxs.
+    expect(receipt.attempts).toBe(1);
+    expect(conn.attempts).toBe(1);
+    expect(conn.blockhashesIssued.length).toBe(1);
   }, 30_000);
 });

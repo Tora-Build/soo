@@ -3167,6 +3167,52 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     };
   }
 
+  /**
+   * HTTP-only confirmation: poll `getSignatureStatus` until the signature
+   * reaches `confirmed`/`finalized` (or carries an error).
+   *
+   * Deliberately NOT `connection.confirmTransaction`, which subscribes via
+   * `signatureSubscribe` over a websocket. Alchemy's HTTP endpoint rejects
+   * that with "Method not found", so confirmation threw a spurious timeout
+   * and `submit` retried a transaction that had ALREADY landed. The replayed
+   * non-idempotent `InitMarketFeePool` preIx then failed with `Custom(0)`,
+   * surfacing a false "trade failed" for a trade that actually executed.
+   *
+   * Returns the same `{ value: { err } }` shape the caller inspects. Throws
+   * only on genuine expiry/timeout, so a retry is safe: the transaction
+   * demonstrably did not land.
+   */
+  private async confirmBySignatureStatus(
+    sig: string,
+    lastValidBlockHeight: number,
+  ): Promise<{ value: { err: unknown } }> {
+    const POLL_MS = 1000;
+    const deadlineMs = Date.now() + 60_000;
+    while (Date.now() < deadlineMs) {
+      const { value } = await this.connection.getSignatureStatus(sig);
+      if (value) {
+        if (
+          value.confirmationStatus === "confirmed" ||
+          value.confirmationStatus === "finalized"
+        ) {
+          return { value: { err: value.err ?? null } };
+        }
+        if (value.err) return { value: { err: value.err } };
+      } else {
+        // Not yet visible. Once the chain passes the blockhash's validity
+        // window the tx can never land — bail so the caller retries fresh.
+        const height = await this.connection.getBlockHeight("confirmed");
+        if (height > lastValidBlockHeight) {
+          throw new Error(
+            `transaction ${sig} expired (block height ${height} > ${lastValidBlockHeight})`,
+          );
+        }
+      }
+      await sleep(POLL_MS);
+    }
+    throw new Error(`confirmation timeout for ${sig}`);
+  }
+
   async submit(
     req: SoothRequest,
     signer: SignerRef,
@@ -3323,17 +3369,20 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
         throw classified.error;
       }
 
-      let confirmation;
+      // Poll over plain HTTP rather than the websocket subscribe that
+      // `confirmTransaction` uses — see confirmBySignatureStatus. A landed tx
+      // is detected on attempt 1 and therefore never retried.
+      let confirmation: { value: { err: unknown } };
       try {
-        confirmation = await this.connection.confirmTransaction(
-          { signature: sig, blockhash, lastValidBlockHeight },
-          "confirmed",
+        confirmation = await this.confirmBySignatureStatus(
+          sig,
+          lastValidBlockHeight,
         );
       } catch (e) {
-        // Confirmation timeout or RPC drop. Treat as retryable: the tx may
-        // have landed, may have expired — the next attempt re-sends with a
-        // new blockhash. The previous signature is harmless even if the tx
-        // did land (Solana rejects duplicate signatures cheaply).
+        // Genuine timeout/expiry: the tx did not land within the blockhash
+        // window. Safe to retry — non-idempotent preIxs such as
+        // InitMarketFeePool never executed, so the replay runs cleanly under
+        // the next blockhash.
         lastError = makeNetworkError(e, attempt, sig);
         if (attempt < maxAttempts) {
           await sleep(backoffMs(attempt));
