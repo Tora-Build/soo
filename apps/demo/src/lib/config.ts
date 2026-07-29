@@ -12,7 +12,7 @@
 import { type SoothNode, soothAmmIdl, soothMarketIdl } from "@sooth/sdk-solana";
 
 const DEFAULT_DEVNET_RPC = "https://api.devnet.solana.com";
-const USDC_MINT_DEVNET = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+const USDC_MINT_DEVNET = "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK";
 // Sourced from the IDL `address` fields, which in turn mirror each program's
 // `declare_id!`. Keeps the config in lockstep with deploy keypair rotations
 // without a second hand-pinned constant.

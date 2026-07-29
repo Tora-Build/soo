@@ -546,7 +546,7 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       // `programs/sooth_amm/src/lib.rs`). Tests can override via
       // `opts.usdcMint`.
       this.usdcMint = new PublicKey(
-        "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK",
       );
     }
 

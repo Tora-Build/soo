@@ -84,7 +84,7 @@ function makeAdapter(connection: Connection) {
       rpcUrl: "http://localhost:8899",
     },
     programIds: programs,
-    usdcMint: new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"),
+    usdcMint: new PublicKey("H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"),
     connection,
   });
   const req = buildMockRequest(programs, user.publicKey, marketPda);

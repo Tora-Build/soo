@@ -4,14 +4,33 @@ use anchor_lang::prelude::Pubkey;
 // The program ID is registered by `declare_id!` in lib.rs; use Anchor's
 // `crate::ID` where the program's own pubkey is needed.
 
+/// Canonical mainnet USDC mint. Used when built with `--features mainnet`.
 pub const USDC_MINT_MAINNET: Pubkey =
     anchor_lang::pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+
+/// Project-controlled mock USDC on devnet (decision D19).
+///
+/// This overrides the original "no need for our own mock; use real USDC"
+/// decision. Circle's devnet USDC (`4zMMC9srt…`) is only obtainable through
+/// faucet.circle.com — captcha + GitHub-auth gated, with no programmatic
+/// call — which makes demo and e2e funding flows impossible to automate.
+/// This mint's authority is the demo's `apps/demo/.localnet/mint-authority.json`
+/// (`6PfiTm…`, untracked), so the in-browser `/faucet` mints on both localnet
+/// and devnet. Mainnet remains real Circle USDC.
+///
+/// The value matches `origin/main`'s `sooth-protocol-types::ids` so both
+/// branches share one devnet mint and devnet state stays interoperable.
+///
+/// Note this is pinned by `address = BASE_TOKEN_MINT` account constraints
+/// throughout the program, so a mismatch is a hard transaction failure, not a
+/// UI inconsistency — every off-chain reference must move in lockstep.
+pub const USDC_MINT_DEVNET: Pubkey =
+    anchor_lang::pubkey!("H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK");
 
 #[cfg(feature = "mainnet")]
 pub const BASE_TOKEN_MINT: Pubkey = USDC_MINT_MAINNET;
 #[cfg(not(feature = "mainnet"))]
-pub const BASE_TOKEN_MINT: Pubkey =
-    anchor_lang::pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+pub const BASE_TOKEN_MINT: Pubkey = USDC_MINT_DEVNET;
 
 // ── Account byte-offset constants ────────────────────────────────────────
 // Used by SPACE assertions in state types and by raw-parse helpers.

@@ -775,7 +775,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
         },
         {
           "name": "token_program",
@@ -915,7 +915,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
         },
         {
           "name": "user",
@@ -1230,7 +1230,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
         },
         {
           "name": "vault",
@@ -1512,7 +1512,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
         },
         {
           "name": "market_fee_pool",
@@ -1682,7 +1682,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
         },
         {
           "name": "fee_pool_vault",
@@ -1788,7 +1788,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
         },
         {
           "name": "market_fee_pool",
@@ -2559,7 +2559,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
         },
         {
           "name": "market_vault",
@@ -3695,7 +3695,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
         },
         {
           "name": "protocol_config",
@@ -3995,7 +3995,7 @@
         },
         {
           "name": "usdc_mint",
-          "address": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+          "address": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK"
         },
         {
           "name": "protocol_config",
@@ -5629,10 +5629,10 @@
           {
             "name": "adjudicator",
             "docs": [
-              "The adjudicator pubkey recorded at `initialize_market` time. In the",
-              "merged program the adjudicator is also registered as an",
-              "`AdjudicatorEntry` PDA. This field remains the canonical source of",
-              "truth for the market's designated adjudicator identity."
+              "The adjudicator pubkey recorded at `initialize_market` time. The",
+              "adjudicator is also registered as an `AdjudicatorEntry` PDA. This",
+              "field remains the canonical source of truth for the market's",
+              "designated adjudicator identity."
             ],
             "type": "pubkey"
           },

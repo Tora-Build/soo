@@ -6,7 +6,7 @@
       "nodeId": "solana-localnet",
       "coreVersion": "0.2.1",
       "contracts": {
-        "MockUSDC": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "MockUSDC": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK",
         "baseTokenDecimals": 6,
         "_comment": "Synthetic 0x… placeholders for upstream EVM hooks that gate on !!engineAddress. The Solana chain-shim ignores `address` for AMM reads (routes by functionName), so any non-empty hex unblocks the gate. Real PDAs live in @sooth/sdk-solana. SoothBook is a placeholder that satisfies SoothBookTerminal's `!contracts.SoothBook` gate; the chain-shim resolves the real sooth_book program-id from the SDK adapter (DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X).",
         "AMMEngine": "0x0000000000000000000000000000000000000a01",
@@ -25,7 +25,7 @@
       "nodeId": "solana-devnet",
       "coreVersion": "0.2.1",
       "contracts": {
-        "MockUSDC": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "MockUSDC": "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK",
         "baseTokenDecimals": 6,
         "_comment": "Same placeholder pattern as solanaLocalnet — see comment there.",
         "AMMEngine": "0x0000000000000000000000000000000000000a01",

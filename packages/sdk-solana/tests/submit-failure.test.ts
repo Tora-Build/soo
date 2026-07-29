@@ -403,7 +403,7 @@ describe("submit retry policy", () => {
     };
     const userKp = Keypair.generate();
     const usdcMint = new PublicKey(
-      "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK",
     );
     const adapter = new SolanaChainAdapter({
       node: {

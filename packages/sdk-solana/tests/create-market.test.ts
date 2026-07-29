@@ -57,7 +57,7 @@ import { resolveDeployDir } from "./fixtures/setup.js";
 
 const SOOTH_CORE_ID = new PublicKey(soothCoreIdl.address) ?? SOOTH_CORE_PROGRAM_ID;
 const USDC_MINT_DEVNET = new PublicKey(
-  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+  "H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK",
 );
 
 const PROGRAMS: ProgramIds = {
