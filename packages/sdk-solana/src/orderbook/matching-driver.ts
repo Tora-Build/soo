@@ -1,6 +1,5 @@
 import {
   PublicKey,
-  SystemProgram,
   type AccountMeta,
   type TransactionInstruction,
 } from "@solana/web3.js";
@@ -17,6 +16,13 @@ export const NUM_TICKS = 1000;
 export const MIN_TICK = 1;
 export const MAX_TICK = 999;
 export const DEFAULT_MATCH_LIMIT_PER_TX = 3;
+
+/// Accounts appended per predicted fill: [book_side, maker_position, maker_usdc_ata].
+/// MUST stay in sync with `FILL_BUNDLE_LEN` in
+/// `programs/sooth-core/src/matching.rs` — the program rejects a
+/// `remaining_accounts` length that is not a multiple of this with
+/// `WrongBundleArity`, and mis-slices the bundles if the stride disagrees.
+export const FILL_BUNDLE_LEN = 3;
 
 export interface MatchTaker {
   side: 0 | 1;
@@ -214,8 +220,6 @@ export function buildFillBundles(
       { pubkey: bookSide, isSigner: false, isWritable: true },
       { pubkey: makerPosition, isSigner: false, isWritable: true },
       { pubkey: makerUsdcAta, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     );
   }
   return accounts;

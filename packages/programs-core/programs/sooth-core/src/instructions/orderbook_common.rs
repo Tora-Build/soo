@@ -43,6 +43,113 @@ pub fn read_fee_bps(protocol_config: &Account<ProtocolConfig>) -> u16 {
     protocol_config.fee_bps
 }
 
+/// Create and zero-initialize an `OrderbookPosition` PDA that does not exist yet.
+///
+/// The CLOB paths hold maker/taker positions as raw `AccountInfo` (they arrive via
+/// `remaining_accounts`), so Anchor's `init_if_needed` is unavailable and the account
+/// must be created by hand. Funding the address is *not* enough: a system account with
+/// zero data length cannot be written to, so `allocate` + `assign` (or `create_account`,
+/// which does both) is mandatory before serializing.
+///
+/// Callers must have already verified `info.data_is_empty()`.
+pub fn create_orderbook_position<'info>(
+    info: &AccountInfo<'info>,
+    market: &Account<'info, Market>,
+    user: Pubkey,
+    payer: &Signer<'info>,
+    system_program: &Program<'info, System>,
+    rent: &Rent,
+) -> Result<OrderbookPosition> {
+    use anchor_lang::system_program;
+
+    let space = OrderbookPosition::SPACE;
+    let lamports = rent.minimum_balance(space);
+
+    let (expected, bump) = Pubkey::find_program_address(
+        &[
+            b"orderbook_position",
+            market.market_id.as_ref(),
+            user.as_ref(),
+        ],
+        &crate::ID,
+    );
+    require_keys_eq!(*info.key, expected, SoothCoreError::MakerAccountMismatch);
+
+    let bump_seed = [bump];
+    let signer_seeds: &[&[&[u8]]] = &[&[
+        b"orderbook_position",
+        market.market_id.as_ref(),
+        user.as_ref(),
+        bump_seed.as_ref(),
+    ]];
+
+    let current = info.lamports();
+    if current == 0 {
+        system_program::create_account(
+            CpiContext::new_with_signer(
+                system_program.to_account_info(),
+                system_program::CreateAccount {
+                    from: payer.to_account_info(),
+                    to: info.clone(),
+                },
+                signer_seeds,
+            ),
+            lamports,
+            space as u64,
+            &crate::ID,
+        )?;
+    } else {
+        // The PDA was pre-funded (anyone can send lamports to any address), which
+        // makes `create_account` fail. Top up to rent-exemption, then allocate and
+        // assign explicitly — the same fallback Anchor's `init` uses.
+        if current < lamports {
+            system_program::transfer(
+                CpiContext::new(
+                    system_program.to_account_info(),
+                    system_program::Transfer {
+                        from: payer.to_account_info(),
+                        to: info.clone(),
+                    },
+                ),
+                lamports - current,
+            )?;
+        }
+        system_program::allocate(
+            CpiContext::new_with_signer(
+                system_program.to_account_info(),
+                system_program::Allocate {
+                    account_to_allocate: info.clone(),
+                },
+                signer_seeds,
+            ),
+            space as u64,
+        )?;
+        system_program::assign(
+            CpiContext::new_with_signer(
+                system_program.to_account_info(),
+                system_program::Assign {
+                    account_to_assign: info.clone(),
+                },
+                signer_seeds,
+            ),
+            &crate::ID,
+        )?;
+    }
+
+    let position = OrderbookPosition {
+        market: market.key(),
+        user,
+        yes_shares: 0,
+        no_shares: 0,
+        _reserved: [0u8; 16],
+    };
+    let mut data = info.try_borrow_mut_data()?;
+    let mut cursor: &mut [u8] = &mut data;
+    position.try_serialize(&mut cursor)?;
+
+    Ok(position)
+}
+
 pub fn compute_taker_pull_from_fee_wad(
     base_cost_wad: u128,
     fee_wad: u128,

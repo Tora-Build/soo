@@ -7,7 +7,7 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 use crate::error::SoothCoreError;
 use crate::instructions::orderbook_common::{
-    complement_tick_cost_wad, compute_taker_pull, credit_shares,
+    complement_tick_cost_wad, compute_taker_pull, create_orderbook_position, credit_shares,
     read_fee_bps, tick_cost_wad, wad_to_base,
 };
 use crate::math::NUM_TICKS;
@@ -43,12 +43,10 @@ pub fn fill_order_internal<'info>(
     require!(taker_tick <= NUM_TICKS, SoothCoreError::InvalidTick);
     require!(maker_tick <= NUM_TICKS, SoothCoreError::InvalidTick);
 
-    let market_key = market.key();
-
     // Deserialize the taker orderbook position (init_if_needed logic).
     let taker_position = load_or_init_position(
         taker_orderbook_position.to_account_info(),
-        market_key,
+        market,
         taker.key(),
         system_program,
         rent,
@@ -58,7 +56,7 @@ pub fn fill_order_internal<'info>(
     // Deserialize the maker orderbook position.
     let maker_position = load_or_init_position(
         maker_position_info.clone(),
-        market_key,
+        market,
         maker,
         system_program,
         rent,
@@ -162,40 +160,14 @@ fn require_before_deadline(market: &Market) -> Result<()> {
 /// the account if it is freshly initialized.
 fn load_or_init_position<'info>(
     info: AccountInfo<'info>,
-    market: Pubkey,
+    market: &Account<'info, Market>,
     user: Pubkey,
     system_program: &Program<'info, System>,
     rent: &Sysvar<'info, Rent>,
     payer: &Signer<'info>,
 ) -> Result<OrderbookPosition> {
-    use anchor_lang::system_program;
-
     if info.data_is_empty() {
-        let space = OrderbookPosition::SPACE;
-        let lamports = rent.minimum_balance(space);
-        system_program::transfer(
-            CpiContext::new(
-                system_program.to_account_info(),
-                system_program::Transfer {
-                    from: payer.to_account_info(),
-                    to: info.clone(),
-                },
-            ),
-            lamports,
-        )?;
-        // Write discriminator + zero-init body.
-        let mut data = info.try_borrow_mut_data()?;
-        use anchor_lang::Discriminator;
-        data[..8].copy_from_slice(&OrderbookPosition::DISCRIMINATOR);
-        drop(data);
-
-        return Ok(OrderbookPosition {
-            market,
-            user,
-            yes_shares: 0,
-            no_shares: 0,
-            _reserved: [0u8; 16],
-        });
+        return create_orderbook_position(&info, market, user, payer, system_program, rent);
     }
 
     use anchor_lang::AccountDeserialize;

@@ -524,32 +524,10 @@ fn ensure_position_exists<'info>(
     rent: &Sysvar<'info, Rent>,
     market: &Account<'info, Market>,
 ) -> Result<()> {
-    use crate::state::OrderbookPosition;
-    use anchor_lang::{AnchorSerialize, Discriminator};
+    use crate::instructions::orderbook_common::create_orderbook_position;
 
     if info.data_is_empty() {
-        let space = OrderbookPosition::SPACE;
-        let lamports = rent.minimum_balance(space);
-        system_program::transfer(
-            CpiContext::new(
-                system_program.to_account_info(),
-                system_program::Transfer {
-                    from: payer.to_account_info(),
-                    to: info.clone(),
-                },
-            ),
-            lamports,
-        )?;
-        let mut data = info.try_borrow_mut_data()?;
-        data[..8].copy_from_slice(&OrderbookPosition::DISCRIMINATOR);
-        let pos = OrderbookPosition {
-            market: market.key(),
-            user: payer.key(),
-            yes_shares: 0,
-            no_shares: 0,
-            _reserved: [0u8; 16],
-        };
-        pos.serialize(&mut &mut data[8..])?;
+        create_orderbook_position(&info, market, payer.key(), payer, system_program, rent)?;
     }
     Ok(())
 }

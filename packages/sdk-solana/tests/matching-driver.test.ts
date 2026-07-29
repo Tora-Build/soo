@@ -1,9 +1,10 @@
-import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
+import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 
 import {
   buildOrderbookBuyMultiTx,
   simulateMatch,
+  FILL_BUNDLE_LEN,
   type BookSideSnapshot,
   type MarketBookSnapshot,
   type SoothSolanaClient,
@@ -158,7 +159,13 @@ describe("matching driver", () => {
     });
 
     expect(txs).toHaveLength(3);
-    expect(txs.map((tx) => tx[0].keys.length / 5)).toEqual([3, 3, 1]);
+    expect(txs.map((tx) => tx[0].keys.length / FILL_BUNDLE_LEN)).toEqual([
+      3, 3, 1,
+    ]);
+    // Arity must divide exactly, or the program rejects with WrongBundleArity.
+    for (const tx of txs) {
+      expect(tx[0].keys.length % FILL_BUNDLE_LEN).toBe(0);
+    }
   });
 
   it("build_multi_tx_zero_fills_for_no_cross_order", async () => {
@@ -217,6 +224,7 @@ describe("matching driver", () => {
       false,
     );
     expect(reads).toBe(2);
-    expect(txs[1][0].keys.at(-1)?.pubkey).toEqual(SystemProgram.programId);
+    // Second tx carries exactly one fill bundle, rebuilt from the re-read bitmap.
+    expect(txs[1][0].keys).toHaveLength(FILL_BUNDLE_LEN);
   });
 });
