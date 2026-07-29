@@ -61,6 +61,7 @@ export const CLOB_ERROR = {
   MissingCrossingBookSide: 6051,
   MakerAccountMismatch: 6052,
   WrongBundleArity: 6053,
+  ProtocolPaused: 6054,
 } as const;
 
 /** Matcher for a specific on-chain error code in a bankrun rejection. */
@@ -181,6 +182,9 @@ export interface BuyArgs {
   /** Flat list of fill-bundle accounts, FILL_BUNDLE_LEN per predicted fill,
    *  ordered exactly as the matcher will consume them. */
   remaining: PublicKey[];
+  /** Escrowed orders settle in shares the wallet already holds rather than
+   *  collateral. Defaults to false. */
+  escrow?: boolean;
 }
 
 export async function buyTx(
@@ -210,7 +214,7 @@ export async function buyTx(
       args.side,
       args.tick,
       new BN(args.amount.toString()),
-      false, // escrow
+      args.escrow ?? false,
       args.matchLimit,
     )
     .accounts({
@@ -238,6 +242,67 @@ export async function buyTx(
     .instruction();
 
   return new Transaction().add(ix);
+}
+
+/** Engage or release the protocol circuit-breaker. `authority` must be the
+ *  ProtocolConfig authority (bootSmoke sets this to `creator`). */
+export async function setPaused(
+  ctx: ProgramTestContext,
+  program: Program,
+  smoke: SmokeContext,
+  authority: Keypair,
+  paused: boolean,
+): Promise<void> {
+  const [config] = deriveProtocolConfigPda(smoke.programs);
+  const method = paused ? "pause" : "unpause";
+  await sendTx(
+    ctx,
+    [authority],
+    new Transaction().add(
+      await (program.methods as any)
+        [method]()
+        .accounts({ config, authority: authority.publicKey })
+        .instruction(),
+    ),
+  );
+}
+
+/** Cancel every resting order the user holds at (side, tick), refunding
+ *  collateral. An exit path — deliberately NOT gated by the pause flag. */
+export async function cancelTx(
+  program: Program,
+  smoke: SmokeContext,
+  user: Keypair,
+  side: number,
+  tick: number,
+): Promise<Transaction> {
+  const { marketId, programs, usdcMint, marketPda } = smoke;
+  const [marketBook] = marketBookPda(marketId, programs);
+  const [bookSide] = bookSidePda(marketId, side as 0 | 1, tick, programs);
+  const [vaultAuthority] = deriveVaultAuthorityPda(marketId, programs);
+  const [userOrderbookPosition] = orderbookPositionPda(
+    marketId,
+    user.publicKey,
+    programs,
+  );
+  return new Transaction().add(
+    await (program.methods as any)
+      .cancel(side, tick)
+      .accounts({
+        user: user.publicKey,
+        market: marketPda,
+        marketBook,
+        bookSide,
+        vaultAuthority,
+        marketUsdcVault: deriveMarketVaultAta(marketId, usdcMint, programs),
+        userUsdcAta: deriveUserUsdcAta(user.publicKey, usdcMint),
+        userOrderbookPosition,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        rent: SYSVAR_RENT_PUBKEY,
+      })
+      .instruction(),
+  );
 }
 
 /** One fill bundle: [book_side, maker_position, maker_usdc_ata]. */
@@ -307,4 +372,86 @@ export async function sendTx(
   tx.feePayer = signers[0]!.publicKey;
   tx.sign(...signers);
   await ctx.banksClient.processTransaction(tx);
+}
+
+export interface TxCost {
+  /** Compute units the transaction actually consumed. */
+  computeUnits: number;
+  /** Distinct writable accounts in the compiled message. This is the budget
+   *  that caps fills per transaction (~3.7), not compute — see
+   *  docs/spec/sooth_book.md §13 Q2. */
+  writableAccounts: number;
+}
+
+/** Send and report what it cost. Throws with program logs on failure, same as
+ *  sendTx, so a measured transaction can never silently record a failed run. */
+export async function sendTxMeasured(
+  ctx: ProgramTestContext,
+  signers: Keypair[],
+  tx: Transaction,
+): Promise<TxCost> {
+  const blockhash = await ctx.banksClient.getLatestBlockhash();
+  if (!blockhash) throw new Error("no blockhash");
+  tx.recentBlockhash = blockhash[0];
+  tx.feePayer = signers[0]!.publicKey;
+  tx.sign(...signers);
+
+  const writableAccounts = countWritableAccounts(tx);
+  const res = await ctx.banksClient.tryProcessTransaction(tx);
+  if (res.result !== null) {
+    const logs = (res.meta?.logMessages ?? []).join("\n");
+    throw new Error(`measured tx failed: ${res.result}\n${logs}`);
+  }
+  return {
+    computeUnits: Number(res.meta?.computeUnitsConsumed ?? 0),
+    writableAccounts,
+  };
+}
+
+/** Writable-account count from the compiled message header. Solana marks an
+ *  account writable by position: signers come first (the trailing
+ *  `numReadonlySignedAccounts` of them are read-only), then non-signers (the
+ *  trailing `numReadonlyUnsignedAccounts` of those are read-only). */
+export function countWritableAccounts(tx: Transaction): number {
+  const msg = tx.compileMessage();
+  const total = msg.accountKeys.length;
+  const { numRequiredSignatures, numReadonlySignedAccounts } = msg.header;
+  const { numReadonlyUnsignedAccounts } = msg.header;
+  const writableSigners = numRequiredSignatures - numReadonlySignedAccounts;
+  const writableNonSigners =
+    total - numRequiredSignatures - numReadonlyUnsignedAccounts;
+  return writableSigners + writableNonSigners;
+}
+
+/** Credit `amountBaseUnits` of BOTH outcomes to the user's OrderbookPosition
+ *  by depositing collateral. Escrowed resting orders settle against these
+ *  shares, so a maker must hold them before resting with `escrow: true`. */
+export async function mintCompleteSetForOrderbook(
+  ctx: ProgramTestContext,
+  program: Program,
+  smoke: SmokeContext,
+  user: Keypair,
+  amountBaseUnits: bigint,
+): Promise<void> {
+  const { marketId, programs, usdcMint, marketPda } = smoke;
+  const [position] = orderbookPositionPda(marketId, user.publicKey, programs);
+  await sendTx(
+    ctx,
+    [user],
+    new Transaction().add(
+      await (program.methods as any)
+        .mintCompleteSetForOrderbook(new BN(amountBaseUnits.toString()))
+        .accounts({
+          market: marketPda,
+          position,
+          vault: deriveMarketVaultAta(marketId, usdcMint, programs),
+          userUsdcAta: deriveUserUsdcAta(user.publicKey, usdcMint),
+          user: user.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          rent: SYSVAR_RENT_PUBKEY,
+        })
+        .instruction(),
+    ),
+  );
 }
