@@ -60,6 +60,11 @@ export const SHARES = 1_000n * BASE_UNIT_WAD;
  *  the SVM surfaces failures as `custom program error: 0x…`, so tests match
  *  on the hex code rather than the name. */
 export const CLOB_ERROR = {
+  OrderIdSeedMismatch: 6043,
+  BookSideFull: 6044,
+  BookSideNotDrained: 6045,
+  CompactBoundExceeded: 6046,
+  NoCancellableOrder: 6050,
   MissingCrossingBookSide: 6051,
   MakerAccountMismatch: 6052,
   WrongBundleArity: 6053,
@@ -308,6 +313,100 @@ export async function cancelTx(
   );
 }
 
+/** Cancel one specific resting order by id. */
+export async function cancelByIdTx(
+  program: Program,
+  smoke: SmokeContext,
+  user: Keypair,
+  orderId: bigint,
+  side: number,
+  tick: number,
+): Promise<Transaction> {
+  const { marketId, programs, usdcMint, marketPda } = smoke;
+  const [marketBook] = marketBookPda(marketId, programs);
+  const [bookSide] = bookSidePda(marketId, side as 0 | 1, tick, programs);
+  const [vaultAuthority] = deriveVaultAuthorityPda(marketId, programs);
+  const [userOrderbookPosition] = orderbookPositionPda(
+    marketId,
+    user.publicKey,
+    programs,
+  );
+  return new Transaction().add(
+    await (program.methods as any)
+      .cancelById(new BN(orderId.toString()), side, tick)
+      .accounts({
+        user: user.publicKey,
+        market: marketPda,
+        marketBook,
+        bookSide,
+        vaultAuthority,
+        marketUsdcVault: deriveMarketVaultAta(marketId, usdcMint, programs),
+        userUsdcAta: deriveUserUsdcAta(user.publicKey, usdcMint),
+        userOrderbookPosition,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        rent: SYSVAR_RENT_PUBKEY,
+      })
+      .instruction(),
+  );
+}
+
+/** Crank: drop up to `maxDrops` fully-cancelled orders from the front of a
+ *  BookSide. Permissionless — anyone may compact. */
+export async function compactBookSideTx(
+  program: Program,
+  smoke: SmokeContext,
+  cranker: Keypair,
+  side: number,
+  tick: number,
+  maxDrops: number,
+): Promise<Transaction> {
+  const [bookSide] = bookSidePda(
+    smoke.marketId,
+    side as 0 | 1,
+    tick,
+    smoke.programs,
+  );
+  return new Transaction().add(
+    await (program.methods as any)
+      .compactBookSide(maxDrops)
+      .accounts({
+        cranker: cranker.publicKey,
+        market: smoke.marketPda,
+        bookSide,
+      })
+      .instruction(),
+  );
+}
+
+/** Crank: close a fully-drained BookSide and reclaim its rent. */
+export async function closeBookSideTx(
+  program: Program,
+  smoke: SmokeContext,
+  closer: Keypair,
+  side: number,
+  tick: number,
+): Promise<Transaction> {
+  const [marketBook] = marketBookPda(smoke.marketId, smoke.programs);
+  const [bookSide] = bookSidePda(
+    smoke.marketId,
+    side as 0 | 1,
+    tick,
+    smoke.programs,
+  );
+  return new Transaction().add(
+    await (program.methods as any)
+      .closeBookSide()
+      .accounts({
+        closer: closer.publicKey,
+        market: smoke.marketPda,
+        marketBook,
+        bookSide,
+      })
+      .instruction(),
+  );
+}
+
 /** One fill bundle: [book_side, maker_position, maker_usdc_ata]. */
 export function fillBundle(
   smoke: SmokeContext,
@@ -417,6 +516,33 @@ export async function sendTx(
   sending.feePayer = signers[0]!.publicKey;
   sending.sign(...signers);
   await ctx.banksClient.processTransaction(sending);
+}
+
+/** Send and return the emitted Anchor events' raw payloads.
+ *
+ *  `emit!` writes `Program data: <base64>` where the payload is
+ *  [8-byte event discriminator][borsh body] — the same framing sooth_log
+ *  carries, minus the outer instruction. */
+export async function sendTxCollectingEvents(
+  ctx: SvmContext,
+  signers: Keypair[],
+  tx: Transaction,
+): Promise<Uint8Array[]> {
+  const sending = withHeapFrame(tx);
+  const blockhash = await ctx.banksClient.getLatestBlockhash();
+  if (!blockhash) throw new Error("no blockhash");
+  sending.recentBlockhash = blockhash[0];
+  sending.feePayer = signers[0]!.publicKey;
+  sending.sign(...signers);
+  const res = await ctx.banksClient.tryProcessTransaction(sending);
+  if (res.result !== null) {
+    throw new Error(
+      `${res.result}\n${(res.meta?.logMessages ?? []).join("\n")}`,
+    );
+  }
+  return (res.meta?.logMessages ?? [])
+    .filter((l: string) => l.startsWith("Program data: "))
+    .map((l: string) => new Uint8Array(Buffer.from(l.slice(14), "base64")));
 }
 
 export interface TxCost {

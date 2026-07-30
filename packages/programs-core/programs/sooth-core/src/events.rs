@@ -295,6 +295,11 @@ pub struct OrderCancelled {
     pub tick: u16,
     pub maker: Pubkey,
     pub order_id: u64,
+    /// Unfilled amount at the moment of cancellation. An indexer cannot
+    /// reconstruct this after the fact: `cancel` zeroes the order in place, so
+    /// the size that was withdrawn is gone from state. Ported from main
+    /// (a1f3964).
+    pub remaining: u128,
 }
 
 #[event]

@@ -126,6 +126,7 @@ pub fn handler(ctx: Context<CancelByIdOrder>, order_id: u64, side: u8, tick: u16
         tick,
         maker: signer,
         order_id,
+        remaining: order.amount,
     });
     Ok(())
 }

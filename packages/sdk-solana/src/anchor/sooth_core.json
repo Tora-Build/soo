@@ -6082,6 +6082,16 @@
           {
             "name": "order_id",
             "type": "u64"
+          },
+          {
+            "name": "remaining",
+            "docs": [
+              "Unfilled amount at the moment of cancellation. An indexer cannot",
+              "reconstruct this after the fact: `cancel` zeroes the order in place, so",
+              "the size that was withdrawn is gone from state. Ported from main",
+              "(a1f3964)."
+            ],
+            "type": "u128"
           }
         ]
       }

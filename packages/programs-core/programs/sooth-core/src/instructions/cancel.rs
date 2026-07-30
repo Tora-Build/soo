@@ -130,6 +130,7 @@ pub fn handler(ctx: Context<CancelOrder>, side: u8, tick: u16) -> Result<()> {
         tick,
         maker: signer,
         order_id: order.id,
+        remaining: order.amount,
     });
     Ok(())
 }
