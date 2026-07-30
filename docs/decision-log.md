@@ -304,6 +304,22 @@ The auto-match SDK incompatibility was thoroughly analyzed in conversation; the 
 
 **Implication**: Do not tag or deploy v0.4 from W9 alone if the founder wants zero Highs before external audit. The immediate post-W9 engineering fix is to change SDK multi-tx matching to submit one batch, confirm/re-read, then construct the next batch against fresh book state, with a regression for stale same-tick maker bundles. W9 did not push, tag, amend, or use `--no-verify`.
 
+### D18. Split `attest_outcome` from `settle` behind a guardian-veto window (2026-07-31)
+
+**Decision**: `attest_outcome` no longer settles. It records the outcome on `AdjudicatorEntry` and leaves the market `Locked` for `ProtocolConfig.veto_period_secs`, during which `dispute` may override it. A separate, **permissionless** `settle` finalizes afterwards and takes **no** `winning_outcome` argument — it reads the attested value. The window is a config field (bounded `0 < x <= 30 days`), not a constant or a build flag.
+
+**Why**: the `dispute` handler was unreachable. It requires both `is_attested()` and a not-yet-`Settled` market, but `attest_outcome` called `settle_internal` in the same transaction, so no market was ever in both states. Every dispute failed with `MarketAlreadySettled` or `NotYetAttested`; `disputed` was permanently `false` and `AlreadyDisputed` was dead code. The veto was available to nobody, including `dispute_authority`. `main` has the identical structure — its host-side tests hid it by driving an inline mock whose `dispute(adj, market_settled: bool, …)` takes the lifecycle as a free parameter, so the suite "passed" against a state the program cannot produce. This is the remediation [`docs/spec/sooth_adjudicator.md`](./spec/sooth_adjudicator.md) §6 already specified, and it matches EVM, where `resolve` and a permissionless `settle(address market)` sit either side of `vetoEndsAt`.
+
+**Evidence**: `packages/sdk-solana/tests/adjudicator-flow.test.ts` — 31 on-chain tests. Both sides of the old fork are pinned as regressions, the window is pinned closed-open at both boundaries, and `settle` is cranked by a stranger to prove permissionlessness. Rust `cargo test -p sooth_core` 42 passing; SDK suite 163 passing.
+
+**Implication**:
+
+- **Resolution is now two transactions with a wait between them.** Anything that attested-and-redeemed must call `settle` in between (`settleViaAdapter` + `waitForVetoWindow` in the e2e helpers; `SolanaChainAdapter.buildSettle`; a `settle` dispatcher in the demo's `amm-bridge`). The demo UI already modelled this state for the EVM path ("Waiting for veto period").
+- **`ProtocolConfig` layout changed** (+8 bytes, `PROTOCOL_CONFIG_TOTAL_LEN` 93 → 101). The devnet singleton must be recreated; the deployed program needs an upgrade.
+- Zero is **rejected**, not treated as "no window": the Anchor client encodes an omitted `i64` as `0`, and `create-market.test.ts` plus both seed scripts were all silently getting a zero window until the guard made it a hard failure. Deployments wanting no delay pass `1`.
+- Seeds: localnet `2s` (the e2e resolves and redeems in one run and `solana-test-validator` has no clock warp), devnet `300s` (demonstrable live), mainnet `DEFAULT_VETO_PERIOD_SECS` = 24h.
+- Self-attested adjudicator level rises `J1` → `J3` for the Manual variant. Still open: the veto is held by a single `dispute_authority`, not a guardian allowlist.
+
 ---
 
-_Last updated: 2026-05-13 (D17 records the W9 audit-prep verdict and founder-acknowledged deferred High. D13-D16 record the EVM-direct port direction, scope, position model, and per-market fee pool decisions resolved by [`docs/spec/sooth_book.md`](./spec/sooth_book.md). D7-D12 resolved P1/P3/P5/P6/P7/P8 on 2026-05-08; D7 is superseded by D13. D6 was already used for devnet program IDs.)._
+_Last updated: 2026-07-31 (D18 splits attest from settle behind a guardian-veto window, making `dispute` reachable). 2026-05-13 (D17 records the W9 audit-prep verdict and founder-acknowledged deferred High. D13-D16 record the EVM-direct port direction, scope, position model, and per-market fee pool decisions resolved by [`docs/spec/sooth_book.md`](./spec/sooth_book.md). D7-D12 resolved P1/P3/P5/P6/P7/P8 on 2026-05-08; D7 is superseded by D13. D6 was already used for devnet program IDs.)._

@@ -51,6 +51,17 @@ pub struct ProtocolConfig {
     /// When `true`, anyone can register an adjudicator for any market.
     /// When `false`, only `config.authority` may call `register_adjudicator`.
     pub permissionless_adjudicators: bool,
+
+    /// Guardian-veto window in seconds. `dispute` is callable while
+    /// `now < attested_at + veto_period_secs`; `settle` only after.
+    ///
+    /// Configurable rather than a constant so localnet can run a few seconds
+    /// while devnet runs 24h — same binary in both places. A build flag would
+    /// have meant the artifact under test was not the artifact deployed.
+    ///
+    /// Zero is legal and means "no veto window": settle becomes callable in
+    /// the same slot as attest. That is the old collapsed behaviour, opt-in.
+    pub veto_period_secs: i64,
 }
 
 /// Reject the call if the protocol circuit-breaker is engaged.
@@ -90,7 +101,8 @@ impl ProtocolConfig {
         + 8                        // default_trial_period
         + 1                        // bump
         + 1                        // paused
-        + 1; // permissionless_adjudicators
+        + 1                        // permissionless_adjudicators
+        + 8; // veto_period_secs
 
     pub fn split_total(&self) -> u32 {
         self.b_base_share_bps as u32

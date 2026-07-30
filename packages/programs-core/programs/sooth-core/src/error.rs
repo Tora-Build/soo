@@ -191,4 +191,17 @@ pub enum SoothCoreError {
 
     #[msg("Serialized event payload exceeds the 10 KiB instruction-data limit")]
     EventTooLarge,
+
+    // ── Veto window ──────────────────────────────────────────────────────────
+    // Appended, never reordered: these discriminants are the on-the-wire error
+    // codes the SDK and demo match on.
+
+    #[msg("Veto window is still open; settle is not callable until it closes")]
+    VetoWindowOpen,
+
+    #[msg("Veto window has closed; the attested outcome can no longer be disputed")]
+    VetoWindowClosed,
+
+    #[msg("veto_period_secs must be > 0 and <= MAX_VETO_PERIOD_SECS")]
+    InvalidVetoPeriod,
 }

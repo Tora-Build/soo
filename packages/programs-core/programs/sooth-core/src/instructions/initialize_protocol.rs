@@ -18,6 +18,10 @@ pub struct InitializeProtocolArgs {
     pub protocol_share_bps: u16,
     pub default_trial_period: i64,
     pub permissionless_adjudicators: bool,
+    /// Guardian-veto window in seconds. Use `DEFAULT_VETO_PERIOD_SECS` (24h)
+    /// for real deployments; localnet fixtures pass a few seconds so the
+    /// resolve → settle → redeem flow is exercisable in one test run.
+    pub veto_period_secs: i64,
 }
 
 #[derive(Accounts)]
@@ -51,6 +55,24 @@ pub fn handler(ctx: Context<InitializeProtocol>, args: InitializeProtocolArgs) -
         SoothCoreError::InvalidTrialPeriod
     );
 
+    // Bounded on both sides, and strictly positive.
+    //
+    // Zero is rejected rather than treated as "no veto window", because the
+    // Anchor client encodes a MISSING i64 argument as 0. A caller who simply
+    // forgets `vetoPeriodSecs` would otherwise silently deploy a protocol
+    // where dispute can never fire and settle is immediate — exactly the
+    // collapsed behaviour this split exists to remove, reintroduced by typo.
+    // Deployments that genuinely want no delay pass 1 second.
+    //
+    // Negative would put `veto_ends_at` before `attested_at`, making settle
+    // callable before the attestation it finalizes; unbounded-large would
+    // strand every redemption behind a settle nobody can ever call.
+    require!(
+        args.veto_period_secs > 0
+            && args.veto_period_secs <= crate::constants::MAX_VETO_PERIOD_SECS,
+        SoothCoreError::InvalidVetoPeriod
+    );
+
     let split_total = (args.b_base_share_bps as u32)
         + (args.lp_yield_share_bps as u32)
         + (args.adjudicator_share_bps as u32)
@@ -68,6 +90,7 @@ pub fn handler(ctx: Context<InitializeProtocol>, args: InitializeProtocolArgs) -
     cfg.default_trial_period = args.default_trial_period;
     cfg.paused = false;
     cfg.permissionless_adjudicators = args.permissionless_adjudicators;
+    cfg.veto_period_secs = args.veto_period_secs;
     cfg.bump = ctx.bumps.config;
 
     require!(

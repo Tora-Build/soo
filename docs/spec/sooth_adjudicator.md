@@ -35,7 +35,7 @@ Devnet program id: `4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8` (D6).
 | `AdjudicatorKind::ZkTLS`                                                     | not implemented — variant tag reserved           |
 | `AdjudicatorKind::Other(_)`                                                  | reserved for future variants                     |
 | T\* retroactive settlement (`post_settlement_root`)                          | not implemented                                  |
-| Guardian protocol (veto window)                                              | not implemented in v1; `dispute` is the analogue |
+| Guardian protocol (veto window)                                              | veto window enforced; single guardian, not a set |
 | Six-phase machine (IDLE / ACTIVE / RESOLVED / ATTESTED / SETTLED / DISPUTED) | partial — Solana collapses RESOLVED + ATTESTED   |
 
 ## 3. Account / state model
@@ -101,32 +101,54 @@ Mutates: `Adjudicator.locked_at = now()`.
 
 ### 4.3 `attest_outcome`
 
-Manual variant: `authority` signs to attest the outcome. Mutates the
-`Adjudicator` state then CPIs into `sooth_market::settle` which drives
-`Locked → Settled`. Atomic — both the adjudicator state change and the
-market lifecycle change land in one tx.
+Manual variant: `authority` signs to attest the outcome. Records
+`attested_outcome` + `attested_at` on the `AdjudicatorEntry` and leaves the
+market `Locked`. It does **not** settle.
 
-Per architecture §4.4, this is the **EVM `attest` + `settle` collapse**.
-Canon defines two phases (`RESOLVED → ATTESTED → SETTLED`); Solana
-collapses RESOLVED + ATTESTED into a single tx with no veto window. See §6
-(deviation) below.
+The market is now in the ATTESTED state for
+`ProtocolConfig.veto_period_secs`, during which `dispute` may override the
+outcome. After the window, `settle` finalizes — see §4.5.
+
+**Superseded design (fixed).** This used to CPI straight into
+`sooth_market::settle`, collapsing attest and settle into one tx. That made
+`dispute` unreachable: it requires both `is_attested()` and a not-yet-
+`Settled` market, and no market was ever in both states at once. Every
+dispute failed with `MarketAlreadySettled` or `NotYetAttested`, so the veto
+was available to nobody — not even `dispute_authority`. The phase split
+below is the remediation §6 already called for.
 
 ### 4.4 `dispute`
 
 The `dispute_authority` (currently the same as `authority` in v1)
 overrides the attested outcome — sets to `INVALID`, or to a different
-valid value. Like `attest_outcome`, it CPIs into `sooth_market::settle`
-to drive `Locked → Settled` with the new outcome.
+valid value. It marks the entry `disputed` and records `disputed_at`; it
+does **not** settle. `settle` still finalizes, so the lifecycle changes in
+exactly one place in the program.
 
-**v1 does NOT enforce a time window.** Canon's veto window (open while
-the market is `ATTESTED`, closed at `now() + veto_period`) is not yet
-enforced. `dispute` is callable any time the market is `Locked` (i.e.
-before settle has run). After settle, the standard
-`MARKET_ALREADY_SETTLED` defense-in-depth guard rejects the call.
+**The veto window IS enforced.** `dispute` requires
+`now < attested_at + ProtocolConfig.veto_period_secs`, matching canon's
+`veto_ends_at`; past it the call is rejected with `VetoWindowClosed`. One
+dispute per market (`AlreadyDisputed`), and the disputed outcome is what
+`settle` finalizes — settle takes no outcome argument, so a veto cannot be
+routed around.
 
-`sooth_market::settle`'s parent-ix introspection accepts both
-`attest_outcome` AND `dispute` as legitimate parents (whitelist of two
-discriminators). Any other parent ix is rejected.
+### 4.5 `settle`
+
+Permissionless once the veto window closes. Reads the winning outcome from
+`AdjudicatorEntry.attested_outcome` and drives `Locked → Settled`.
+
+Two deliberate properties:
+
+- **No `winning_outcome` argument.** The previous signature let the caller
+  pass an outcome, which would have made the veto window decorative: veto
+  all you like, settle could finalize something else.
+- **No authority check.** The outcome is already fixed; settle only moves
+  the lifecycle. Gating it on the adjudicator would make every redemption
+  on the market depend on one key staying live. Mirrors EVM, where
+  `settle(address market)` is callable by anyone after `vetoEndsAt`.
+
+Rejected with `VetoWindowOpen` before `attested_at + veto_period_secs`, and
+with `NotYetAttested` if no attestation exists.
 
 ## 5. Cross-program wiring
 
@@ -146,31 +168,35 @@ veto/dispute window. Solana's v1 is a deliberate simplification.
 | ----------- | --------------------------------------------------------------------------------------------------------------- |
 | `IDLE`      | not yet registered (no `Adjudicator` PDA exists)                                                                |
 | `ACTIVE`    | registered, not yet locked (`locked_at == 0`)                                                                   |
-| `RESOLVED`  | (collapsed with `ATTESTED`)                                                                                     |
-| `ATTESTED`  | `Adjudicator.attested_outcome != 0` AND market still `Locked` (very short window — typically same tx as settle) |
+| `RESOLVED`  | (collapsed with `ATTESTED` — Manual variant has no separate off-host step)                                      |
+| `ATTESTED`  | `attested_outcome.is_some()` AND market still `Locked`, for `veto_period_secs`                                   |
 | `SETTLED`   | `Market.lifecycle == Settled`                                                                                   |
-| `DISPUTED`  | (none — `dispute` re-overrides and settles in the same tx)                                                      |
+| `DISPUTED`  | `AdjudicatorEntry.disputed == true` (outcome overridden, awaiting `settle`)                                     |
 
 | Canon lifecycle call   | Solana ix                                                      |
 | ---------------------- | -------------------------------------------------------------- |
 | `configure_market`     | `register_adjudicator`                                         |
 | `resolve`              | (collapsed into `attest_outcome` — no separate `resolve` step) |
 | `attest`               | (collapsed)                                                    |
-| `settle`               | implicit in `attest_outcome` (CPI to `sooth_market::settle`)   |
-| `dispute`              | `dispute` (no veto window in v1)                               |
+| `settle`               | `settle` (permissionless, after the veto window)               |
+| `dispute`              | `dispute` (veto window enforced against `veto_period_secs`)    |
 | `post_settlement_root` | not implemented                                                |
 
-This is a **`partial-conformance` deviation**. Severity rationale: the
-collapsed machine works for `Manual` adjudicators (the only variant
-shipped) where there is no off-host attestation step. It will NOT work
-for `zk-oracle` or `uma` variants that need a separate verifiable
-attestation phase. Self-attested level: **`J1`** (Manual variant only).
+This remains a **`partial-conformance` deviation**, but a narrower one than
+before. The time-gated veto window matching canon `veto_ends_at` is now
+implemented — that half of the remediation plan has landed, and `dispute`
+went from unreachable to enforced. What is still collapsed is
+`RESOLVED`/`ATTESTED`: the Manual variant has no off-host attestation step
+to separate, so `attest_outcome` fills both roles.
+
+Self-attested level: **`J3`** for the Manual variant (guardian protocol
+with a real veto window, single guardian rather than a set). Still `J1` for
+any variant needing a verifiable attestation phase — when `ZkTLS` lands,
+splitting `resolve` from `attest` becomes mandatory, and that split is now
+a much smaller change because settle is already a separate instruction.
 
 Deviation should be filed in `host-kb/solana/deviations.json` once that
-file exists. Remediation plan: when `ZkTLS` lands, the phase split
-(separate `resolve` and `attest` ix with veto window) becomes mandatory.
-That work splits `attest_outcome` and adds an explicit time-gated
-veto window matching canon `veto_ends_at`.
+file exists.
 
 ## 7. Capability claim
 
@@ -179,19 +205,29 @@ Per canon `law/capability-matrix.md` adjudicator ladder:
 | Level | Description                                                            | Solana status                                                      |
 | ----- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | J0    | `IAdjudicator` interface implemented for at least one type id          | met                                                                |
-| J1    | configure → resolve → settle works for `manual`                        | met (collapsed but functional)                                     |
+| J1    | configure → resolve → settle works for `manual`                        | met — `settle` is a distinct permissionless ix                     |
 | J2    | Attestation step works (zk-rule callback / zk-oracle proof / uma bond) | not met                                                            |
-| J3    | Guardian protocol (dispute returns market to LIVE within veto window)  | partial — `dispute` exists but settles directly, no return to LIVE |
+| J3    | Guardian protocol (dispute returns market to LIVE within veto window)  | partial — veto window enforced; overrides the outcome, no return to LIVE |
 | J4    | T\* retroactive settlement + `post_settlement_root`                    | not met                                                            |
 | J5    | Multiple variants bound across markets in one instance                 | partial — type-id field exists but only Manual ships               |
 
-Self-attested level: **`J1`** (Manual variant only). Canon's `J3` (return
-to LIVE on dispute) is structurally different from Solana's `dispute`
-(re-settle with a different outcome); these are different design
-choices, not a level-ladder mismatch — flag as deviation.
+Self-attested level: **`J3`** (Manual variant only), raised from `J1` once
+the veto window landed. Two residual gaps, both deliberate:
+
+- Canon's `J3` returns the market to LIVE on dispute; Solana's `dispute`
+  overrides the outcome in place and lets `settle` finalize it. Different
+  design choice, not a level-ladder mismatch — flag as deviation.
+- The veto is held by one `dispute_authority`, not a guardian set.
 
 ## 8. Forbidden shortcuts
 
+- Do **not** re-collapse `attest_outcome` into `settle`. The gap between
+  them is the veto window; closing it makes `dispute` unreachable again,
+  silently and with every test still green except the ones that assert the
+  market stays `Locked`.
+- Do **not** give `settle` a `winning_outcome` argument. It must read the
+  attested value, or a veto can be routed around by settling something
+  else.
 - Do **not** allow `attest_outcome` or `dispute` to be called by anyone
   except `Adjudicator.authority`. The signature check is the security
   boundary.
@@ -211,8 +247,10 @@ choices, not a level-ladder mismatch — flag as deviation.
 - Other production variants (`uma`, `agent`, `id-committee`,
   `optimistic`) — none implemented; each requires a canon type-id mapping
   - a new ix surface.
-- Guardian protocol with formal veto window — v1 `dispute` is the
-  simplification.
+- Guardian **allowlist** — the veto window is enforced, but the veto is
+  held by a single `dispute_authority` (defaulted to `authority` at
+  register time) rather than a guardian set. Rotating it to a multisig is
+  a field write; a true allowlist is a new account type.
 - T\* retroactive settlement (`post_settlement_root`) — canon J4;
   deferred alongside the Solana T\* path.
 - Multi-source attestation aggregation (multi-sig) — handled at the

@@ -1716,6 +1716,62 @@ export async function attestOutcomeViaAdapter(args: {
   });
 }
 
+/**
+ * Finalize an attested market. Permissionless, so `payer` need not be the
+ * adjudicator authority.
+ *
+ * Resolution is two steps now — `attestOutcome` records the outcome and opens
+ * the guardian-veto window, `settle` closes it out — so anything that used to
+ * attest-and-redeem must call this in between. The localnet seed sets
+ * `veto_period_secs = 2`, hence `waitForVetoWindow` below; devnet uses 300s
+ * and mainnet 24h.
+ */
+export async function settleViaAdapter(args: {
+  conn: Connection;
+  payer: Keypair;
+  marketPda: PublicKey;
+}): Promise<string> {
+  const { conn, payer, marketPda } = args;
+  const programs = makePrograms(conn, payer);
+  const adjudicatorPda = deriveAdjudicatorPda(marketPda);
+
+  const tx = new Transaction();
+  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }));
+  tx.add(heapFrameIx());
+  const ix = await (programs.adjudicator.methods as any)
+    .settle()
+    .accounts({
+      market: marketPda,
+      adjudicatorEntry: adjudicatorPda,
+      protocolConfig: deriveProtocolConfigPda(),
+      cranker: payer.publicKey,
+    })
+    .instruction();
+  tx.add(ix);
+  return sendAndConfirmTransaction(conn, tx, [payer], {
+    commitment: "confirmed",
+  });
+}
+
+/**
+ * Sleep out the configured veto window. Reads `veto_period_secs` from
+ * ProtocolConfig rather than hardcoding it, so a change to the seed script
+ * does not silently turn this into a flaky race.
+ */
+export async function waitForVetoWindow(
+  conn: Connection,
+  payer: Keypair,
+): Promise<void> {
+  const programs = makePrograms(conn, payer);
+  const cfg = await (programs.adjudicator.account as any).protocolConfig.fetch(
+    deriveProtocolConfigPda(),
+  );
+  const secs = Number(cfg.vetoPeriodSecs.toString());
+  // +1s of slack: the on-chain check is `now >= attested_at + veto`, and the
+  // validator clock advances in discrete slots.
+  await new Promise((r) => setTimeout(r, (secs + 1) * 1000));
+}
+
 // ─── Adapter-direct redeem (operator + user paths) ──────────────────────
 
 export async function redeemViaAdapter(args: {

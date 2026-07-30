@@ -1,14 +1,29 @@
-//! `settle` — finalize a Locked market with the adjudicator's winning outcome.
+//! `settle` — finalize an attested market once its veto window has closed.
 //!
-//! Called from `attest_outcome` and `dispute`, so the signer is the
-//! adjudicator `authority`.
+//! Permissionless, and takes no outcome argument. Both are deliberate:
+//!
+//!   - **Permissionless.** The outcome is already fixed on the
+//!     `AdjudicatorEntry` by `attest_outcome`; settle only moves the
+//!     lifecycle. Requiring the adjudicator to come back would make
+//!     finalization — and therefore every redemption — depend on one key
+//!     staying live. Mirrors EVM, where `settle(address market)` is callable
+//!     by anyone after `vetoEndsAt`.
+//!
+//!   - **No `winning_outcome` argument.** It is read from the entry. The
+//!     previous signature let the authority settle an outcome that differed
+//!     from the one attested, which would have made the veto window
+//!     meaningless: dispute the attestation all you like, settle could pass
+//!     something else. The attested value is now the only thing that can be
+//!     finalized.
 
 use anchor_lang::prelude::*;
 
 use crate::error::SoothCoreError;
 use crate::events::MarketSettled;
 use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
-use crate::state::{AdjudicatorEntry, Market, MarketLifecycle, ADJUDICATOR_ENTRY_SEED};
+use crate::state::{
+    AdjudicatorEntry, Market, MarketLifecycle, ProtocolConfig, ADJUDICATOR_ENTRY_SEED,
+};
 
 #[derive(Accounts)]
 pub struct Settle<'info> {
@@ -28,46 +43,42 @@ pub struct Settle<'info> {
     )]
     pub adjudicator_entry: Account<'info, AdjudicatorEntry>,
 
-    /// Must be `adjudicator_entry.authority` (normal path) or
-    /// `adjudicator_entry.dispute_authority` (dispute path). The caller
-    /// (`attest_outcome` or `dispute`) enforces which key is appropriate.
-    pub authority: Signer<'info>,
+    #[account(
+        seeds = [b"protocol_config"],
+        bump = protocol_config.bump,
+    )]
+    pub protocol_config: Account<'info, ProtocolConfig>,
+
+    /// Whoever cranks the settle. Unconstrained by design — see module docs.
+    /// Present only so the transaction has a signer to pay fees.
+    pub cranker: Signer<'info>,
 }
 
-/// Internal settle helper — called by `attest_outcome` and `dispute`.
-///
-/// Skips the separate auth check; callers must validate `authority` before
-/// calling this.
-pub fn settle_internal(market: &mut Market, winning_outcome: u8) -> Result<()> {
+pub fn handler(ctx: Context<Settle>) -> Result<()> {
+    let entry = &ctx.accounts.adjudicator_entry;
+
+    let winning_outcome = entry
+        .attested_outcome
+        .ok_or(error!(SoothCoreError::NotYetAttested))?;
+    let attested_at = entry
+        .attested_at
+        .ok_or(error!(SoothCoreError::NotYetAttested))?;
+
+    // Defence in depth: the outcome was validated at attest/dispute time, but
+    // this is the value that becomes permanent, so re-check it rather than
+    // trusting stored state.
     require!(
         winning_outcome == OUTCOME_NO
             || winning_outcome == OUTCOME_YES
             || winning_outcome == OUTCOME_INVALID,
         SoothCoreError::InvalidOutcome
     );
-    require!(
-        market.lifecycle.can_transition_to(MarketLifecycle::Settled),
-        SoothCoreError::InvalidLifecycleTransition
-    );
-    market.lifecycle = MarketLifecycle::Settled;
-    market.winning_outcome = winning_outcome;
-    Ok(())
-}
 
-pub fn handler(ctx: Context<Settle>, winning_outcome: u8) -> Result<()> {
-    require!(
-        winning_outcome == OUTCOME_NO
-            || winning_outcome == OUTCOME_YES
-            || winning_outcome == OUTCOME_INVALID,
-        SoothCoreError::InvalidOutcome
-    );
-
-    // Auth: authority must be the registered adjudicator authority.
-    require_keys_eq!(
-        ctx.accounts.authority.key(),
-        ctx.accounts.adjudicator_entry.authority,
-        SoothCoreError::NotAuthority
-    );
+    let now = Clock::get()?.unix_timestamp;
+    let veto_ends_at = attested_at
+        .checked_add(ctx.accounts.protocol_config.veto_period_secs)
+        .ok_or(error!(SoothCoreError::MathOverflow))?;
+    require!(now >= veto_ends_at, SoothCoreError::VetoWindowOpen);
 
     let market = &mut ctx.accounts.market;
     require!(
@@ -77,7 +88,6 @@ pub fn handler(ctx: Context<Settle>, winning_outcome: u8) -> Result<()> {
     market.lifecycle = MarketLifecycle::Settled;
     market.winning_outcome = winning_outcome;
 
-    let now = Clock::get()?.unix_timestamp;
     emit!(MarketSettled {
         market: market.key(),
         winning_outcome,

@@ -40,6 +40,24 @@ pub const BASE_TOKEN_MINT: Pubkey = USDC_MINT_MAINNET;
 #[cfg(not(feature = "mainnet"))]
 pub const BASE_TOKEN_MINT: Pubkey = USDC_MINT_DEVNET;
 
+/// Default guardian-veto window: how long an attested outcome stays open to
+/// `dispute` before `settle` may finalize it.
+///
+/// Matches the EVM deployment, where the guardian "can veto incorrect
+/// settlements within 24 hours" and `settle(market)` is permissionless once
+/// `vetoEndsAt` has passed.
+///
+/// This is only the suggested default for `initialize_protocol` callers — the
+/// live value is `ProtocolConfig.veto_period_secs`. It is configuration, not a
+/// constant, precisely so a localnet deployment can run a short window without
+/// building a different binary than the one that reaches devnet.
+pub const DEFAULT_VETO_PERIOD_SECS: i64 = 24 * 60 * 60;
+
+/// Upper bound on `ProtocolConfig.veto_period_secs`. A veto window longer than
+/// this would strand every redemption on a market behind an unreachable
+/// settle; 30 days is far past any legitimate guardian response time.
+pub const MAX_VETO_PERIOD_SECS: i64 = 30 * 24 * 60 * 60;
+
 // ── Account byte-offset constants ────────────────────────────────────────
 // Used by SPACE assertions in state types and by raw-parse helpers.
 
@@ -92,6 +110,7 @@ pub const PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_LEN: usize = 8;
 pub const PROTOCOL_CONFIG_BUMP_LEN: usize = 1;
 pub const PROTOCOL_CONFIG_PAUSED_LEN: usize = 1;
 pub const PROTOCOL_CONFIG_PERMISSIONLESS_ADJUDICATORS_LEN: usize = 1;
+pub const PROTOCOL_CONFIG_VETO_PERIOD_SECS_LEN: usize = 8;
 
 pub const PROTOCOL_CONFIG_AUTHORITY_OFFSET: usize = PROTOCOL_CONFIG_DISCRIMINATOR_LEN;
 pub const PROTOCOL_CONFIG_TREASURY_OFFSET: usize =
@@ -114,10 +133,12 @@ pub const PROTOCOL_CONFIG_PAUSED_OFFSET: usize =
     PROTOCOL_CONFIG_BUMP_OFFSET + PROTOCOL_CONFIG_BUMP_LEN;
 pub const PROTOCOL_CONFIG_PERMISSIONLESS_ADJUDICATORS_OFFSET: usize =
     PROTOCOL_CONFIG_PAUSED_OFFSET + PROTOCOL_CONFIG_PAUSED_LEN;
-pub const PROTOCOL_CONFIG_TOTAL_LEN: usize =
+pub const PROTOCOL_CONFIG_VETO_PERIOD_SECS_OFFSET: usize =
     PROTOCOL_CONFIG_PERMISSIONLESS_ADJUDICATORS_OFFSET
         + PROTOCOL_CONFIG_PERMISSIONLESS_ADJUDICATORS_LEN;
+pub const PROTOCOL_CONFIG_TOTAL_LEN: usize =
+    PROTOCOL_CONFIG_VETO_PERIOD_SECS_OFFSET + PROTOCOL_CONFIG_VETO_PERIOD_SECS_LEN;
 
 const _: () = assert!(POSITION_TOTAL_LEN == 121);
 const _: () = assert!(LOCK_ENTRY_TOTAL_LEN == 97);
-const _: () = assert!(PROTOCOL_CONFIG_TOTAL_LEN == 93);
+const _: () = assert!(PROTOCOL_CONFIG_TOTAL_LEN == 101);

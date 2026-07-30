@@ -230,6 +230,11 @@ if (!configInfo) {
       adjudicatorShareBps: 1_000,
       protocolShareBps: 1_000,
       defaultTrialPeriod: new BN(7 * 24 * 60 * 60),
+      // 5 minutes on devnet: long enough that the veto window is a real,
+      // demonstrable state in the UI (attest -> "in veto window" -> settle),
+      // short enough to walk through live. Mainnet uses
+      // DEFAULT_VETO_PERIOD_SECS (24h), matching the EVM guardian window.
+      vetoPeriodSecs: new BN(300),
     })
     .accounts({
       config: configPda,

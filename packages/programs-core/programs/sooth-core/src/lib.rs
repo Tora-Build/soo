@@ -208,8 +208,10 @@ pub mod sooth_core {
         dispute::handler(ctx, new_outcome)
     }
 
-    pub fn settle(ctx: Context<Settle>, winning_outcome: u8) -> Result<()> {
-        settle::handler(ctx, winning_outcome)
+    /// Finalize an attested market. Permissionless once the veto window has
+    /// closed; the outcome comes from the `AdjudicatorEntry`, not the caller.
+    pub fn settle(ctx: Context<Settle>) -> Result<()> {
+        settle::handler(ctx)
     }
 
     // ── Complete sets ─────────────────────────────────────────────────────────

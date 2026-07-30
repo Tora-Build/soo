@@ -501,6 +501,11 @@ async function init() {
         adjudicatorShareBps: 1_000,
         protocolShareBps: 1_000,
         defaultTrialPeriod: new BN(7 * 24 * 60 * 60),
+        // 2s: the e2e suite resolves, settles and redeems inside one run,
+        // and solana-test-validator has no clock warp. Short, not zero —
+        // zero is rejected on-chain precisely so an omitted arg cannot
+        // silently disable the veto.
+        vetoPeriodSecs: new BN(2),
       })
       .accounts({
         config: configPda,

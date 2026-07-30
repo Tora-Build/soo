@@ -49,7 +49,10 @@
         },
         {
           "name": "market",
-          "writable": true,
+          "docs": [
+            "Read-only: attestation no longer changes the lifecycle. `settle` does",
+            "that, after the veto window."
+          ],
           "pda": {
             "seeds": [
               {
@@ -1390,7 +1393,9 @@
         },
         {
           "name": "market",
-          "writable": true,
+          "docs": [
+            "Read-only: a veto changes the outcome, not the lifecycle."
+          ],
           "pda": {
             "seeds": [
               {
@@ -1408,6 +1413,33 @@
                 "kind": "account",
                 "path": "market.market_id",
                 "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "protocol_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
               }
             ]
           }
@@ -3809,6 +3841,10 @@
     },
     {
       "name": "settle",
+      "docs": [
+        "Finalize an attested market. Permissionless once the veto window has",
+        "closed; the outcome comes from the `AdjudicatorEntry`, not the caller."
+      ],
       "discriminator": [
         175,
         42,
@@ -3875,21 +3911,42 @@
           }
         },
         {
-          "name": "authority",
+          "name": "protocol_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "cranker",
           "docs": [
-            "Must be `adjudicator_entry.authority` (normal path) or",
-            "`adjudicator_entry.dispute_authority` (dispute path). The caller",
-            "(`attest_outcome` or `dispute`) enforces which key is appropriate."
+            "Whoever cranks the settle. Unconstrained by design — see module docs.",
+            "Present only so the transaction has a signer to pay fees."
           ],
           "signer": true
         }
       ],
-      "args": [
-        {
-          "name": "winning_outcome",
-          "type": "u8"
-        }
-      ]
+      "args": []
     },
     {
       "name": "trade_positions",
@@ -4956,6 +5013,21 @@
       "code": 6057,
       "name": "EventTooLarge",
       "msg": "Serialized event payload exceeds the 10 KiB instruction-data limit"
+    },
+    {
+      "code": 6058,
+      "name": "VetoWindowOpen",
+      "msg": "Veto window is still open; settle is not callable until it closes"
+    },
+    {
+      "code": 6059,
+      "name": "VetoWindowClosed",
+      "msg": "Veto window has closed; the attested outcome can no longer be disputed"
+    },
+    {
+      "code": 6060,
+      "name": "InvalidVetoPeriod",
+      "msg": "veto_period_secs must be > 0 and <= MAX_VETO_PERIOD_SECS"
     }
   ],
   "types": [
@@ -5483,6 +5555,15 @@
           {
             "name": "permissionless_adjudicators",
             "type": "bool"
+          },
+          {
+            "name": "veto_period_secs",
+            "docs": [
+              "Guardian-veto window in seconds. Use `DEFAULT_VETO_PERIOD_SECS` (24h)",
+              "for real deployments; localnet fixtures pass a few seconds so the",
+              "resolve → settle → redeem flow is exercisable in one test run."
+            ],
+            "type": "i64"
           }
         ]
       }
@@ -6460,6 +6541,21 @@
               "When `false`, only `config.authority` may call `register_adjudicator`."
             ],
             "type": "bool"
+          },
+          {
+            "name": "veto_period_secs",
+            "docs": [
+              "Guardian-veto window in seconds. `dispute` is callable while",
+              "`now < attested_at + veto_period_secs`; `settle` only after.",
+              "",
+              "Configurable rather than a constant so localnet can run a few seconds",
+              "while devnet runs 24h — same binary in both places. A build flag would",
+              "have meant the artifact under test was not the artifact deployed.",
+              "",
+              "Zero is legal and means \"no veto window\": settle becomes callable in",
+              "the same slot as attest. That is the old collapsed behaviour, opt-in."
+            ],
+            "type": "i64"
           }
         ]
       }

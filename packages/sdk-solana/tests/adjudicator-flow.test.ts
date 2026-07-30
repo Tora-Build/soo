@@ -15,9 +15,17 @@
 // code; those are ported to Rust in `state/adjudicator.rs`.
 //
 // So the flow is re-tested here against the actual instructions on LiteSVM.
-// Doing that immediately surfaced something the mock could not:
+// Doing that immediately surfaced something the mock could not: the dispute
+// path was UNREACHABLE. `attest_outcome` called `settle_internal` inline, so
+// no market was ever attested-and-not-yet-settled, and every dispute failed
+// with either MarketAlreadySettled or NotYetAttested. `disputed` was
+// permanently false and AlreadyDisputed was dead code.
 //
-//   ⚠️ THE DISPUTE PATH IS UNREACHABLE. See the final describe block.
+// That is fixed: attest and settle are now separate phases either side of a
+// VETO_PERIOD_SECS window, per the remediation the spec already planned
+// (docs/spec/sooth_adjudicator.md §6) and matching the EVM contract. The
+// final two describe blocks cover the window from both sides — the veto
+// tests below would all have been impossible to write against the old code.
 //
 // Note main's `AdjudicatorKind` (Manual / ZkTLS / Other) is gone in develop —
 // the entry has no `kind` field — so main's four kind-dispatch tests
@@ -40,6 +48,9 @@ const OUTCOME_NO = 0;
 const OUTCOME_YES = 1;
 const OUTCOME_INVALID = 2;
 
+/** bootSmoke's ProtocolConfig.veto_period_secs default. */
+const VETO_PERIOD_SECS = 24n * 60n * 60n;
+
 const ERR = {
   MarketNotOpen: 6000,
   InvalidLifecycleTransition: 6002,
@@ -52,6 +63,9 @@ const ERR = {
   MarketAlreadySettled: 6041,
   NotYetAttested: 6055,
   TradingNotClosed: 6056,
+  VetoWindowOpen: 6058,
+  VetoWindowClosed: 6059,
+  InvalidVetoPeriod: 6060,
 } as const;
 
 /** bootSmoke's market: created at 1_000_000, deadline +7d. */
@@ -114,7 +128,26 @@ async function disputeTx(
       .accounts({
         adjudicatorEntry: entryPda(smoke),
         market: smoke.marketPda,
+        protocolConfig: deriveProtocolConfigPda(smoke.programs)[0],
         disputer,
+      })
+      .instruction(),
+  );
+}
+
+async function settleTx(
+  program: any,
+  smoke: SmokeContext,
+  cranker: PublicKey,
+) {
+  return new Transaction().add(
+    await program.methods
+      .settle()
+      .accounts({
+        market: smoke.marketPda,
+        adjudicatorEntry: entryPda(smoke),
+        protocolConfig: deriveProtocolConfigPda(smoke.programs)[0],
+        cranker,
       })
       .instruction(),
   );
@@ -326,7 +359,7 @@ describe("attest_outcome", () => {
     return { smoke, program };
   }
 
-  it("records the outcome and settles the market in one instruction", async () => {
+  it("records the outcome but leaves the market Locked", async () => {
     const { smoke, program } = await locked();
     await sendTx(
       smoke.ctx,
@@ -339,12 +372,11 @@ describe("attest_outcome", () => {
     expect(entry.attestedAt).not.toBeNull();
     expect(entry.disputed).toBe(false);
 
-    // attest_outcome CPIs straight through settle_internal — there is no
-    // intermediate "attested but not settled" state. This is the fact that
-    // makes dispute unreachable; see the last block.
+    // The ATTESTED state that did not previously exist: outcome recorded,
+    // lifecycle untouched. This is the window dispute needs.
     const market = await fetchMarket(program, smoke);
-    expect(market.lifecycle).toHaveProperty("settled");
-    expect(market.winningOutcome).toBe(OUTCOME_YES);
+    expect(market.lifecycle).toHaveProperty("locked");
+    expect(market.lifecycle).not.toHaveProperty("settled");
   }, 60_000);
 
   it("accepts INVALID as a legitimate outcome", async () => {
@@ -354,8 +386,6 @@ describe("attest_outcome", () => {
       [smoke.creator],
       await attestTx(program, smoke, smoke.creator.publicKey, OUTCOME_INVALID),
     );
-    const market = await fetchMarket(program, smoke);
-    expect(market.winningOutcome).toBe(OUTCOME_INVALID);
     expect((await fetchEntry(program, smoke)).attestedOutcome).toBe(
       OUTCOME_INVALID,
     );
@@ -416,36 +446,128 @@ describe("attest_outcome", () => {
   }, 60_000);
 });
 
-describe("dispute — UNREACHABLE in develop and main alike", () => {
-  // dispute() has four guards, and two of them are mutually exclusive:
-  //
-  //     require!(market.lifecycle != Settled, MarketAlreadySettled)
-  //     require!(entry.is_attested(),         NotYetAttested)
-  //
-  // `attested_outcome` is only ever set by attest_outcome, and attest_outcome
-  // ends by calling settle_internal, which sets lifecycle = Settled in the
-  // same transaction. There is no failure mode in between: if settle_internal
-  // errors the whole instruction reverts and nothing is attested.
-  //
-  // So every market is in exactly one of two states, and dispute rejects both.
-  // The two tests below walk both sides of the fork; together they are a
-  // proof, not a sample.
-  //
-  // Main has the identical structure and documents it as a design choice
-  // ("a window of 'between attest and settle' doesn't exist in v1's calling
-  // pattern") — but its tests drive a `dispute(adj, market_settled: bool, …)`
-  // mock where `market_settled` is a free parameter, so main's suite happily
-  // shows dispute "working" on an attested-but-unsettled market that the
-  // program can never produce. That is exactly the gap a mock leaves.
-  //
-  // This matters for the guardian-veto question: today the veto is not merely
-  // limited to a single collapsed authority, it is available to nobody. A
-  // guardian allowlist grafted onto this handler would still be dead code.
-  // Fixing it needs a real ATTESTED state — attest stops calling
-  // settle_internal, and settle becomes a separate call after a veto window.
-
-  it("after attestation: the market is already Settled", async () => {
+describe("settle — permissionless, after the veto window", () => {
+  async function attested(outcome = OUTCOME_YES) {
     const smoke = await bootSmoke();
+    const program = anchorProgram(smoke.ctx, smoke.creator);
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await lockTx(program, smoke, smoke.creator.publicKey),
+    );
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await attestTx(program, smoke, smoke.creator.publicKey, outcome),
+    );
+    const entry = await fetchEntry(program, smoke);
+    const vetoEndsAt =
+      BigInt(entry.attestedAt.toString()) + VETO_PERIOD_SECS;
+    return { smoke, program, vetoEndsAt };
+  }
+
+  it("refuses while the veto window is open", async () => {
+    const { smoke, program } = await attested();
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        await settleTx(program, smoke, smoke.creator.publicKey),
+      ),
+    ).rejects.toThrow(customError(ERR.VetoWindowOpen));
+  }, 60_000);
+
+  it("still refuses one second early", async () => {
+    const { smoke, program, vetoEndsAt } = await attested();
+    warpClockTo(smoke.ctx, vetoEndsAt - 1n);
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        await settleTx(program, smoke, smoke.creator.publicKey),
+      ),
+    ).rejects.toThrow(customError(ERR.VetoWindowOpen));
+  }, 60_000);
+
+  it("anyone may crank it once the window closes", async () => {
+    // Permissionless on purpose: if settle required the adjudicator, a lost
+    // or unresponsive key would strand every redemption on the market.
+    const { smoke, program, vetoEndsAt } = await attested();
+    warpClockTo(smoke.ctx, vetoEndsAt);
+
+    const stranger = smoke.user; // neither authority nor dispute_authority
+    const asStranger = anchorProgram(smoke.ctx, stranger);
+    await sendTx(
+      smoke.ctx,
+      [stranger],
+      await settleTx(asStranger, smoke, stranger.publicKey),
+    );
+
+    const market = await fetchMarket(program, smoke);
+    expect(market.lifecycle).toHaveProperty("settled");
+    expect(market.winningOutcome).toBe(OUTCOME_YES);
+  }, 60_000);
+
+  it("cannot settle a market that was never attested", async () => {
+    const smoke = await bootSmoke();
+    const program = anchorProgram(smoke.ctx, smoke.creator);
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await lockTx(program, smoke, smoke.creator.publicKey),
+    );
+    warpClockTo(smoke.ctx, BigInt(DEADLINE + 1));
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        await settleTx(program, smoke, smoke.creator.publicKey),
+      ),
+    ).rejects.toThrow(customError(ERR.NotYetAttested));
+  }, 60_000);
+
+  it("is one-shot", async () => {
+    const { smoke, program, vetoEndsAt } = await attested();
+    warpClockTo(smoke.ctx, vetoEndsAt);
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await settleTx(program, smoke, smoke.creator.publicKey),
+    );
+    // Settled → Settled is not a legal transition.
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        await settleTx(program, smoke, smoke.creator.publicKey),
+      ),
+    ).rejects.toThrow(customError(ERR.InvalidLifecycleTransition));
+  }, 60_000);
+});
+
+describe("veto_period_secs is configuration, not a build flag", () => {
+  // The window has to be tunable per deployment: localnet e2e resolves and
+  // redeems inside one test run, devnet wants the real 24h. Doing that with a
+  // cargo feature would mean the binary under test is not the binary deployed
+  // — so it lives in ProtocolConfig and the same artifact ships everywhere.
+
+  it("rejects zero — a missing arg must not silently disable the veto", async () => {
+    // The Anchor client encodes an OMITTED i64 as 0. Before this guard,
+    // forgetting `vetoPeriodSecs` produced a protocol with no veto window at
+    // all: dispute permanently closed, settle immediate — the exact collapsed
+    // behaviour this split removes, reintroduced by a typo. Deployments that
+    // want no delay pass 1 second and say so.
+    //
+    // This is not hypothetical: tests/create-market.test.ts and both seed
+    // scripts were all omitting the field, and every one of them was silently
+    // getting a zero window until this guard turned it into a hard failure.
+    await expect(bootSmoke({ vetoPeriodSecs: 0 })).rejects.toThrow(
+      customError(ERR.InvalidVetoPeriod),
+    );
+  }, 60_000);
+
+  it("one second is legal — the escape hatch for localnet", async () => {
+    const smoke = await bootSmoke({ vetoPeriodSecs: 1 });
     const program = anchorProgram(smoke.ctx, smoke.creator);
     await sendTx(
       smoke.ctx,
@@ -457,9 +579,170 @@ describe("dispute — UNREACHABLE in develop and main alike", () => {
       [smoke.creator],
       await attestTx(program, smoke, smoke.creator.publicKey, OUTCOME_YES),
     );
+    const entry = await fetchEntry(program, smoke);
+    warpClockTo(smoke.ctx, BigInt(entry.attestedAt.toString()) + 1n);
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await settleTx(program, smoke, smoke.creator.publicKey),
+    );
+    expect((await fetchMarket(program, smoke)).lifecycle).toHaveProperty(
+      "settled",
+    );
+  }, 60_000);
 
-    // Signed by dispute_authority itself — the most privileged caller that
-    // exists. It still fails.
+  it("rejects a negative window at initialize_protocol", async () => {
+    // Negative would put veto_ends_at before attested_at, making settle
+    // callable before the attestation it finalizes.
+    await expect(bootSmoke({ vetoPeriodSecs: -1 })).rejects.toThrow(
+      customError(ERR.InvalidVetoPeriod),
+    );
+  }, 60_000);
+
+  it("rejects a window beyond the 30-day bound", async () => {
+    // An unbounded window strands every redemption behind a settle that can
+    // never be called.
+    await expect(
+      bootSmoke({ vetoPeriodSecs: 30 * 24 * 60 * 60 + 1 }),
+    ).rejects.toThrow(customError(ERR.InvalidVetoPeriod));
+  }, 60_000);
+});
+
+describe("dispute — the veto branch, now reachable", () => {
+  // Every test in this block was impossible to write before the attest/settle
+  // split: dispute could only ever return MarketAlreadySettled (after attest)
+  // or NotYetAttested (before it).
+  async function attested(outcome = OUTCOME_YES) {
+    const smoke = await bootSmoke();
+    const program = anchorProgram(smoke.ctx, smoke.creator);
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await lockTx(program, smoke, smoke.creator.publicKey),
+    );
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await attestTx(program, smoke, smoke.creator.publicKey, outcome),
+    );
+    const entry = await fetchEntry(program, smoke);
+    const attestedAt = BigInt(entry.attestedAt.toString());
+    return { smoke, program, vetoEndsAt: attestedAt + VETO_PERIOD_SECS };
+  }
+
+  it("overrides the attested outcome inside the window", async () => {
+    const { smoke, program } = await attested(OUTCOME_YES);
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await disputeTx(program, smoke, smoke.creator.publicKey, OUTCOME_INVALID),
+    );
+
+    const entry = await fetchEntry(program, smoke);
+    expect(entry.attestedOutcome).toBe(OUTCOME_INVALID);
+    expect(entry.disputed).toBe(true);
+    expect(entry.disputedAt).not.toBeNull();
+    // The original attestation timestamp is preserved — the veto window is
+    // measured from the attestation, not restarted by the veto.
+    expect(entry.attestedAt).not.toBeNull();
+
+    // A veto changes the outcome, not the lifecycle.
+    expect(await fetchMarket(program, smoke)).toHaveProperty("lifecycle");
+    expect((await fetchMarket(program, smoke)).lifecycle).toHaveProperty(
+      "locked",
+    );
+  }, 60_000);
+
+  it("the disputed outcome is what settle finalizes", async () => {
+    // The point of the whole mechanism. If settle still took a caller-supplied
+    // outcome this would silently pass with the pre-veto value.
+    const { smoke, program, vetoEndsAt } = await attested(OUTCOME_YES);
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await disputeTx(program, smoke, smoke.creator.publicKey, OUTCOME_NO),
+    );
+    warpClockTo(smoke.ctx, vetoEndsAt);
+    await sendTx(
+      smoke.ctx,
+      [smoke.user],
+      await settleTx(
+        anchorProgram(smoke.ctx, smoke.user),
+        smoke,
+        smoke.user.publicKey,
+      ),
+    );
+    expect((await fetchMarket(program, smoke)).winningOutcome).toBe(OUTCOME_NO);
+  }, 60_000);
+
+  it("refuses once the window has closed", async () => {
+    const { smoke, program, vetoEndsAt } = await attested();
+    warpClockTo(smoke.ctx, vetoEndsAt);
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        await disputeTx(
+          program,
+          smoke,
+          smoke.creator.publicKey,
+          OUTCOME_INVALID,
+        ),
+      ),
+    ).rejects.toThrow(customError(ERR.VetoWindowClosed));
+  }, 60_000);
+
+  it("is still open one second before the deadline", async () => {
+    // Boundary from the other side, so the window is pinned closed-open
+    // rather than approximately right.
+    const { smoke, program, vetoEndsAt } = await attested();
+    warpClockTo(smoke.ctx, vetoEndsAt - 1n);
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await disputeTx(program, smoke, smoke.creator.publicKey, OUTCOME_INVALID),
+    );
+    expect((await fetchEntry(program, smoke)).disputed).toBe(true);
+  }, 60_000);
+
+  it("is one-shot — AlreadyDisputed is live code now", async () => {
+    const { smoke, program } = await attested();
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await disputeTx(program, smoke, smoke.creator.publicKey, OUTCOME_INVALID),
+    );
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        await disputeTx(program, smoke, smoke.creator.publicKey, OUTCOME_NO),
+      ),
+    ).rejects.toThrow(customError(ERR.AlreadyDisputed));
+  }, 60_000);
+
+  it("rejects a signer that is not the dispute_authority", async () => {
+    const { smoke } = await attested();
+    const asUser = anchorProgram(smoke.ctx, smoke.user);
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.user],
+        await disputeTx(asUser, smoke, smoke.user.publicKey, OUTCOME_INVALID),
+      ),
+    ).rejects.toThrow(customError(ERR.Unauthorized));
+  }, 60_000);
+
+  it("still refuses after settlement", async () => {
+    // The old MarketAlreadySettled guard remains correct — it is just no
+    // longer the only reachable outcome.
+    const { smoke, program, vetoEndsAt } = await attested();
+    warpClockTo(smoke.ctx, vetoEndsAt);
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await settleTx(program, smoke, smoke.creator.publicKey),
+    );
     await expect(
       sendTx(
         smoke.ctx,
@@ -472,14 +755,9 @@ describe("dispute — UNREACHABLE in develop and main alike", () => {
         ),
       ),
     ).rejects.toThrow(customError(ERR.MarketAlreadySettled));
-
-    // And the outcome is untouched: no partial application.
-    const entry = await fetchEntry(program, smoke);
-    expect(entry.attestedOutcome).toBe(OUTCOME_YES);
-    expect(entry.disputed).toBe(false);
   }, 60_000);
 
-  it("before attestation: there is nothing attested to dispute", async () => {
+  it("refuses before any attestation", async () => {
     const smoke = await bootSmoke();
     const program = anchorProgram(smoke.ctx, smoke.creator);
     await sendTx(
@@ -499,26 +777,5 @@ describe("dispute — UNREACHABLE in develop and main alike", () => {
         ),
       ),
     ).rejects.toThrow(customError(ERR.NotYetAttested));
-  }, 60_000);
-
-  it("AlreadyDisputed is therefore dead code too", async () => {
-    // `disputed` can only be set by a successful dispute, and no dispute can
-    // succeed — so the flag is permanently false and its guard unreachable.
-    // Asserted rather than left implicit: if someone later makes dispute
-    // reachable, this test should be revisited alongside it.
-    const smoke = await bootSmoke();
-    const program = anchorProgram(smoke.ctx, smoke.creator);
-    await sendTx(
-      smoke.ctx,
-      [smoke.creator],
-      await lockTx(program, smoke, smoke.creator.publicKey),
-    );
-    await sendTx(
-      smoke.ctx,
-      [smoke.creator],
-      await attestTx(program, smoke, smoke.creator.publicKey, OUTCOME_YES),
-    );
-    expect((await fetchEntry(program, smoke)).disputed).toBe(false);
-    expect((await fetchEntry(program, smoke)).disputedAt).toBeNull();
   }, 60_000);
 });

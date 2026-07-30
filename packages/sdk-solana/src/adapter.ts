@@ -2036,18 +2036,22 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     };
   }
 
-  // ─── Operator path (request_lock / attest_outcome) ─────────────────────
+  // ─── Operator path (request_lock / attest_outcome / settle) ────────────
   //
-  // Both ixs live on `sooth_adjudicator` and CPI into `sooth_market`:
-  //   request_lock      → sooth_market::lock_for_resolution
-  //                       (Market.lifecycle: Open → Locked)
-  //   attest_outcome(o) → sooth_market::settle(winning_outcome=o)
-  //                       (Market.lifecycle: Locked → Settled, sets
-  //                        Market.winning_outcome)
+  //   request_lock      → Market.lifecycle: Open → Locked
+  //   attest_outcome(o) → records the outcome on AdjudicatorEntry and opens
+  //                       the guardian-veto window. Does NOT settle.
+  //   settle            → Market.lifecycle: Locked → Settled, once
+  //                       `attested_at + ProtocolConfig.veto_period_secs`
+  //                       has passed. Permissionless.
   //
-  // The signer must be `Adjudicator.authority` (set at register_adjudicator
-  // time). v1 Manual variant — future ZkTLS / agent variants would
-  // replace the auth check with verifier-program logic.
+  // Resolution is therefore TWO transactions with a wait between them, the
+  // same shape as EVM (`resolve` then a permissionless `settle` after
+  // `vetoEndsAt`). It used to be one: `attest_outcome` settled inline, which
+  // left `dispute` unreachable — see `instructions/attest_outcome.rs`.
+  //
+  // attest/request_lock must be signed by `AdjudicatorEntry.authority`;
+  // settle by anyone.
 
   async buildRequestLock(
     market: MarketRef,
@@ -2126,6 +2130,54 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
         ...buildIxMeta(ix, userPk),
         operation: "attestOutcome",
         winningOutcome: args.winningOutcome,
+      },
+    };
+  }
+
+  /// Finalize an attested market. Permissionless — `args.user` is only the
+  /// fee payer, not an authority — and takes no outcome: the winning outcome
+  /// comes from the `AdjudicatorEntry`, so a caller cannot settle something
+  /// other than what was attested (or vetoed).
+  ///
+  /// Fails with `VetoWindowOpen` (0x17ca) until the veto window closes.
+  async buildSettle(
+    market: MarketRef,
+    args: { user: AddressRef },
+  ): Promise<TradeRequest> {
+    if (!args.user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method:
+          "buildSettle — args.user (Solana-only meta) is required at build time",
+      });
+    }
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const [adjudicatorEntryPda] = deriveAdjudicatorEntryPda(
+      marketPda,
+      this.programIds,
+    );
+    const [protocolConfigPda] = deriveProtocolConfigPda(this.programIds);
+
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .settle()
+      .accounts({
+        market: marketPda,
+        adjudicatorEntry: adjudicatorEntryPda,
+        protocolConfig: protocolConfigPda,
+        cranker: userPk,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "settle",
       },
     };
   }

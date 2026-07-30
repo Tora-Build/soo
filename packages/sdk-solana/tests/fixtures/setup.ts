@@ -109,6 +109,10 @@ export interface SmokeOptions {
   // creator may register). Set false to exercise the permissioned branch,
   // where only `config.authority` may register.
   permissionlessAdjudicators?: boolean;
+  // Guardian-veto window in seconds. Default 24h, matching the intended
+  // devnet/mainnet config. Tests that need to cross the window use
+  // `warpClockTo`; set 0 here only to assert the no-window behaviour.
+  vetoPeriodSecs?: number;
 }
 
 // Boot LiteSVM with sooth_core deployed. Returns a context
@@ -238,6 +242,7 @@ export async function bootSmoke(
             protocolShareBps: 1_000,
             defaultTrialPeriod: new BN(7 * 24 * 60 * 60),
             permissionlessAdjudicators: opts.permissionlessAdjudicators ?? true,
+            vetoPeriodSecs: new BN((opts.vetoPeriodSecs ?? 24 * 60 * 60).toString()),
           })
           .accounts({
             config: protocolConfigPda,

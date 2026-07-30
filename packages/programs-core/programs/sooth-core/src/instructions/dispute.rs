@@ -1,11 +1,20 @@
-//! `dispute` — veto branch on an attested outcome.
+//! `dispute` — guardian veto on an attested outcome.
+//!
+//! Callable while the market is `Locked` and the attestation is younger than
+//! `VETO_PERIOD_SECS`. It overrides the recorded outcome and marks the entry
+//! disputed; it does NOT settle. `settle` still finalizes, so the lifecycle
+//! changes in exactly one place.
+//!
+//! Until the attest/settle split this handler was dead code — see
+//! `attest_outcome`'s module docs.
 
 use anchor_lang::prelude::*;
 
 use crate::error::SoothCoreError;
 use crate::events::DisputeRaised;
-use crate::instructions::settle::settle_internal;
-use crate::state::{AdjudicatorEntry, Market, MarketLifecycle, ADJUDICATOR_ENTRY_SEED};
+use crate::state::{
+    AdjudicatorEntry, Market, MarketLifecycle, ProtocolConfig, ADJUDICATOR_ENTRY_SEED,
+};
 
 const OUTCOME_NO: u8 = 0;
 const OUTCOME_YES: u8 = 1;
@@ -22,12 +31,18 @@ pub struct Dispute<'info> {
     )]
     pub adjudicator_entry: Account<'info, AdjudicatorEntry>,
 
+    /// Read-only: a veto changes the outcome, not the lifecycle.
     #[account(
-        mut,
         seeds = [b"market", market.market_id.as_ref()],
         bump = market.bump,
     )]
     pub market: Account<'info, Market>,
+
+    #[account(
+        seeds = [b"protocol_config"],
+        bump = protocol_config.bump,
+    )]
+    pub protocol_config: Account<'info, ProtocolConfig>,
 
     pub disputer: Signer<'info>,
 }
@@ -60,6 +75,18 @@ pub fn handler(ctx: Context<Dispute>, new_outcome: u8) -> Result<()> {
     );
 
     let now = Clock::get()?.unix_timestamp;
+
+    // The window itself. `attested_at` is Some whenever `is_attested()` holds,
+    // which the guard above already established.
+    let attested_at = ctx
+        .accounts
+        .adjudicator_entry
+        .attested_at
+        .ok_or(error!(SoothCoreError::NotYetAttested))?;
+    let veto_ends_at = attested_at
+        .checked_add(ctx.accounts.protocol_config.veto_period_secs)
+        .ok_or(error!(SoothCoreError::MathOverflow))?;
+    require!(now < veto_ends_at, SoothCoreError::VetoWindowClosed);
     let market_key = ctx.accounts.market.key();
     let adjudicator_entry_key = ctx.accounts.adjudicator_entry.key();
     let disputer_key = ctx.accounts.disputer.key();
@@ -75,8 +102,6 @@ pub fn handler(ctx: Context<Dispute>, new_outcome: u8) -> Result<()> {
         entry.disputed = true;
         entry.disputed_at = Some(now);
     }
-
-    settle_internal(&mut ctx.accounts.market, new_outcome)?;
 
     emit!(DisputeRaised {
         market: market_key,

@@ -31,6 +31,8 @@ import {
   mintCompleteSetViaAdapter,
   requestLockViaAdapter,
   attestOutcomeViaAdapter,
+  settleViaAdapter,
+  waitForVetoWindow,
   deriveYesMintPda,
   deriveNoMintPda,
   fetchMarket,
@@ -117,6 +119,11 @@ test.describe("Redeem (YES wins) — UI-driven", () => {
         marketPda,
         winningOutcome: 1,
       });
+      // attest_outcome no longer settles — it opens the guardian-veto window.
+      // The market stays Locked until settle is cranked after the window, so
+      // the LIFECYCLE_SETTLED assertion below needs both steps.
+      await waitForVetoWindow(conn, creator);
+      await settleViaAdapter({ conn, payer: creator, marketPda });
     } catch (e) {
       swallow(e);
     }

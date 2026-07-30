@@ -463,6 +463,9 @@ export async function dispatchAmmWrite(
   if (call.functionName === "attestOutcome") {
     return dispatchAttestOutcome(call, ctx);
   }
+  if (call.functionName === "settle") {
+    return dispatchSettle(call, ctx);
+  }
   if (call.functionName === "dismissMarket") {
     return dispatchDismissMarket(call, ctx);
   }
@@ -935,6 +938,33 @@ async function dispatchAttestOutcome(
   const req = await ctx.adapter.buildAttestOutcome(marketRef, {
     user: `sol:${userBase58}`,
     winningOutcome: outcome as 0 | 1 | 2,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+/**
+ * `settle(address market)` — the EVM signature the Operator page already
+ * calls after `vetoEndsAt`. Solana matches it now: permissionless, no outcome
+ * argument (the winning outcome is read from the AdjudicatorEntry, so a
+ * caller cannot settle something other than what was attested or vetoed).
+ *
+ * Reverts with `VetoWindowOpen` until the guardian-veto window closes.
+ *
+ * Args:
+ *   args[0]: market reference — `0x<base58>` or `sol:<base58>`
+ */
+async function dispatchSettle(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "settle");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) {
+    throw new Error("settle: invalid market reference");
+  }
+  const req = await ctx.adapter.buildSettle(marketRef, {
+    user: `sol:${userBase58}`,
   });
   return submitAndSynth(ctx.adapter, req, signer);
 }

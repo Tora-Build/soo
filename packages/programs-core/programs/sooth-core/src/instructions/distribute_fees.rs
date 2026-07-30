@@ -211,6 +211,7 @@ mod tests {
             bump: 0,
             paused: false,
             permissionless_adjudicators: true,
+            veto_period_secs: crate::constants::DEFAULT_VETO_PERIOD_SECS,
         }
     }
 

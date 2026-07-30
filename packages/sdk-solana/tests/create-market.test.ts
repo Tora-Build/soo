@@ -147,6 +147,7 @@ describe("sooth_core::create_market end-to-end", () => {
               protocolShareBps: 1_000,
               defaultTrialPeriod: new BN(7 * 24 * 60 * 60),
               permissionlessAdjudicators: true,
+              vetoPeriodSecs: new BN(24 * 60 * 60),
             })
             .accounts({
               config: configPda,
