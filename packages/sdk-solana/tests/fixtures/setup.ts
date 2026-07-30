@@ -101,6 +101,14 @@ export interface SmokeOptions {
   bWad?: bigint;
   // Initial USDC balance for the test user (in base units; 1e6 = 1 USDC).
   userUsdcBaseUnits?: bigint;
+  // Leave the `AdjudicatorEntry` PDA uncreated so a test can drive
+  // `register_adjudicator` itself (including its rejection paths — the PDA is
+  // `init`, so it can only be registered once per market).
+  skipRegisterAdjudicator?: boolean;
+  // `ProtocolConfig.permissionless_adjudicators`. Default true (any market
+  // creator may register). Set false to exercise the permissioned branch,
+  // where only `config.authority` may register.
+  permissionlessAdjudicators?: boolean;
 }
 
 // Boot LiteSVM with sooth_core deployed. Returns a context
@@ -229,7 +237,7 @@ export async function bootSmoke(
             adjudicatorShareBps: 1_000,
             protocolShareBps: 1_000,
             defaultTrialPeriod: new BN(7 * 24 * 60 * 60),
-            permissionlessAdjudicators: true,
+            permissionlessAdjudicators: opts.permissionlessAdjudicators ?? true,
           })
           .accounts({
             config: protocolConfigPda,
@@ -309,26 +317,27 @@ export async function bootSmoke(
   // ─── 2. register_adjudicator ─────────────────────────────────────────────
   // Sets up the per-market AdjudicatorEntry PDA — needed for attest/settle.
   const [adjudicatorEntryPda] = deriveAdjudicatorEntryPda(marketPda, PROGRAMS);
-  await sendTx(
-    ctx,
-    [creator],
-    await buildTx(
+  if (!opts.skipRegisterAdjudicator)
+    await sendTx(
       ctx,
-      [
-        await (coreProgram.methods as any)
-          .registerAdjudicator(creator.publicKey)
-          .accounts({
-            adjudicatorEntry: adjudicatorEntryPda,
-            market: marketPda,
-            protocolConfig: protocolConfigPda,
-            signer: creator.publicKey,
-            systemProgram: SystemProgram.programId,
-          })
-          .instruction(),
-      ],
-      creator.publicKey,
-    ),
-  );
+      [creator],
+      await buildTx(
+        ctx,
+        [
+          await (coreProgram.methods as any)
+            .registerAdjudicator(creator.publicKey)
+            .accounts({
+              adjudicatorEntry: adjudicatorEntryPda,
+              market: marketPda,
+              protocolConfig: protocolConfigPda,
+              signer: creator.publicKey,
+              systemProgram: SystemProgram.programId,
+            })
+            .instruction(),
+        ],
+        creator.publicKey,
+      ),
+    );
 
   // ─── Advance the clock past `startTime` ────────────────────────────────
   // C1 (Codex) added a `start_time <= now < deadline` guard to
@@ -340,7 +349,11 @@ export async function bootSmoke(
   // ─── 3. seed_lp — bootstrap per-market LP mint + creator allocation ────
   const [lpMint] = deriveLpMintPda(marketId, PROGRAMS);
   const [lpMintAuthority] = deriveLpMintAuthorityPda(marketId, PROGRAMS);
-  const [lpPosition] = deriveLpPositionPda(marketId, creator.publicKey, PROGRAMS);
+  const [lpPosition] = deriveLpPositionPda(
+    marketId,
+    creator.publicKey,
+    PROGRAMS,
+  );
   const creatorLpAta = deriveUserLpAta(creator.publicKey, lpMint);
   const lpAmountBaseUnits = bWad / 1_000_000_000_000n;
   await sendTx(
