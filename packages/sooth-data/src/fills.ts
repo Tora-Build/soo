@@ -42,6 +42,20 @@ type CacheEntry = {
 const CACHE_TTL_MS = 10_000;
 const cache = new Map<string, CacheEntry>();
 
+// OPERATIONAL NOTE — this service is RPC-heavy by construction.
+//
+// Every uncached request does one getSignaturesForAddress plus one
+// getTransaction PER SIGNATURE (up to `limit`, default 2000). Verified against
+// public devnet: a single cold /v12/fills request succeeds in ~2.7s, and a
+// second uncached request for a different market immediately returns
+// "429 Too Many Requests" from api.devnet.solana.com — web3.js retries four
+// times with backoff and then throws, surfacing as a 500.
+//
+// The 10s in-memory cache hides this for repeat reads of the SAME market
+// (subsequent hits return in ~0ms) but does nothing for a market list or a
+// cold cache. Anything beyond a demo needs a dedicated RPC with a real quota,
+// and ultimately persistence rather than rescanning transactions per request.
+
 function parsePublicKey(value: string): PublicKey | null {
   try {
     return new PublicKey(value);
