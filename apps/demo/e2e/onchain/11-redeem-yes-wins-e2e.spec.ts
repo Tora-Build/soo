@@ -23,6 +23,7 @@ import { test, expect } from "@playwright/test";
 import { PublicKey } from "@solana/web3.js";
 import { getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { makeConnection } from "../helpers/onchain";
+import { isSurfpool } from "../helpers/surfpool";
 import { loadFixture, marketIdBytes } from "../helpers/fixture";
 import {
   loadTestKeypair,
@@ -39,6 +40,25 @@ const MINT_AMOUNT = 10_000_000n; // 10 USDC base units
 const LIFECYCLE_SETTLED = 3;
 
 test.describe("Redeem (YES wins) — UI-driven", () => {
+  // Surfpool-gated, like 08/09/15/16. `request_lock` requires
+  // `now >= market.deadline` (request_lock.rs:45) and the seed writes a
+  // deadline 7 days out, so this chain only runs once the clock has been moved
+  // past it — which needs surfnet_timeTravel.
+  //
+  // These two specs never time-travelled themselves; they relied on
+  // 09-trading-window's time travel persisting in the shared ledger. That
+  // implicit ordering dependency was invisible on Surfpool (where 09 runs) and
+  // made them fail on solana-test-validator (where 09 skips, so the clock never
+  // advances). Stating the requirement explicitly is the honest fix; making
+  // them self-sufficient would mean each one time-travelling, which changes the
+  // shared clock for everything after.
+  test.beforeAll(async () => {
+    test.skip(
+      !(await isSurfpool()),
+      "requires Surfpool (surfnet_timeTravel to pass market.deadline)",
+    );
+  });
+
   test("REDEEM via /portfolio: USDC restored 1:1 from YES; NO unchanged", async ({
     page,
   }) => {

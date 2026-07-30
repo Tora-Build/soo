@@ -93,7 +93,10 @@ export default async function globalSetup(): Promise<void> {
 
   const env = readEnvLocal();
   const usdcMintStr = env.VITE_USDC_MINT ?? requireEnv("USDC_MINT");
-  const ammIdStr = env.VITE_SOOTH_AMM_ID ?? requireEnv("SOOTH_AMM_ID");
+  // The app reads VITE_SOOTH_CORE_ID; the AMM alias is still written by the
+  // seed for this assertion's benefit and points at the same program.
+  const ammIdStr =
+    env.VITE_SOOTH_CORE_ID ?? env.VITE_SOOTH_AMM_ID ?? requireEnv("SOOTH_CORE_ID");
   const marketRef = env.VITE_DEMO_MARKET_REF;
   if (!marketRef) {
     die(
@@ -175,18 +178,17 @@ export default async function globalSetup(): Promise<void> {
 
   // ─── seed_lp (idempotent gap-fill) ───────────────────────────────────
   //
-  // sooth_amm::trade_positions composes a CPI into sooth_launchpad::
-  // mint_lp_for_buy on every pre-graduation buy. That CPI requires the
-  // per-market `lp_mint` PDA to already exist as an SPL Mint. The current
-  // seed-localnet.mjs runs `createMarket` (4 init CPIs) but does NOT call
-  // `seed_lp`, so the demo's localnet flow lands in the same broken state
-  // for any first-buy attempt. Bridge that gap here so the e2e proves the
-  // post-seedLp buy flow rather than the pre-seedLp regression.
+  // trade_positions mints LP to the trader on every pre-graduation buy, which
+  // needs the per-market `lp_mint` PDA to already exist as an SPL Mint. The
+  // seed script does call seed_lp now, so this is a belt-and-braces gate for
+  // ledgers seeded by an older script — it skips when lp_mint is present.
+  // (Post-merge the CPI is a plain internal call, but the LP mint prerequisite
+  // is unchanged.)
   await runSeedLpIfMissing({
     conn,
     marketPda,
     marketIdBytes,
-    launchpadIdStr: env.VITE_SOOTH_LAUNCHPAD_ID,
+    launchpadIdStr: env.VITE_SOOTH_CORE_ID ?? env.VITE_SOOTH_LAUNCHPAD_ID,
   });
 
   // globalSetup mutations of process.env do not propagate to test workers
@@ -228,9 +230,11 @@ interface SeedLpInputs {
 async function runSeedLpIfMissing(inp: SeedLpInputs): Promise<void> {
   // Load the launchpad IDL from the SDK source tree (the SDK package's
   // `exports` map locks subpath imports, so we side-load via fs).
-  const launchpadIdlPath = resolve(SDK_ANCHOR_DIR, "sooth_launchpad.json");
-  const launchpadIdl = JSON.parse(readFileSync(launchpadIdlPath, "utf8"));
-  const launchpadId = new PublicKey(inp.launchpadIdStr ?? launchpadIdl.address);
+  // One program since the 5→1 merge — the LP mint, its authority and
+  // lp_position all live under sooth_core now.
+  const coreIdlPath = resolve(SDK_ANCHOR_DIR, "sooth_core.json");
+  const coreIdl = JSON.parse(readFileSync(coreIdlPath, "utf8"));
+  const launchpadId = new PublicKey(inp.launchpadIdStr ?? coreIdl.address);
 
   const [lpMint] = PublicKey.findProgramAddressSync(
     [Buffer.from("lp"), inp.marketIdBytes],
@@ -281,7 +285,7 @@ async function runSeedLpIfMissing(inp: SeedLpInputs): Promise<void> {
   );
   const [ammStatePda] = PublicKey.findProgramAddressSync(
     [Buffer.from("amm"), inp.marketIdBytes],
-    new PublicKey(launchpadIdl.address) /* placeholder, overwritten below */,
+    new PublicKey(coreIdl.address) /* placeholder, overwritten below */,
   );
   // amm_state lives under the AMM program, not the launchpad — recompute.
   const ammIdlPath = resolve(SDK_ANCHOR_DIR, "sooth_amm.json");
@@ -322,7 +326,7 @@ async function runSeedLpIfMissing(inp: SeedLpInputs): Promise<void> {
   // Override the launchpad IDL's `address` to the (potentially overridden)
   // launchpadId before constructing the Program (Anchor 0.30+ wires the
   // program id from `idl.address`).
-  const idlForProgram = { ...launchpadIdl, address: launchpadId.toBase58() };
+  const idlForProgram = { ...coreIdl, address: launchpadId.toBase58() };
   const launchpadProgram = new anchor.Program(idlForProgram as any, provider);
 
   log(

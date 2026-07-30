@@ -71,10 +71,10 @@ if ! command -v surfpool >/dev/null 2>&1; then
   exit 1
 fi
 
-for so in sooth_amm sooth_market sooth_launchpad sooth_adjudicator sooth_book; do
+for so in sooth_core sooth_log; do
   if [[ ! -f "$REPO_ROOT/target/deploy/${so}.so" ]]; then
     err "missing $REPO_ROOT/target/deploy/${so}.so"
-    err "Run from repo root: cd packages/programs-core && cargo build-sbf"
+    err "Run from the repo root: anchor build"
     exit 1
   fi
 done
@@ -186,8 +186,8 @@ DEPLOY_PAYER_PUBKEY="$(solana-keygen pubkey "$DEPLOY_PAYER")"
 log "phase 2.4: airdrop 1000 SOL to deploy payer $DEPLOY_PAYER_PUBKEY"
 rpc "$(printf '{"jsonrpc":"2.0","id":1,"method":"requestAirdrop","params":["%s",1000000000000]}' "$DEPLOY_PAYER_PUBKEY")" >/dev/null
 sleep 1
-log "  deploying 5 programs (sooth_amm / market / launchpad / adjudicator / book)"
-for so in sooth_amm sooth_market sooth_launchpad sooth_adjudicator sooth_book; do
+log "  deploying 2 programs (sooth_core + sooth_log; a program cannot CPI into itself, so the log sink stays separate)"
+for so in sooth_core sooth_log; do
   SO_PATH="$REPO_ROOT/target/deploy/${so}.so"
   KP_PATH="$REPO_ROOT/target/deploy/${so}-keypair.json"
   if [[ ! -f "$KP_PATH" ]]; then

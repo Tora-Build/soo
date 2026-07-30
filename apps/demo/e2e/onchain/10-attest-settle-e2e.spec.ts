@@ -35,6 +35,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 import { makeConnection, waitForOnChainChange } from "../helpers/onchain";
+import { isSurfpool } from "../helpers/surfpool";
 import { loadFixture, testPubkey, marketIdBytes } from "../helpers/fixture";
 import {
   buyViaAdapter,
@@ -59,6 +60,25 @@ function readKeypairBytes(filename: string): number[] {
 }
 
 test.describe("attest + settle (UI-driven via OperatorActionsPanel)", () => {
+  // Surfpool-gated, like 08/09/15/16. `request_lock` requires
+  // `now >= market.deadline` (request_lock.rs:45) and the seed writes a
+  // deadline 7 days out, so this chain only runs once the clock has been moved
+  // past it — which needs surfnet_timeTravel.
+  //
+  // These two specs never time-travelled themselves; they relied on
+  // 09-trading-window's time travel persisting in the shared ledger. That
+  // implicit ordering dependency was invisible on Surfpool (where 09 runs) and
+  // made them fail on solana-test-validator (where 09 skips, so the clock never
+  // advances). Stating the requirement explicitly is the honest fix; making
+  // them self-sufficient would mean each one time-travelling, which changes the
+  // shared clock for everything after.
+  test.beforeAll(async () => {
+    test.skip(
+      !(await isSurfpool()),
+      "requires Surfpool (surfnet_timeTravel to pass market.deadline)",
+    );
+  });
+
   test("REQUEST LOCK → ATTEST YES via /portfolio: Market settled, winning=YES", async ({
     page,
   }) => {

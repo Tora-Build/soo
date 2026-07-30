@@ -101,15 +101,10 @@ const LOCALNET_DIR = resolve(DEMO_ROOT, ".localnet");
 const SDK_DIST = resolve(REPO_ROOT, "packages", "sdk-solana", "dist");
 const sdkUrl = (rel) => new URL(`file://${SDK_DIST}/${rel}`).href;
 
+// One program since the 5→1 merge. sooth_log needs no IDL here — only its
+// address, which sooth_core::buy takes as an account.
+const { soothCoreIdl } = await import(sdkUrl("anchor/index.js"));
 const {
-  soothAdjudicatorIdl,
-  soothAmmIdl,
-  soothBookIdl,
-  soothLaunchpadIdl,
-  soothMarketIdl,
-} = await import(sdkUrl("anchor/index.js"));
-const {
-  deriveAdjudicatorAllowlistPda,
   deriveAmmStatePda,
   deriveFeePoolAuthorityPda,
   deriveFeePoolVaultAta,
@@ -121,48 +116,35 @@ const {
   deriveProtocolConfigPda,
   deriveVaultAuthorityPda,
   deriveYesMintPda,
-  SOOTH_BOOK_PROGRAM_ID,
-  SOOTH_LAUNCHPAD_PROGRAM_ID,
-  SOOTH_MARKET_PROGRAM_ID,
+  deriveAdjudicatorEntryPda,
+  SOOTH_CORE_PROGRAM_ID,
+  SOOTH_LOG_PROGRAM_ID,
 } = await import(sdkUrl("pdas.js"));
 const { WAD } = await import(sdkUrl("math/lmsr.js"));
+
+// sooth_core installs a 256 KB #[global_allocator]. The runtime only maps that
+// region when the transaction requests it, and the allocator addresses from the
+// top of it, so WITHOUT this every instruction aborts with "Access violation in
+// heap section" — not just multi-fill buys.
+const SOOTH_CORE_HEAP_BYTES = 256 * 1024;
+const heapFrameIx = () =>
+  ComputeBudgetProgram.requestHeapFrame({ bytes: SOOTH_CORE_HEAP_BYTES });
 
 function programIdOrFallback(idlAddress, fallback) {
   return idlAddress ? new PublicKey(idlAddress) : fallback;
 }
 
-const SOOTH_AMM_ID = new PublicKey(soothAmmIdl.address);
-const SOOTH_MARKET_ID = programIdOrFallback(
-  soothMarketIdl.address,
-  SOOTH_MARKET_PROGRAM_ID,
+const SOOTH_CORE_ID = programIdOrFallback(
+  soothCoreIdl.address,
+  SOOTH_CORE_PROGRAM_ID,
 );
-const SOOTH_LAUNCHPAD_ID = programIdOrFallback(
-  soothLaunchpadIdl.address,
-  SOOTH_LAUNCHPAD_PROGRAM_ID,
-);
-const SOOTH_ADJUDICATOR_ID = new PublicKey(soothAdjudicatorIdl.address);
-const SOOTH_BOOK_ID = programIdOrFallback(
-  soothBookIdl.address,
-  SOOTH_BOOK_PROGRAM_ID,
-);
-const soothMarketProgramIdl = {
-  ...soothMarketIdl,
-  address: SOOTH_MARKET_ID.toBase58(),
-};
-const soothLaunchpadProgramIdl = {
-  ...soothLaunchpadIdl,
-  address: SOOTH_LAUNCHPAD_ID.toBase58(),
-};
-const soothBookProgramIdl = {
-  ...soothBookIdl,
-  address: SOOTH_BOOK_ID.toBase58(),
+const soothCoreProgramIdl = {
+  ...soothCoreIdl,
+  address: SOOTH_CORE_ID.toBase58(),
 };
 const PROGRAMS = {
-  soothAmm: SOOTH_AMM_ID,
-  soothMarket: SOOTH_MARKET_ID,
-  soothLaunchpad: SOOTH_LAUNCHPAD_ID,
-  soothAdjudicator: SOOTH_ADJUDICATOR_ID,
-  soothBook: SOOTH_BOOK_ID,
+  soothCore: SOOTH_CORE_ID,
+  soothLog: SOOTH_LOG_PROGRAM_ID,
 };
 
 // Canonical USDC mint baked into the on-chain programs' `address = ...`
@@ -247,21 +229,21 @@ function deriveBookPriceLadderPda(authority, distinctSeed) {
       authority.toBuffer(),
       Buffer.from(distinctSeed),
     ],
-    SOOTH_BOOK_ID,
+    SOOTH_CORE_ID,
   )[0];
 }
 
 function deriveBookMarketTypePda(name) {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("market_type"), Buffer.from(name)],
-    SOOTH_BOOK_ID,
+    SOOTH_CORE_ID,
   )[0];
 }
 
 function deriveBookAuthorisedOperatorsPda(operatorType) {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("authorised_operators"), Buffer.from(operatorType)],
-    SOOTH_BOOK_ID,
+    SOOTH_CORE_ID,
   )[0];
 }
 
@@ -274,7 +256,7 @@ function operatorListContains(account, operator) {
 
 function bookSingletonEnvLines(singletons) {
   return [
-    `VITE_SOOTH_BOOK_ID=${SOOTH_BOOK_ID.toBase58()}`,
+    `VITE_SOOTH_BOOK_ID=${SOOTH_CORE_ID.toBase58()}`,
     `VITE_SOOTH_BOOK_PRICE_LADDER_PDA=${singletons.priceLadderPda.toBase58()}`,
     `VITE_SOOTH_BOOK_PRICE_LADDER_SEED=${BOOK_PRICE_LADDER_SEED}`,
     `VITE_SOOTH_BOOK_MARKET_TYPE_PDA=${singletons.marketTypePda.toBase58()}`,
@@ -479,10 +461,10 @@ async function init() {
     preflightCommitment: "confirmed",
   });
 
-  const marketProgram = new Program(soothMarketProgramIdl, provider);
-  const launchpadProgram = new Program(soothLaunchpadProgramIdl, provider);
-  const adjudicatorProgram = new Program(soothAdjudicatorIdl, provider);
-  const bookProgram = new Program(soothBookProgramIdl, provider);
+  const marketProgram = new Program(soothCoreProgramIdl, provider);
+  const launchpadProgram = new Program(soothCoreProgramIdl, provider);
+  const adjudicatorProgram = new Program(soothCoreProgramIdl, provider);
+  const bookProgram = new Program(soothCoreProgramIdl, provider);
 
   // 16-byte random market id.
   const marketId = new Uint8Array(16);
@@ -496,9 +478,7 @@ async function init() {
   const vault = deriveMarketVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
   const lockVault = deriveLockVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
   const [ammStatePda] = deriveAmmStatePda(marketId, PROGRAMS);
-  const [configPda] = deriveProtocolConfigPda({
-    soothLaunchpad: SOOTH_LAUNCHPAD_ID,
-  });
+  const [configPda] = deriveProtocolConfigPda(PROGRAMS);
 
   // Use chain time, not 1_000_000 sentinel (real validator wall clock).
   const startTime = Math.floor(Date.now() / 1000);
@@ -528,6 +508,7 @@ async function init() {
         systemProgram: SystemProgram.programId,
       })
       .signers([creator])
+      .preInstructions([heapFrameIx()])
       .rpc();
     log(`  initializeProtocol OK (authority=${creator.publicKey.toBase58()})`);
   } else {
@@ -542,34 +523,15 @@ async function init() {
   // per-trade fee USDC slice into a singleton ATA owned by the
   // `fee_pool_authority` PDA. The ATA must exist before any buy/sell
   // lands. Idempotent: skip if already present.
-  const [feePoolAuthorityPda] = deriveFeePoolAuthorityPda({
-    soothLaunchpad: SOOTH_LAUNCHPAD_ID,
-  });
-  const feePoolVault = deriveFeePoolVaultAta(USDC_MINT_DEVNET, {
-    soothLaunchpad: SOOTH_LAUNCHPAD_ID,
-  });
-  const feePoolVaultInfo = await connection.getAccountInfo(feePoolVault);
-  if (!feePoolVaultInfo) {
-    await launchpadProgram.methods
-      .initializeFeePool()
-      .accounts({
-        feePoolAuthority: feePoolAuthorityPda,
-        usdcMint: USDC_MINT_DEVNET,
-        feePoolVault,
-        signer: creator.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-        rent: SYSVAR_RENT_PUBKEY,
-      })
-      .signers([creator])
-      .rpc();
-    log(`  initializeFeePool OK (vault=${feePoolVault.toBase58()})`);
-  } else {
-    log(
-      `  fee_pool_vault already present at ${feePoolVault.toBase58()}, skipping bootstrap`,
-    );
-  }
+  const [feePoolAuthorityPda] = deriveFeePoolAuthorityPda(PROGRAMS);
+  const feePoolVault = deriveFeePoolVaultAta(USDC_MINT_DEVNET, PROGRAMS);
+  // `initialize_fee_pool` is gone. The merge replaced the singleton fee-pool
+  // vault with a PER-MARKET `market_fee_pool` created by
+  // `init_market_fee_pool`, which needs a market to exist first — so there is
+  // nothing to bootstrap globally. The authority PDA is still derived above
+  // because distribute_fees reads it.
+  void feePoolAuthorityPda;
+  void feePoolVault;
 
   // The current W7 SoothBook program has no Monaco-era price ladder,
   // market-type, or operator singleton bootstrap. MarketBook and BookSide
@@ -584,7 +546,7 @@ async function init() {
   // localnet re-seeds safe and gives the demo a stable env pointer.
   const [lpYieldAuthorityPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("lp_yield_authority")],
-    SOOTH_LAUNCHPAD_ID,
+    SOOTH_CORE_ID,
   );
   const lpYieldVaultAta = getAssociatedTokenAddressSync(
     USDC_MINT_DEVNET,
@@ -617,53 +579,14 @@ async function init() {
   // the localnet collapse is purely for convenience. Re-running the seed
   // is idempotent: we look up the PDA first and skip the bootstrap if it
   // already exists.
-  const [allowlistPda] = deriveAdjudicatorAllowlistPda(PROGRAMS);
-  const allowlistInfo = await connection.getAccountInfo(allowlistPda);
-  if (!allowlistInfo) {
-    await marketProgram.methods
-      .initializeAdjudicatorAllowlist(creator.publicKey)
-      .accounts({
-        allowlist: allowlistPda,
-        signer: creator.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([creator])
-      .rpc();
-    log(
-      `  initializeAdjudicatorAllowlist OK (authority=${creator.publicKey.toBase58()})`,
-    );
-  } else {
-    log(
-      `  allowlist PDA already present at ${allowlistPda.toBase58()}, skipping bootstrap`,
-    );
-  }
+  // The global AdjudicatorAllowlist is gone: the merge deleted the account, its
+  // seed, and the initialize/add instructions. sooth_core gates adjudicators on
+  // the single ProtocolConfig.permissionless_adjudicators flag (true on
+  // localnet) and registers them per-market via register_adjudicator, which
+  // happens after market creation below.
 
-  // Register the demo adjudicator. We attempt-and-tolerate-already-listed
-  // because the PDA may have been initialised by a previous run while the
-  // creator keypair on disk has since been regenerated (rare but possible
-  // when the operator wipes only part of .localnet/). The on-chain
-  // AdjudicatorAlreadyAllowlisted error is thrown in that case.
   const demoAdjudicator = creator.publicKey;
-  try {
-    await marketProgram.methods
-      .addAdjudicator(demoAdjudicator)
-      .accounts({
-        allowlist: allowlistPda,
-        authority: creator.publicKey,
-      })
-      .signers([creator])
-      .rpc();
-    log(`  addAdjudicator OK (adjudicator=${demoAdjudicator.toBase58()})`);
-  } catch (e) {
-    const msg = String(e?.message ?? e);
-    if (msg.includes("AdjudicatorAlreadyAllowlisted")) {
-      log(
-        `  adjudicator ${demoAdjudicator.toBase58()} already allow-listed, skipping`,
-      );
-    } else {
-      throw e;
-    }
-  }
+  // `addAdjudicator` is gone with the allowlist; nothing to allow-list.
 
   log(`creating market PDA ${marketPda.toBase58()}...`);
 
@@ -692,7 +615,6 @@ async function init() {
     .accounts({
       config: configPda,
       market: marketPda,
-      adjudicatorAllowlist: allowlistPda,
       vaultAuthority,
       yesMint,
       noMint,
@@ -702,8 +624,6 @@ async function init() {
       lockVault,
       ammState: ammStatePda,
       creator: creator.publicKey,
-      soothMarketProgram: SOOTH_MARKET_ID,
-      soothAmmProgram: SOOTH_AMM_ID,
       tokenProgram: TOKEN_PROGRAM_ID,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
@@ -711,6 +631,7 @@ async function init() {
     })
     .preInstructions([
       ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
+      heapFrameIx(),
     ])
     .signers([creator])
     .rpc();
@@ -733,21 +654,21 @@ async function init() {
   // For the demo: creator is both allowlist authority AND per-market
   // adjudicator authority. Production splits these roles across multisig
   // governance + an actual signing key.
-  const [adjudicatorPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("adjudicator"), marketPda.toBuffer()],
-    SOOTH_ADJUDICATOR_ID,
-  );
+  const [adjudicatorPda] = deriveAdjudicatorEntryPda(marketPda, PROGRAMS);
   const adjudicatorInfo = await connection.getAccountInfo(adjudicatorPda);
   if (!adjudicatorInfo) {
     await adjudicatorProgram.methods
-      .registerAdjudicator(demoAdjudicator, { manual: {} })
+      // AdjudicatorKind is gone, so no variant argument.
+      .registerAdjudicator(demoAdjudicator)
       .accounts({
-        adjudicator: adjudicatorPda,
+        adjudicatorEntry: adjudicatorPda,
+        protocolConfig: configPda,
         market: marketPda,
         signer: creator.publicKey,
         systemProgram: SystemProgram.programId,
       })
       .signers([creator])
+      .preInstructions([heapFrameIx()])
       .rpc();
     log(
       `  registerAdjudicator OK (kind=Manual, authority=${demoAdjudicator.toBase58()})`,
@@ -769,11 +690,11 @@ async function init() {
   // Idempotent: skip if lp_mint already exists.
   const [lpMintPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("lp"), Buffer.from(marketId)],
-    SOOTH_LAUNCHPAD_ID,
+    SOOTH_CORE_ID,
   );
   const [lpMintAuthorityPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("lp_mint_authority"), Buffer.from(marketId)],
-    SOOTH_LAUNCHPAD_ID,
+    SOOTH_CORE_ID,
   );
   const [lpPositionPda] = PublicKey.findProgramAddressSync(
     [
@@ -781,7 +702,7 @@ async function init() {
       Buffer.from(marketId),
       creator.publicKey.toBuffer(),
     ],
-    SOOTH_LAUNCHPAD_ID,
+    SOOTH_CORE_ID,
   );
   const creatorLpAta = getAssociatedTokenAddressSync(
     lpMintPda,
@@ -812,6 +733,7 @@ async function init() {
         rent: SYSVAR_RENT_PUBKEY,
       })
       .signers([creator])
+      .preInstructions([heapFrameIx()])
       .rpc();
     log(
       `  seedLp OK (lp_mint=${lpMintPda.toBase58()}, lp_amount=${lpAmountBaseUnits} base units)`,
@@ -839,9 +761,9 @@ async function init() {
     `# at apps/demo/src/hooks/indexer/config.ts to silence the dead-URL`,
     `# error storm (was ~261k console errors per page session).`,
     `VITE_USE_INDEXER=false`,
-    `VITE_SOOTH_AMM_ID=${SOOTH_AMM_ID.toBase58()}`,
-    `VITE_SOOTH_MARKET_ID=${SOOTH_MARKET_ID.toBase58()}`,
-    `VITE_SOOTH_ADJUDICATOR_ID=${SOOTH_ADJUDICATOR_ID.toBase58()}`,
+    `VITE_SOOTH_AMM_ID=${SOOTH_CORE_ID.toBase58()}`,
+    `VITE_SOOTH_MARKET_ID=${SOOTH_CORE_ID.toBase58()}`,
+    `VITE_SOOTH_ADJUDICATOR_ID=${SOOTH_CORE_ID.toBase58()}`,
     ...(bookSingletons ? bookSingletonEnvLines(bookSingletons) : []),
     `VITE_USDC_MINT=${USDC_MINT_DEVNET.toBase58()}`,
     `VITE_DEMO_MARKET_REF=sol:${marketPda.toBase58()}`,

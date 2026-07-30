@@ -1053,8 +1053,12 @@ export function buildOrderbookFillBundle(args: {
       isSigner: false,
       isWritable: true,
     },
-    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    // Exactly FILL_BUNDLE_LEN (3) accounts: [book_side, maker_position,
+    // maker_usdc_ata]. This used to append two reserved SystemProgram
+    // placeholders, left over from when the CPI-era layout was 5 wide. The
+    // program requires remaining_accounts.len() % 3 == 0, so the extra pair
+    // made every crossing buy fail with WrongBundleArity BEFORE any real
+    // validation ran — which masked the error the caller was testing for.
   ];
 }
 

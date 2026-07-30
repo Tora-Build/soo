@@ -5,7 +5,8 @@
 #      (recorded in apps/demo/.localnet.pid).
 #   2. Runs `seed-localnet.mjs prepare` to write a USDC mint JSON dump.
 #   3. Boots solana-test-validator --reset with all Sooth programs deployed
-#      from target/deploy/*.so AND the USDC mint preloaded at the canonical
+#      from target/deploy/*.so (sooth_core + sooth_log) AND the USDC mint
+#      preloaded at the canonical
 #      address via --account.
 #   4. Waits for the validator to be healthy.
 #   5. Runs `seed-localnet.mjs init` to airdrop SOL, mint USDC, init a market,
@@ -34,11 +35,11 @@ USDC_DUMP="$LOCALNET_DIR/usdc-mint-account.json"
 
 USDC_MINT_ADDR="ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
 
-AMM_SO="$REPO_ROOT/target/deploy/sooth_amm.so"
-MARKET_SO="$REPO_ROOT/target/deploy/sooth_market.so"
-LAUNCHPAD_SO="$REPO_ROOT/target/deploy/sooth_launchpad.so"
-ADJUDICATOR_SO="$REPO_ROOT/target/deploy/sooth_adjudicator.so"
-BOOK_SO="$REPO_ROOT/target/deploy/sooth_book.so"
+# Two programs since the 5→1 merge: sooth_core, plus sooth_log which must stay
+# separate because a program cannot CPI into itself. Both are required —
+# sooth_core::buy invokes sooth_log for the durable OrdersFilled record.
+CORE_SO="$REPO_ROOT/target/deploy/sooth_core.so"
+LOG_SO="$REPO_ROOT/target/deploy/sooth_log.so"
 
 VITE_PORT="${VITE_PORT:-5175}"
 RPC_PORT="${RPC_PORT:-8899}"
@@ -55,17 +56,17 @@ if ! command -v solana-test-validator >/dev/null 2>&1; then
   exit 1
 fi
 
-for so in "$AMM_SO" "$MARKET_SO" "$LAUNCHPAD_SO" "$ADJUDICATOR_SO" "$BOOK_SO"; do
+for so in "$CORE_SO" "$LOG_SO"; do
   if [[ ! -f "$so" ]]; then
     err "missing $so"
-    err "Run from repo root: cd packages/programs-core && cargo build-sbf"
+    err "Run from the repo root: anchor build"
     exit 1
   fi
 done
 
 # The seed script reads program IDs from the built SDK IDLs/constants. Keep
 # validator preload ids aligned with that exact source of truth.
-read -r SOOTH_AMM_ID SOOTH_MARKET_ID SOOTH_LAUNCHPAD_ID SOOTH_ADJUDICATOR_ID SOOTH_BOOK_ID < <(
+read -r SOOTH_CORE_ID SOOTH_LOG_ID < <(
   REPO_ROOT="$REPO_ROOT" node --input-type=module <<'NODE'
 const root = process.env.REPO_ROOT;
 const sdk = `${root}/packages/sdk-solana/dist`;
@@ -73,11 +74,8 @@ const anchor = await import(new URL(`file://${sdk}/anchor/index.js`).href);
 const pdas = await import(new URL(`file://${sdk}/pdas.js`).href);
 const id = (idlAddress, fallback) => idlAddress || fallback.toBase58();
 process.stdout.write([
-  anchor.soothAmmIdl.address,
-  id(anchor.soothMarketIdl.address, pdas.SOOTH_MARKET_PROGRAM_ID),
-  id(anchor.soothLaunchpadIdl.address, pdas.SOOTH_LAUNCHPAD_PROGRAM_ID),
-  anchor.soothAdjudicatorIdl.address,
-  id(anchor.soothBookIdl.address, pdas.SOOTH_BOOK_PROGRAM_ID),
+  id(anchor.soothCoreIdl.address, pdas.SOOTH_CORE_PROGRAM_ID),
+  pdas.SOOTH_LOG_PROGRAM_ID.toBase58(),
 ].join(" ") + "\n");
 NODE
 )
@@ -139,11 +137,8 @@ solana-test-validator \
   --quiet \
   --rpc-port "$RPC_PORT" \
   --ledger "$LEDGER_DIR" \
-  --bpf-program "$SOOTH_AMM_ID" "$AMM_SO" \
-  --bpf-program "$SOOTH_MARKET_ID" "$MARKET_SO" \
-  --bpf-program "$SOOTH_LAUNCHPAD_ID" "$LAUNCHPAD_SO" \
-  --bpf-program "$SOOTH_ADJUDICATOR_ID" "$ADJUDICATOR_SO" \
-  --bpf-program "$SOOTH_BOOK_ID" "$BOOK_SO" \
+  --bpf-program "$SOOTH_CORE_ID" "$CORE_SO" \
+  --bpf-program "$SOOTH_LOG_ID" "$LOG_SO" \
   --account "$USDC_MINT_ADDR" "$USDC_DUMP" \
   >"$VALIDATOR_LOG" 2>&1 &
 VALIDATOR_PID=$!
