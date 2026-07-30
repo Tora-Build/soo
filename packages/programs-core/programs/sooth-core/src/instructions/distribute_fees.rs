@@ -185,3 +185,111 @@ pub fn handler(ctx: Context<DistributeFees>) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Ported from main's sooth_launchpad/tests/distribute_fees_per_market.rs.
+    //
+    // The on-chain drain path (pool emptied, only the addressed market's pool
+    // touched) is already covered end-to-end by
+    // apps/demo/e2e/onchain/orderbook-per-market-fee.spec.ts, so what is worth
+    // restoring here is the split ARITHMETIC — a pure function, and the place
+    // where a rounding mistake silently misroutes protocol revenue.
+
+    fn cfg(b_base: u16, lp: u16, adj: u16, protocol: u16) -> ProtocolConfig {
+        ProtocolConfig {
+            authority: Pubkey::default(),
+            treasury: Pubkey::default(),
+            fee_bps: 100,
+            b_base_share_bps: b_base,
+            lp_yield_share_bps: lp,
+            adjudicator_share_bps: adj,
+            protocol_share_bps: protocol,
+            default_trial_period: 0,
+            bump: 0,
+            paused: false,
+            permissionless_adjudicators: true,
+        }
+    }
+
+    /// Architecture §8 default, mirroring EVM FeeRouter: 50/30/10/10.
+    fn default_cfg() -> ProtocolConfig {
+        cfg(5_000, 3_000, 1_000, 1_000)
+    }
+
+    #[test]
+    fn split_matches_the_documented_default_shares() {
+        let s = compute_fee_split(1_000_000, &default_cfg()).unwrap();
+        assert_eq!(s.to_b_base, 500_000);
+        assert_eq!(s.to_lp_yield, 300_000);
+        assert_eq!(s.to_adjudicator, 100_000);
+        assert_eq!(s.to_protocol, 100_000);
+    }
+
+    #[test]
+    fn split_always_sums_to_the_total() {
+        // The property that actually matters: fees must never be created or
+        // stranded. The three shares floor and protocol takes the remainder,
+        // so the sum is exact for every input — including the awkward ones.
+        for total in [
+            1u64,
+            2,
+            3,
+            7,
+            9_999,
+            10_001,
+            123_456_789,
+            u64::MAX / 10_000, // largest total that cannot overflow the bps mul
+        ] {
+            let s = compute_fee_split(total, &default_cfg()).unwrap();
+            assert_eq!(
+                s.to_b_base + s.to_lp_yield + s.to_adjudicator + s.to_protocol,
+                total,
+                "split does not sum for total={total}",
+            );
+        }
+    }
+
+    #[test]
+    fn rounding_dust_goes_to_protocol_not_nowhere() {
+        // total=1 with a 50/30/10/10 split floors the first three to zero, so
+        // the whole unit must land on protocol. A naive fourth floor would
+        // drop it and leave 1 base unit stuck in the pool forever.
+        let s = compute_fee_split(1, &default_cfg()).unwrap();
+        assert_eq!((s.to_b_base, s.to_lp_yield, s.to_adjudicator), (0, 0, 0));
+        assert_eq!(s.to_protocol, 1);
+
+        // 3 splits as 1/0/0/2 — protocol absorbs both remainders.
+        let s = compute_fee_split(3, &default_cfg()).unwrap();
+        assert_eq!(s.to_b_base, 1);
+        assert_eq!(s.to_protocol, 2);
+    }
+
+    #[test]
+    fn a_single_share_can_take_everything() {
+        let s = compute_fee_split(1_000, &cfg(10_000, 0, 0, 0)).unwrap();
+        assert_eq!(s.to_b_base, 1_000);
+        assert_eq!(s.to_protocol, 0);
+
+        let s = compute_fee_split(1_000, &cfg(0, 0, 0, 10_000)).unwrap();
+        assert_eq!(s.to_b_base, 0);
+        assert_eq!(s.to_protocol, 1_000);
+    }
+
+    #[test]
+    fn protocol_share_bps_is_derived_not_trusted() {
+        // to_protocol is computed as the REMAINDER, never from
+        // protocol_share_bps. So a config whose bps do not sum to 10_000 still
+        // distributes exactly `total` — the field is descriptive, and
+        // initialize_protocol is what enforces the sum. Pinned so nobody
+        // "fixes" this into a fourth floor division and reintroduces dust.
+        let s = compute_fee_split(1_000, &cfg(5_000, 3_000, 1_000, 9_999)).unwrap();
+        assert_eq!(
+            s.to_b_base + s.to_lp_yield + s.to_adjudicator + s.to_protocol,
+            1_000
+        );
+        assert_eq!(s.to_protocol, 100);
+    }
+}
