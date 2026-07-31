@@ -5100,6 +5100,25 @@
               "Bump for the `AdjudicatorEntry` PDA."
             ],
             "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Forward-compat padding. Adding a field consumes bytes from here",
+              "instead of changing the account's length, so no migration is needed:",
+              "Solana accounts are fixed-length buffers, and an `#[account]` struct",
+              "that outgrows its buffer fails to deserialize on every instruction",
+              "that loads it. (Unlike EVM, where appending a storage slot is free.)",
+              "",
+              "When you add a field, shrink this by exactly its serialized size and",
+              "leave `SPACE` unchanged."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
           }
         ]
       }
@@ -5201,6 +5220,25 @@
               "PDA bump."
             ],
             "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Forward-compat padding. Adding a field consumes bytes from here",
+              "instead of changing the account's length, so no migration is needed:",
+              "Solana accounts are fixed-length buffers, and an `#[account]` struct",
+              "that outgrows its buffer fails to deserialize on every instruction",
+              "that loads it. (Unlike EVM, where appending a storage slot is free.)",
+              "",
+              "When you add a field, shrink this by exactly its serialized size and",
+              "leave `SPACE` unchanged."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
           }
         ]
       }
@@ -5225,6 +5263,27 @@
           {
             "name": "head_index",
             "type": "u32"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Forward-compat padding, placed BEFORE `orders` so the header stays a",
+              "fixed-size prefix and the order list keeps a constant start offset.",
+              "",
+              "BookSide reallocs on every push, so growing it is not the problem —",
+              "the problem is that a header field added later leaves every EXISTING",
+              "BookSide account sized for the old header, and each one fails to",
+              "deserialize. Padding buys header fields without that break.",
+              "",
+              "When you add a field, shrink this by exactly its serialized size and",
+              "leave `BOOK_SIDE_HEADER_SPACE` unchanged."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
             "name": "orders",
@@ -5692,6 +5751,25 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Forward-compat padding. Adding a field consumes bytes from here",
+              "instead of changing the account's length, so no migration is needed:",
+              "Solana accounts are fixed-length buffers, and an `#[account]` struct",
+              "that outgrows its buffer fails to deserialize on every instruction",
+              "that loads it. (Unlike EVM, where appending a storage slot is free.)",
+              "",
+              "When you add a field, shrink this by exactly its serialized size and",
+              "leave `SPACE` unchanged."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -5866,6 +5944,25 @@
           {
             "name": "no_mint_bump",
             "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Forward-compat padding. Adding a field consumes bytes from here",
+              "instead of changing the account's length, so no migration is needed:",
+              "Solana accounts are fixed-length buffers, and an `#[account]` struct",
+              "that outgrows its buffer fails to deserialize on every instruction",
+              "that loads it. (Unlike EVM, where appending a storage slot is free.)",
+              "",
+              "When you add a field, shrink this by exactly its serialized size and",
+              "leave `SPACE` unchanged."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
           }
         ]
       }
@@ -5922,7 +6019,7 @@
             "type": {
               "array": [
                 "u8",
-                32
+                64
               ]
             }
           }
@@ -6245,7 +6342,7 @@
             "type": {
               "array": [
                 "u8",
-                16
+                32
               ]
             }
           }
@@ -6360,6 +6457,25 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Forward-compat padding. Adding a field consumes bytes from here",
+              "instead of changing the account's length, so no migration is needed:",
+              "Solana accounts are fixed-length buffers, and an `#[account]` struct",
+              "that outgrows its buffer fails to deserialize on every instruction",
+              "that loads it. (Unlike EVM, where appending a storage slot is free.)",
+              "",
+              "When you add a field, shrink this by exactly its serialized size and",
+              "leave `SPACE` unchanged."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -6552,10 +6668,34 @@
               "while devnet runs 24h — same binary in both places. A build flag would",
               "have meant the artifact under test was not the artifact deployed.",
               "",
-              "Zero is legal and means \"no veto window\": settle becomes callable in",
-              "the same slot as attest. That is the old collapsed behaviour, opt-in."
+              "Zero is rejected at `initialize_protocol` — see the guard there for",
+              "why (an omitted Anchor arg encodes as 0)."
             ],
             "type": "i64"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Forward-compat padding. Adding a field consumes bytes from here",
+              "instead of changing the account's length, so no migration is needed:",
+              "Solana accounts are fixed-length buffers, and an `#[account]` struct",
+              "that outgrows its buffer fails to deserialize on every instruction",
+              "that loads it. (Unlike EVM, where appending a storage slot is free.)",
+              "",
+              "This account learned that the hard way: `veto_period_secs` was an",
+              "8-byte addition that stranded the live devnet singleton at 93 bytes",
+              "with no way to grow it, because nothing in the program can realloc or",
+              "close a `ProtocolConfig`.",
+              "",
+              "When you add a field, shrink this by exactly its serialized size and",
+              "leave `SPACE` unchanged."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
           }
         ]
       }

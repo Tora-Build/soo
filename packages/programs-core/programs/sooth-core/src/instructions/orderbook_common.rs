@@ -141,7 +141,7 @@ pub fn create_orderbook_position<'info>(
         user,
         yes_shares: 0,
         no_shares: 0,
-        _reserved: [0u8; 16],
+        _reserved: [0u8; 32],
     };
     let mut data = info.try_borrow_mut_data()?;
     let mut cursor: &mut [u8] = &mut data;

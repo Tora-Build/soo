@@ -18,7 +18,11 @@ pub mod protocol_config;
 pub use adjudicator::{AdjudicatorEntry, ADJUDICATOR_ENTRY_SEED};
 pub use amm_state::AmmState;
 pub use book_side::{BookSide, InlineOrder, MAX_ORDERS_PER_TICK, SIDE_AGAINST, SIDE_FOR};
-pub use book_side::{BOOK_SIDE_HEADER_SPACE, INLINE_ORDER_SPACE};
+pub use book_side::{
+    BOOK_SIDE_HEADER_SPACE, BOOK_SIDE_HEAD_INDEX_OFFSET, BOOK_SIDE_MARKET_OFFSET,
+    BOOK_SIDE_ORDERS_LEN_OFFSET, BOOK_SIDE_RESERVED_LEN, BOOK_SIDE_RESERVED_OFFSET,
+    BOOK_SIDE_SIDE_OFFSET, BOOK_SIDE_TICK_OFFSET, INLINE_ORDER_SPACE,
+};
 pub use legacy_fee_drain_marker::LegacyFeeDrainMarker;
 pub use lifecycle::MarketLifecycle;
 pub use lock_entry::LockEntry;

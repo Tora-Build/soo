@@ -40,6 +40,16 @@ pub struct AdjudicatorEntry {
 
     /// Bump for the `AdjudicatorEntry` PDA.
     pub bump: u8,
+
+    /// Forward-compat padding. Adding a field consumes bytes from here
+    /// instead of changing the account's length, so no migration is needed:
+    /// Solana accounts are fixed-length buffers, and an `#[account]` struct
+    /// that outgrows its buffer fails to deserialize on every instruction
+    /// that loads it. (Unlike EVM, where appending a storage slot is free.)
+    ///
+    /// When you add a field, shrink this by exactly its serialized size and
+    /// leave `SPACE` unchanged.
+    pub _reserved: [u8; 64],
 }
 
 impl AdjudicatorEntry {
@@ -52,7 +62,8 @@ impl AdjudicatorEntry {
         + (1 + 8)                  // attested_at: Option<i64>
         + 1                        // disputed: bool
         + (1 + 8)                  // disputed_at: Option<i64>
-        + 1; // bump
+        + 1                        // bump
+        + 64; // _reserved
 
     pub fn is_attested(&self) -> bool {
         self.attested_outcome.is_some()
@@ -89,6 +100,7 @@ mod tests {
             disputed: false,
             disputed_at: None,
             bump: 254,
+            _reserved: [0; 64],
         }
     }
 
@@ -106,9 +118,10 @@ mod tests {
             + 1 + 8        // attested_at: Option<i64>
             + 1            // disputed: bool
             + 1 + 8        // disputed_at: Option<i64>
-            + 1; // bump
+            + 1            // bump
+            + 64; // _reserved
         assert_eq!(AdjudicatorEntry::SPACE, expected);
-        assert_eq!(AdjudicatorEntry::SPACE, 126);
+        assert_eq!(AdjudicatorEntry::SPACE, 190);
     }
 
     #[test]

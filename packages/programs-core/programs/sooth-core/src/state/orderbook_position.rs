@@ -10,10 +10,10 @@ pub struct OrderbookPosition {
     pub yes_shares: u128,
     /// WAD-scaled NO share balance.
     pub no_shares: u128,
-    pub _reserved: [u8; 16],
+    pub _reserved: [u8; 32],
 }
 
 impl OrderbookPosition {
     /// Seeds: `[b"orderbook_position", market_id, user]` under `sooth_core::ID`.
-    pub const SPACE: usize = 8 + 32 + 32 + 16 + 16 + 16;
+    pub const SPACE: usize = 8 + 32 + 32 + 16 + 16 + 32;
 }

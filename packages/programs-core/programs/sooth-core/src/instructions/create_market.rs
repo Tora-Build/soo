@@ -160,6 +160,7 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
             signer_seeds,
         )?;
         let market_state = Market {
+            _reserved: [0u8; 64],
             market_id,
             creator: creator_key,
             adjudicator: args.adjudicator,
@@ -325,6 +326,7 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
         )?;
         let market_key = ctx.accounts.market.key();
         let amm = AmmState {
+            _reserved: [0u8; 64],
             market: market_key,
             q_yes: 0,
             q_no: 0,

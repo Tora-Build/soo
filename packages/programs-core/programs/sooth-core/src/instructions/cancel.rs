@@ -217,7 +217,7 @@ fn ensure_position_exists_for_cancel<'info>(
             user: payer.key(),
             yes_shares: 0,
             no_shares: 0,
-            _reserved: [0u8; 16],
+            _reserved: [0u8; 32],
         };
         pos.serialize(&mut &mut data[8..])?;
     }

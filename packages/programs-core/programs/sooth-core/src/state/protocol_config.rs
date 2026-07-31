@@ -59,9 +59,24 @@ pub struct ProtocolConfig {
     /// while devnet runs 24h — same binary in both places. A build flag would
     /// have meant the artifact under test was not the artifact deployed.
     ///
-    /// Zero is legal and means "no veto window": settle becomes callable in
-    /// the same slot as attest. That is the old collapsed behaviour, opt-in.
+    /// Zero is rejected at `initialize_protocol` — see the guard there for
+    /// why (an omitted Anchor arg encodes as 0).
     pub veto_period_secs: i64,
+
+    /// Forward-compat padding. Adding a field consumes bytes from here
+    /// instead of changing the account's length, so no migration is needed:
+    /// Solana accounts are fixed-length buffers, and an `#[account]` struct
+    /// that outgrows its buffer fails to deserialize on every instruction
+    /// that loads it. (Unlike EVM, where appending a storage slot is free.)
+    ///
+    /// This account learned that the hard way: `veto_period_secs` was an
+    /// 8-byte addition that stranded the live devnet singleton at 93 bytes
+    /// with no way to grow it, because nothing in the program can realloc or
+    /// close a `ProtocolConfig`.
+    ///
+    /// When you add a field, shrink this by exactly its serialized size and
+    /// leave `SPACE` unchanged.
+    pub _reserved: [u8; 64],
 }
 
 /// Reject the call if the protocol circuit-breaker is engaged.
@@ -102,7 +117,8 @@ impl ProtocolConfig {
         + 1                        // bump
         + 1                        // paused
         + 1                        // permissionless_adjudicators
-        + 8; // veto_period_secs
+        + 8                        // veto_period_secs
+        + 64; // _reserved
 
     pub fn split_total(&self) -> u32 {
         self.b_base_share_bps as u32

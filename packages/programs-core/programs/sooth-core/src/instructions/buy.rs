@@ -453,6 +453,7 @@ fn load_or_init_book_side<'info>(
             &crate::ID,
         )?;
         return Ok(BookSide {
+            _reserved: [0u8; 32],
             market: market_key,
             side,
             tick,

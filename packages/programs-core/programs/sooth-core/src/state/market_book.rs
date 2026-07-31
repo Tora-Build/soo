@@ -15,11 +15,11 @@ pub struct MarketBook {
     pub bitmap_against: [u64; 16],
     pub pending_fees: u128,
     pub pending_taker_payout: u128,
-    pub _reserved: [u8; 32],
+    pub _reserved: [u8; 64],
 }
 
 impl MarketBook {
-    pub const SPACE: usize = 8 + 32 + 32 + 32 + 8 + 128 + 128 + 16 + 16 + 32;
+    pub const SPACE: usize = 8 + 32 + 32 + 32 + 8 + 128 + 128 + 16 + 16 + 64;
 
     pub fn bitmap(&self, side: u8) -> &TickBitmap {
         match side {

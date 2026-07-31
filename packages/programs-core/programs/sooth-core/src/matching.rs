@@ -15,7 +15,9 @@ use crate::events::FillRecord;
 use crate::math::{MAX_TICK, NUM_TICKS};
 use crate::state::{
     BookSide, InlineOrder, Market, MarketBook, OrderbookPosition, ProtocolConfig,
-    BOOK_SIDE_HEADER_SPACE, INLINE_ORDER_SPACE,
+    BOOK_SIDE_HEAD_INDEX_OFFSET, BOOK_SIDE_HEADER_SPACE, BOOK_SIDE_MARKET_OFFSET,
+    BOOK_SIDE_ORDERS_LEN_OFFSET, BOOK_SIDE_SIDE_OFFSET, BOOK_SIDE_TICK_OFFSET,
+    INLINE_ORDER_SPACE,
 };
 
 pub struct MatchTickResult {
@@ -346,23 +348,23 @@ fn read_book_side_header(info: &AccountInfo) -> Result<BookSideHeader> {
         SoothCoreError::MissingCrossingBookSide
     );
     let market = Pubkey::new_from_array(
-        data[8..40]
+        data[BOOK_SIDE_MARKET_OFFSET..BOOK_SIDE_MARKET_OFFSET + 32]
             .try_into()
             .map_err(|_| error!(SoothCoreError::MissingCrossingBookSide))?,
     );
-    let side = data[40];
+    let side = data[BOOK_SIDE_SIDE_OFFSET];
     let tick = u16::from_le_bytes(
-        data[41..43]
+        data[BOOK_SIDE_TICK_OFFSET..BOOK_SIDE_TICK_OFFSET + 2]
             .try_into()
             .map_err(|_| error!(SoothCoreError::MissingCrossingBookSide))?,
     );
     let head_index = u32::from_le_bytes(
-        data[43..47]
+        data[BOOK_SIDE_HEAD_INDEX_OFFSET..BOOK_SIDE_HEAD_INDEX_OFFSET + 4]
             .try_into()
             .map_err(|_| error!(SoothCoreError::MissingCrossingBookSide))?,
     );
     let orders_len = u32::from_le_bytes(
-        data[47..51]
+        data[BOOK_SIDE_ORDERS_LEN_OFFSET..BOOK_SIDE_ORDERS_LEN_OFFSET + 4]
             .try_into()
             .map_err(|_| error!(SoothCoreError::MissingCrossingBookSide))?,
     ) as usize;

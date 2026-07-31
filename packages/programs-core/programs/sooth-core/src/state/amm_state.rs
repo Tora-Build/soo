@@ -24,6 +24,16 @@ pub struct AmmState {
     pub is_dismissed: bool,
     /// PDA bump.
     pub bump: u8,
+
+    /// Forward-compat padding. Adding a field consumes bytes from here
+    /// instead of changing the account's length, so no migration is needed:
+    /// Solana accounts are fixed-length buffers, and an `#[account]` struct
+    /// that outgrows its buffer fails to deserialize on every instruction
+    /// that loads it. (Unlike EVM, where appending a storage slot is free.)
+    ///
+    /// When you add a field, shrink this by exactly its serialized size and
+    /// leave `SPACE` unchanged.
+    pub _reserved: [u8; 64],
 }
 
 impl AmmState {
@@ -39,10 +49,11 @@ impl AmmState {
         + 8                        // trial_end_at
         + 1                        // is_graduated
         + 1                        // is_dismissed
-        + 1; // bump
+        + 1                        // bump
+        + 64; // _reserved
 }
 
 /// Cross-crate layout sync: `AmmState::SPACE` must match `POSITION_TOTAL_LEN`
 /// in `constants.rs`. Actually this assert ties AmmState offset
 /// constants. We just assert Position size hasn't drifted.
-const _: () = assert!(POSITION_TOTAL_LEN == 121);
+const _: () = assert!(POSITION_TOTAL_LEN == 153);

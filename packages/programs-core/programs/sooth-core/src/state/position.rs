@@ -15,6 +15,16 @@ pub struct Position {
     /// Per-position nonce used to derive unique `LockEntry` PDAs on each sell.
     pub lock_nonce: u64,
     pub bump: u8,
+
+    /// Forward-compat padding. Adding a field consumes bytes from here
+    /// instead of changing the account's length, so no migration is needed:
+    /// Solana accounts are fixed-length buffers, and an `#[account]` struct
+    /// that outgrows its buffer fails to deserialize on every instruction
+    /// that loads it. (Unlike EVM, where appending a storage slot is free.)
+    ///
+    /// When you add a field, shrink this by exactly its serialized size and
+    /// leave `SPACE` unchanged.
+    pub _reserved: [u8; 32],
 }
 
 impl Position {
@@ -26,7 +36,8 @@ impl Position {
         + 16                       // no_shares
         + 8                        // locked_cost_usdc
         + 8                        // lock_nonce
-        + 1; // bump
+        + 1                        // bump
+        + 32; // _reserved
 }
 
 /// Compile-time assert: Position::SPACE must match POSITION_TOTAL_LEN in

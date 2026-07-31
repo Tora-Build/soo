@@ -39,6 +39,16 @@ pub struct Market {
     pub lock_authority_bump: u8,
     pub yes_mint_bump: u8,
     pub no_mint_bump: u8,
+
+    /// Forward-compat padding. Adding a field consumes bytes from here
+    /// instead of changing the account's length, so no migration is needed:
+    /// Solana accounts are fixed-length buffers, and an `#[account]` struct
+    /// that outgrows its buffer fails to deserialize on every instruction
+    /// that loads it. (Unlike EVM, where appending a storage slot is free.)
+    ///
+    /// When you add a field, shrink this by exactly its serialized size and
+    /// leave `SPACE` unchanged.
+    pub _reserved: [u8; 64],
 }
 
 impl Market {
@@ -60,7 +70,8 @@ impl Market {
         + 1                          // vault_authority_bump
         + 1                          // lock_authority_bump
         + 1                          // yes_mint_bump
-        + 1; // no_mint_bump
+        + 1                      // no_mint_bump
+        + 64; // _reserved
 
     pub fn is_open(&self) -> bool {
         matches!(self.lifecycle, MarketLifecycle::Open)

@@ -178,6 +178,7 @@ pub fn handler(ctx: Context<SeedLp>, args: SeedLpArgs) -> Result<()> {
         )?;
 
         let position = LpPosition {
+            _reserved: [0u8; 32],
             market: market_key,
             creator: creator_key,
             lp_mint: lp_mint_key,

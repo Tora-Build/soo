@@ -16,6 +16,16 @@ pub struct LockEntry {
     /// the PDA seed so each sell creates a unique LockEntry.
     pub nonce: u64,
     pub bump: u8,
+
+    /// Forward-compat padding. Adding a field consumes bytes from here
+    /// instead of changing the account's length, so no migration is needed:
+    /// Solana accounts are fixed-length buffers, and an `#[account]` struct
+    /// that outgrows its buffer fails to deserialize on every instruction
+    /// that loads it. (Unlike EVM, where appending a storage slot is free.)
+    ///
+    /// When you add a field, shrink this by exactly its serialized size and
+    /// leave `SPACE` unchanged.
+    pub _reserved: [u8; 32],
 }
 
 impl LockEntry {
@@ -27,7 +37,8 @@ impl LockEntry {
         + 8                        // amount_usdc
         + 8                        // unlock_at
         + 8                        // nonce
-        + 1; // bump
+        + 1                        // bump
+        + 32; // _reserved
 }
 
 /// Compile-time assert: LockEntry::SPACE must match LOCK_ENTRY_TOTAL_LEN.
