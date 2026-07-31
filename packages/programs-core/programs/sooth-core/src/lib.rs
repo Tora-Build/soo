@@ -111,6 +111,7 @@ pub mod sooth_core {
     use crate::instructions::redeem;
     use crate::instructions::redeem_from_program_owned;
     use crate::instructions::redeem_lp;
+    use crate::instructions::redeem_amm_position;
     use crate::instructions::redeem_orderbook;
     use crate::instructions::register_adjudicator;
     use crate::instructions::request_lock;
@@ -294,6 +295,12 @@ pub mod sooth_core {
 
     pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
         redeem::handler(ctx)
+    }
+
+    /// Pay out an AMM `Position` after settlement. Before this existed the
+    /// AMM had no post-settlement exit at all — see the module docs.
+    pub fn redeem_amm_position(ctx: Context<RedeemAmmPosition>) -> Result<()> {
+        redeem_amm_position::handler(ctx)
     }
 
     pub fn redeem_orderbook(ctx: Context<RedeemOrderbook>) -> Result<()> {
