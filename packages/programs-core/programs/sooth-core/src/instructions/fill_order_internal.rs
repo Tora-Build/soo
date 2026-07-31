@@ -34,7 +34,12 @@ pub fn fill_order_internal<'info>(
     maker_tick: u16,
     taker_escrow: bool,
     maker_escrow: bool,
-) -> Result<(u128, u128)> {
+) -> Result<(u128, u128, u128)> {
+    // Returns (fee_base_delta, taker_payout_delta, surplus_delta).
+    //
+    // surplus_delta is reported separately because taker_payout_delta also
+    // carries an escrow taker's SALE PROCEEDS. Conflating them made
+    // FillRecord.surplus overstate the crossing rebate on every sell.
     require_before_deadline(market)?;
     require!(
         taker_side == 0 || taker_side == 1,
@@ -67,6 +72,7 @@ pub fn fill_order_internal<'info>(
 
     let mut fee_base_delta: u128 = 0;
     let mut taker_payout_delta: u128 = 0;
+    let mut surplus_delta: u128 = 0;
 
     if !taker_escrow {
         let fee_bps = read_fee_bps(protocol_config);
@@ -127,6 +133,7 @@ pub fn fill_order_internal<'info>(
             .checked_div(NUM_TICKS as u128)
             .ok_or(error!(SoothCoreError::MathOverflow))?;
         let surplus = wad_to_base(surplus_wad)?;
+        surplus_delta = surplus as u128;
         taker_payout_delta = taker_payout_delta
             .checked_add(surplus as u128)
             .ok_or(error!(SoothCoreError::MathOverflow))?;
@@ -145,7 +152,7 @@ pub fn fill_order_internal<'info>(
         )?;
     }
 
-    Ok((fee_base_delta, taker_payout_delta))
+    Ok((fee_base_delta, taker_payout_delta, surplus_delta))
 }
 
 fn require_before_deadline(market: &Market) -> Result<()> {

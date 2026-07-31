@@ -214,10 +214,16 @@ describe("OrdersFilled durable event", () => {
     const fill = event.fills[0]!;
     expect(fill.maker).toBe(makers[0]!.maker.publicKey.toBase58());
     expect(fill.amount).toBe(SHARES);
-    // Ticks are normalized to (yes, no), not (taker, maker): the taker bought
-    // side 0 at 950 and the maker rested side 1 at 900.
-    expect(fill.yesTick).toBe(950);
-    expect(fill.noTick).toBe(900);
+    // Ticks are normalized to (yes, no), not (taker, maker). The taker bought
+    // side 0 (= NO) at 950 and the maker rested side 1 (= YES) at 900, so the
+    // YES leg is the MAKER's 900 and the NO leg is the taker's 950.
+    //
+    // This assertion used to read (950, 900) — it was pinning bug B2, where
+    // matching.rs branched on `taker_side == 0` as if 0 meant YES. Side 1 is
+    // YES (see credit_shares), so every FillRecord carried its two ticks the
+    // wrong way round and the indexer has been serving them swapped.
+    expect(fill.yesTick).toBe(900);
+    expect(fill.noTick).toBe(950);
     // yes + no = 1850 > 1000, so the taker is owed the overpay as surplus.
     expect(fill.surplus).toBeGreaterThan(0n);
     expect(fill.ts).toBeGreaterThan(0n);
@@ -244,8 +250,11 @@ describe("OrdersFilled durable event", () => {
     expect(event.fills.map((f) => f.maker)).toEqual(
       makers.map((m) => m.maker.publicKey.toBase58()),
     );
-    // Descending ticks — the order the bitmap walk consumed them.
-    expect(event.fills.map((f) => f.noTick)).toEqual([900, 890, 880]);
+    // Descending ticks — the order the bitmap walk consumed them. These are
+    // the MAKERs' resting prices, and the makers rest on side 1 (YES), so they
+    // land in yesTick. The taker's own 950 is the NO leg on every fill.
+    expect(event.fills.map((f) => f.yesTick)).toEqual([900, 890, 880]);
+    expect(event.fills.map((f) => f.noTick)).toEqual([950, 950, 950]);
     for (const fill of event.fills) expect(fill.amount).toBe(SHARES);
   }, 60_000);
 

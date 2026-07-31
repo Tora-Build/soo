@@ -1,7 +1,7 @@
 //! `matching` — tick-level order matching engine for the CLOB.
 //!
 //! `fill_order` is a direct call to `fill_order_internal`, which returns
-//! `(fee_base_delta, taker_payout_delta)` as a tuple. `FILL_BUNDLE_LEN` is 3
+//! `(fee_base_delta, taker_payout_delta, surplus_delta)`. `FILL_BUNDLE_LEN` is 3
 //! (book_side, maker_position, maker_usdc_ata per fill). Both owner checks
 //! use `crate::ID`.
 
@@ -17,7 +17,7 @@ use crate::state::{
     BookSide, InlineOrder, Market, MarketBook, OrderbookPosition, ProtocolConfig,
     BOOK_SIDE_HEAD_INDEX_OFFSET, BOOK_SIDE_HEADER_SPACE, BOOK_SIDE_MARKET_OFFSET,
     BOOK_SIDE_ORDERS_LEN_OFFSET, BOOK_SIDE_SIDE_OFFSET, BOOK_SIDE_TICK_OFFSET,
-    INLINE_ORDER_SPACE,
+    INLINE_ORDER_SPACE, SIDE_FOR,
 };
 
 pub struct MatchTickResult {
@@ -156,8 +156,8 @@ pub fn match_at_tick<'info>(
         )?;
         let fill = remaining.min(maker_amount);
 
-        // Returns (fee_base_delta, taker_payout_delta).
-        let (fee_base_delta, taker_payout_delta) = crate::instructions::fill_order_internal(
+        let (fee_base_delta, taker_payout_delta, surplus_delta) =
+            crate::instructions::fill_order_internal(
             accounts.market,
             accounts.vault_authority,
             accounts.market_usdc_vault,
@@ -190,7 +190,12 @@ pub fn match_at_tick<'info>(
 
         // Ticks are stored as (yes, no) regardless of which side the taker
         // took, so consumers can price the trade without re-deriving sides.
-        let (yes_tick, no_tick) = if taker_side == 0 {
+        //
+        // SIDE_FOR = 1 = YES and SIDE_AGAINST = 0 = NO (see credit_shares).
+        // So taker_side == 1 means TAKER_TICK IS THE YES TICK. These branches
+        // were inverted, and every FillRecord ever emitted carried the two
+        // ticks the wrong way round.
+        let (yes_tick, no_tick) = if taker_side == SIDE_FOR {
             (taker_tick, opp_tick)
         } else {
             (opp_tick, taker_tick)
@@ -201,7 +206,10 @@ pub fn match_at_tick<'info>(
             yes_tick,
             no_tick,
             amount: fill,
-            surplus: taker_payout_delta,
+            // Only the crossing rebate, NOT the taker's escrow sale proceeds.
+            // taker_payout_delta carries both, so reporting it here overstated
+            // surplus on every sell.
+            surplus: surplus_delta,
             ts: Clock::get()?.unix_timestamp,
         });
 

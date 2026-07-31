@@ -5,7 +5,7 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 use crate::error::SoothCoreError;
 use crate::events::OrderCancelled;
-use crate::instructions::orderbook_common::credit_shares;
+use crate::instructions::orderbook_common::{create_orderbook_position, credit_shares};
 use crate::math::{resting_cost_base, MAX_TICK, MIN_TICK};
 use crate::state::{BookSide, InlineOrder, Market, MarketBook, OrderbookPosition};
 
@@ -153,7 +153,19 @@ pub(crate) fn refund_order<'info>(
     if order.escrow {
         // Credit shares back to the user's orderbook position.
         let info = user_orderbook_position.to_account_info();
-        ensure_position_exists_for_cancel(info.clone(), user, system_program, rent, market)?;
+        // Was a hand-rolled copy of the same bug D-2 fixed: it transferred
+        // rent to a system-owned account (zero-length data) and then wrote the
+        // discriminator into it. Use the shared helper, which does
+        // create_account, falls back to allocate+assign when the PDA was
+        // pre-funded by a griefer, and verifies the derivation.
+        create_orderbook_position(
+            &info,
+            market,
+            user.key(),
+            user,
+            system_program,
+            rent,
+        )?;
         use anchor_lang::{AccountDeserialize, AccountSerialize};
         let data = info.try_borrow_mut_data()?;
         let mut slice: &[u8] = &data;
@@ -187,39 +199,3 @@ pub(crate) fn refund_order<'info>(
     Ok(())
 }
 
-fn ensure_position_exists_for_cancel<'info>(
-    info: AccountInfo<'info>,
-    payer: &Signer<'info>,
-    system_program: &Program<'info, System>,
-    rent: &Sysvar<'info, Rent>,
-    market: &Account<'info, Market>,
-) -> Result<()> {
-    use anchor_lang::{AnchorSerialize, Discriminator};
-    use anchor_lang::system_program;
-
-    if info.data_is_empty() {
-        let space = OrderbookPosition::SPACE;
-        let lamports = rent.minimum_balance(space);
-        system_program::transfer(
-            CpiContext::new(
-                system_program.to_account_info(),
-                system_program::Transfer {
-                    from: payer.to_account_info(),
-                    to: info.clone(),
-                },
-            ),
-            lamports,
-        )?;
-        let mut data = info.try_borrow_mut_data()?;
-        data[..8].copy_from_slice(&OrderbookPosition::DISCRIMINATOR);
-        let pos = OrderbookPosition {
-            market: market.key(),
-            user: payer.key(),
-            yes_shares: 0,
-            no_shares: 0,
-            _reserved: [0u8; 32],
-        };
-        pos.serialize(&mut &mut data[8..])?;
-    }
-    Ok(())
-}

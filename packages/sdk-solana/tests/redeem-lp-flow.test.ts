@@ -19,6 +19,12 @@ import { encodePubkeyRef } from "../src/refs.js";
 
 import { LiteSvmConnection } from "./fixtures/svm.js";
 import { bootSmoke } from "./fixtures/setup.js";
+import { anchorProgram, customError, sendTx } from "./fixtures/orderbook.js";
+import anchorPkg from "@coral-xyz/anchor";
+import { deriveAmmStatePda, deriveMarketPda } from "../src/pdas.js";
+
+/** Anchor's ConstraintSeeds. */
+const ANCHOR_CONSTRAINT_SEEDS = 2006;
 
 describe("LP redemption flow", () => {
   it("burns post-graduation LP and pays pro-rata USDC yield", async () => {
@@ -95,6 +101,89 @@ describe("LP redemption flow", () => {
     const userUsdcAfter = (await getAccount(conn, creatorUsdcAta)).amount;
     expect(userUsdcAfter).toBe(expectedPayout);
   }, 90_000);
+
+  it("B6: a foreign mint cannot drain the LP yield vault", async () => {
+    // `redeem_lp` pays `lp_yield_vault.amount * lp_amount / lp_mint.supply`,
+    // and `lp_mint` used to be a bare `#[account(mut)] Box<Account<Mint>>` —
+    // no seeds, no market, no link to anything. `amm_state` was bound only on
+    // `is_graduated`, which ANY graduated market in the protocol satisfies.
+    //
+    // So anyone could create their own SPL mint with a supply of 1, burn one
+    // token, and take the ENTIRE global yield vault. A permissionless drain of
+    // protocol funds, not a mis-accounting.
+    //
+    // Here the attacker substitutes the USDC mint — a perfectly valid Mint
+    // account that would have sailed through the old constraints. It now fails
+    // seed derivation before any burn or transfer happens.
+    const smoke = await bootSmoke({
+      bWad: 1_000n * WAD,
+      userUsdcBaseUnits: 100_000_000n,
+    });
+    await forceGraduated(smoke);
+
+    const conn = new LiteSvmConnection(smoke.ctx);
+    const program = anchorProgram(smoke.ctx, smoke.creator);
+    const [lpYieldAuthority] = deriveLpYieldAuthority(smoke.programs);
+    const lpYieldVault = getAssociatedTokenAddressSync(
+      smoke.usdcMint,
+      lpYieldAuthority,
+      true,
+    );
+    // Fund the vault so the drain would be worth something if it worked.
+    const yieldAmount = 2_000_000n;
+    await writeTokenAccount(
+      smoke,
+      lpYieldVault,
+      smoke.usdcMint,
+      lpYieldAuthority,
+      yieldAmount,
+    );
+    const vaultBefore = (await getAccount(conn, lpYieldVault)).amount;
+    expect(vaultBefore).toBe(yieldAmount);
+
+    const [ammState] = deriveAmmStatePda(smoke.marketId, smoke.programs);
+    const [marketPda] = deriveMarketPda(smoke.marketId, smoke.programs);
+    const attackerUsdc = deriveUserUsdcAta(
+      smoke.creator.publicKey,
+      smoke.usdcMint,
+    );
+    // Give the attacker a real USDC account, so the call fails on the binding
+    // we are testing rather than on a missing account.
+    await writeTokenAccount(
+      smoke,
+      attackerUsdc,
+      smoke.usdcMint,
+      smoke.creator.publicKey,
+      1_000_000n,
+    );
+
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        new Transaction().add(
+          await (program.methods as any)
+            .redeemLp(new anchorPkg.BN(1))
+            .accounts({
+              market: marketPda,
+              ammState,
+              lpMint: smoke.usdcMint, // <- the substitution
+              userLpAta: attackerUsdc,
+              lpYieldVault,
+              lpYieldAuthority,
+              userUsdcAta: attackerUsdc,
+              user: smoke.creator.publicKey,
+              tokenProgram: TOKEN_PROGRAM_ID,
+            })
+            .instruction(),
+        ),
+      ),
+    ).rejects.toThrow(customError(ANCHOR_CONSTRAINT_SEEDS));
+
+    // Nothing moved.
+    expect((await getAccount(conn, lpYieldVault)).amount).toBe(vaultBefore);
+  }, 60_000);
+
 });
 
 async function forceGraduated(

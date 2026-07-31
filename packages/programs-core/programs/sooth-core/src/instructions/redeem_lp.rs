@@ -3,18 +3,43 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};
 
+use crate::constants::BASE_TOKEN_MINT;
 use crate::error::SoothCoreError;
 use crate::events::LpRedeemed;
-use crate::state::AmmState;
+use crate::state::{AmmState, Market};
 
 #[derive(Accounts)]
 pub struct RedeemLp<'info> {
+    // ── Account binding (bug B6) ────────────────────────────────────────
+    //
+    // `lp_mint` used to be a bare `#[account(mut)] Box<Account<Mint>>` — no
+    // seeds, no market, nothing. Payout is
+    // `lp_yield_vault.amount * lp_amount / lp_mint.supply`, so anyone could
+    // create their own SPL mint with a supply of 1, burn 1 token, and take the
+    // ENTIRE global yield vault. `amm_state` was likewise bound only on
+    // `is_graduated`, so any graduated market in the protocol satisfied it.
+    //
+    // Everything is now tied back to one `market`.
+
     #[account(
+        seeds = [b"market", market.market_id.as_ref()],
+        bump = market.bump,
+    )]
+    pub market: Box<Account<'info, Market>>,
+
+    #[account(
+        seeds = [b"amm", market.market_id.as_ref()],
+        bump = amm_state.bump,
+        constraint = amm_state.market == market.key() @ SoothCoreError::AmmStateMarketMismatch,
         constraint = amm_state.is_graduated @ SoothCoreError::NotGraduated,
     )]
     pub amm_state: Box<Account<'info, AmmState>>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [b"lp", market.market_id.as_ref()],
+        bump,
+    )]
     pub lp_mint: Box<Account<'info, Mint>>,
 
     #[account(
@@ -27,6 +52,8 @@ pub struct RedeemLp<'info> {
     #[account(
         mut,
         token::authority = lp_yield_authority,
+        constraint = lp_yield_vault.mint == BASE_TOKEN_MINT
+            @ SoothCoreError::VaultAuthorityMismatch,
     )]
     pub lp_yield_vault: Box<Account<'info, TokenAccount>>,
 
@@ -39,7 +66,8 @@ pub struct RedeemLp<'info> {
 
     #[account(
         mut,
-        constraint = user_usdc_ata.mint == lp_yield_vault.mint @ SoothCoreError::Unauthorized,
+        token::mint = lp_yield_vault.mint,
+        token::authority = user,
     )]
     pub user_usdc_ata: Box<Account<'info, TokenAccount>>,
 

@@ -1640,6 +1640,11 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
     const ix: TransactionInstruction = await (this.program.methods as any)
       .redeemLp(bigIntToBn(args.lpAmount))
       .accounts({
+        // `market` is new: redeem_lp used to accept an unconstrained lp_mint
+        // and any graduated amm_state, which let anyone drain the global LP
+        // yield vault with a self-created mint (bug B6). Everything is now
+        // bound to one market.
+        market: marketPda,
         ammState: ammPda,
         lpMint,
         userLpAta,
