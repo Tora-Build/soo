@@ -72,6 +72,7 @@ unsafe impl core::alloc::GlobalAlloc for BumpAllocator256 {
     unsafe fn dealloc(&self, _: *mut u8, _: core::alloc::Layout) {}
 }
 
+pub mod book;
 pub mod bitmap;
 pub mod constants;
 pub mod error;
