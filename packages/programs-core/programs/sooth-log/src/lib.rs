@@ -32,7 +32,18 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("6TVeQ2JzYUXNsUG7kJpGvQ2Y6kKCxNkkAWSFrEG4vb59");
+// Repointed from 6TVeQ2JzYUXNsUG7kJpGvQ2Y6kKCxNkkAWSFrEG4vb59, whose program
+// keypair we never had. That address IS deployed on devnet, but under upgrade
+// authority G4DaWiBYJGRnE5apgMem92Zk5qW4wJkr4BJwN3ZfhVzg — a key that exists
+// nowhere in this repo or on the deploying machine. So it could be neither
+// upgraded nor redeployed, and `anchor build` had been generating a DIFFERENT
+// keypair (this one) into target/deploy, which Anchor's runtime
+// `program_id == crate::ID` check then rejected. Every localnet/Surfpool deploy
+// of sooth_log failed on that mismatch.
+//
+// This id matches target/deploy/sooth_log-keypair.json, backed up alongside
+// the others. ~1.24 SOL remains stranded in the old programdata account.
+declare_id!("2NqmnxEMGeAmvThiXGtGWQBAHY58CG3pogfF4E8xAWVr");
 
 #[program]
 pub mod sooth_log {

@@ -66,7 +66,7 @@ export type ChainId = keyof typeof CHAIN_NAMES;
 /// program cannot CPI into itself.
 export const PROGRAM_IDS = {
   SOOTH_CORE: "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W",
-  SOOTH_LOG: "6TVeQ2JzYUXNsUG7kJpGvQ2Y6kKCxNkkAWSFrEG4vb59",
+  SOOTH_LOG: "2NqmnxEMGeAmvThiXGtGWQBAHY58CG3pogfF4E8xAWVr",
 } as const;
 
 /// Anchor discriminator for `sooth_core::buy` — sha256("global:buy")[..8].

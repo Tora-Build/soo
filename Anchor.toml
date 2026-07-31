@@ -7,11 +7,11 @@ skip-lint = false
 
 [programs.devnet]
 sooth_core = "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W"
-sooth_log = "6TVeQ2JzYUXNsUG7kJpGvQ2Y6kKCxNkkAWSFrEG4vb59"
+sooth_log = "2NqmnxEMGeAmvThiXGtGWQBAHY58CG3pogfF4E8xAWVr"
 
 [programs.localnet]
 sooth_core = "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W"
-sooth_log = "6TVeQ2JzYUXNsUG7kJpGvQ2Y6kKCxNkkAWSFrEG4vb59"
+sooth_log = "2NqmnxEMGeAmvThiXGtGWQBAHY58CG3pogfF4E8xAWVr"
 
 [registry]
 url = "https://api.apr.dev"

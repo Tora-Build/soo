@@ -27,7 +27,7 @@
 #
 #   solana-test-validator --reset \
 #     --bpf-program BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W target/deploy/sooth_core.so \
-#     --bpf-program 6TVeQ2JzYUXNsUG7kJpGvQ2Y6kKCxNkkAWSFrEG4vb59 target/deploy/sooth_log.so
+#     --bpf-program 2NqmnxEMGeAmvThiXGtGWQBAHY58CG3pogfF4E8xAWVr target/deploy/sooth_log.so
 #
 # That is how the 256 KB allocator was verified outside the test harness: with
 # requestHeapFrame the program runs, without it every instruction faults with

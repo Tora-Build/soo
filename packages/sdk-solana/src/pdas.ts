@@ -54,7 +54,7 @@ export const SOOTH_CORE_PROGRAM_ID = new PublicKey(
 
 /** `sooth_log` — no-op durable event sink. Must match its `declare_id!`. */
 export const SOOTH_LOG_PROGRAM_ID = new PublicKey(
-  "6TVeQ2JzYUXNsUG7kJpGvQ2Y6kKCxNkkAWSFrEG4vb59",
+  "2NqmnxEMGeAmvThiXGtGWQBAHY58CG3pogfF4E8xAWVr",
 );
 
 export function soothLogProgramId(
