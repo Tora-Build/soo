@@ -74,7 +74,11 @@ describe("dismissed-market refund flow", () => {
     const marketVaultBeforeClaim = await adapter.getMarketVaultUsdcRaw(
       marketRef,
     );
-    expect(marketVaultBeforeClaim).toBe(expectedLockedCost);
+    // The vault holds the trader's locked cost ON TOP of the LMSR subsidy that
+    // seed_lp now posts (b * ln(2), ~693.15 USDC at b = 1000). Before bug B0
+    // was fixed, seed_lp transferred nothing and this was just the locked cost.
+    const LMSR_SUBSIDY = 693_147_181n;
+    expect(marketVaultBeforeClaim).toBe(LMSR_SUBSIDY + expectedLockedCost);
 
     const claimReq = await adapter.buildClaimRefund(marketRef, {
       user: userRef,
@@ -91,7 +95,10 @@ describe("dismissed-market refund flow", () => {
     expect(userBalanceAfterClaim).toBe(
       userBalanceBeforeClaim + expectedLockedCost,
     );
-    expect(await adapter.getMarketVaultUsdcRaw(marketRef)).toBe(0n);
+    // The refund returns the trader's locked cost. What remains is the
+    // creator's subsidy — dismissal does not claw that back, and there is no
+    // path yet for the creator to reclaim it (tracked as B0-followup).
+    expect(await adapter.getMarketVaultUsdcRaw(marketRef)).toBe(LMSR_SUBSIDY);
     expect(await conn.getAccountInfo(positionPda)).toBeNull();
   }, 90_000);
 });

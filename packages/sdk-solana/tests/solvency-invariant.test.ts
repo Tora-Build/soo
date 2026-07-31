@@ -198,6 +198,9 @@ async function mintCompleteSet(
 }
 
 describe("market solvency invariant", () => {
+/** seed_lp posts b*ln(2); at the fixture's b = 1000 that is this many base units. */
+const LMSR_SUBSIDY = 693_147_181n;
+
   it("a fresh market is trivially solvent", async () => {
     const smoke = await bootSmoke();
     const conn = new LiteSvmConnection(smoke.ctx);
@@ -229,7 +232,10 @@ describe("market solvency invariant", () => {
     expect(r.yesSupply).toBe(MINT);
     expect(r.noSupply).toBe(MINT);
     expect(r.obligations).toBe(MINT);
-    expect(r.vault).toBe(MINT);
+    // The complete set is backed 1:1, ON TOP of the LMSR subsidy seed_lp
+    // posted. The market is over-collateralised, which is the point of the
+    // subsidy — see amm-redeem.test.ts.
+    expect(r.vault).toBe(LMSR_SUBSIDY + MINT);
     expect(r.solvent).toBe(true);
   }, 60_000);
 
@@ -250,10 +256,17 @@ describe("market solvency invariant", () => {
       smoke.usdcMint,
     );
 
+    // Bug 1: summing both legs double-counts. Only the winning side redeems,
+    // so the true exposure is 10 USDC, not 20. Asserted on the numbers rather
+    // than on the solvent/insolvent verdict, because the LMSR subsidy now
+    // leaves enough headroom that even the wrong figure happens to pass here —
+    // which is exactly how an overstated obligation hides until it doesn't.
     const summedLegs = r.yesSupply + r.noSupply;
-    expect(r.vault >= summedLegs).toBe(false); // bug 1: false insolvency
-    expect(summedLegs / 1_000_000_000_000n).toBe(0n); // bug 2: rescale floors to 0
-    // ...so main's `vault >= 0` passes regardless of the real position.
+    expect(summedLegs).toBe(2n * r.obligations);
+
+    // Bug 2: the 1e12 rescale floors a 20 USDC figure to zero, so main's check
+    // reduces to `vault >= 0` and can never fail.
+    expect(summedLegs / 1_000_000_000_000n).toBe(0n);
   }, 60_000);
 
   it("holds after a real CLOB cross — and mint supply alone would miss it", async () => {
@@ -331,11 +344,14 @@ describe("market solvency invariant", () => {
     const conn = new LiteSvmConnection(smoke.ctx);
     const before = await getAccount(conn, vaultAta);
 
-    // Rewrite the vault's token balance to half — simulating a leak that no
-    // instruction should ever produce.
+    // Drop the vault one base unit below what is owed — simulating a leak no
+    // instruction should ever produce. Halving is no longer enough: the LMSR
+    // subsidy leaves so much headroom that a market can lose most of its vault
+    // and still cover its obligations.
     const raw = await smoke.ctx.banksClient.getAccount(vaultAta);
     const data = Buffer.from(raw!.data);
-    data.writeBigUInt64LE(before.amount / 2n, 64); // SPL token account: amount @ 64
+    const drained = MINT - 1n;
+    data.writeBigUInt64LE(drained, 64); // SPL token account: amount @ 64
     smoke.ctx.setAccount(vaultAta, {
       executable: false,
       owner: new PublicKey(TOKEN_PROGRAM_ID),
@@ -349,7 +365,7 @@ describe("market solvency invariant", () => {
       smoke.programs,
       smoke.usdcMint,
     );
-    expect(r.vault).toBe(MINT / 2n);
+    expect(r.vault).toBe(MINT - 1n);
     expect(r.obligations).toBe(MINT);
     expect(r.solvent).toBe(false);
   }, 60_000);

@@ -1257,6 +1257,7 @@ export async function createSeededMarketViaAdapter(args: {
     marketPda: setup.marketPda,
     marketId: setup.marketId,
     initialB: args.initialB ?? 1_000n * 10n ** 18n,
+    usdcMint: args.usdcMint,
   });
   return setup;
 }
@@ -1589,8 +1590,10 @@ export async function seedLpViaAdapter(args: {
   marketPda: PublicKey;
   marketId: Buffer;
   initialB: bigint;
+  /** Required since bug B0: seed_lp now transfers the LMSR subsidy. */
+  usdcMint: PublicKey;
 }): Promise<string> {
-  const { conn, creator, marketPda, marketId, initialB } = args;
+  const { conn, creator, marketPda, marketId, initialB, usdcMint } = args;
   const programs = makePrograms(conn, creator);
   const lpMint = deriveLpMintPda(marketId);
   const lpMintAuthority = deriveLpMintAuthorityPda(marketId);
@@ -1610,7 +1613,10 @@ export async function seedLpViaAdapter(args: {
   const ix = await (programs.launchpad.methods as any)
     .seedLp({
       lpAmount: bn(initialB / 1_000_000_000_000n),
-      seedDepositWad: bn(initialB),
+      // Exactly the LMSR worst-case subsidy seed_lp now requires: b * ln(2).
+      seedDepositWad: bn(
+        (initialB * 693_147_180_559_945_309n) / 1_000_000_000_000_000_000n,
+      ),
     })
     .accounts({
       config: protocolConfig,
@@ -1620,6 +1626,18 @@ export async function seedLpViaAdapter(args: {
       lpMintAuthority,
       creatorLpAta,
       lpPosition,
+      // seed_lp now transfers the LMSR subsidy into the market vault (bug B0);
+      // before the fix it recorded seed_deposit_wad and moved nothing.
+      marketVault: getAssociatedTokenAddressSync(
+        usdcMint,
+        deriveVaultAuthorityPda(marketId),
+        true,
+      ),
+      creatorUsdcAta: getAssociatedTokenAddressSync(
+        usdcMint,
+        creator.publicKey,
+      ),
+      usdcMint,
       creator: creator.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,

@@ -189,6 +189,7 @@ export default async function globalSetup(): Promise<void> {
     marketPda,
     marketIdBytes,
     launchpadIdStr: env.VITE_SOOTH_CORE_ID ?? env.VITE_SOOTH_LAUNCHPAD_ID,
+    usdcMint,
   });
 
   // globalSetup mutations of process.env do not propagate to test workers
@@ -225,6 +226,8 @@ interface SeedLpInputs {
   marketPda: PublicKey;
   marketIdBytes: Buffer;
   launchpadIdStr?: string;
+  /** Required since bug B0: seed_lp now transfers the LMSR subsidy. */
+  usdcMint: PublicKey;
 }
 
 async function runSeedLpIfMissing(inp: SeedLpInputs): Promise<void> {
@@ -335,7 +338,13 @@ async function runSeedLpIfMissing(inp: SeedLpInputs): Promise<void> {
   const sig = await (launchpadProgram.methods as any)
     .seedLp({
       lpAmount: new anchor.BN(lpAmountBaseUnits.toString()),
-      seedDepositWad: new anchor.BN(bWad.toString()),
+      // Exactly the LMSR worst-case subsidy seed_lp now requires: b * ln(2).
+      seedDepositWad: new anchor.BN(
+        (
+          (bWad * 693_147_180_559_945_309n) /
+          1_000_000_000_000_000_000n
+        ).toString(),
+      ),
     })
     .accounts({
       config: protocolConfig,
@@ -345,6 +354,20 @@ async function runSeedLpIfMissing(inp: SeedLpInputs): Promise<void> {
       lpMintAuthority,
       creatorLpAta,
       lpPosition,
+      // seed_lp now transfers the LMSR subsidy into the market vault (B0).
+      marketVault: getAssociatedTokenAddressSync(
+        inp.usdcMint,
+        PublicKey.findProgramAddressSync(
+          [Buffer.from("vault"), inp.marketIdBytes],
+          launchpadId,
+        )[0],
+        true,
+      ),
+      creatorUsdcAta: getAssociatedTokenAddressSync(
+        inp.usdcMint,
+        creator.publicKey,
+      ),
+      usdcMint: inp.usdcMint,
       creator: creator.publicKey,
       tokenProgram: TOKEN_PROGRAM_ID,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,

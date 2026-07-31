@@ -204,4 +204,7 @@ pub enum SoothCoreError {
 
     #[msg("veto_period_secs must be > 0 and <= MAX_VETO_PERIOD_SECS")]
     InvalidVetoPeriod,
+
+    #[msg("seed_deposit_wad must cover the LMSR worst-case subsidy b*ln(2)")]
+    InsufficientSeedDeposit,
 }

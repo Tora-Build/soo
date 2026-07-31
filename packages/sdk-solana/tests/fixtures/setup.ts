@@ -198,6 +198,35 @@ export async function bootSmoke(
     ),
   );
 
+  // The creator must now fund the LMSR subsidy in seed_lp (bug B0), so they
+  // need real USDC. b*ln(2) at b = 1000 is ~693 USDC; mint generously so a
+  // caller raising bWad does not silently hit InsufficientSeedDeposit.
+  const creatorAta = deriveUserUsdcAta(creator.publicKey, USDC_MINT_DEVNET);
+  await sendTx(
+    ctx,
+    [creator],
+    new Transaction().add(
+      createAssociatedTokenAccountInstruction(
+        creator.publicKey,
+        creatorAta,
+        creator.publicKey,
+        USDC_MINT_DEVNET,
+      ),
+    ),
+  );
+  await sendTx(
+    ctx,
+    [mintAuthority],
+    new Transaction().add(
+      createMintToInstruction(
+        USDC_MINT_DEVNET,
+        creatorAta,
+        mintAuthority.publicKey,
+        10_000_000_000n, // 10,000 USDC
+      ),
+    ),
+  );
+
   // ─── Build Anchor `Program` handle bound to LiteSVM ────────────────────
   // Anchor needs a Provider; the LiteSvmConnection forwards getAccountInfo /
   // sendRawTransaction / etc. to the LiteSVM client.
@@ -361,6 +390,9 @@ export async function bootSmoke(
   );
   const creatorLpAta = deriveUserLpAta(creator.publicKey, lpMint);
   const lpAmountBaseUnits = bWad / 1_000_000_000_000n;
+  // Exactly the LMSR worst-case subsidy the program now requires: b * ln(2).
+  const LN2_WAD = 693_147_180_559_945_309n;
+  const seedDepositWad = (bWad * LN2_WAD) / WAD;
   await sendTx(
     ctx,
     [creator],
@@ -370,7 +402,7 @@ export async function bootSmoke(
         await (coreProgram.methods as any)
           .seedLp({
             lpAmount: bigIntToBn(lpAmountBaseUnits),
-            seedDepositWad: bigIntToBn(bWad),
+            seedDepositWad: bigIntToBn(seedDepositWad),
           })
           .accounts({
             config: protocolConfigPda,
@@ -380,6 +412,9 @@ export async function bootSmoke(
             lpMintAuthority,
             creatorLpAta,
             lpPosition,
+            marketVault: vault,
+            creatorUsdcAta: creatorAta,
+            usdcMint: USDC_MINT_DEVNET,
             creator: creator.publicKey,
             tokenProgram: TOKEN_PROGRAM_ID,
             associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,

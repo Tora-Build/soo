@@ -3697,6 +3697,18 @@
           }
         },
         {
+          "name": "market_vault",
+          "writable": true
+        },
+        {
+          "name": "creator_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
+        },
+        {
           "name": "creator",
           "writable": true,
           "signer": true,
@@ -5200,6 +5212,11 @@
       "code": 6060,
       "name": "InvalidVetoPeriod",
       "msg": "veto_period_secs must be > 0 and <= MAX_VETO_PERIOD_SECS"
+    },
+    {
+      "code": 6061,
+      "name": "InsufficientSeedDeposit",
+      "msg": "seed_deposit_wad must cover the LMSR worst-case subsidy b*ln(2)"
     }
   ],
   "types": [

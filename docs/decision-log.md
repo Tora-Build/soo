@@ -320,6 +320,27 @@ The auto-match SDK incompatibility was thoroughly analyzed in conversation; the 
 - Seeds: localnet `2s` (the e2e resolves and redeems in one run and `solana-test-validator` has no clock warp), devnet `300s` (demonstrable live), mainnet `DEFAULT_VETO_PERIOD_SECS` = 24h.
 - Self-attested adjudicator level rises `J1` → `J3` for the Manual variant. Still open: the veto is held by a single `dispute_authority`, not a guardian allowlist.
 
+### D19. Fund the LMSR subsidy in `seed_lp`; add an AMM redeem path (2026-07-31)
+
+**Decision**: `seed_lp` now requires `seed_deposit_wad >= b·ln(2)` and actually transfers it from the creator into `market.vault`. A new `redeem_amm_position` instruction pays out AMM `Position` shares after settlement.
+
+**Why**: the AMM was insolvent and had no exit, and the two bugs hid each other.
+
+`trade_positions` credited `Position.yes_shares` and took the trader's USDC, but no instruction anywhere read those shares — `redeem` reads SPL outcome-token ATAs, `redeem_orderbook` reads the CLOB ledger, `claim_refund` is gated on `is_dismissed`, and `sell_positions` requires `market.is_open()`. So every winning AMM position was stranded from the moment its market locked (**B1**).
+
+Adding the redeem path made the payout fail with SPL `InsufficientFunds`. LMSR is a *subsidised* market maker: it deliberately collects less from traders than it owes winners, bounded by `b·ln(2)`, and that difference is the liquidity it provides. `seed_lp` took a `seed_deposit_wad` argument, wrote it to `LpPosition`, and transferred nothing — the only two sources of USDC into `market.vault` in the whole program were `mint_complete_set*` (1:1 backed) and `trade_positions` (the trader's own money). Nothing funded the subsidy (**B0**). Measured: buying 10 YES from a fresh `b=1000` book pays ~5.01 USDC against 10.00 owed on a win.
+
+Funding it is the intended-but-unimplemented behaviour, not a new design: `trade_positions` already graduates a market once accumulated fees reach `wad_mul(b, LN2_WAD)` — i.e. once fees have repaid exactly this subsidy. `b·ln(2)` was already the canonical number in the codebase.
+
+**Implication**:
+
+- **Market creation now costs real money**, scaled by the liquidity the creator wants: `b·ln(2)`, so ~693 USDC at `b=1000` and ~34.7 USDC at `b=50`. Permissionless creation still works; it is no longer free. `b` is already a `create_market` parameter, so creators tune cost against depth.
+- `seed_lp` gains three accounts (`market_vault`, `creator_usdc_ata`, `usdc_mint`) and a new error, `InsufficientSeedDeposit`.
+- `redeem_amm_position` deliberately does **not** close the `Position` account: `claim_unlocked` derives `LockEntry` seeds from `position.key()`, so closing it would strand a seller's outstanding locked USDC. Costs the position's rent (~0.00083 SOL); reclaiming it needs an outstanding-lock counter, cheap now that `Position` carries 32 reserved bytes.
+- Every fixture, seed script and e2e helper that calls `seed_lp` now funds a creator USDC account.
+
+**Open (B0-followup)**: there is no path for the creator to reclaim the *unspent* subsidy after settlement. LMSR's actual loss is usually well below `b·ln(2)`, and the residual belongs to the LP — but computing it requires total outstanding winning-side obligations across all three ledgers (SPL mint supply, `Position`, `OrderbookPosition`), which nothing tracks on-chain today. Deferred to the orderbook redesign, which restructures that accounting anyway. Until then a creator's subsidy is spent, not lent.
+
 ---
 
-_Last updated: 2026-07-31 (D18 splits attest from settle behind a guardian-veto window, making `dispute` reachable). 2026-05-13 (D17 records the W9 audit-prep verdict and founder-acknowledged deferred High. D13-D16 record the EVM-direct port direction, scope, position model, and per-market fee pool decisions resolved by [`docs/spec/sooth_book.md`](./spec/sooth_book.md). D7-D12 resolved P1/P3/P5/P6/P7/P8 on 2026-05-08; D7 is superseded by D13. D6 was already used for devnet program IDs.)._
+_Last updated: 2026-07-31 (D19 funds the LMSR subsidy and adds the AMM redeem path. D18 splits attest from settle behind a guardian-veto window, making `dispute` reachable). 2026-05-13 (D17 records the W9 audit-prep verdict and founder-acknowledged deferred High. D13-D16 record the EVM-direct port direction, scope, position model, and per-market fee pool decisions resolved by [`docs/spec/sooth_book.md`](./spec/sooth_book.md). D7-D12 resolved P1/P3/P5/P6/P7/P8 on 2026-05-08; D7 is superseded by D13. D6 was already used for devnet program IDs.)._

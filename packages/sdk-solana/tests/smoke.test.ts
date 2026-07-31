@@ -98,9 +98,13 @@ describe("AMM buy smoke", () => {
     expect(req.kind).toBe("trade");
     expect(req.costEstimateWad).toBe(quote.cost);
 
-    // Pre-trade vault balance — should be 0.
+    // Pre-trade vault balance is the LMSR subsidy the creator posted in
+    // seed_lp — b * ln(2), ceil'd to USDC base units. It used to be 0 because
+    // seed_lp never actually transferred anything (bug B0), which left the
+    // vault unable to pay a winning position.
     const vaultPre = await adapter.getMarketVaultUsdcRaw(marketRef);
-    expect(vaultPre).toBe(0n);
+    const SUBSIDY = 693_147_181n; // ceil(1000e18 * ln2 / 1e12)
+    expect(vaultPre).toBe(SUBSIDY);
 
     // Sign + submit. The test user signs via their Keypair; we adapt to
     // the `SolanaSigner` interface by wrapping in a closure that signs a
@@ -131,10 +135,10 @@ describe("AMM buy smoke", () => {
     const position = await adapter.readPosition(marketRef, userRef);
     expect(position.yesShares).toBe(deltaShares);
 
-    // Vault USDC balance should equal ceil(cost_wad / 1e12).
+    // Vault grows by exactly ceil(cost_wad / 1e12) on top of the subsidy.
     const expectedUsdc = wadToUsdcCeil(quote.cost);
     const vaultPost = await adapter.getMarketVaultUsdcRaw(marketRef);
-    expect(vaultPost).toBe(expectedUsdc);
+    expect(vaultPost - vaultPre).toBe(expectedUsdc);
 
     const tTotal = Date.now() - t0;
     // Useful-on-failure log: vitest swallows console.log on success.

@@ -63,33 +63,6 @@ const VETO_PERIOD_SECS = 24n * 60n * 60n;
 
 const ERR = { MarketNotSettled: 6001 } as const;
 
-/**
- * Credit the market vault directly, standing in for the LMSR subsidy deposit
- * that `seed_lp` is supposed to make and does not (bug B0 — see the last test
- * in this file, which pins the shortfall).
- *
- * Written straight into the token account rather than routed through
- * `mint_complete_set`, because minting a complete set would add matching
- * obligations and defeat the purpose of isolating the redeem path.
- */
-async function fundSubsidy(smoke: SmokeContext, amountBaseUnits: bigint) {
-  const vault = deriveMarketVaultAta(
-    smoke.marketId,
-    smoke.usdcMint,
-    smoke.programs,
-  );
-  const raw = await smoke.ctx.banksClient.getAccount(vault);
-  const data = Buffer.from(raw!.data);
-  const current = data.readBigUInt64LE(64);
-  data.writeBigUInt64LE(current + amountBaseUnits, 64);
-  smoke.ctx.setAccount(vault, {
-    executable: false,
-    owner: new PublicKey(TOKEN_PROGRAM_ID),
-    lamports: raw!.lamports,
-    data,
-  });
-}
-
 const SHARES = 10n * WAD;
 
 function accountsFor(smoke: SmokeContext, user: PublicKey) {
@@ -248,7 +221,6 @@ describe("AMM position redemption after settlement", () => {
     const conn = new LiteSvmConnection(smoke.ctx);
 
     await buy(smoke, program, user, OUTCOME_YES, SHARES);
-    await fundSubsidy(smoke, 10_000_000n); // 10 USDC of LMSR subsidy
     const pos = await (program.account as any).position.fetch(a.position);
     expect(BigInt(pos.yesShares.toString())).toBe(SHARES);
 
@@ -318,7 +290,6 @@ describe("AMM position redemption after settlement", () => {
     const conn = new LiteSvmConnection(smoke.ctx);
 
     await buy(smoke, program, user, OUTCOME_YES, SHARES);
-    await fundSubsidy(smoke, 10_000_000n);
     await settle(smoke, program, OUTCOME_YES);
 
     await sendTx(
@@ -344,43 +315,49 @@ describe("AMM position redemption after settlement", () => {
     ).rejects.toThrow(customError(ERR.MarketNotSettled));
   }, 60_000);
 
-  it("B0: the vault CANNOT cover an LMSR payout — seed_lp never funds the subsidy", async () => {
-    // The bug that the missing redeem instruction was hiding.
+  it("B0: the vault covers the payout because seed_lp posts the LMSR subsidy", async () => {
+    // This test used to assert the opposite, and passed.
     //
-    // LMSR's entire premise is a SUBSIDISED market maker: it deliberately
-    // collects less from traders than it owes winners, and that difference —
-    // bounded by b*ln(2) — is the liquidity subsidy. It has to be pre-funded.
+    // LMSR is a SUBSIDISED market maker: it deliberately collects less from
+    // traders than it owes winners, and that difference — bounded by b*ln(2) —
+    // is the liquidity it provides. It has to be posted up front. `seed_lp`
+    // took a `seed_deposit_wad` argument, wrote it to LpPosition, and
+    // transferred nothing, so a market's vault held only trader deposits and a
+    // winning position could not be paid at all: the SPL transfer aborted with
+    // InsufficientFunds (0x1).
     //
-    // `seed_lp` takes a `seed_deposit_wad` argument, writes it to LpPosition,
-    // and never transfers a single token. Grep the program for transfers INTO
-    // market.vault and there are exactly two sources: mint_complete_set*
-    // (1:1 backed) and trade_positions (the trader's own money). Nothing funds
-    // the subsidy.
-    //
-    // So the vault is structurally short. Nobody noticed because there was no
-    // instruction that could try to pay an AMM winner.
+    // Nobody had hit it because there was no AMM redeem path either (B1).
+    // Adding one surfaced this.
     const { smoke, program, user } = await boot();
     const a = accountsFor(smoke, user.publicKey);
     const conn = new LiteSvmConnection(smoke.ctx);
 
+    // The subsidy is in the vault before anyone trades.
+    const SUBSIDY = 693_147_181n; // ceil(b * ln2 / 1e12) at b = 1000
+    expect((await getAccount(conn, a.marketVault)).amount).toBe(SUBSIDY);
+
     await buy(smoke, program, user, OUTCOME_YES, SHARES);
 
     const vault = (await getAccount(conn, a.marketVault)).amount;
-    const owed = SHARES / 1_000_000_000_000n; // 10 shares -> 10 USDC if YES wins
+    const owed = SHARES / 1_000_000_000_000n; // 10 shares -> 10 USDC on a win
 
-    // ~5.01 USDC collected against 10.00 USDC owed: LMSR charges the average
-    // price along the curve, but a winning share always redeems at 1.00.
-    expect(vault).toBeLessThan(owed);
+    // The trader paid ~5.01 USDC for something that redeems at 10.00 — the
+    // ~4.99 gap is precisely what the subsidy exists to cover.
+    const collected = vault - SUBSIDY;
+    expect(collected).toBeLessThan(owed);
+    expect(vault).toBeGreaterThanOrEqual(owed);
 
     await settle(smoke, program, OUTCOME_YES);
 
-    // It does not merely come up short — the SPL transfer aborts with
-    // InsufficientFunds (0x1), so the winner gets nothing at all.
-    await expect(
-      sendTx(smoke.ctx, [user], await redeemTx(smoke, program, user.publicKey)),
-    ).rejects.toThrow(/custom program error: 0x1/);
+    const before = (await getAccount(conn, a.userUsdcAta)).amount;
+    await sendTx(
+      smoke.ctx,
+      [user],
+      await redeemTx(smoke, program, user.publicKey),
+    );
+    expect((await getAccount(conn, a.userUsdcAta)).amount - before).toBe(owed);
 
-    // Worst case is bounded and known: b * ln(2). With b = 1000 that is ~693
-    // USDC a market creator would have to post per market.
+    // The shortfall came out of the subsidy, exactly as designed.
+    expect((await getAccount(conn, a.marketVault)).amount).toBe(vault - owed);
   }, 60_000);
 });

@@ -87,7 +87,25 @@ one field.
 
 These are independent findings. Several are more urgent than the redesign.
 
-### Critical
+### Resolved (2026-07-31)
+
+**B0 — the LMSR subsidy was never funded.** `seed_lp` recorded
+`seed_deposit_wad` and transferred nothing, so the vault was structurally short
+by up to `b·ln(2)` and could not pay a winning AMM position at all. Fixed:
+`seed_lp` now requires and transfers the subsidy. See decision-log D19. Residual
+gap: no reclaim path for the *unspent* subsidy after settlement — that needs
+outstanding-obligation accounting across all three ledgers, which this redesign
+restructures anyway.
+
+**B1 — AMM winners had no exit.** Fixed by `redeem_amm_position`. **B2** ticks
+un-swapped and surplus split out of the payout. **B4** replaced with the shared
+`create_orderbook_position`. **B6** — which turned out to be a permissionless
+drain of the entire LP yield vault, not merely weak binding — bound to a single
+market and verified by mutation. **B5** was a false positive and is closed.
+
+Remaining from §3: B3, B7–B12.
+
+### Original writeup
 
 **B1 — AMM winners have no exit.** There is no instruction anywhere that reads
 `Position.yes_shares` / `Position.no_shares` and pays out. `redeem` drains SPL
@@ -413,29 +431,41 @@ generated and backed up before deploying.
 
 ---
 
-## 10. Open decisions — yours, not mine
+## 10. Decisions — settled 2026-07-31
 
-1. **Unified axis or keep two-sided?** §5.2 argues they are economically identical
-   and the unified form is much simpler. But it changes how the book is *displayed*
-   (one ladder, not two), and the demo's whole orderbook UI assumes two sides.
-   This is the biggest call in the document.
+1. **Unified price axis.** Adopted. Economically identical to the two-sided book
+   and much simpler. Crucially it **preserves excess-to-the-filler**: a NO buy at
+   0.55 is a YES sell at 0.45, so a YES buy with a 0.60 limit crossing it executes
+   at the maker's 0.45 and the taker keeps 0.15. Same number, same recipient — it
+   arrives as ordinary price improvement rather than a separate rebate
+   accumulator. The rule that delivers it is *fill at the maker's price*, which is
+   a matching-engine rule and must be stated explicitly in Phase 2. UI changes
+   (one ladder, not two) are accepted.
 
-2. **Order cap per market.** A cap bounds insert cost and the griefing surface.
-   256 orders is ~20 KB and ~$2.9 of rent at full extension. Higher costs more and
-   makes O(n) insert worse.
+2. **FIFO is preserved and tested.** §7 previously said we "lose FIFO
+   simplicity", which was misleading. We keep strict **price-time priority**; what
+   we lose is its free-ness. Today FIFO is implicit in a per-tick `Vec` (append =
+   last). In a sorted list it becomes explicit insert logic, and Phase 1 ships a
+   property test: random insert/cancel sequences must always leave the list
+   price-then-time ordered with no leaked blocks.
 
-3. **Refundable lamport deposit per order?** Manifest charges 5,000 lamports,
-   refunded on removal, to make grief-growth expensive. Recommended, but it is a UX
-   wrinkle.
+3. **Order cap: 256 per market.** ~20 KB, ~$2.9 rent at full extension.
 
-4. **Do makers pay fees?** Today escrow/sell legs pay **zero** (B11). The redesign
-   is the moment to decide deliberately. Note Polymarket's warning: because
-   split/merge is always available at 1:1, a fee that is not symmetric between
-   "sell 100 YES @ 0.99" and "buy 100 NO @ 0.01" is directly arbitrageable.
+4. **Refundable lamport deposit per order.** Adopted, Manifest-style, to price
+   the realloc-grief surface.
 
-5. **Tick granularity.** Keep 1000 (0.1%)? Polymarket tightens to 0.001 at the
-   tails because that is where prediction-market volume concentrates. Cheap to
-   change now, expensive later — it is in every displayed price.
+5. **Fees: Polymarket model.** `fee = rate × min(p, 1−p) × size`, taker-only,
+   charged on the **executed** price. Today's rule is exploitable: selling 100 YES
+   @ 0.80 and buying 100 NO @ 0.20 are the same position, and split/merge makes
+   converting between them free — but the sell leg pays **zero** (escrow legs are
+   fee-exempt, B11) while the buy leg pays 1% × $20. Everyone routes through the
+   free side. `min(p, 1−p)` is invariant under the YES↔NO swap, which is exactly
+   the transformation split/merge makes free, so both routes cost the same. It
+   also fixes charging on the taker's *limit* tick rather than the executed price.
+
+6. **Tick granularity: keep 1000.** The redesign decouples granularity from cost
+   (no bitmap, no per-tick accounts), so changing it later is nearly free — unlike
+   today, where it is baked into PDA seeds and every rendered price.
 
 ---
 

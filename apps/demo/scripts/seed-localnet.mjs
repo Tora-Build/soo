@@ -428,6 +428,40 @@ async function init() {
   await sendAndConfirmTransaction(connection, mintTx, [mintAuthority]);
   log(`minted 1000 USDC to user`);
 
+  // The creator now funds the LMSR subsidy in seed_lp (bug B0), so they need
+  // real USDC of their own. b*ln(2) at b = 1000 is ~693.15 USDC.
+  const creatorUsdcAta = getAssociatedTokenAddressSync(
+    USDC_MINT_DEVNET,
+    creator.publicKey,
+  );
+  if (!(await connection.getAccountInfo(creatorUsdcAta))) {
+    await sendAndConfirmTransaction(
+      connection,
+      new Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          creator.publicKey,
+          creatorUsdcAta,
+          creator.publicKey,
+          USDC_MINT_DEVNET,
+        ),
+      ),
+      [creator],
+    );
+  }
+  await sendAndConfirmTransaction(
+    connection,
+    new Transaction().add(
+      createMintToInstruction(
+        USDC_MINT_DEVNET,
+        creatorUsdcAta,
+        mintAuthority.publicKey,
+        10_000_000_000n, // 10,000 USDC
+      ),
+    ),
+    [mintAuthority],
+  );
+  log(`minted 10,000 USDC to creator (LMSR subsidy funding)`);
+
   const creatorTreasuryAta = getAssociatedTokenAddressSync(
     USDC_MINT_DEVNET,
     creator.publicKey,
@@ -721,7 +755,10 @@ async function init() {
     await launchpadProgram.methods
       .seedLp({
         lpAmount: new BN(lpAmountBaseUnits.toString()),
-        seedDepositWad: new BN(bWad.toString()),
+        // Exactly the LMSR worst-case subsidy the program requires: b * ln(2).
+        seedDepositWad: new BN(
+          ((bWad * 693_147_180_559_945_309n) / 1_000_000_000_000_000_000n).toString(),
+        ),
       })
       .accounts({
         config: configPda,
@@ -731,6 +768,12 @@ async function init() {
         lpMintAuthority: lpMintAuthorityPda,
         creatorLpAta,
         lpPosition: lpPositionPda,
+        // seed_lp now transfers the LMSR subsidy (b*ln 2) into the market
+        // vault — before bug B0 was fixed it recorded seed_deposit_wad and
+        // moved nothing, leaving the vault unable to pay winners.
+        marketVault: vault,
+        creatorUsdcAta,
+        usdcMint: USDC_MINT_DEVNET,
         creator: creator.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
