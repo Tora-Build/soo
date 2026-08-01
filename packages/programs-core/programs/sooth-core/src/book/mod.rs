@@ -8,5 +8,7 @@
 //! untouched until then.
 
 pub mod arena;
+pub mod settlement;
 
 pub use arena::*;
+pub use settlement::*;

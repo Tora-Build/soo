@@ -412,10 +412,50 @@ insert/remove, zero-copy. Pure Rust unit tests, no instructions. Deliverable: a
 property test that random insert/cancel sequences keep the list sorted, the free
 list consistent, and no block leaked.
 
-**Phase 2 — settlement layer.** The four-way mint/transfer/merge/burn table on a
-unified price axis, with the seat credit ledger. Golden tests against the current
-fee and dust arithmetic, which is EVM-bit-compatible and must not drift — keep
-`orderbook_common.rs`'s floor-on-sum fixtures verbatim.
+**Phase 2 — settlement layer. DONE (2026-08-01).** `src/book/settlement.rs`,
+15 tests, cargo 58 → 73.
+
+The "four-way table" turned out not to be a table. On a signed net position
+(`net > 0` long YES, `net < 0` long NO), one rule covers every mode:
+
+```
+collateral_in  = |delta| * (p if buying YES else 1 - p)
+collateral_out = closing_amount * 1.0
+```
+
+where `closing` is the part of the move that reduces existing opposite
+exposure. Mint, transfer and merge are *consequences*:
+
+| taker | maker | collateral | mode |
+|---|---|---:|---|
+| opening | opening | `+p` and `+(1−p)` = **+1.0** | MINT |
+| closing | closing | **−1.0**, less `p`/`(1−p)` back | MERGE |
+| opening | closing | **0** | TRANSFER |
+
+So the vault holds exactly 1.0 per unit of open interest by construction —
+solvency is structural, not a check that runs afterwards. Pinned by
+`the_vault_holds_exactly_one_per_unit_of_open_interest`, which walks a sequence
+of fills and re-asserts it after each.
+
+**Fees are now symmetric.** `fee = rate × min(p, 1−p) × amount`, taker-only, on
+the executed price. Today selling 100 YES @ 0.80 costs **zero** (escrow legs are
+fee-exempt) while the identical position — buying 100 NO @ 0.20 — costs 1% of
+$20, and split/merge converts between them for free, so the fee is simply
+avoidable. `min(p, 1−p)` is invariant under the YES↔NO swap, which is exactly
+what split/merge performs. It is also the amount actually at risk, so
+near-certain outcomes are cheap to trade.
+
+Floor-on-sum rounding carried over verbatim for EVM bit-parity, tested with a
+constructed case where the two rules provably disagree (`amount =
+1_999_999_999_998` at tick 500: the fee is 0 base units on its own but tips the
+sum over a boundary).
+
+Mutation-verified: charging on `p` instead of `min(p, 1−p)` fails 3 tests;
+floor-on-fee instead of floor-on-sum fails 2; releasing 0 instead of 1.0 on a
+close fails 5.
+
+Still to do in this phase: the seat credit ledger primitives, which land with
+the instructions in Phase 3 since they need account plumbing.
 
 **Phase 3 — instructions.** `place`, `cancel`, `withdraw_credit`, plus matching in
 `place`. Port the behavioural LiteSVM suite (crossing, multi-fill, self-cross,
