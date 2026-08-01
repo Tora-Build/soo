@@ -9,8 +9,10 @@
 
 pub mod account;
 pub mod arena;
+pub mod matcher;
 pub mod settlement;
 
 pub use account::*;
 pub use arena::*;
+pub use matcher::*;
 pub use settlement::*;

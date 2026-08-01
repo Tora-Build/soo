@@ -87,6 +87,61 @@
       ]
     },
     {
+      "name": "book_place",
+      "docs": [
+        "Place an order on the redesigned book. See `book_place` module docs."
+      ],
+      "discriminator": [
+        166,
+        211,
+        8,
+        100,
+        130,
+        30,
+        212,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "book",
+          "docs": [
+            "length; the market binding is checked in the handler."
+          ],
+          "writable": true
+        },
+        {
+          "name": "taker",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": "u8"
+        },
+        {
+          "name": "limit_tick",
+          "type": "u16"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "match_limit",
+          "type": "u32"
+        },
+        {
+          "name": "post_remainder",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "name": "buy",
       "discriminator": [
         102,
@@ -5217,6 +5272,16 @@
       "code": 6061,
       "name": "InsufficientSeedDeposit",
       "msg": "seed_deposit_wad must cover the LMSR worst-case subsidy b*ln(2)"
+    },
+    {
+      "code": 6062,
+      "name": "InvalidBookAccount",
+      "msg": "Book account is malformed, mis-sized or has the wrong discriminator"
+    },
+    {
+      "code": 6063,
+      "name": "MatchFailed",
+      "msg": "Order placement or matching failed"
     }
   ],
   "types": [

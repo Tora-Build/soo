@@ -144,9 +144,10 @@ pub fn init_book(data: &mut [u8], market: anchor_lang::prelude::Pubkey, bump: u8
         asks_head: super::arena::NIL,
         block_count: 0,
         order_count: 0,
+        seats_head: super::arena::NIL,
         bump,
-        _pad: [0; 3],
-        _reserved: [0; 64],
+        _pad: [0; 7],
+        _reserved: [0; 56],
     };
     Ok(())
 }

@@ -98,7 +98,40 @@ pub struct OrderNode {
     pub _pad: [u8; 4],
 }
 
+/// A trader's ledger entry, sharing the block array with orders.
+///
+/// Two node kinds in one arena is what keeps a fill free of extra accounts:
+/// crediting a maker is a write inside the book account we already hold, not a
+/// second account to name, lock and pass in. That is the whole reason a fill
+/// costs 3 accounts and 99 transaction bytes today and 0 of each here.
+///
+/// `kind` sits at the **same byte offset** as `OrderNode::flags` so a block can
+/// be identified before it is interpreted; the offsets are asserted below.
+#[zero_copy]
+#[derive(Debug)]
+pub struct SeatNode {
+    /// Withdrawable USDC base units. Fills credit this; `withdraw` drains it.
+    pub credit: u64,
+    pub trader: Pubkey,
+    /// Signed position: `> 0` long YES, `< 0` long NO.
+    pub net: i64,
+    /// Next seat, or `NIL`.
+    pub next: u32,
+    pub _pad0: [u8; 7],
+    /// Must equal [`KIND_SEAT`]. Shares an offset with `OrderNode::flags`.
+    pub kind: u8,
+    pub _pad1: [u8; 4],
+}
+
+pub const KIND_ORDER: u8 = 0;
+pub const KIND_SEAT: u8 = 1;
+
 const _: () = assert!(core::mem::size_of::<OrderNode>() == BLOCK_SIZE);
+const _: () = assert!(core::mem::size_of::<SeatNode>() == BLOCK_SIZE);
+const _: () = assert!(core::mem::align_of::<SeatNode>() <= 8);
+// `kind` and `flags` must share a byte offset, or a block cannot be identified
+// before it is interpreted and a seat could be read as an order.
+const _: () = assert!(core::mem::offset_of!(OrderNode, flags) == core::mem::offset_of!(SeatNode, kind));
 // The alignment contract with Solana's account data. If this ever exceeds 8 the
 // zero-copy cast stops being sound on-chain.
 const _: () = assert!(core::mem::align_of::<OrderNode>() <= 8);
@@ -122,9 +155,24 @@ pub struct BookHeader {
     pub block_count: u32,
     /// Live orders across both sides.
     pub order_count: u32,
+    /// Head of the seat list, or `NIL`.
+    pub seats_head: u32,
     pub bump: u8,
-    pub _pad: [u8; 3],
-    pub _reserved: [u8; 64],
+    pub _pad: [u8; 7],
+    pub _reserved: [u8; 56],
+}
+
+/// Reinterpret a block as a seat. Safe because both types are `Pod`, the same
+/// size, and equally aligned — the cast cannot fail, only be meaningless, which
+/// is what `kind` guards.
+#[inline]
+pub fn as_seat(node: &OrderNode) -> &SeatNode {
+    bytemuck::cast_ref(node)
+}
+
+#[inline]
+pub fn as_seat_mut(node: &mut OrderNode) -> &mut SeatNode {
+    bytemuck::cast_mut(node)
 }
 
 /// A book: a header plus its block array. Borrowed rather than owned so the
@@ -146,7 +194,7 @@ pub enum BookError {
 
 impl<'a> Book<'a> {
     /// Allocate a block: reuse a freed one, else extend into untouched arena.
-    fn alloc(&mut self) -> BookResult<u32> {
+    pub(crate) fn alloc_block(&mut self) -> BookResult<u32> {
         if self.header.free_head != NIL {
             let idx = self.header.free_head;
             let node = self.node(idx)?;
@@ -248,7 +296,7 @@ impl<'a> Book<'a> {
             return Err(BookError::InvalidSide);
         }
         let seq = self.header.next_seq;
-        let idx = self.alloc()?;
+        let idx = self.alloc_block()?;
         self.header.next_seq = seq.saturating_add(1);
 
         *self.node_mut(idx)? = OrderNode {
@@ -358,9 +406,10 @@ mod tests {
                     asks_head: NIL,
                     block_count: 0,
                     order_count: 0,
+                    seats_head: NIL,
                     bump: 0,
-                    _pad: [0; 3],
-                    _reserved: [0; 64],
+                    _pad: [0; 7],
+                    _reserved: [0; 56],
                 },
                 blocks: vec![OrderNode::zeroed(); capacity],
             }

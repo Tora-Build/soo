@@ -88,6 +88,7 @@ pub use instructions::*;
 pub mod sooth_core {
     use super::*;
     use crate::instructions::attest_outcome;
+    use crate::instructions::book_place;
     use crate::instructions::buy;
     use crate::instructions::cancel;
     use crate::instructions::cancel_by_id;
@@ -315,6 +316,27 @@ pub mod sooth_core {
     }
 
     // ── CLOB ──────────────────────────────────────────────────────────────────
+
+    /// Place an order on the redesigned book. See `book_place` module docs.
+    pub fn book_place(
+        ctx: Context<BookPlace>,
+        side: u8,
+        limit_tick: u16,
+        amount: u64,
+        fee_bps: u16,
+        match_limit: u32,
+        post_remainder: bool,
+    ) -> Result<()> {
+        book_place::handler(
+            ctx,
+            side,
+            limit_tick,
+            amount,
+            fee_bps,
+            match_limit,
+            post_remainder,
+        )
+    }
 
     pub fn buy<'info>(
         ctx: Context<'_, '_, '_, 'info, BuyOrder<'info>>,

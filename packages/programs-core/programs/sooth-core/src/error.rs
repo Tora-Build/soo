@@ -207,4 +207,10 @@ pub enum SoothCoreError {
 
     #[msg("seed_deposit_wad must cover the LMSR worst-case subsidy b*ln(2)")]
     InsufficientSeedDeposit,
+
+    #[msg("Book account is malformed, mis-sized or has the wrong discriminator")]
+    InvalidBookAccount,
+
+    #[msg("Order placement or matching failed")]
+    MatchFailed,
 }

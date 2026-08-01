@@ -280,19 +280,54 @@ Fixed account set for a buy becomes roughly: `taker`, `market`, `book`, `vault`,
 `fee_pool`, `taker_usdc_ata`, `config`, `token_program` — about 8, flat,
 **independent of fill count**.
 
-| | today | proposed |
-|---|---|---|
-| accounts per fill | 3 | **0** |
-| bytes per fill | 99 | **0** |
-| CU per fill | ~29,510 | **est. 5,000–10,000** |
-| fills per tx | **5** | **est. 50–150** (CU-bound) |
-| thin-book rent | $7.06 / 19 accounts | **est. $2.76 / 1 account** |
-| ALT needed? | yes, to get past 5 | **no** |
-| 256 KB heap? | mandatory | **removable** |
+| | today | proposed | **measured 2026-08-01** |
+|---|---|---|---|
+| accounts per fill | 3 | 0 | **0** ✓ |
+| bytes per fill | 99 | 0 | **0** ✓ |
+| CU per fill | ~29,510 | est. 5,000–10,000 | **~821** |
+| fills per tx | **5** | est. 50–150 | **CU-bound at ~1,700** |
+| thin-book rent | $7.06 / 19 accounts | est. $2.76 / 1 account | (unchanged) |
+| ALT needed? | yes, to get past 5 | no | **no** ✓ |
+| 256 KB heap? | mandatory | removable | (still program-wide) |
 
-The CU estimate is the least certain number here and must be measured on the
-prototype before anyone relies on it. It assumes no per-fill CPI (credits are
-memory writes) and no per-fill account load.
+Measured by `packages/sdk-solana/tests/book-cu-budget.test.ts` on the same
+LiteSVM harness as the original numbers:
+
+```
+fills │    CU    │ bytes │ writable
+    1 │     3768 │   277 │        2
+    3 │     5220 │   277 │        2
+    5 │     6702 │   277 │        2
+   10 │    10630 │   277 │        2
+   20 │    19360 │   277 │        2
+```
+
+**~821 CU marginal, ~2,947 fixed.** Transaction size, account count and
+writable count are all *flat* — 277 bytes and 2 writable accounts whether the
+taker crosses one order or twenty. Today the same span goes 778 → 1174 bytes
+and 10 → 22 writable, and dies at 6 fills.
+
+That is **36× cheaper per fill** than the current 29,510, and roughly an order
+of magnitude better than this document projected. The estimate assumed a fill
+still cost something like an account load; in practice a fill is a handful of
+pointer derefs and integer ops inside memory the instruction already holds.
+
+Caveats, so the number is not over-read:
+
+- **No token movement yet.** `book_place` computes collateral flows but does
+  not transfer. That adds a fixed ~3–4k CU **once per transaction**, not per
+  fill, so it does not change the marginal figure — which is what sets the
+  ceiling.
+- **Marginal cost drifts upward**: ~740 CU across 3→5 fills, ~873 across 10→20.
+  `seat_mut` walks the seat list linearly, and the measurement uses a *distinct
+  maker per fill*, its worst case. Indexing seats is the fix if the ceiling ever
+  needs to be real rather than comfortable.
+- **~1,700 is not a usable ceiling anyway.** `MAX_ORDERS` caps the book at 256,
+  so no single transaction can cross more than that. The honest statement is
+  that CU stops being the binding constraint entirely.
+- The measurement guards against a vacuous pass: it reads `order_count` out of
+  the account and asserts the book was actually drained, because a matcher that
+  silently no-op'd would report a flat CU curve and "pass".
 
 ### 6.4 The AMM stays as-is
 

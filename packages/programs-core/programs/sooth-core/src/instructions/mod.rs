@@ -11,6 +11,7 @@
 #![allow(ambiguous_glob_reexports)]
 
 pub mod attest_outcome;
+pub mod book_place;
 pub mod buy;
 pub mod cancel;
 pub mod cancel_by_id;
@@ -49,6 +50,7 @@ pub mod trade_positions;
 pub mod unpause;
 
 pub use attest_outcome::*;
+pub use book_place::*;
 pub use buy::*;
 pub use cancel::*;
 pub use cancel_by_id::*;
