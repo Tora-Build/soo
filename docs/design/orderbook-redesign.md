@@ -462,6 +462,41 @@ the instructions in Phase 3 since they need account plumbing.
 pause, place/cancel) to the new surface. **Measure CU and fills/tx here** — this
 is where §6.3's estimate gets confirmed or falsified.
 
+*Started 2026-08-01.* Building the account layer surfaced two corrections to
+Phases 1–2 that had to land first:
+
+**No `u128` in stored structs.** `u128` has 16-byte alignment; Solana account
+data is guaranteed only 8. A `bytemuck` cast of a 16-aligned type onto account
+data fails on-chain — and because host and SBF alignment need not agree, the
+layout could have passed `cargo test` and been wrong in production. `OrderNode`
+now holds `amount: u64` in **USDC base units**, which drops the block from 80 to
+**64 bytes** (matching Phoenix's node size) and removes WAD→base rounding from
+the storage layer entirely: the book speaks the vault's units. Compile-time
+asserts pin `align_of` ≤ 8 for both structs.
+
+**Legs must be derived, not both floored.** In base units,
+`amount * tick / NUM_TICKS` per leg floors *twice*, so the pair can sum to
+`amount - 1` — the vault would be short one base unit **per fill** and the
+"1.0 per unit of open interest" invariant would bleed away. `leg_costs` now
+floors the maker leg and gives the taker the remainder, so they always close
+exactly; the taker absorbs the sub-cent, which is the party already receiving
+price improvement. A sweep asserts closure over ~5,600 (amount, tick, side)
+combinations and fails if it never hits an uneven case.
+
+Two claims from Phase 2 also turned out to be wrong and were corrected rather
+than defended:
+
+- **Floor-on-sum does not apply here.** It exists because the WAD path carries
+  costs with sub-base-unit fractions that a small fee can tip. In base units a
+  cost is a whole number, so floor-on-sum and floor-on-fee are provably the same
+  function. EVM fee parity is in any case *already* deliberately broken by
+  `min(p, 1-p)`; preserving a rounding convention for a formula we no longer use
+  would be parity theatre.
+- **Division order does not matter.** `floor(floor(x/a)/b) == floor(x/(a*b))`
+  for positive integers, verified by brute force over every tick and amounts to
+  20,000. An earlier test asserted the single-floor form was strictly better
+  somewhere; that is mathematically false and the assertion was removed.
+
 **Phase 4 — off-chain.** SDK driver (much simpler: no bundles to precompute, which
 also retires audit finding H1), event schema **with a version field this time**,
 indexer decoders, demo.

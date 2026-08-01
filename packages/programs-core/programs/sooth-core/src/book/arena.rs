@@ -57,7 +57,7 @@ pub const NIL: u32 = u32::MAX;
 
 /// Uniform block size. Everything in the arena is exactly this, so a block can
 /// be recycled as any kind of node without fragmentation.
-pub const BLOCK_SIZE: usize = 80;
+pub const BLOCK_SIZE: usize = 64;
 
 /// Ceiling on live orders per market. Bounds both the O(n) insert walk and the
 /// realloc-grief surface; 256 blocks is ~20 KB, about $2.9 of rent fully
@@ -67,14 +67,24 @@ pub const MAX_ORDERS: u32 = 256;
 pub const SIDE_BID: u8 = 0; // buying YES
 pub const SIDE_ASK: u8 = 1; // selling YES (equivalently: buying NO)
 
-/// One order. Field order is chosen so the struct is naturally packed with no
-/// interior padding: `u128` forces 16-byte alignment, so it goes first and the
-/// tail is padded out to a multiple of 16.
+/// One order.
+///
+/// **No `u128` anywhere, deliberately.** `u128` has 16-byte alignment, and
+/// Solana account data is only guaranteed 8-byte aligned — a `bytemuck` cast of
+/// a 16-aligned type onto account data fails at runtime. Worse, the alignment
+/// is not guaranteed identical between the host (where these tests run) and
+/// SBF, so a `u128` field could give a layout that passes `cargo test` and is
+/// wrong on-chain. Phoenix's order-tree node is 64 bytes for the same reason.
+///
+/// So `amount` is a `u64` in **USDC base units** (6 decimals), where one share
+/// is 1_000_000 and redeems for 1.00 USDC. u64 holds ~1.8e13 shares, far past
+/// any market. This also removes WAD→base rounding from the storage layer
+/// entirely: the book speaks the same units as the vault.
 #[zero_copy]
 #[derive(Debug)]
 pub struct OrderNode {
-    /// Unfilled size, WAD.
-    pub amount: u128,
+    /// Unfilled size, USDC base units.
+    pub amount: u64,
     pub trader: Pubkey,
     /// Monotonic per-market sequence. Lower = earlier = higher time priority.
     pub seq: u64,
@@ -85,10 +95,14 @@ pub struct OrderNode {
     pub price_tick: u16,
     pub side: u8,
     pub flags: u8,
-    pub _pad: [u8; 12],
+    pub _pad: [u8; 4],
 }
 
 const _: () = assert!(core::mem::size_of::<OrderNode>() == BLOCK_SIZE);
+// The alignment contract with Solana's account data. If this ever exceeds 8 the
+// zero-copy cast stops being sound on-chain.
+const _: () = assert!(core::mem::align_of::<OrderNode>() <= 8);
+const _: () = assert!(core::mem::align_of::<BookHeader>() <= 8);
 
 /// Fixed prefix of the book account. The rest of the account data is a flat
 /// `[OrderNode]` addressed by index.
@@ -160,7 +174,7 @@ impl<'a> Book<'a> {
             price_tick: 0,
             side: 0,
             flags: 0,
-            _pad: [0; 12],
+            _pad: [0; 4],
         };
         self.header.free_head = idx;
         Ok(())
@@ -226,7 +240,7 @@ impl<'a> Book<'a> {
         &mut self,
         side: u8,
         price_tick: u16,
-        amount: u128,
+        amount: u64,
         trader: Pubkey,
     ) -> BookResult<u32> {
         if side != SIDE_BID && side != SIDE_ASK {
@@ -245,7 +259,7 @@ impl<'a> Book<'a> {
             price_tick,
             side,
             flags: 0,
-            _pad: [0; 12],
+            _pad: [0; 4],
         };
 
         // Walk to the first resting order this one outranks, and splice in
@@ -366,8 +380,12 @@ mod tests {
     fn block_is_exactly_one_cache_friendly_unit() {
         // The whole arena depends on blocks being uniform and self-aligning.
         assert_eq!(core::mem::size_of::<OrderNode>(), BLOCK_SIZE);
-        assert_eq!(core::mem::size_of::<OrderNode>() % 16, 0);
-        assert_eq!(core::mem::align_of::<OrderNode>(), 16);
+        assert_eq!(core::mem::size_of::<OrderNode>() % 8, 0);
+        // The load-bearing one: Solana account data is 8-byte aligned, so a
+        // block must never need more. A u128 field would silently make this 16
+        // and break the zero-copy cast on-chain while passing on the host.
+        assert_eq!(core::mem::align_of::<OrderNode>(), 8);
+        assert_eq!(core::mem::align_of::<BookHeader>(), 8);
     }
 
     #[test]
@@ -558,7 +576,7 @@ mod tests {
                 // A narrow price band on purpose: it forces frequent ties,
                 // which is exactly where time priority is tested.
                 let tick = 495 + rng.below(11) as u16;
-                match b.insert(side, tick, 1 + rng.below(1000) as u128, trader(rng.below(8) as u8)) {
+                match b.insert(side, tick, 1 + rng.below(1000), trader(rng.below(8) as u8)) {
                     Ok(idx) => live.push(idx),
                     Err(BookError::Full) => {}
                     Err(e) => panic!("unexpected insert error at step {step}: {e:?}"),
@@ -584,7 +602,7 @@ mod tests {
         // rewrite.
         let header = core::mem::size_of::<BookHeader>();
         let full = 8 + header + BLOCK_SIZE * MAX_ORDERS as usize;
-        assert_eq!(BLOCK_SIZE, 80);
+        assert_eq!(BLOCK_SIZE, 64);
         assert!(
             full < 22_000,
             "a fully-extended 256-order book should be ~20 KB, got {full}"

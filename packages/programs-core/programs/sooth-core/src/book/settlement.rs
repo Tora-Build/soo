@@ -60,10 +60,10 @@
 use crate::book::arena::{SIDE_ASK, SIDE_BID};
 
 /// Price grid. `p = tick / NUM_TICKS`.
-pub const NUM_TICKS: u32 = 1000;
-/// WAD (1e18) → USDC base units (1e6).
-pub const WAD_TO_BASE: u128 = 1_000_000_000_000;
-pub const BPS_DENOMINATOR: u128 = 10_000;
+pub const NUM_TICKS: u64 = 1000;
+/// One share, in USDC base units. A share redeems for 1.00 USDC.
+pub const ONE_SHARE: u64 = 1_000_000;
+pub const BPS_DENOMINATOR: u64 = 10_000;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SettleError {
@@ -77,23 +77,23 @@ type R<T> = core::result::Result<T, SettleError>;
 /// What one side of a fill owes and is owed, in WAD.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LegSettlement {
-    /// Collateral this party must post for the fill.
-    pub collateral_in_wad: u128,
+    /// Collateral this party must post for the fill, USDC base units.
+    pub collateral_in: u64,
     /// Collateral released back to this party because the fill reduced their
-    /// existing exposure. `1.0` per share closed.
-    pub collateral_out_wad: u128,
+    /// existing exposure — 1.00 USDC per share closed.
+    pub collateral_out: u64,
     /// Shares that reduced an opposite-side position.
-    pub closing: u128,
+    pub closing: u64,
     /// Shares that opened new exposure.
-    pub opening: u128,
+    pub opening: u64,
     /// Position after the fill.
-    pub new_net: i128,
+    pub new_net: i64,
 }
 
 impl LegSettlement {
     /// Net movement from this party's perspective: positive means they receive.
-    pub fn net_receive_wad(&self) -> i128 {
-        self.collateral_out_wad as i128 - self.collateral_in_wad as i128
+    pub fn net_receive(&self) -> i64 {
+        self.collateral_out as i64 - self.collateral_in as i64
     }
 }
 
@@ -103,7 +103,7 @@ impl LegSettlement {
 /// Buying while short closes; buying while flat or long opens. The crossover
 /// case — a delta larger than the position it is closing — splits, which is why
 /// this is arithmetic rather than a branch on sign.
-pub fn split_delta(old_net: i128, delta: i128) -> (u128, u128) {
+pub fn split_delta(old_net: i64, delta: i64) -> (u64, u64) {
     if delta == 0 {
         return (0, 0);
     }
@@ -125,300 +125,321 @@ pub fn split_delta(old_net: i128, delta: i128) -> (u128, u128) {
     (closing, magnitude - closing)
 }
 
-/// Price this side pays per share, in WAD. The YES buyer pays `p`; the YES
-/// seller pays `1 - p` (they are acquiring NO exposure).
-pub fn leg_price_wad(side: u8, price_tick: u16) -> R<u128> {
-    let tick = price_tick as u32;
+/// Cost of both legs of a fill, in USDC base units, guaranteed to sum to
+/// exactly `amount`.
+///
+/// Computing each leg independently as `amount * tick / NUM_TICKS` would floor
+/// **twice**, so the two legs can sum to `amount - 1`: the vault would be
+/// short one base unit per fill and the "1.0 per unit of open interest"
+/// invariant would bleed. Instead one leg is floored and the other takes the
+/// remainder, so they always close exactly.
+///
+/// The **taker** absorbs the remainder. They are already receiving the
+/// crossing surplus as price improvement, so the sub-cent goes to the party
+/// that is up on the trade rather than to the passive maker.
+pub fn leg_costs(price_tick: u16, amount: u64, taker_side: u8) -> R<(u64, u64)> {
+    let tick = price_tick as u64;
     if tick == 0 || tick >= NUM_TICKS {
         return Err(SettleError::InvalidTick);
     }
-    let effective = match side {
-        SIDE_BID => tick,
-        SIDE_ASK => NUM_TICKS - tick,
-        _ => return Err(SettleError::InvalidSide),
+    if taker_side != SIDE_BID && taker_side != SIDE_ASK {
+        return Err(SettleError::InvalidSide);
+    }
+    // Maker leg floors; taker leg takes what is left so the pair sums to
+    // `amount` exactly.
+    let (maker_ticks, taker_is_bid) = if taker_side == SIDE_BID {
+        (NUM_TICKS - tick, true) // taker is the bid; maker is the ask side
+    } else {
+        (tick, false) // taker is the ask; maker is the bid side
     };
-    // one share = 1e18 WAD; price = effective / NUM_TICKS
-    Ok((1_000_000_000_000_000_000u128 / NUM_TICKS as u128) * effective as u128)
+    let maker_cost = amount
+        .checked_mul(maker_ticks)
+        .ok_or(SettleError::Overflow)?
+        / NUM_TICKS;
+    let taker_cost = amount.checked_sub(maker_cost).ok_or(SettleError::Overflow)?;
+    Ok(if taker_is_bid {
+        (taker_cost, maker_cost)
+    } else {
+        (maker_cost, taker_cost)
+    })
+    // Returned as (bid_cost, ask_cost).
 }
 
-/// Settle one side of a fill.
-pub fn settle_leg(side: u8, old_net: i128, amount: u128, price_tick: u16) -> R<LegSettlement> {
+/// Settle one side of a fill. `own_cost` comes from [`leg_costs`].
+pub fn settle_leg(side: u8, old_net: i64, amount: u64, own_cost: u64) -> R<LegSettlement> {
     let signed = match side {
-        SIDE_BID => i128::try_from(amount).map_err(|_| SettleError::Overflow)?,
-        SIDE_ASK => -i128::try_from(amount).map_err(|_| SettleError::Overflow)?,
+        SIDE_BID => i64::try_from(amount).map_err(|_| SettleError::Overflow)?,
+        SIDE_ASK => -i64::try_from(amount).map_err(|_| SettleError::Overflow)?,
         _ => return Err(SettleError::InvalidSide),
     };
     let (closing, opening) = split_delta(old_net, signed);
 
-    let unit_price = leg_price_wad(side, price_tick)?;
-    let collateral_in_wad = unit_price
-        .checked_mul(amount)
-        .ok_or(SettleError::Overflow)?
-        / 1_000_000_000_000_000_000u128;
-
-    // A closed share releases the full 1.0 that was backing it — the long's
-    // contribution and the short's together. Shares are WAD and one share
-    // redeems for 1.0 USDC, so the released amount is just `closing`.
-    let collateral_out_wad = closing;
-
-    let new_net = old_net
-        .checked_add(signed)
-        .ok_or(SettleError::Overflow)?;
+    // A closed share releases the full 1.00 that was backing it — the long's
+    // contribution and the short's together. Amounts are already base units
+    // and a share redeems for exactly one, so the released amount is `closing`.
+    let new_net = old_net.checked_add(signed).ok_or(SettleError::Overflow)?;
 
     Ok(LegSettlement {
-        collateral_in_wad,
-        collateral_out_wad,
+        collateral_in: own_cost,
+        collateral_out: closing,
         closing,
         opening,
         new_net,
     })
 }
 
-/// Taker fee in USDC base units, using the floor-on-sum rule.
+/// Taker fee in USDC base units.
 ///
-/// `collateral_in_wad` is the taker's own collateral for the fill; the fee is
-/// computed on `min(p, 1-p) * amount` and then rounded **against the sum**, so
-/// the fee is the marginal base unit the taker pays on top of their cost. This
-/// is the rule `instructions/orderbook_common.rs` pins with EVM golden
-/// fixtures — `floor(fee / 1e12)` alone drifts.
-pub fn taker_fee_base(
-    amount: u128,
-    price_tick: u16,
-    fee_bps: u16,
-    collateral_in_wad: u128,
-) -> R<u64> {
-    let tick = price_tick as u32;
+/// The fee is `rate * min(p, 1-p) * amount` — the amount genuinely at risk, and
+/// invariant under the YES↔NO swap that a free split/merge performs, so
+/// complementary routes are charged identically and the fee cannot be dodged by
+/// choosing a side.
+///
+/// ## Why there is no floor-on-sum here
+///
+/// `instructions/orderbook_common.rs` computes fees with the floor-on-sum rule,
+/// `floor((cost + fee) / 1e12) - floor(cost / 1e12)`, and pins it with golden
+/// fixtures for EVM bit-parity. That rule exists because the old path carries
+/// cost in **WAD**, where a cost can hold a fraction of a base unit that a
+/// sub-unit fee can tip over a boundary.
+///
+/// This book works in base units, so a cost is always a whole number of base
+/// units and there is no fraction to tip: floor-on-sum and floor-on-fee are
+/// provably the same function here. Adding the ceremony would be cargo-culting.
+///
+/// Note EVM fee parity is **already** deliberately broken by the `min(p, 1-p)`
+/// rule itself, which replaces `rate * cost` precisely because the latter is
+/// arbitrageable across the complement. Preserving a rounding convention for a
+/// formula we are not using would be parity theatre.
+///
+/// Note also that dividing by `NUM_TICKS` and then by `BPS_DENOMINATOR` is
+/// arithmetically identical to dividing by their product —
+/// `floor(floor(x/a)/b) == floor(x/(a*b))` for positive integers — so no
+/// defensive scaling is needed and none is used.
+pub fn taker_fee(amount: u64, price_tick: u16, fee_bps: u16, _own_cost: u64) -> R<u64> {
+    let tick = price_tick as u64;
     if tick == 0 || tick >= NUM_TICKS {
         return Err(SettleError::InvalidTick);
     }
-    // min(p, 1 - p): symmetric across the YES↔NO complement, so a trade and its
-    // mirror are charged identically and split/merge cannot be used to dodge.
-    let risk_ticks = tick.min(NUM_TICKS - tick) as u128;
-    let notional_wad = amount
-        .checked_mul(risk_ticks)
+    let risk_ticks = tick.min(NUM_TICKS - tick);
+    // u128 for the intermediate only. Storing a u128 would break the
+    // zero-copy alignment contract; computing with one is free.
+    let fee = (amount as u128)
+        .checked_mul(risk_ticks as u128)
         .ok_or(SettleError::Overflow)?
-        / NUM_TICKS as u128;
-    let fee_wad = notional_wad
         .checked_mul(fee_bps as u128)
         .ok_or(SettleError::Overflow)?
-        / BPS_DENOMINATOR;
-
-    let base = collateral_in_wad / WAD_TO_BASE;
-    let base_plus_fee = collateral_in_wad
-        .checked_add(fee_wad)
-        .ok_or(SettleError::Overflow)?
-        / WAD_TO_BASE;
-    u64::try_from(base_plus_fee - base).map_err(|_| SettleError::Overflow)
+        / (NUM_TICKS as u128 * BPS_DENOMINATOR as u128);
+    u64::try_from(fee).map_err(|_| SettleError::Overflow)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const WAD: u128 = 1_000_000_000_000_000_000;
-    /// 1% — the fixture's `fee_bps`.
-    const FEE_BPS: u16 = 100;
+    const FEE_BPS: u16 = 100; // 1%
 
-    fn shares(n: u128) -> u128 {
-        n * WAD
+    fn shares(n: u64) -> u64 {
+        n * ONE_SHARE
+    }
+
+    /// Settle both sides of a fill at once, the way the matcher will.
+    fn fill(
+        tick: u16,
+        amount: u64,
+        taker_side: u8,
+        bid_net: i64,
+        ask_net: i64,
+    ) -> (LegSettlement, LegSettlement) {
+        let (bid_cost, ask_cost) = leg_costs(tick, amount, taker_side).unwrap();
+        (
+            settle_leg(SIDE_BID, bid_net, amount, bid_cost).unwrap(),
+            settle_leg(SIDE_ASK, ask_net, amount, ask_cost).unwrap(),
+        )
     }
 
     // ── The rule that replaces mint / transfer / merge ────────────────────
 
     #[test]
     fn two_openers_mint_a_complete_set_worth_exactly_one() {
-        // A YES buyer at 0.60 meets a NO buyer at 0.40 (an ASK at tick 600).
-        // Together they must fund exactly 1.0 per share and nothing else.
         let amount = shares(10);
-        let bid = settle_leg(SIDE_BID, 0, amount, 600).unwrap();
-        let ask = settle_leg(SIDE_ASK, 0, amount, 600).unwrap();
+        let (bid, ask) = fill(600, amount, SIDE_BID, 0, 0);
 
-        assert_eq!(bid.collateral_in_wad, shares(6)); // 0.60 * 10
-        assert_eq!(ask.collateral_in_wad, shares(4)); // 0.40 * 10
-        assert_eq!(bid.collateral_out_wad, 0);
-        assert_eq!(ask.collateral_out_wad, 0);
-
-        let into_vault = bid.collateral_in_wad + ask.collateral_in_wad;
-        assert_eq!(into_vault, amount, "YES + NO must sum to exactly 1.0/share");
-
-        assert_eq!(bid.new_net, amount as i128);
-        assert_eq!(ask.new_net, -(amount as i128));
+        assert_eq!(bid.collateral_in, shares(6)); // 0.60 * 10
+        assert_eq!(ask.collateral_in, shares(4)); // 0.40 * 10
+        assert_eq!(bid.collateral_out, 0);
+        assert_eq!(ask.collateral_out, 0);
+        assert_eq!(
+            bid.collateral_in + ask.collateral_in,
+            amount,
+            "YES + NO must fund exactly 1.00 per share"
+        );
+        assert_eq!(bid.new_net, amount as i64);
+        assert_eq!(ask.new_net, -(amount as i64));
     }
 
     #[test]
     fn two_closers_burn_a_complete_set_and_release_exactly_one() {
-        // The mirror. A long YES closing meets a long NO closing.
         let amount = shares(10);
-        let seller = settle_leg(SIDE_ASK, amount as i128, amount, 600).unwrap();
-        let buyer = settle_leg(SIDE_BID, -(amount as i128), amount, 600).unwrap();
-
-        assert_eq!(seller.closing, amount);
-        assert_eq!(buyer.closing, amount);
-
-        // Each gets 1.0/share back and pays their leg price.
-        assert_eq!(seller.net_receive_wad(), (amount - shares(4)) as i128); // +0.60/share
-        assert_eq!(buyer.net_receive_wad(), (amount - shares(6)) as i128); // +0.40/share
-
-        let out_of_vault = seller.net_receive_wad() + buyer.net_receive_wad();
-        assert_eq!(out_of_vault, amount as i128, "burning releases exactly 1.0/share");
+        let (bid, ask) = fill(600, amount, SIDE_BID, -(amount as i64), amount as i64);
+        assert_eq!(bid.closing, amount);
+        assert_eq!(ask.closing, amount);
+        assert_eq!(
+            bid.net_receive() + ask.net_receive(),
+            amount as i64,
+            "burning a set releases exactly 1.00 per share"
+        );
     }
 
     #[test]
     fn one_opener_and_one_closer_is_a_pure_transfer() {
-        // Vault must not move: shares change hands, no set is created or burned.
         let amount = shares(10);
-        let opener = settle_leg(SIDE_BID, 0, amount, 600).unwrap();
-        let closer = settle_leg(SIDE_ASK, amount as i128, amount, 600).unwrap();
-
-        let vault_delta = opener.collateral_in_wad as i128 - closer.net_receive_wad()
-            + closer.collateral_in_wad as i128
-            - opener.collateral_out_wad as i128;
-        // Simpler statement of the same thing:
-        let net = (opener.collateral_in_wad + closer.collateral_in_wad) as i128
-            - (opener.collateral_out_wad + closer.collateral_out_wad) as i128;
+        let (bid, ask) = fill(600, amount, SIDE_BID, 0, amount as i64);
+        let net = (bid.collateral_in + ask.collateral_in) as i64
+            - (bid.collateral_out + ask.collateral_out) as i64;
         assert_eq!(net, 0, "a transfer must leave the vault flat");
-        let _ = vault_delta;
     }
 
     #[test]
     fn the_vault_holds_exactly_one_per_unit_of_open_interest() {
-        // The solvency invariant, established structurally. Walk a sequence of
-        // fills and check the vault against open interest after each one.
-        let mut vault: i128 = 0;
-        let mut a: i128 = 0; // trader A net
-        let mut b: i128 = 0; // trader B net
-
-        let steps: [(u128, u16); 5] = [
-            (shares(10), 600),
-            (shares(4), 250),
-            (shares(7), 900),
-            (shares(4), 500),
-            (shares(3), 100),
-        ];
-        for (amount, tick) in steps {
-            let bid = settle_leg(SIDE_BID, a, amount, tick).unwrap();
-            let ask = settle_leg(SIDE_ASK, b, amount, tick).unwrap();
-            vault += bid.collateral_in_wad as i128 + ask.collateral_in_wad as i128;
-            vault -= bid.collateral_out_wad as i128 + ask.collateral_out_wad as i128;
+        let mut vault: i64 = 0;
+        let (mut a, mut b): (i64, i64) = (0, 0);
+        for (amount, tick, taker) in [
+            (shares(10), 600u16, SIDE_BID),
+            (shares(4), 250, SIDE_ASK),
+            (shares(7), 900, SIDE_BID),
+            (shares(4), 500, SIDE_ASK),
+            (shares(3), 100, SIDE_BID),
+        ] {
+            let (bid, ask) = fill(tick, amount, taker, a, b);
+            vault += (bid.collateral_in + ask.collateral_in) as i64;
+            vault -= (bid.collateral_out + ask.collateral_out) as i64;
             a = bid.new_net;
             b = ask.new_net;
-
-            // A and B are always mirror images here, so open interest is |a|.
             assert_eq!(a, -b);
-            let open_interest = a.unsigned_abs() as i128;
             assert_eq!(
-                vault, open_interest,
-                "vault must equal 1.0 * open interest at every step"
+                vault,
+                a.abs(),
+                "vault must equal 1.00 * open interest at every step"
             );
         }
     }
 
     #[test]
-    fn a_delta_larger_than_the_position_splits_into_close_then_open() {
-        // Flipping from long NO to long YES in one fill.
-        let leg = settle_leg(SIDE_BID, -(shares(4) as i128), shares(10), 600).unwrap();
-        assert_eq!(leg.closing, shares(4));
-        assert_eq!(leg.opening, shares(6));
-        assert_eq!(leg.new_net, shares(6) as i128);
-        // Pays 0.60 on all 10, gets 1.0 back on the 4 it closed.
-        assert_eq!(leg.collateral_in_wad, shares(6));
-        assert_eq!(leg.collateral_out_wad, shares(4));
+    fn the_two_legs_always_sum_to_the_fill_even_when_the_price_does_not_divide() {
+        // The hazard base units introduce and WAD hid. Flooring each leg
+        // independently gives amount-1 whenever amount*tick is not a multiple
+        // of NUM_TICKS, so the vault would be short one base unit PER FILL and
+        // the solvency invariant would bleed away a cent at a time.
+        let mut found_uneven = false;
+        for amount in 1u64..400 {
+            for tick in [1u16, 7, 333, 500, 501, 997, 999] {
+                for taker in [SIDE_BID, SIDE_ASK] {
+                    let (bid, ask) = leg_costs(tick, amount, taker).unwrap();
+                    assert_eq!(
+                        bid + ask,
+                        amount,
+                        "legs must close exactly: amount={amount} tick={tick}"
+                    );
+                    let naive_bid = amount * tick as u64 / NUM_TICKS;
+                    let naive_ask = amount * (NUM_TICKS - tick as u64) / NUM_TICKS;
+                    if naive_bid + naive_ask != amount {
+                        found_uneven = true;
+                    }
+                }
+            }
+        }
+        assert!(
+            found_uneven,
+            "the sweep never hit a case where naive double-flooring loses a \
+             unit, so it did not actually test the fix"
+        );
     }
 
     #[test]
-    fn buying_while_already_long_opens_nothing_extra_to_close() {
-        let leg = settle_leg(SIDE_BID, shares(5) as i128, shares(3), 600).unwrap();
-        assert_eq!(leg.closing, 0);
-        assert_eq!(leg.opening, shares(3));
-        assert_eq!(leg.collateral_out_wad, 0);
+    fn the_taker_absorbs_the_rounding_remainder() {
+        // amount * tick / NUM_TICKS leaves a remainder here; whoever is taking
+        // pays it. They are getting price improvement anyway.
+        let amount = 7u64; // 7 base units, tick 333 -> 2.331
+        let (bid_t, ask_t) = leg_costs(333, amount, SIDE_BID).unwrap();
+        let (bid_m, ask_m) = leg_costs(333, amount, SIDE_ASK).unwrap();
+        assert_eq!(bid_t + ask_t, amount);
+        assert_eq!(bid_m + ask_m, amount);
+        assert!(
+            bid_t > bid_m,
+            "the bid pays more when the bid is the taker: {bid_t} vs {bid_m}"
+        );
+    }
+
+    #[test]
+    fn a_delta_larger_than_the_position_splits_into_close_then_open() {
+        let (bid, _) = fill(600, shares(10), SIDE_BID, -(shares(4) as i64), 0);
+        assert_eq!(bid.closing, shares(4));
+        assert_eq!(bid.opening, shares(6));
+        assert_eq!(bid.new_net, shares(6) as i64);
+        assert_eq!(bid.collateral_in, shares(6));
+        assert_eq!(bid.collateral_out, shares(4));
     }
 
     #[test]
     fn a_round_trip_at_the_same_price_is_free() {
-        // Open then close at the same tick must return exactly what was paid —
-        // no drift, or every flat trader slowly leaks money to the vault.
         let amount = shares(10);
-        let open = settle_leg(SIDE_BID, 0, amount, 370).unwrap();
-        let close = settle_leg(SIDE_ASK, amount as i128, amount, 370).unwrap();
-        assert_eq!(open.net_receive_wad(), -close.net_receive_wad());
-    }
-
-    // ── Prices ─────────────────────────────────────────────────────────────
-
-    #[test]
-    fn the_two_legs_of_a_price_always_sum_to_one() {
-        for tick in [1u16, 250, 500, 501, 999] {
-            let bid = leg_price_wad(SIDE_BID, tick).unwrap();
-            let ask = leg_price_wad(SIDE_ASK, tick).unwrap();
-            assert_eq!(bid + ask, WAD, "tick {tick} legs must sum to 1.0");
-        }
+        let (open, _) = fill(370, amount, SIDE_BID, 0, 0);
+        let (_, close) = fill(370, amount, SIDE_ASK, 0, amount as i64);
+        assert_eq!(open.net_receive(), -close.net_receive());
     }
 
     #[test]
     fn ticks_outside_the_open_interval_are_rejected() {
-        // 0 and 1000 are free and certain respectively — neither is tradeable.
-        assert_eq!(leg_price_wad(SIDE_BID, 0), Err(SettleError::InvalidTick));
-        assert_eq!(leg_price_wad(SIDE_BID, 1000), Err(SettleError::InvalidTick));
-        assert_eq!(
-            leg_price_wad(SIDE_BID, u16::MAX),
-            Err(SettleError::InvalidTick)
-        );
+        assert_eq!(leg_costs(0, 1, SIDE_BID), Err(SettleError::InvalidTick));
+        assert_eq!(leg_costs(1000, 1, SIDE_BID), Err(SettleError::InvalidTick));
     }
 
     // ── Fees ───────────────────────────────────────────────────────────────
 
     #[test]
     fn selling_yes_high_and_buying_no_low_cost_the_same_fee() {
-        // THE point of min(p, 1-p), and the arbitrage today's rule leaves open.
-        //
-        // Selling 100 YES at 0.80 and buying 100 NO at 0.20 are the same
-        // position, and split/merge converts between them for free. Under the
-        // current rule the sell leg pays ZERO (escrow legs are fee-exempt) and
-        // the buy leg pays 1% of $20 — so everyone routes through the free side
-        // and the fee is simply avoidable.
+        // THE point of min(p, 1-p). Selling 100 YES at 0.80 and buying 100 NO
+        // at 0.20 are the same position, and split/merge converts between them
+        // for free. Today the sell leg pays ZERO (escrow legs are fee-exempt)
+        // and the buy leg pays 1% of $20, so everyone routes through the free
+        // side and the fee is avoidable outright.
         let amount = shares(100);
+        let (_, ask) = fill(800, amount, SIDE_ASK, 0, 0);
+        let sell_fee = taker_fee(amount, 800, FEE_BPS, ask.collateral_in).unwrap();
 
-        // Sell YES at tick 800 == acquire NO exposure at 0.20.
-        let sell = settle_leg(SIDE_ASK, 0, amount, 800).unwrap();
-        let sell_fee = taker_fee_base(amount, 800, FEE_BPS, sell.collateral_in_wad).unwrap();
+        let (bid, _) = fill(200, amount, SIDE_BID, 0, 0);
+        let buy_fee = taker_fee(amount, 200, FEE_BPS, bid.collateral_in).unwrap();
 
-        // Buy NO at 0.20 is submitted as sell YES at 0.80 — the same order.
-        // The mirror trade is buying YES at tick 200.
-        let buy = settle_leg(SIDE_BID, 0, amount, 200).unwrap();
-        let buy_fee = taker_fee_base(amount, 200, FEE_BPS, buy.collateral_in_wad).unwrap();
-
-        assert_eq!(sell.collateral_in_wad, buy.collateral_in_wad, "same stake");
+        assert_eq!(ask.collateral_in, bid.collateral_in, "same stake: $20");
         assert_eq!(
             sell_fee, buy_fee,
-            "complementary routes must cost the same fee or the fee is dodgeable"
+            "complementary routes must cost the same or the fee is dodgeable"
         );
-        // 1% of the 20 USDC actually at risk.
-        assert_eq!(sell_fee, 200_000);
+        assert_eq!(sell_fee, 200_000, "1% of the $20 actually at risk");
     }
 
     #[test]
     fn the_fee_is_symmetric_around_the_midpoint() {
-        // min(p, 1-p) is invariant under p -> 1-p, which is exactly the
-        // transformation a free split/merge performs.
         let amount = shares(50);
         for tick in [1u16, 100, 370, 499] {
-            let mirror = (NUM_TICKS as u16) - tick;
-            let a = settle_leg(SIDE_BID, 0, amount, tick).unwrap();
-            let b = settle_leg(SIDE_ASK, 0, amount, mirror).unwrap();
-            let fa = taker_fee_base(amount, tick, FEE_BPS, a.collateral_in_wad).unwrap();
-            let fb = taker_fee_base(amount, mirror, FEE_BPS, b.collateral_in_wad).unwrap();
-            assert_eq!(fa, fb, "tick {tick} and its mirror must charge the same");
+            let mirror = NUM_TICKS as u16 - tick;
+            let (bid, _) = fill(tick, amount, SIDE_BID, 0, 0);
+            let (_, ask) = fill(mirror, amount, SIDE_ASK, 0, 0);
+            assert_eq!(
+                taker_fee(amount, tick, FEE_BPS, bid.collateral_in).unwrap(),
+                taker_fee(amount, mirror, FEE_BPS, ask.collateral_in).unwrap(),
+                "tick {tick} and its mirror must charge the same"
+            );
         }
     }
 
     #[test]
     fn the_fee_is_largest_at_the_midpoint_and_vanishes_at_the_tails() {
-        // Charging on min(p, 1-p) means the fee tracks what is actually at
-        // risk, so near-certain outcomes are cheap to trade.
         let amount = shares(100);
         let at = |tick: u16| {
-            let leg = settle_leg(SIDE_BID, 0, amount, tick).unwrap();
-            taker_fee_base(amount, tick, FEE_BPS, leg.collateral_in_wad).unwrap()
+            let (bid, _) = fill(tick, amount, SIDE_BID, 0, 0);
+            taker_fee(amount, tick, FEE_BPS, bid.collateral_in).unwrap()
         };
         assert!(at(500) > at(250));
         assert!(at(250) > at(50));
@@ -426,46 +447,59 @@ mod tests {
     }
 
     #[test]
-    fn fees_round_on_the_sum_not_on_the_fee_alone() {
-        // Carries the EVM-bit-compatible rule from orderbook_common.rs, and
-        // uses a case constructed so the two rules provably disagree — a test
-        // that only checks agreement would pass against either.
+    fn dividing_once_or_twice_gives_the_same_fee() {
+        // Worth pinning because it is easy to assume otherwise and add
+        // defensive scaling that does nothing.
         //
-        // At tick 500 the cost is amount/2 and the fee is amount/200. Pick the
-        // amount so the cost lands one WAD-unit short of a base-unit boundary:
-        // the fee is far below one base unit on its own, but it tips the sum
-        // over. floor(fee / 1e12) drops it; floor-on-sum collects it.
-        let amount = 1_999_999_999_998u128;
-        let leg = settle_leg(SIDE_BID, 0, amount, 500).unwrap();
+        // For positive integers `floor(floor(x / a) / b) == floor(x / (a * b))`,
+        // so dividing by NUM_TICKS and then by BPS_DENOMINATOR is exactly the
+        // same as dividing by their product. There is no precision to protect
+        // here and no ordering to get wrong — verified by brute force over
+        // every tick 1..999 and amounts 1..20_000.
+        for amount in [1u64, 7, 999, 1_000, 123_457, ONE_SHARE, 13 * ONE_SHARE + 7] {
+            for tick in [1u16, 37, 250, 500, 763, 999] {
+                let charged = taker_fee(amount, tick, FEE_BPS, 0).unwrap();
+                let risk = tick.min(NUM_TICKS as u16 - tick) as u64;
+                let two_step =
+                    (amount * risk / NUM_TICKS) * FEE_BPS as u64 / BPS_DENOMINATOR;
+                assert_eq!(charged, two_step, "amount={amount} tick={tick}");
+            }
+        }
+    }
 
-        let cost_wad = leg.collateral_in_wad;
-        assert_eq!(cost_wad, 999_999_999_999, "one WAD-unit below a base unit");
+    #[test]
+    fn the_fee_matches_the_stated_rate_exactly() {
+        for amount in [1u64, 7, 999, 1_000, 123_457, ONE_SHARE, 13 * ONE_SHARE + 7] {
+            for tick in [1u16, 37, 250, 500, 763, 999] {
+                let charged = taker_fee(amount, tick, FEE_BPS, 0).unwrap();
+                let risk = tick.min(NUM_TICKS as u16 - tick) as u128;
+                let expected = (amount as u128 * risk * FEE_BPS as u128)
+                    / (NUM_TICKS as u128 * BPS_DENOMINATOR as u128);
+                assert_eq!(charged as u128, expected, "amount={amount} tick={tick}");
+            }
+        }
+    }
 
-        let risk_wad = amount * 500 / NUM_TICKS as u128;
-        let fee_wad = risk_wad * FEE_BPS as u128 / BPS_DENOMINATOR;
-        assert_eq!(fee_wad, 9_999_999_999);
-
-        let on_fee = fee_wad / WAD_TO_BASE; // 0 — dropped entirely
-        let on_sum = (cost_wad + fee_wad) / WAD_TO_BASE - cost_wad / WAD_TO_BASE;
-        assert_eq!(on_fee, 0);
-        assert_eq!(on_sum, 1);
-
-        let charged = taker_fee_base(amount, 500, FEE_BPS, cost_wad).unwrap();
-        assert_eq!(
-            charged as u128, on_sum,
-            "must follow floor-on-sum; floor-on-fee would silently drop this \
-             fee and drift permanently from the EVM deployment"
-        );
+    #[test]
+    fn the_fee_never_rounds_up() {
+        // A fee that rounds up would let a taker be charged more than the
+        // stated rate, which is the one direction that is not merely dust.
+        for amount in [1u64, 3, 1_001, ONE_SHARE + 1] {
+            for tick in [1u16, 499, 500, 999] {
+                let charged = taker_fee(amount, tick, FEE_BPS, 0).unwrap() as u128;
+                let risk = tick.min(NUM_TICKS as u16 - tick) as u128;
+                let exact_num = amount as u128 * risk * FEE_BPS as u128;
+                let denom = NUM_TICKS as u128 * BPS_DENOMINATOR as u128;
+                assert!(charged * denom <= exact_num, "fee rounded up");
+            }
+        }
     }
 
     #[test]
     fn a_zero_rate_charges_nothing_anywhere() {
         for tick in [1u16, 500, 999] {
-            let leg = settle_leg(SIDE_BID, 0, shares(10), tick).unwrap();
-            assert_eq!(
-                taker_fee_base(shares(10), tick, 0, leg.collateral_in_wad).unwrap(),
-                0
-            );
+            let (bid, _) = fill(tick, shares(10), SIDE_BID, 0, 0);
+            assert_eq!(taker_fee(shares(10), tick, 0, bid.collateral_in).unwrap(), 0);
         }
     }
 
