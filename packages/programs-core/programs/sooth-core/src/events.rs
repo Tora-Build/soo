@@ -322,3 +322,76 @@ pub struct ProtocolPausedEvent {
     pub paused: bool,
     pub ts: i64,
 }
+
+// ── Redesigned orderbook events ──────────────────────────────────────────
+//
+// Every one carries a `version` as its FIRST field. The existing book's events
+// have none, and the consequences are live: `sooth-data`'s decoder throws on
+// trailing bytes, so adding a single field to `FillRecord` takes down
+// `GET /v12/fills` with a 500 — while a *renamed* event returns an empty list
+// with HTTP 200, which is silent data loss. A version byte lets a consumer
+// branch instead of guess.
+//
+// These are emitted with `emit_cpi!` rather than `emit!`, so the payload lands
+// in an inner instruction rather than a program log. Program logs are truncated
+// and not reliably retrievable from every RPC; an inner instruction is real
+// transaction data. That is exactly what `sooth_log` was built to provide —
+// see `book_place` for why it is no longer needed.
+
+/// Bump when any book event's layout changes. Consumers should reject a
+/// version they do not know rather than mis-parse it.
+pub const BOOK_EVENT_VERSION: u8 = 1;
+
+#[event]
+pub struct BookOrderPlaced {
+    pub version: u8,
+    pub market: Pubkey,
+    /// Monotonic per-market sequence — the id `book_cancel` takes.
+    pub seq: u64,
+    pub trader: Pubkey,
+    /// 0 = bid (buy YES), 1 = ask (sell YES, i.e. buy NO at 1 - p).
+    pub side: u8,
+    pub price_tick: u16,
+    /// Resting size in USDC base units.
+    pub amount: u64,
+    pub ts: i64,
+}
+
+#[event]
+pub struct BookOrderCancelled {
+    pub version: u8,
+    pub market: Pubkey,
+    pub seq: u64,
+    pub trader: Pubkey,
+    /// Escrow returned to the owner's seat credit.
+    pub refund: u64,
+    pub ts: i64,
+}
+
+/// One fill inside a [`BookFilled`] batch.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct BookFill {
+    pub maker: Pubkey,
+    pub maker_seq: u64,
+    /// Execution price — the MAKER's tick, not the taker's limit. The
+    /// difference is the taker's price improvement.
+    pub price_tick: u16,
+    pub amount: u64,
+}
+
+/// All fills from one `book_place`, batched into a single event.
+///
+/// Batched rather than emitted per fill because a 20-fill cross would otherwise
+/// produce 20 inner instructions, and the per-event overhead would show up in
+/// exactly the marginal cost this redesign exists to shrink.
+#[event]
+pub struct BookFilled {
+    pub version: u8,
+    pub market: Pubkey,
+    pub taker: Pubkey,
+    pub taker_side: u8,
+    pub fills: Vec<BookFill>,
+    /// Total protocol fee paid by the taker, USDC base units.
+    pub fee: u64,
+    pub ts: i64,
+}

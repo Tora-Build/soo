@@ -55,6 +55,18 @@ const key = (pubkey: PublicKey, isWritable: boolean, isSigner = false) => ({
   isWritable,
 });
 
+/** Anchor `#[event_cpi]` tail: authority PDA + the program itself. */
+const eventCpiKeys = () => [
+  key(
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("__event_authority")],
+      SOOTH_CORE_ID,
+    )[0],
+    false,
+  ),
+  key(SOOTH_CORE_ID, false),
+];
+
 export function bookInitIx(smoke: SmokeContext, payer: PublicKey, capacity: number) {
   const d = Buffer.alloc(10);
   DISC.init.copy(d, 0);
@@ -122,6 +134,7 @@ export function bookPlaceIx(
       key(deriveProtocolConfigPda(programs)[0], false),
       key(taker, false, true),
       key(TOKEN_PROGRAM_ID, false),
+      ...eventCpiKeys(),
     ],
     data: d,
   });
@@ -137,6 +150,7 @@ export function bookCancelIx(smoke: SmokeContext, owner: PublicKey, seq: bigint)
       key(bookPda(smoke.marketId), true),
       key(smoke.marketPda, false),
       key(owner, false, true),
+      ...eventCpiKeys(),
     ],
     data: d,
   });
@@ -165,6 +179,10 @@ export interface Sent {
   writable: number;
   accounts: number;
   logs: string[];
+  /** Raw transaction meta — inner instructions live here. */
+  meta: any;
+  /** Compiled account keys, for resolving `programIdIndex`. */
+  accountKeys: PublicKey[];
 }
 
 export async function sendBookTx(
@@ -191,12 +209,15 @@ export async function sendBookTx(
     throw new Error(`${res.result}\n${logs}`);
   }
   smoke.ctx.expireBlockhash?.();
+  const msg = tx.compileMessage();
   return {
     cu: Number(res.meta?.computeUnitsConsumed ?? 0),
     bytes: tx.serialize({ verifySignatures: false }).length,
     writable: countWritableAccounts(tx),
-    accounts: tx.compileMessage().accountKeys.length,
+    accounts: msg.accountKeys.length,
     logs: res.meta?.logMessages ?? [],
+    meta: res.meta,
+    accountKeys: msg.accountKeys,
   };
 }
 

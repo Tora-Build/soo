@@ -45,12 +45,7 @@ import {
   heapFrameIx,
   initMarketFeePool,
 } from "./fixtures/orderbook.js";
-import {
-  deriveMarketVaultAta,
-  deriveProtocolConfigPda,
-  deriveVaultAuthorityPda,
-  marketFeePoolPda,
-} from "../src/pdas.js";
+import { buildBookInit, buildBookPlace } from "../src/book/index.js";
 
 const NIL = 0xffffffff;
 const DISCRIMINATOR = Buffer.from([0x4b, 0x6f, 0x6f, 0x42, 0x00, 0x01, 0x00, 0x00]);
@@ -62,36 +57,6 @@ const SIDE_BID = 0;
 const SIDE_ASK = 1;
 const ONE_SHARE = 1_000_000n;
 
-/** sha256("global:book_place")[..8] */
-const BOOK_PLACE_DISC = Buffer.from([166, 211, 8, 100, 130, 30, 212, 203]);
-
-function bookSpace(capacity: number): number {
-  return BLOCKS_OFFSET + capacity * BLOCK_SIZE;
-}
-
-/** Hand-write an initialised, empty Book account. */
-function makeBookAccount(market: PublicKey, capacity: number): Buffer {
-  const data = Buffer.alloc(bookSpace(capacity));
-  DISCRIMINATOR.copy(data, 0);
-  let o = 8;
-  market.toBuffer().copy(data, o);
-  o += 32;
-  data.writeBigUInt64LE(0n, o); // next_seq
-  o += 8;
-  for (const _ of [0, 1, 2]) {
-    data.writeUInt32LE(NIL, o); // free_head, bids_head, asks_head
-    o += 4;
-  }
-  data.writeUInt32LE(0, o); // block_count
-  o += 4;
-  data.writeUInt32LE(0, o); // order_count
-  o += 4;
-  data.writeUInt32LE(NIL, o); // seats_head
-  o += 4;
-  data.writeUInt8(255, o); // bump
-  return data;
-}
-
 function bookPda(marketId: Uint8Array): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("book"), Buffer.from(marketId)],
@@ -99,51 +64,29 @@ function bookPda(marketId: Uint8Array): PublicKey {
   )[0];
 }
 
+/** Build through the SDK, so what is measured is the real client path —
+ *  including the `emit_cpi!` self-invocation that produces the fill event. */
 function placeIx(
   smoke: any,
-  book: PublicKey,
+  _book: PublicKey,
   taker: PublicKey,
   side: number,
   tick: number,
   amount: bigint,
-  feeBps: number,
+  _feeBps: number,
   matchLimit: number,
   postRemainder: boolean,
 ): TransactionInstruction {
-  const d = Buffer.alloc(8 + 1 + 2 + 8 + 4 + 1);
-  BOOK_PLACE_DISC.copy(d, 0);
-  let o = 8;
-  d.writeUInt8(side, o);
-  o += 1;
-  d.writeUInt16LE(tick, o);
-  o += 2;
-  d.writeBigUInt64LE(amount, o);
-  o += 8;
-  void feeBps; // now read from ProtocolConfig, never supplied by the caller
-  d.writeUInt32LE(matchLimit, o);
-  o += 4;
-  d.writeUInt8(postRemainder ? 1 : 0, o);
-  const { marketId, programs, usdcMint, marketPda } = smoke;
-  const key = (pubkey: PublicKey, isWritable: boolean, isSigner = false) => ({
-    pubkey,
-    isSigner,
-    isWritable,
-  });
-  return new TransactionInstruction({
-    programId: SOOTH_CORE_ID,
-    keys: [
-      key(book, true),
-      key(marketPda, false),
-      key(deriveVaultAuthorityPda(marketId, programs)[0], false),
-      key(deriveMarketVaultAta(marketId, usdcMint, programs), true),
-      key(getAssociatedTokenAddressSync(usdcMint, taker), true),
-      key(marketFeePoolPda(marketId, programs)[0], true),
-      key(deriveProtocolConfigPda(programs)[0], false),
-      key(taker, false, true),
-      key(TOKEN_PROGRAM_ID, false),
-    ],
-    data: d,
-  });
+  return buildBookPlace(
+    {
+      marketId: smoke.marketId,
+      marketPda: smoke.marketPda,
+      usdcMint: smoke.usdcMint,
+      programs: smoke.programs,
+    },
+    taker,
+    { side, limitTick: tick, amount, matchLimit, postRemainder },
+  );
 }
 
 interface Measured {
@@ -161,14 +104,20 @@ async function boot(capacity: number) {
     smoke,
     smoke.creator,
   );
-  const book = bookPda(smoke.marketId);
-  smoke.ctx.setAccount(book, {
-    executable: false,
-    owner: SOOTH_CORE_ID,
-    lamports: 10 * LAMPORTS_PER_SOL,
-    data: makeBookAccount(smoke.marketPda, capacity),
-  });
-  return { smoke, book };
+  // Created by the real instruction, not hand-written, so the measurement runs
+  // against an account the program produced.
+  const refs = {
+    marketId: smoke.marketId,
+    marketPda: smoke.marketPda,
+    usdcMint: smoke.usdcMint,
+    programs: smoke.programs,
+  };
+  await send(
+    smoke,
+    smoke.creator,
+    buildBookInit(refs, smoke.creator.publicKey, Math.min(capacity, 150)),
+  );
+  return { smoke, book: bookPda(smoke.marketId) };
 }
 
 async function send(

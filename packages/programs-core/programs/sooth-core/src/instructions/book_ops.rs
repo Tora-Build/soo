@@ -7,13 +7,16 @@
 //! crosses or cancels.
 
 use anchor_lang::prelude::*;
+use anchor_lang::{emit_cpi, event_cpi};
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 use crate::book::account::load_book;
 use crate::constants::BASE_TOKEN_MINT;
 use crate::error::SoothCoreError;
+use crate::events::{BookOrderCancelled, BOOK_EVENT_VERSION};
 use crate::state::Market;
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct BookCancel<'info> {
     /// CHECK: raw zero-copy book; `load_book` verifies the discriminator.
@@ -45,7 +48,15 @@ pub fn cancel_handler(ctx: Context<BookCancel>, order_seq: u64) -> Result<()> {
         .cancel(owner, order_seq)
         .map_err(|_| error!(SoothCoreError::NoCancellableOrder))?;
 
-    msg!("cancelled seq={} refund={}", order_seq, refund);
+    drop(data);
+    emit_cpi!(BookOrderCancelled {
+        version: BOOK_EVENT_VERSION,
+        market: ctx.accounts.market.key(),
+        seq: order_seq,
+        trader: owner,
+        refund,
+        ts: Clock::get()?.unix_timestamp,
+    });
     Ok(())
 }
 

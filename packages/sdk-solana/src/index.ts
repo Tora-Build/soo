@@ -82,6 +82,7 @@ export {
   SIDE_BID,
   bookLayoutSelfCheck,
   bookPda,
+  eventAuthorityPda,
   bookSpace,
   buildBookCancel,
   buildBookGrow,
@@ -97,6 +98,19 @@ export {
   type BookSnapshot,
   type PlaceArgs,
 } from "./book/index.js";
+
+export {
+  BOOK_EVENT_DISC,
+  BOOK_EVENT_VERSION,
+  CPI_EVENT_TAG,
+  decodeBookEvent,
+  decodeBookEventsFromInner,
+  type BookEvent,
+  type BookFillRecord,
+  type BookFilledEvent,
+  type BookOrderCancelledEvent,
+  type BookOrderPlacedEvent,
+} from "./book/events.js";
 
 export {
   DEFAULT_MATCH_LIMIT_PER_TX,

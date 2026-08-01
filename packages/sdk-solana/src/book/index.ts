@@ -118,6 +118,18 @@ bookLayoutSelfCheck();
 
 // ── PDA ───────────────────────────────────────────────────────────────────
 
+/**
+ * Anchor's `#[event_cpi]` authority PDA. `emit_cpi!` self-invokes the program
+ * with this as a signer, which is what turns an event into an inner
+ * instruction instead of a log line.
+ */
+export function eventAuthorityPda(programs: ProgramIds): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("__event_authority")],
+    programs.soothCore,
+  );
+}
+
 export function bookPda(
   marketId: MarketId,
   programs: ProgramIds,
@@ -247,6 +259,9 @@ export function buildBookPlace(
       key(deriveProtocolConfigPda(programs)[0], false),
       key(taker, false, true),
       key(TOKEN_PROGRAM_ID, false),
+      // #[event_cpi] tail — see eventAuthorityPda.
+      key(eventAuthorityPda(programs)[0], false),
+      key(programs.soothCore, false),
     ],
     data: d,
   });
@@ -266,6 +281,8 @@ export function buildBookCancel(
       key(bookPda(refs.marketId, refs.programs)[0], true),
       key(refs.marketPda, false),
       key(owner, false, true),
+      key(eventAuthorityPda(refs.programs)[0], false),
+      key(refs.programs.soothCore, false),
     ],
     data: d,
   });

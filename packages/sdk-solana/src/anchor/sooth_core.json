@@ -151,6 +151,38 @@
         {
           "name": "owner",
           "signer": true
+        },
+        {
+          "name": "event_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  95,
+                  95,
+                  101,
+                  118,
+                  101,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program"
         }
       ],
       "args": [
@@ -480,6 +512,38 @@
         {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "event_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  95,
+                  95,
+                  101,
+                  118,
+                  101,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program"
         }
       ],
       "args": [
@@ -5116,6 +5180,45 @@
       ]
     },
     {
+      "name": "BookFilled",
+      "discriminator": [
+        134,
+        27,
+        55,
+        180,
+        174,
+        105,
+        208,
+        243
+      ]
+    },
+    {
+      "name": "BookOrderCancelled",
+      "discriminator": [
+        30,
+        121,
+        53,
+        249,
+        40,
+        18,
+        202,
+        9
+      ]
+    },
+    {
+      "name": "BookOrderPlaced",
+      "discriminator": [
+        249,
+        106,
+        60,
+        191,
+        67,
+        209,
+        179,
+        21
+      ]
+    },
+    {
       "name": "CompleteSetMerged",
       "discriminator": [
         191,
@@ -5964,6 +6067,173 @@
                 64
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "BookFill",
+      "docs": [
+        "One fill inside a [`BookFilled`] batch."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "maker",
+            "type": "pubkey"
+          },
+          {
+            "name": "maker_seq",
+            "type": "u64"
+          },
+          {
+            "name": "price_tick",
+            "docs": [
+              "Execution price — the MAKER's tick, not the taker's limit. The",
+              "difference is the taker's price improvement."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BookFilled",
+      "docs": [
+        "All fills from one `book_place`, batched into a single event.",
+        "",
+        "Batched rather than emitted per fill because a 20-fill cross would otherwise",
+        "produce 20 inner instructions, and the per-event overhead would show up in",
+        "exactly the marginal cost this redesign exists to shrink."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "taker",
+            "type": "pubkey"
+          },
+          {
+            "name": "taker_side",
+            "type": "u8"
+          },
+          {
+            "name": "fills",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "BookFill"
+                }
+              }
+            }
+          },
+          {
+            "name": "fee",
+            "docs": [
+              "Total protocol fee paid by the taker, USDC base units."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BookOrderCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "seq",
+            "type": "u64"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "refund",
+            "docs": [
+              "Escrow returned to the owner's seat credit."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BookOrderPlaced",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "seq",
+            "docs": [
+              "Monotonic per-market sequence — the id `book_cancel` takes."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "docs": [
+              "0 = bid (buy YES), 1 = ask (sell YES, i.e. buy NO at 1 - p)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "price_tick",
+            "type": "u16"
+          },
+          {
+            "name": "amount",
+            "docs": [
+              "Resting size in USDC base units."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
           }
         ]
       }

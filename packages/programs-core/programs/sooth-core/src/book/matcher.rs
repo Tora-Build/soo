@@ -42,8 +42,18 @@ impl From<SettleError> for MatchError {
 
 type R<T> = core::result::Result<T, MatchError>;
 
+/// One executed fill, for the event log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FilledOrder {
+    pub maker: Pubkey,
+    pub maker_seq: u64,
+    /// The MAKER's tick — the execution price.
+    pub price_tick: u16,
+    pub amount: u64,
+}
+
 /// Outcome of one `place`.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct MatchResult {
     /// Shares filled against resting orders.
     pub filled: u64,
@@ -58,6 +68,17 @@ pub struct MatchResult {
     pub fee: u64,
     /// Number of distinct fills — the number the CU budget is measured against.
     pub fills: u32,
+    /// Sequence assigned to the resting remainder, meaningful when
+    /// `resting > 0`.
+    pub resting_seq: u64,
+    /// Per-fill records for the event log, in execution order.
+    ///
+    /// A `Vec` allocates, which the arena deliberately avoids — but the 256 KB
+    /// heap frame is mandatory program-wide anyway until the legacy borsh book
+    /// is deleted, so this costs nothing that is not already paid. When that
+    /// frame goes, this becomes a fixed-size array and `match_limit` gains a
+    /// ceiling to match.
+    pub filled_orders: Vec<FilledOrder>,
 }
 
 impl<'a> Book<'a> {
@@ -199,14 +220,26 @@ impl<'a> Book<'a> {
                 node.amount -= fill;
             }
 
+            out.filled_orders.push(FilledOrder {
+                maker: resting.trader,
+                maker_seq: resting.seq,
+                price_tick: exec_tick,
+                amount: fill,
+            });
+
             remaining -= fill;
             out.filled += fill;
             out.fills += 1;
         }
 
         if remaining > 0 && post_remainder {
-            self.insert(side, limit_tick, remaining, taker)?;
+            let idx = self.insert(side, limit_tick, remaining, taker)?;
             out.resting = remaining;
+            out.resting_seq = self
+                .blocks
+                .get(idx as usize)
+                .ok_or(BookError::InvalidIndex)?
+                .seq;
             // Resting collateral is escrowed up front, at the taker's own limit.
             let (bid_cost, ask_cost) = leg_costs(limit_tick, remaining, side)?;
             let own = if side == SIDE_BID { bid_cost } else { ask_cost };

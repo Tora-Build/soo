@@ -13,14 +13,26 @@
 //! marginal cost of a fill is ~821 CU rather than ~29,510.
 
 use anchor_lang::prelude::*;
+use anchor_lang::{emit_cpi, event_cpi};
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 use crate::book::account::load_book;
 use crate::book::arena::{SIDE_ASK, SIDE_BID};
 use crate::constants::BASE_TOKEN_MINT;
 use crate::error::SoothCoreError;
+use crate::events::{BookFill, BookFilled, BookOrderPlaced, BOOK_EVENT_VERSION};
 use crate::state::{require_not_paused, Market, ProtocolConfig};
 
+/// `#[event_cpi]` adds `event_authority` + `program` and lets `emit_cpi!`
+/// self-invoke, putting the payload in an inner instruction instead of a
+/// program log.
+///
+/// This is what `sooth_log` exists to do. It was built on the belief that a
+/// program cannot CPI into itself — but Solana permits **direct self
+/// recursion**, which is exactly the mechanism Anchor uses here. So the whole
+/// second program, its `declare_id` mismatch, and its deploy are avoidable.
+/// The legacy `buy` path still uses it; deleting it is gated on that going.
+#[event_cpi]
 #[derive(Accounts)]
 pub struct BookPlace<'info> {
     /// CHECK: raw zero-copy book. `load_book` verifies the discriminator and
@@ -166,14 +178,44 @@ pub fn handler(
         )?;
     }
 
-    msg!(
-        "fills={} filled={} resting={} in={} out={} fee={}",
-        result.fills,
-        result.filled,
-        result.resting,
-        result.taker_collateral_in,
-        result.taker_collateral_out,
-        result.fee
-    );
+    let ts = Clock::get()?.unix_timestamp;
+    let market_key = ctx.accounts.market.key();
+
+    if !result.filled_orders.is_empty() {
+        emit_cpi!(BookFilled {
+            version: BOOK_EVENT_VERSION,
+            market: market_key,
+            taker,
+            taker_side: side,
+            fills: result
+                .filled_orders
+                .iter()
+                .map(|f| BookFill {
+                    maker: f.maker,
+                    maker_seq: f.maker_seq,
+                    price_tick: f.price_tick,
+                    amount: f.amount,
+                })
+                .collect(),
+            fee: result.fee,
+            ts,
+        });
+    }
+
+    if result.resting > 0 {
+        emit_cpi!(BookOrderPlaced {
+            version: BOOK_EVENT_VERSION,
+            market: market_key,
+            // `place` assigns the resting order the next sequence, so the id
+            // is the value the counter held before the write.
+            seq: result.resting_seq,
+            trader: taker,
+            side,
+            price_tick: limit_tick,
+            amount: result.resting,
+            ts,
+        });
+    }
+
     Ok(())
 }

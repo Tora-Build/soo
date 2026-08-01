@@ -581,8 +581,40 @@ the byte that decides whether a block is an order or a seat.
 Mutation-verified: shifting `priceTick` by two bytes fails 3 tests; shifting the
 seat `kind` offset fails the import outright.
 
-Still to do in this phase: event schema (with a version field), `sooth-data`
-decoders, demo.
+*Event schema landed 2026-08-01* — SDK 200 → 208, cargo 96.
+
+Three events, each carrying a **`version` byte as its first field**:
+`BookOrderPlaced`, `BookOrderCancelled`, and `BookFilled` (fills batched into
+one event, not one per fill — 20 separate inner instructions would put per-event
+overhead straight back into the marginal cost). Decoders **reject an unknown
+version** rather than guessing, and throw on trailing bytes.
+
+Both current failure modes are live today and neither is a hypothetical: adding
+one field to `FillRecord` 500s `GET /v12/fills`, and *renaming* an event returns
+an empty list with **HTTP 200** — silent data loss.
+
+**`sooth_log` is redundant.** It exists because of a belief that a program
+cannot CPI into itself. Solana permits **direct self recursion**, which is
+exactly what Anchor's `#[event_cpi]` / `emit_cpi!` use — so the payload lands in
+an inner instruction (real transaction data) rather than a program log, with no
+second program, no second `declare_id`, and no second deploy. Proven by the
+tests here, which read the inner instructions `sooth_core` produced by invoking
+itself. The legacy `buy` still uses `sooth_log`; deleting it is gated on that.
+
+Re-measured with events included:
+
+```
+fills │    CU    │ bytes │ writable
+    1 │    31820 │   540 │        5
+   20 │    57096 │   540 │        5
+```
+
+**~1,330 CU marginal** (up from ~663 without events — each fill adds a 50-byte
+`BookFill` to the payload), ~30,490 fixed. Still **22× cheaper per fill** than
+today's 29,510, and the envelope stays flat: 12 accounts, 5 writable, 540 bytes
+whether the taker crosses one order or twenty.
+
+Still to do in this phase: `sooth-data` decoders, demo.
 
 **Phase 5 — deploy fresh.** New program IDs for `sooth_core` and `sooth_log`,
 generated and backed up before deploying.
