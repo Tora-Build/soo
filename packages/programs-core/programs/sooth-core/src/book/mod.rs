@@ -7,8 +7,10 @@
 //! The existing `state/book_side.rs` + `matching.rs` book remains live and
 //! untouched until then.
 
+pub mod account;
 pub mod arena;
 pub mod settlement;
 
+pub use account::*;
 pub use arena::*;
 pub use settlement::*;

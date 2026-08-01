@@ -130,6 +130,7 @@ pub struct BookHeader {
 /// A book: a header plus its block array. Borrowed rather than owned so the
 /// on-chain path can hand it the account's data slice directly, with no copy
 /// and no heap allocation.
+#[derive(Debug)]
 pub struct Book<'a> {
     pub header: &'a mut BookHeader,
     pub blocks: &'a mut [OrderNode],
