@@ -88,6 +88,7 @@ pub use instructions::*;
 pub mod sooth_core {
     use super::*;
     use crate::instructions::attest_outcome;
+    use crate::instructions::book_init;
     use crate::instructions::book_ops;
     use crate::instructions::book_place;
     use crate::instructions::buy;
@@ -328,6 +329,16 @@ pub mod sooth_core {
         post_remainder: bool,
     ) -> Result<()> {
         book_place::handler(ctx, side, limit_tick, amount, match_limit, post_remainder)
+    }
+
+    /// Create the per-market book. See `book_init`.
+    pub fn book_init(ctx: Context<BookInit>, initial_capacity: u16) -> Result<()> {
+        book_init::init_handler(ctx, initial_capacity)
+    }
+
+    /// Extend the book toward `wanted_capacity`, one realloc step per call.
+    pub fn book_grow(ctx: Context<BookGrow>, wanted_capacity: u16) -> Result<()> {
+        book_init::grow_handler(ctx, wanted_capacity)
     }
 
     /// Cancel a resting book order; the escrow lands in the owner's seat

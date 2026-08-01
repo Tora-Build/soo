@@ -500,10 +500,26 @@ close fails 5.
 Still to do in this phase: the seat credit ledger primitives, which land with
 the instructions in Phase 3 since they need account plumbing.
 
-**Phase 3 — instructions.** `place`, `cancel`, `withdraw_credit`, plus matching in
-`place`. Port the behavioural LiteSVM suite (crossing, multi-fill, self-cross,
-pause, place/cancel) to the new surface. **Measure CU and fills/tx here** — this
-is where §6.3's estimate gets confirmed or falsified.
+**Phase 3 — instructions. DONE (2026-08-01).** Five instructions —
+`book_init`, `book_grow`, `book_place`, `book_cancel`, `book_withdraw` — plus a
+15-test behavioural suite on LiteSVM and the CU measurement above. cargo 96,
+SDK 187.
+
+`book_init` and `book_grow` are split because Solana caps `realloc` at 10,240
+bytes **per instruction**, so the 256-order maximum cannot be allocated in one
+call; the test walks exactly that two-step path. Growth is permissionless —
+gating it would let a market wedge at capacity because the one authority that
+could extend it was away, and grief-growth is bounded by the order cap plus
+per-order escrow instead.
+
+`book_cancel` refunds to **seat credit**, not to a wallet, and `book_withdraw`
+is the single place credit becomes USDC. Escrow is recomputed from the node
+(side, tick, remaining) rather than stored, so a partially filled order refunds
+only what is left — pinned by a test.
+
+Mutation-verified on-chain: dropping the cancel ownership check fails
+"cannot cancel someone else's order"; dropping the self-cross guard fails
+"refuses to self-cross".
 
 *Started 2026-08-01.* Building the account layer surfaced two corrections to
 Phases 1–2 that had to land first:

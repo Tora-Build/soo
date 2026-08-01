@@ -213,4 +213,7 @@ pub enum SoothCoreError {
 
     #[msg("Order placement or matching failed")]
     MatchFailed,
+
+    #[msg("Requested book capacity exceeds the per-instruction realloc limit")]
+    BookCapacityTooLarge,
 }
