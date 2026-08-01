@@ -88,6 +88,7 @@ pub use instructions::*;
 pub mod sooth_core {
     use super::*;
     use crate::instructions::attest_outcome;
+    use crate::instructions::book_ops;
     use crate::instructions::book_place;
     use crate::instructions::buy;
     use crate::instructions::cancel;
@@ -323,19 +324,21 @@ pub mod sooth_core {
         side: u8,
         limit_tick: u16,
         amount: u64,
-        fee_bps: u16,
         match_limit: u32,
         post_remainder: bool,
     ) -> Result<()> {
-        book_place::handler(
-            ctx,
-            side,
-            limit_tick,
-            amount,
-            fee_bps,
-            match_limit,
-            post_remainder,
-        )
+        book_place::handler(ctx, side, limit_tick, amount, match_limit, post_remainder)
+    }
+
+    /// Cancel a resting book order; the escrow lands in the owner's seat
+    /// credit. See `book_ops`.
+    pub fn book_cancel(ctx: Context<BookCancel>, order_seq: u64) -> Result<()> {
+        book_ops::cancel_handler(ctx, order_seq)
+    }
+
+    /// Move accumulated seat credit into the caller's wallet.
+    pub fn book_withdraw(ctx: Context<BookWithdraw>) -> Result<()> {
+        book_ops::withdraw_handler(ctx)
     }
 
     pub fn buy<'info>(

@@ -242,6 +242,10 @@ impl<'a> Book<'a> {
             .ok_or(BookError::InvalidIndex)
     }
 
+    pub(crate) fn head_of(&self, side: u8) -> u32 {
+        self.head(side)
+    }
+
     fn head(&self, side: u8) -> u32 {
         if side == SIDE_BID {
             self.header.bids_head

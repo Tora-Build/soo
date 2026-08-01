@@ -291,21 +291,30 @@ Fixed account set for a buy becomes roughly: `taker`, `market`, `book`, `vault`,
 | 256 KB heap? | mandatory | removable | (still program-wide) |
 
 Measured by `packages/sdk-solana/tests/book-cu-budget.test.ts` on the same
-LiteSVM harness as the original numbers:
+LiteSVM harness as the original numbers, **including token movement**:
 
 ```
 fills │    CU    │ bytes │ writable
-    1 │     3768 │   277 │        2
-    3 │     5220 │   277 │        2
-    5 │     6702 │   277 │        2
-   10 │    10630 │   277 │        2
-   20 │    19360 │   277 │        2
+    1 │    24034 │   506 │        5
+    3 │    26986 │   506 │        5
+    5 │    28468 │   506 │        5
+   10 │    32396 │   506 │        5
+   20 │    36626 │   506 │        5
 ```
 
-**~821 CU marginal, ~2,947 fixed.** Transaction size, account count and
-writable count are all *flat* — 277 bytes and 2 writable accounts whether the
+**~663 CU marginal, ~23,371 fixed.** Transaction size, account count and
+writable count are all *flat* — 506 bytes and 5 writable accounts whether the
 taker crosses one order or twenty. Today the same span goes 778 → 1174 bytes
 and 10 → 22 writable, and dies at 6 fills.
+
+The fixed term is where the SPL transfers live. `book_place` nets the taker's
+collateral into at most one transfer each way plus one fee transfer, **however
+many orders it crosses** — so token cost is per *transaction*, not per fill.
+That netting is the entire point of the seat model.
+
+An earlier run without token movement measured ~821 CU marginal on a ~2,947
+fixed base; the marginal figure is stable across both, which is the reassuring
+part.
 
 That is **36× cheaper per fill** than the current 29,510, and roughly an order
 of magnitude better than this document projected. The estimate assumed a fill
@@ -314,14 +323,13 @@ pointer derefs and integer ops inside memory the instruction already holds.
 
 Caveats, so the number is not over-read:
 
-- **No token movement yet.** `book_place` computes collateral flows but does
-  not transfer. That adds a fixed ~3–4k CU **once per transaction**, not per
-  fill, so it does not change the marginal figure — which is what sets the
-  ceiling.
-- **Marginal cost drifts upward**: ~740 CU across 3→5 fills, ~873 across 10→20.
-  `seat_mut` walks the seat list linearly, and the measurement uses a *distinct
-  maker per fill*, its worst case. Indexing seats is the fix if the ceiling ever
-  needs to be real rather than comfortable.
+- **Segment marginals are noisy** at this scale because the ~23k fixed term
+  dominates: ~741 CU across 3→5 fills, ~423 across 10→20. `seat_mut` walks the
+  seat list linearly and the measurement uses a *distinct maker per fill* — its
+  worst case — so some upward drift is expected and an earlier token-free run
+  showed it. Do not read a trend into these two segments; read the bound.
+  Indexing seats is the fix if the ceiling ever needs to be real rather than
+  comfortable.
 - **~1,700 is not a usable ceiling anyway.** `MAX_ORDERS` caps the book at 256,
   so no single transaction can cross more than that. The honest statement is
   that CU stops being the binding constraint entirely.

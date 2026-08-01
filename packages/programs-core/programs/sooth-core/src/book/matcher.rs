@@ -25,6 +25,8 @@ pub enum MatchError {
     Book(BookError),
     Settle(SettleError),
     NoSeat,
+    OrderNotFound,
+    NotOwner,
 }
 
 impl From<BookError> for MatchError {
@@ -212,6 +214,65 @@ impl<'a> Book<'a> {
         }
 
         Ok(out)
+    }
+}
+
+impl<'a> Book<'a> {
+    /// Collateral a resting order has escrowed: its own leg at its own limit.
+    ///
+    /// Recomputed from the order rather than stored. The three inputs — side,
+    /// tick, remaining amount — are all in the node, and `leg_costs` is
+    /// deterministic, so a stored copy could only ever disagree with reality.
+    /// A partially filled order escrows for what is *left*, which is exactly
+    /// what `amount` holds.
+    pub fn escrow_of(&self, node: &OrderNode) -> R<u64> {
+        let (bid, ask) = leg_costs(node.price_tick, node.amount, node.side)?;
+        Ok(if node.side == SIDE_BID { bid } else { ask })
+    }
+
+    /// Cancel a resting order by sequence number, refunding its escrow to the
+    /// owner's seat credit.
+    ///
+    /// Returns the refunded amount. Refusing to cancel someone else's order is
+    /// the whole security boundary here, so ownership is checked before the
+    /// order is touched.
+    pub fn cancel(&mut self, trader: Pubkey, seq: u64) -> R<u64> {
+        for side in [SIDE_BID, SIDE_ASK] {
+            let mut cursor = self.head_of(side);
+            while cursor != NIL {
+                let node = *self.blocks.get(cursor as usize).ok_or(BookError::InvalidIndex)?;
+                if node.seq == seq {
+                    if node.trader != trader {
+                        return Err(MatchError::NotOwner);
+                    }
+                    let refund = self.escrow_of(&node)?;
+                    let seat = self.seat_mut(trader)?;
+                    let net = self.seat_net(seat)?;
+                    self.apply_to_seat(seat, net, refund)?;
+                    self.remove(cursor)?;
+                    return Ok(refund);
+                }
+                cursor = node.next;
+            }
+        }
+        Err(MatchError::OrderNotFound)
+    }
+
+    /// Drain a trader's withdrawable credit, returning the amount.
+    pub fn take_credit(&mut self, trader: Pubkey) -> R<u64> {
+        let idx = self.seat_mut(trader)?;
+        let node = self.blocks.get_mut(idx as usize).ok_or(BookError::InvalidIndex)?;
+        let seat = as_seat_mut(node);
+        let amount = seat.credit;
+        seat.credit = 0;
+        Ok(amount)
+    }
+
+    /// A trader's current credit, without draining it.
+    pub fn credit_of(&mut self, trader: Pubkey) -> R<u64> {
+        let idx = self.seat_mut(trader)?;
+        let node = self.blocks.get(idx as usize).ok_or(BookError::InvalidIndex)?;
+        Ok(bytemuck::cast_ref::<OrderNode, super::arena::SeatNode>(node).credit)
     }
 }
 
