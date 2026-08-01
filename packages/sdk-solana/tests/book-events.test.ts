@@ -8,7 +8,7 @@
 //
 // They also prove something structural: `emit_cpi!` self-invokes `sooth_core`,
 // which means **a program CAN CPI into itself**. The separate `sooth_log`
-// program exists because of the opposite belief.
+// program existed because of the opposite belief, and has been deleted.
 
 import { describe, expect, it } from "vitest";
 import { PublicKey } from "@solana/web3.js";
@@ -67,15 +67,6 @@ function selfCpiPayloads(sent: { meta: any; accountKeys: PublicKey[] }) {
   return inner
     .filter((ix: any) => sent.accountKeys[ix.programIdIndex]?.equals(SOOTH_CORE_ID))
     .map((ix: any) => Buffer.from(ix.data));
-}
-
-/** Send and return both the decoded events and the raw inner instructions. */
-async function sendCapturing(smoke: SmokeContext, signer: any, ix: any) {
-  const res = await sendBookTx(smoke, signer, ix);
-  // sendBookTx returns metadata; re-derive the account keys from the tx it
-  // built by replaying the same instruction set is not possible, so the
-  // fixture exposes the raw meta.
-  return res;
 }
 
 describe("book events", () => {
@@ -261,6 +252,41 @@ describe("book events", () => {
     // An ask at 0.40 escrows 0.60/share.
     expect(ev.refund).toBe(6n * ONE_SHARE);
   }, 60_000);
+});
+
+describe("cross-package decoder agreement", () => {
+  it("decodes the same captured bytes as sooth-data's independent decoder", async () => {
+    // `sooth-data` ships its OWN decoder for this wire format, because the
+    // indexer deliberately has no SDK dependency. Two decoders of one format
+    // can drift, and the failure would be silent — an indexer quietly serving
+    // different numbers than the client.
+    //
+    // Both are pinned to this single captured artifact rather than to each
+    // other, so neither can drift without one of them failing.
+    const { readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const path = join(
+      import.meta.dirname,
+      "..",
+      "..",
+      "sooth-data",
+      "test",
+      "fixtures",
+      "bookfilled.bin",
+    );
+    const bytes = new Uint8Array(await readFile(path));
+
+    const ev = decodeBookEvent(bytes) as BookFilledEvent;
+    expect(ev).not.toBeNull();
+    expect(ev.kind).toBe("filled");
+    expect(ev.version).toBe(BOOK_EVENT_VERSION);
+    // The values sooth-data's test asserts on the same file.
+    expect(ev.fills).toHaveLength(2);
+    expect(ev.fills.map((f) => f.priceTick)).toEqual([400, 410]);
+    for (const f of ev.fills) expect(f.amount).toBe(ONE_SHARE);
+    expect(ev.fee).toBeGreaterThan(0n);
+    expect(ev.ts).toBeGreaterThan(0n);
+  });
 });
 
 describe("book event decoder — hostile input", () => {

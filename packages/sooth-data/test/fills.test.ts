@@ -93,6 +93,8 @@ describe("fills endpoint", () => {
         yesTick: 950,
         amount: decoded!.fills[0]!.amount.toString(),
         timestamp: decoded!.fills[0]!.ts.toString(),
+        // Which book produced it. The endpoint serves both while they coexist.
+        source: "legacy",
       },
     ]);
     expect(calls).toContainEqual({

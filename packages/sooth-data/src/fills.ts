@@ -6,6 +6,11 @@ import {
   type FillRecord,
 } from "./decode-ordersfilled.js";
 import {
+  BASE_TO_WAD,
+  decodeBookEventsFromTransaction,
+  type BookFillRecord,
+} from "./decode-book-events.js";
+import {
   deriveMarketKey,
   marketAddressFromKey,
   normalizeMarketKey,
@@ -14,8 +19,17 @@ import { loadMarketMeta, type MarketMetaStore } from "./metadata.js";
 
 export type IndexedFill = {
   yesTick: number;
+  /** WAD (1e18) shares, for both sources — see `bookFillToIndexed`. */
   amount: string;
   timestamp: string;
+  /**
+   * Which book produced this fill.
+   *
+   * `"legacy"` is the per-tick-account book, `"book"` the redesigned single
+   * account. Both are served from the same endpoint while they coexist, so a
+   * consumer can tell them apart without changing shape.
+   */
+  source: "legacy" | "book";
 };
 
 export type SignatureInfo = {
@@ -114,6 +128,29 @@ function toIndexedFill(fill: FillRecord): IndexedFill {
     yesTick: fill.yes_tick,
     amount: fill.amount.toString(),
     timestamp: fill.ts.toString(),
+    source: "legacy",
+  };
+}
+
+/**
+ * Map a redesigned-book fill onto the same shape.
+ *
+ * Two conversions, both deliberate:
+ *
+ *   - `price_tick` IS the YES price. The unified axis quotes everything on it,
+ *     so an ask at tick 400 is "YES at 0.40" and needs no complement flip —
+ *     which is exactly the class of error that produced bug B2 in the legacy
+ *     book, where the two ticks were emitted swapped.
+ *   - `amount` is USDC base units on the new book and WAD on the old one.
+ *     Scaling here keeps `IndexedFill.amount` a single unit, so a consumer
+ *     charting both does not silently plot one 1e12 times the other.
+ */
+function bookFillToIndexed(fill: BookFillRecord, ts: bigint): IndexedFill {
+  return {
+    yesTick: fill.price_tick,
+    amount: (fill.amount * BASE_TO_WAD).toString(),
+    timestamp: ts.toString(),
+    source: "book",
   };
 }
 
@@ -137,6 +174,15 @@ async function collectFillsFromSignatures(
       if (event.market !== market) continue;
       for (const fill of event.fills) {
         fills.push(toIndexedFill(fill));
+        if (fills.length >= limit) return fills;
+      }
+    }
+
+    // The redesigned book, served from the same endpoint while both exist.
+    for (const event of decodeBookEventsFromTransaction(tx)) {
+      if (event.kind !== "book_filled" || event.market !== market) continue;
+      for (const fill of event.fills) {
+        fills.push(bookFillToIndexed(fill, event.ts));
         if (fills.length >= limit) return fills;
       }
     }

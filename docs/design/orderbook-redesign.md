@@ -614,7 +614,27 @@ fills │    CU    │ bytes │ writable
 today's 29,510, and the envelope stays flat: 12 accounts, 5 writable, 540 bytes
 whether the taker crosses one order or twenty.
 
-Still to do in this phase: `sooth-data` decoders, demo.
+*Indexer landed 2026-08-01* — `sooth-data` 29 → 36 tests. `/v12/fills` now
+serves **both** books from the same endpoint while they coexist, with a
+`source: "legacy" | "book"` discriminator on every `IndexedFill`.
+
+Two conversions matter and are commented at the mapping site:
+
+- `price_tick` **is** the YES price on the unified axis, so an ask at tick 400
+  is "YES at 0.40" and needs no complement flip. That flip is exactly what the
+  legacy book got wrong (bug B2, ticks emitted swapped).
+- The new book counts in **USDC base units**, the old one in WAD. The mapping
+  scales, so a consumer charting both does not silently plot one 1e12 times the
+  other.
+
+`sooth-data` ships its **own** decoder rather than importing the SDK's — the
+indexer stays deployable without the client toolchain. Two decoders of one wire
+format can drift silently, so both are pinned to a **single artifact captured
+from a real on-chain transaction** (`test/fixtures/bookfilled.bin`), and a
+cross-package test in the SDK decodes that same file. Neither can drift without
+one of them failing.
+
+Still to do in this phase: the demo.
 
 **Phase 5 — deploy fresh.** New program IDs for `sooth_core` and `sooth_log`,
 generated and backed up before deploying.
