@@ -69,6 +69,35 @@ export {
 // instances if they need read paths the adapter doesn't expose.
 export { soothCoreIdl } from "./anchor/index.js";
 
+// Redesigned orderbook (docs/design/orderbook-redesign.md). Lives alongside the
+// legacy `orderbook/` exports below until the old book is deleted.
+export {
+  BLOCKS_OFFSET,
+  BLOCK_SIZE,
+  MAX_ORDERS,
+  NIL,
+  NUM_TICKS,
+  ONE_SHARE,
+  SIDE_ASK,
+  SIDE_BID,
+  bookLayoutSelfCheck,
+  bookPda,
+  bookSpace,
+  buildBookCancel,
+  buildBookGrow,
+  buildBookInit,
+  buildBookPlace,
+  buildBookWithdraw,
+  decodeBook,
+  ladder,
+  seatOf,
+  type BookOrder,
+  type BookRefs,
+  type BookSeat,
+  type BookSnapshot,
+  type PlaceArgs,
+} from "./book/index.js";
+
 export {
   DEFAULT_MATCH_LIMIT_PER_TX,
   FILL_BUNDLE_LEN,

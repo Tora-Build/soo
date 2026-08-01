@@ -560,6 +560,30 @@ than defended:
 also retires audit finding H1), event schema **with a version field this time**,
 indexer decoders, demo.
 
+*SDK book client landed 2026-08-01* — `packages/sdk-solana/src/book/`, 13 tests,
+SDK 187 → 200. PDA, five instruction builders, and a decoder returning
+`{bids, asks, seats}` plus a `ladder()` aggregator.
+
+**The matching driver is gone, not ported.** The old one had to predict the
+exact crossing sequence off-chain and pass one 3-account bundle per fill,
+because the program could not discover makers — which is precisely where audit
+finding **H1** (batches planned against a book that has since moved select
+stale makers) comes from. The program now walks its own book, so a taker sends
+one instruction with a `matchLimit` and there is nothing to precompute, nothing
+to go stale, and no H1.
+
+Every decoder assertion reads an account the *program* wrote, never a fixture
+the test built: a wrong offset does not throw, it returns plausible orders at
+the wrong prices. `bookLayoutSelfCheck()` runs at import and fails the module
+load if `SeatNode.kind` ever stops sharing an offset with `OrderNode.flags` —
+the byte that decides whether a block is an order or a seat.
+
+Mutation-verified: shifting `priceTick` by two bytes fails 3 tests; shifting the
+seat `kind` offset fails the import outright.
+
+Still to do in this phase: event schema (with a version field), `sooth-data`
+decoders, demo.
+
 **Phase 5 — deploy fresh.** New program IDs for `sooth_core` and `sooth_log`,
 generated and backed up before deploying.
 
