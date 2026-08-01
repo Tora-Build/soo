@@ -42,7 +42,6 @@ import {
   marketBookPda,
   marketFeePoolPda,
   orderbookPositionPda,
-  SOOTH_LOG_PROGRAM_ID,
 } from "../../src/pdas.js";
 
 import { LiteSvmConnection } from "./svm.js";
@@ -238,7 +237,11 @@ export async function buyTx(
       systemProgram: SystemProgram.programId,
       tokenProgram: TOKEN_PROGRAM_ID,
       rent: SYSVAR_RENT_PUBKEY,
-      soothLogProgram: SOOTH_LOG_PROGRAM_ID,
+      eventAuthority: PublicKey.findProgramAddressSync(
+        [Buffer.from("__event_authority")],
+        smoke.programs.soothCore,
+      )[0],
+      program: smoke.programs.soothCore,
     })
     .remainingAccounts(
       args.remaining.map((pubkey) => ({
@@ -521,8 +524,7 @@ export async function sendTx(
 /** Send and return the emitted Anchor events' raw payloads.
  *
  *  `emit!` writes `Program data: <base64>` where the payload is
- *  [8-byte event discriminator][borsh body] — the same framing sooth_log
- *  carries, minus the outer instruction. */
+ *  [8-byte event discriminator][borsh body]. */
 export async function sendTxCollectingEvents(
   ctx: SvmContext,
   signers: Keypair[],

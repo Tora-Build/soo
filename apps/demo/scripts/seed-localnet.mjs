@@ -101,8 +101,9 @@ const LOCALNET_DIR = resolve(DEMO_ROOT, ".localnet");
 const SDK_DIST = resolve(REPO_ROOT, "packages", "sdk-solana", "dist");
 const sdkUrl = (rel) => new URL(`file://${SDK_DIST}/${rel}`).href;
 
-// One program since the 5→1 merge. sooth_log needs no IDL here — only its
-// address, which sooth_core::buy takes as an account.
+// One program since the 5→1 merge, and still one now that sooth_log is gone:
+// `buy` emits its durable OrdersFilled record by self-CPI (emit_cpi!) rather
+// than invoking a second program.
 const { soothCoreIdl } = await import(sdkUrl("anchor/index.js"));
 const {
   deriveAmmStatePda,
@@ -118,7 +119,6 @@ const {
   deriveYesMintPda,
   deriveAdjudicatorEntryPda,
   SOOTH_CORE_PROGRAM_ID,
-  SOOTH_LOG_PROGRAM_ID,
 } = await import(sdkUrl("pdas.js"));
 const { WAD } = await import(sdkUrl("math/lmsr.js"));
 
@@ -144,7 +144,6 @@ const soothCoreProgramIdl = {
 };
 const PROGRAMS = {
   soothCore: SOOTH_CORE_ID,
-  soothLog: SOOTH_LOG_PROGRAM_ID,
 };
 
 // Canonical USDC mint baked into the on-chain programs' `address = ...`

@@ -59,7 +59,7 @@ export interface SvmTxMeta {
   logMessages: string[];
   computeUnitsConsumed: bigint;
   /** Inner (CPI) instructions, which is where durable events live — see the
-   *  sooth_log crate. Empty if the runtime did not record any. */
+   *  self-CPI event payloads. Empty if the runtime did not record any. */
   innerInstructions: SvmInnerInstruction[];
 }
 

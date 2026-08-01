@@ -5,7 +5,7 @@
 #      (recorded in apps/demo/.localnet.pid).
 #   2. Runs `seed-localnet.mjs prepare` to write a USDC mint JSON dump.
 #   3. Boots solana-test-validator --reset with all Sooth programs deployed
-#      from target/deploy/*.so (sooth_core + sooth_log) AND the USDC mint
+#      from target/deploy/*.so (sooth_core) AND the USDC mint
 #      preloaded at the canonical
 #      address via --account.
 #   4. Waits for the validator to be healthy.
@@ -35,11 +35,11 @@ USDC_DUMP="$LOCALNET_DIR/usdc-mint-account.json"
 
 USDC_MINT_ADDR="ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
 
-# Two programs since the 5→1 merge: sooth_core, plus sooth_log which must stay
-# separate because a program cannot CPI into itself. Both are required —
-# sooth_core::buy invokes sooth_log for the durable OrdersFilled record.
+# ONE program: sooth_core. sooth_log was removed — `buy` emits its durable
+# OrdersFilled record by self-CPI (Anchor's emit_cpi!) rather than invoking a
+# second program. Solana permits direct self recursion, so the second program
+# was never necessary.
 CORE_SO="$REPO_ROOT/target/deploy/sooth_core.so"
-LOG_SO="$REPO_ROOT/target/deploy/sooth_log.so"
 
 VITE_PORT="${VITE_PORT:-5175}"
 RPC_PORT="${RPC_PORT:-8899}"
@@ -56,7 +56,7 @@ if ! command -v solana-test-validator >/dev/null 2>&1; then
   exit 1
 fi
 
-for so in "$CORE_SO" "$LOG_SO"; do
+for so in "$CORE_SO"; do
   if [[ ! -f "$so" ]]; then
     err "missing $so"
     err "Run from the repo root: anchor build"
@@ -66,7 +66,7 @@ done
 
 # The seed script reads program IDs from the built SDK IDLs/constants. Keep
 # validator preload ids aligned with that exact source of truth.
-read -r SOOTH_CORE_ID SOOTH_LOG_ID < <(
+read -r SOOTH_CORE_ID < <(
   REPO_ROOT="$REPO_ROOT" node --input-type=module <<'NODE'
 const root = process.env.REPO_ROOT;
 const sdk = `${root}/packages/sdk-solana/dist`;
@@ -75,7 +75,6 @@ const pdas = await import(new URL(`file://${sdk}/pdas.js`).href);
 const id = (idlAddress, fallback) => idlAddress || fallback.toBase58();
 process.stdout.write([
   id(anchor.soothCoreIdl.address, pdas.SOOTH_CORE_PROGRAM_ID),
-  pdas.SOOTH_LOG_PROGRAM_ID.toBase58(),
 ].join(" ") + "\n");
 NODE
 )
@@ -138,7 +137,6 @@ solana-test-validator \
   --rpc-port "$RPC_PORT" \
   --ledger "$LEDGER_DIR" \
   --bpf-program "$SOOTH_CORE_ID" "$CORE_SO" \
-  --bpf-program "$SOOTH_LOG_ID" "$LOG_SO" \
   --account "$USDC_MINT_ADDR" "$USDC_DUMP" \
   >"$VALIDATOR_LOG" 2>&1 &
 VALIDATOR_PID=$!

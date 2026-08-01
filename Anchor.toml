@@ -7,11 +7,9 @@ skip-lint = false
 
 [programs.devnet]
 sooth_core = "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W"
-sooth_log = "2NqmnxEMGeAmvThiXGtGWQBAHY58CG3pogfF4E8xAWVr"
 
 [programs.localnet]
 sooth_core = "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W"
-sooth_log = "2NqmnxEMGeAmvThiXGtGWQBAHY58CG3pogfF4E8xAWVr"
 
 [registry]
 url = "https://api.apr.dev"
@@ -23,7 +21,6 @@ wallet = "~/.config/solana/id.json"
 [workspace]
 members = [
     "packages/programs-core/programs/sooth-core",
-    "packages/programs-core/programs/sooth-log",
 ]
 
 [scripts]

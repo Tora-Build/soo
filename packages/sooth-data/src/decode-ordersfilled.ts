@@ -33,6 +33,11 @@ export function anchorEventDiscriminator(eventName: string): Uint8Array {
 // sooth_core actually emits — see
 // packages/sdk-solana/tests/orders-filled-event.test.ts, which asserts the
 // same constant from the producing side.
+/** Anchor's marker for a self-CPI event instruction. */
+export const CPI_EVENT_TAG = Uint8Array.from([
+  228, 69, 165, 46, 81, 203, 154, 29,
+]);
+
 export const ORDERS_FILLED_DISCRIMINATOR = Uint8Array.from([
   0x47, 0x06, 0xce, 0x2c, 0xc1, 0xdc, 0x94, 0x55,
 ]);
@@ -142,16 +147,18 @@ class Reader {
 export function decodeOrdersFilledInstructionData(
   instructionData: Uint8Array,
 ): OrdersFilledEvent | null {
-  if (instructionData.length < 20) return null;
+  // `emit_cpi!` framing: [8-byte Anchor CPI-event tag][8-byte event
+  // discriminator][borsh body].
+  //
+  // This used to be [8-byte sooth_log Log-ix disc][u32 payload length][event
+  // disc][body], because the payload was `invoke`d into a separate program.
+  // `buy` now self-invokes — Solana permits direct self recursion — so there is
+  // one fewer indirection and no second program.
+  if (instructionData.length < 16) return null;
+  if (!startsWith(instructionData, CPI_EVENT_TAG)) return null;
 
-  const frame = new Reader(instructionData);
-  frame.readU64();
-  const payloadLength = frame.readU32();
-  const payloadStart = frame.position();
-  const payloadEnd = payloadStart + payloadLength;
-  if (payloadEnd > instructionData.length || payloadLength < 8) {
-    return null;
-  }
+  const payloadStart = CPI_EVENT_TAG.length;
+  const payloadEnd = instructionData.length;
 
   const discriminator = instructionData.slice(payloadStart, payloadStart + 8);
   if (!bytesEqual(discriminator, ORDERS_FILLED_DISCRIMINATOR)) {
@@ -318,7 +325,7 @@ export function isBuyParent(
  */
 export function decodeOrdersFilledFromTransaction(
   tx: unknown,
-  soothLogProgramId: string = PROGRAM_IDS.SOOTH_LOG,
+  eventProgramId: string = PROGRAM_IDS.SOOTH_CORE,
   options: {
     soothCoreProgramId?: string;
     trustUnverifiedParents?: boolean;
@@ -347,7 +354,9 @@ export function decodeOrdersFilledFromTransaction(
     }
 
     for (const ix of instructions) {
-      if (getInstructionProgramId(ix, tx) !== soothLogProgramId) continue;
+      // The event now comes from sooth_core invoking itself, not from a
+      // separate log program.
+      if (getInstructionProgramId(ix, tx) !== eventProgramId) continue;
       const data = getInstructionData(ix);
       if (!data) continue;
       const event = decodeOrdersFilledInstructionData(data);

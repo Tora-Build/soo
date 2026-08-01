@@ -276,9 +276,9 @@ pub struct FillRecord {
 /// All fills from one `buy`, batched into a single event.
 ///
 /// Batched deliberately: the P0.1 spike showed per-fill emission OOMs the
-/// 32 KB heap. Emitted by `invoke`ing `sooth_log`, not `emit!`/`emit_cpi!` —
+/// 32 KB heap. Emitted with `emit_cpi!` (a self-CPI), not `emit!` —
 /// see that program's docs for why. Consumers must verify this arrives as a
-/// direct inner instruction of a successful `sooth_core::buy`; `sooth_log`
+/// direct inner instruction of a successful `sooth_core::buy`; the event
 /// itself is permissionless.
 #[event]
 pub struct OrdersFilled {
@@ -335,7 +335,7 @@ pub struct ProtocolPausedEvent {
 // These are emitted with `emit_cpi!` rather than `emit!`, so the payload lands
 // in an inner instruction rather than a program log. Program logs are truncated
 // and not reliably retrievable from every RPC; an inner instruction is real
-// transaction data. That is exactly what `sooth_log` was built to provide —
+// transaction data. That is what the now-deleted `sooth_log` provided —
 // see `book_place` for why it is no longer needed.
 
 /// Bump when any book event's layout changes. Consumers should reject a

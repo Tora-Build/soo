@@ -3,10 +3,9 @@
 //! The `side` parameter selects which book_side PDA is opened.
 
 use anchor_lang::prelude::*;
+use anchor_lang::{emit_cpi, event_cpi};
 use anchor_lang::system_program;
 use anchor_spl::token::{Token, TokenAccount};
-use anchor_lang::{Discriminator, InstructionData};
-use sooth_log::program::SoothLog;
 use crate::constants::BASE_TOKEN_MINT;
 
 use crate::error::SoothCoreError;
@@ -18,6 +17,9 @@ use crate::state::{
     ProtocolConfig, MAX_ORDERS_PER_TICK,
 };
 
+/// `#[event_cpi]` replaces the `sooth_log` program — see the note below
+/// `handler`. It appends `event_authority` + `program` to the account list.
+#[event_cpi]
 #[derive(Accounts)]
 #[instruction(side: u8, tick: u16)]
 pub struct BuyOrder<'info> {
@@ -100,12 +102,6 @@ pub struct BuyOrder<'info> {
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,
 
-    /// Durable-log sink. Receives the batched `OrdersFilled` payload as an
-    /// inner instruction; see the `sooth_log` crate for why a second program
-    /// is unavoidable. Address-pinned — the program is permissionless, so
-    /// authenticity is a consumer-side check, not an on-chain one.
-    #[account(address = sooth_log::ID)]
-    pub sooth_log_program: Program<'info, SoothLog>,
 }
 
 pub fn handler<'info>(
@@ -143,59 +139,44 @@ pub fn handler<'info>(
     );
     result?;
 
-    emit_orders_filled(
-        &ctx.accounts.sooth_log_program,
-        ctx.accounts.market.key(),
-        ctx.accounts.taker.key(),
-        side,
-        fills,
-    )
-}
-
-/// Serialize the batched fill event and record it as an inner instruction.
-///
-/// Not `emit!` (truncated by the runtime, dropped by RPC providers) and not
-/// `emit_cpi!` (allocates per event; the P0.1 spike proved it OOMs this path
-/// even batched). A plain `invoke` into the no-op `sooth_log` program costs
-/// one serialization and leaves the payload permanently in
-/// `meta.innerInstructions`.
-fn emit_orders_filled<'info>(
-    sooth_log_program: &Program<'info, SoothLog>,
-    market: Pubkey,
-    taker: Pubkey,
-    taker_side: u8,
-    fills: Vec<FillRecord>,
-) -> Result<()> {
     if fills.is_empty() {
         return Ok(());
     }
-    let event = OrdersFilled {
-        market,
-        taker,
-        taker_side,
-        fills,
-    };
-    let mut payload = Vec::with_capacity(64 + 96 * event.fills.len());
-    payload.extend_from_slice(&OrdersFilled::DISCRIMINATOR);
-    event
-        .serialize(&mut payload)
-        .map_err(|_| error!(SoothCoreError::MathOverflow))?;
     // Instruction data is capped at 10 KiB; a fill is ~96 bytes and the
-    // transaction-size limit caps fills per tx at 5, so this is unreachable
-    // in practice and exists so a future change fails loudly rather than
-    // silently truncating.
-    require!(payload.len() <= 10 * 1024, SoothCoreError::EventTooLarge);
+    // transaction-size limit caps fills per tx at 5, so this is unreachable in
+    // practice and exists so a future change fails loudly rather than silently
+    // truncating.
+    let approx = 8 + 32 + 32 + 1 + 4 + fills.len() * 96;
+    require!(approx <= 10 * 1024, SoothCoreError::EventTooLarge);
 
-    anchor_lang::solana_program::program::invoke(
-        &anchor_lang::solana_program::instruction::Instruction {
-            program_id: sooth_log::ID,
-            accounts: vec![],
-            data: sooth_log::instruction::Log { _data: payload }.data(),
-        },
-        &[sooth_log_program.to_account_info()],
-    )?;
+    emit_cpi!(OrdersFilled {
+        market: ctx.accounts.market.key(),
+        taker: ctx.accounts.taker.key(),
+        taker_side: side,
+        fills,
+    });
     Ok(())
 }
+
+// ── Why there is no `sooth_log` any more ─────────────────────────────────
+//
+// The batched `OrdersFilled` payload used to be `invoke`d into a separate
+// no-op program so it would land in `meta.innerInstructions`. Two reasons were
+// given, and both were true when written:
+//
+//   1. "a second program is unavoidable, because a program cannot CPI into
+//      itself." Solana permits **direct self recursion**, which is exactly what
+//      Anchor's `#[event_cpi]` / `emit_cpi!` do. This premise was simply wrong.
+//
+//   2. "`emit_cpi!` allocates per event; the P0.1 spike proved it OOMs this
+//      path even batched." That was correct against the **32 KB default heap**.
+//      This program now installs a 256 KB heap frame (`lib.rs`), which is
+//      mandatory on every instruction — so the constraint that justified the
+//      second program no longer exists.
+//
+// `emit_cpi!` gives the same guarantee (payload in an inner instruction, not a
+// truncatable program log) with no second program, no second `declare_id`, and
+// no second deploy.
 
 pub(crate) fn buy_handler<'info>(
     taker: &Signer<'info>,

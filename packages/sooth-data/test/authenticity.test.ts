@@ -59,18 +59,16 @@ function buildLogIxData(market: string, fills = 1): Uint8Array {
   }
 
   const payload = Uint8Array.from(event);
-  const vecLen = Buffer.alloc(4);
-  vecLen.writeUInt32LE(payload.length, 0);
-  // sha256("global:log")[..8] — value irrelevant to the decoder, which keys
-  // off the program id, so any 8 bytes stand in.
-  const logDisc = Uint8Array.from([
-    0x8d, 0xe6, 0xd6, 0xf2, 0x09, 0xd1, 0xcf, 0xaa,
-  ]);
-  return Uint8Array.from([...logDisc, ...vecLen, ...payload]);
+  // Anchor's self-CPI event tag. Unlike the old sooth_log framing this is a
+  // FIXED constant the decoder checks, so a stand-in value no longer works —
+  // which is a small improvement: the framing is now self-identifying rather
+  // than relying entirely on the program id.
+  const cpiTag = Uint8Array.from([228, 69, 165, 46, 81, 203, 154, 29]);
+  return Uint8Array.from([...cpiTag, ...payload]);
 }
 
 /** A transaction whose top-level instruction `parentProgram`/`parentData` owns
- *  one sooth_log inner instruction. */
+ *  one self-CPI event inner instruction. */
 function buildTx(opts: {
   parentProgram: string;
   parentData: Uint8Array;
@@ -80,7 +78,7 @@ function buildTx(opts: {
   omitGroupIndex?: boolean;
   err?: unknown;
 }) {
-  const accountKeys = [TAKER, opts.parentProgram, PROGRAM_IDS.SOOTH_LOG];
+  const accountKeys = [TAKER, opts.parentProgram, PROGRAM_IDS.SOOTH_CORE];
   return {
     transaction: {
       message: {
@@ -185,7 +183,7 @@ describe("OrdersFilled authenticity", () => {
       parentData: Uint8Array.from([0, 0, 0, 0]),
     });
     expect(
-      decodeOrdersFilledFromTransaction(tx, PROGRAM_IDS.SOOTH_LOG, {
+      decodeOrdersFilledFromTransaction(tx, PROGRAM_IDS.SOOTH_CORE, {
         trustUnverifiedParents: true,
       }),
     ).toHaveLength(1);

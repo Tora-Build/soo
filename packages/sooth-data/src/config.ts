@@ -62,11 +62,10 @@ export const CHAIN_NAMES = {
 export type ChainId = keyof typeof CHAIN_NAMES;
 
 /// Program ids. The 5→1 merge replaced sooth_book/market/amm/launchpad/
-/// adjudicator with a single `sooth_core`; `sooth_log` stays separate because a
-/// program cannot CPI into itself.
+/// adjudicator with a single `sooth_core`. `sooth_log` is gone too — events
+/// self-CPI via Anchor's `emit_cpi!`, so no second program is needed.
 export const PROGRAM_IDS = {
   SOOTH_CORE: "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W",
-  SOOTH_LOG: "2NqmnxEMGeAmvThiXGtGWQBAHY58CG3pogfF4E8xAWVr",
 } as const;
 
 /// Anchor discriminator for `sooth_core::buy` — sha256("global:buy")[..8].

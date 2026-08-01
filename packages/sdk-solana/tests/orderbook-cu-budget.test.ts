@@ -16,7 +16,7 @@
 //   5       ~199k     22         1174
 //   6       —         —          1273  ← rejected, over PACKET_DATA_SIZE
 //
-// Byte figures include the sooth_log_program account added by the P0.1
+// Byte figures include the #[event_cpi] accounts added by the P0.1
 // durable-event work (+33 bytes/tx, flat — the OrdersFilled payload itself
 // rides in an INNER instruction and does not count against the outer
 // transaction). That left 58 bytes of headroom at the 5-fill maximum.

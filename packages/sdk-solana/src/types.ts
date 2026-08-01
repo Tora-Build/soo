@@ -38,14 +38,15 @@ export interface SoothNode {
   rpcUrl: string;
   // Sooth program addresses — base58, Solana-only.
   //
-  // The 5→1 merge left one program, `soothCore`; `soothLog` stays separate
-  // because a program cannot CPI into itself. The pre-merge keys are retained
+  // The 5→1 merge left one program: `soothCore`. `soothLog` is gone too — it
+  // existed because a program was believed unable to CPI into itself, which is
+  // false (Solana permits direct self recursion), so events now use Anchor's
+  // `emit_cpi!` instead. The pre-merge keys are retained
   // as deprecated so existing node descriptors still typecheck — the adapter
   // reads only `soothCore` and `usdcMint`, so leaving the old ones set is a
   // silent no-op rather than an error.
   programs?: {
     soothCore?: string;
-    soothLog?: string;
     usdcMint?: string;
     /** @deprecated merged into `soothCore`; ignored by the adapter. */
     soothAmm?: string;

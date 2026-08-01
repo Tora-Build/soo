@@ -34,4 +34,3 @@ anchor-lang = { version = "0.30.1", features = ["init-if-needed", "event-cpi"] }
 # a Pod array cast in place, never deserialized.
 bytemuck = { version = "1.16", features = ["derive", "min_const_generics"] }
 anchor-spl = { version = "0.30.1", features = ["token", "associated_token"] }
-sooth_log = { path = "../sooth-log", features = ["no-entrypoint"] }

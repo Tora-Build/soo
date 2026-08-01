@@ -17,9 +17,11 @@ import {
 } from "../src/pdas.js";
 import { encodePubkeyRef } from "../src/refs.js";
 
-// 13 program accounts + sooth_log_program. Named so the durable-event work
+// 13 program accounts + Anchor's #[event_cpi] tail (event_authority +
+// program). Was 13 + a single sooth_log_program until `buy` switched from
+// invoking a second program to self-invoking. Named so the durable-event work
 // that added the 14th does not read as an unexplained off-by-one later.
-const BUY_ACCOUNT_COUNT = 14;
+const BUY_ACCOUNT_COUNT = 15;
 import { DEFAULT_MATCH_LIMIT_PER_TX } from "../src/orderbook/matching-driver.js";
 
 import { LiteSvmConnection } from "./fixtures/svm.js";

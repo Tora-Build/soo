@@ -26,7 +26,7 @@ export const MAX_TICK = 999;
  *   5       ~199k     22         1174
  *   6       —         —          1273  ← over PACKET_DATA_SIZE (1232)
  *
- * (Bytes include the sooth_log_program account from the durable-event work,
+ * (Bytes include the #[event_cpi] accounts from the durable-event work,
  * +33/tx flat; the OrdersFilled payload rides in an inner instruction.)
  *
  * So the hard ceiling is 5, set by transaction size — not compute (14% of

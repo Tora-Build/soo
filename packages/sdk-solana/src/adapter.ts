@@ -72,10 +72,10 @@ import {
   marketBookPda,
   marketFeePoolPda,
   orderbookPositionPda,
-  soothLogProgramId,
   SOOTH_CORE_PROGRAM_ID,
   type ProgramIds,
 } from "./pdas.js";
+import { eventAuthorityPda } from "./book/index.js";
 import { decodePubkeyRef, encodeSignatureRef } from "./refs.js";
 import { SoothError, notImplemented } from "./errors.js";
 import {
@@ -3030,9 +3030,12 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       readonly(SystemProgram.programId),
       readonly(TOKEN_PROGRAM_ID),
       readonly(SYSVAR_RENT_PUBKEY),
-      // Durable-log sink. `buy` invokes it with the batched OrdersFilled
-      // payload, which lands in meta.innerInstructions for indexers.
-      readonly(soothLogProgramId(this.programIds)),
+      // Anchor #[event_cpi] tail. `buy` self-invokes with the batched
+      // OrdersFilled payload, which lands in meta.innerInstructions for
+      // indexers. This replaced the separate `sooth_log` program: Solana
+      // permits direct self recursion, so a second program was never needed.
+      readonly(eventAuthorityPda(this.programIds)[0]),
+      readonly(this.programIds.soothCore),
       ...remainingAccounts,
     ];
 

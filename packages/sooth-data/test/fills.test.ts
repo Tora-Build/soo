@@ -73,7 +73,7 @@ describe("fills endpoint", () => {
                   index: 0,
                   instructions: [
                     {
-                      programId: new PublicKey(PROGRAM_IDS.SOOTH_LOG),
+                      programId: new PublicKey(PROGRAM_IDS.SOOTH_CORE),
                       data: encodeBase58(fixture),
                     },
                   ],

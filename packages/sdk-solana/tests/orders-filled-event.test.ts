@@ -33,7 +33,7 @@
 import { describe, expect, it } from "vitest";
 import { PublicKey } from "@solana/web3.js";
 
-import { SOOTH_LOG_PROGRAM_ID } from "../src/pdas.js";
+import { SOOTH_CORE_ID } from "./fixtures/setup.js";
 import { bootSmoke } from "./fixtures/setup.js";
 import {
   BASE_UNIT_WAD,
@@ -72,9 +72,12 @@ interface OrdersFilled {
 }
 
 function decodeOrdersFilled(data: Uint8Array): OrdersFilled {
+  // emit_cpi! framing: [8-byte Anchor CPI-event tag][8-byte event
+  // discriminator][borsh body]. The old sooth_log framing was
+  // [8-byte Log ix disc][u32 borsh Vec length][event disc][body] — one fewer
+  // indirection now that the program self-invokes instead of calling out.
   const buf = Buffer.from(data);
-  const vecLen = buf.readUInt32LE(8);
-  const payload = buf.subarray(12, 12 + vecLen);
+  const payload = buf.subarray(8);
   expect(payload.subarray(0, 8).toString("hex")).toBe(
     ORDERS_FILLED_DISCRIMINATOR,
   );
@@ -107,7 +110,9 @@ function decodeOrdersFilled(data: Uint8Array): OrdersFilled {
     o += 8;
     fills.push({ maker, makerOrderId, yesTick, noTick, amount, surplus, ts });
   }
-  expect(o).toBe(vecLen);
+  // Whole payload consumed — a layout drift shows up here rather than as
+  // silently truncated fills.
+  expect(o).toBe(payload.length);
   return { market, taker, takerSide, fills };
 }
 
@@ -122,12 +127,15 @@ function readU128(buf: Buffer, offset: number): bigint {
  *  no signer, so ANYONE can invoke it with fabricated bytes. A consumer must
  *  confirm the record is a direct child of a successful `sooth_core::buy`
  *  before trusting it — checking only the program id is not enough. */
+/** Self-CPI event payloads. `buy` used to invoke a separate `sooth_log`
+ *  program; it now self-invokes via Anchor's `emit_cpi!`, so the inner
+ *  instruction's program is sooth_core itself. */
 function soothLogRecords(
   meta: { innerInstructions: Array<{ index: number; programIdIndex: number; data: Uint8Array }> },
   accountKeys: PublicKey[],
 ) {
   return meta.innerInstructions.filter((ix) =>
-    accountKeys[ix.programIdIndex]?.equals(SOOTH_LOG_PROGRAM_ID),
+    accountKeys[ix.programIdIndex]?.equals(SOOTH_CORE_ID),
   );
 }
 

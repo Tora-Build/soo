@@ -23,7 +23,6 @@ export interface ProgramIds {
   /** Durable-log sink invoked by `buy`. Defaults to the canonical id; a
    *  program cannot CPI into itself, so this cannot be folded into
    *  `soothCore` however much the single-program design would prefer it. */
-  soothLog?: PublicKey;
 }
 
 const enc = new TextEncoder();
@@ -52,16 +51,6 @@ export const SOOTH_CORE_PROGRAM_ID = new PublicKey(
   "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W",
 );
 
-/** `sooth_log` — no-op durable event sink. Must match its `declare_id!`. */
-export const SOOTH_LOG_PROGRAM_ID = new PublicKey(
-  "2NqmnxEMGeAmvThiXGtGWQBAHY58CG3pogfF4E8xAWVr",
-);
-
-export function soothLogProgramId(
-  programs?: Partial<Pick<ProgramIds, "soothLog">>,
-): PublicKey {
-  return programs?.soothLog ?? SOOTH_LOG_PROGRAM_ID;
-}
 
 function assertMarketId(marketId: MarketId): Buffer {
   if (marketId.length !== 16) {

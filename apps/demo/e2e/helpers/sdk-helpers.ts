@@ -38,7 +38,6 @@ import {
 import anchor from "@coral-xyz/anchor";
 import {
   SOOTH_CORE_PROGRAM_ID,
-  SOOTH_LOG_PROGRAM_ID,
   SolanaChainAdapter,
   type SignerRef,
 } from "@sooth/sdk-solana";
@@ -61,7 +60,7 @@ function loadIdl(name: string): any {
 }
 
 // One program, not five. The 5→1 merge folded sooth_amm, sooth_market,
-// sooth_book, sooth_launchpad and sooth_adjudicator into sooth_core; sooth_log
+// sooth_book, sooth_launchpad and sooth_adjudicator into sooth_core. sooth_log
 // stays separate because a program cannot CPI into itself.
 export const coreIdl = loadIdl("sooth_core");
 
@@ -78,7 +77,6 @@ export const coreProgramId = programIdOrFallback(
 
 /** Durable-event sink invoked by `buy`. No IDL is shipped for it — the e2e
  *  path only needs the address to put in the buy account list. */
-export const logProgramId = SOOTH_LOG_PROGRAM_ID;
 
 const coreProgramIdl = { ...coreIdl, address: coreProgramId.toBase58() };
 

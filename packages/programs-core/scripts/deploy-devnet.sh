@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # Deploy (or upgrade) the Sooth programs on devnet.
 #
-# Two programs, and both are required: `sooth_core::buy` invokes `sooth_log`
 # for the durable OrdersFilled record, so a crossing buy fails outright if the
-# sink is not deployed. sooth_log is deployed FIRST for that reason (and it is
 # the cheaper of the two, so a short drip still lands something useful).
 #
 # Preflight checks, per program:
@@ -27,7 +25,6 @@
 #
 #   solana-test-validator --reset \
 #     --bpf-program BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W target/deploy/sooth_core.so \
-#     --bpf-program 2NqmnxEMGeAmvThiXGtGWQBAHY58CG3pogfF4E8xAWVr target/deploy/sooth_log.so
 #
 # That is how the 256 KB allocator was verified outside the test harness: with
 # requestHeapFrame the program runs, without it every instruction faults with
@@ -49,9 +46,7 @@ DEPLOY_DIR="${DEPLOY_DIR:-$REPO/target/deploy}"
 PROGRAMS_DIR="$REPO/packages/programs-core/programs"
 FEE_BUFFER="0.05"
 
-# Ascending by size. sooth_log is also a hard prerequisite for sooth_core's
 # buy path, so this order is load-bearing, not just drip-friendly.
-declare -a PROGRAMS=(sooth_log sooth_core)
 # .so name -> crate directory (hyphenated, unlike the crate name).
 crate_dir() { printf '%s' "${1//_/-}"; }
 
@@ -90,7 +85,6 @@ for p in "${PROGRAMS[@]}"; do
 
   # Already live? Then we neither need nor necessarily CAN touch it: the
   # upgrade authority may belong to someone else, and a different build of the
-  # same source is perfectly usable. sooth_log in particular is a no-op sink
   # whose only contract is accepting `log(Vec<u8>)` — any build satisfying
   # that works, so comparing binary sizes against a foreign deployment would
   # be a false alarm. Skip the local checks entirely.
@@ -184,7 +178,6 @@ for p in "${PROGRAMS[@]}"; do
   SO="$DEPLOY_DIR/$p.so"
   LEN="$(bytes "$SO")"
   # Resolve from declare_id!, not the keypair file: the declared id is where
-  # the program MUST live, and a program we did not deploy (sooth_log) has no
   # keypair here at all.
   PID="$(grep -oE 'declare_id!\("[^"]+"\)' "$PROGRAMS_DIR/$(crate_dir "$p")/src/lib.rs" | grep -oE '"[^"]+"' | tr -d '"')"
   if ! on_chain "$PID"; then
@@ -207,7 +200,6 @@ printf '\n  Balance: %s → %s SOL\n' "$BAL" "${BAL_END:-?}"
 
 if [ "$FAILED" -ne 0 ]; then
   printf '\n  ✗ one or more programs are not correctly deployed — see above.\n'
-  printf '    The demo and SDK need BOTH: sooth_core::buy invokes sooth_log.\n\n'
   exit 1
 fi
 

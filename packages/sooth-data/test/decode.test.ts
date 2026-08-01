@@ -27,10 +27,14 @@ describe("OrdersFilled decoder", () => {
     );
   });
 
-  it("decodes the real captured sooth_log inner instruction fixture", async () => {
+  it("decodes the real captured self-CPI inner instruction fixture", async () => {
+    // The captured body is unchanged; only the framing moved. It used to be
+    // [8-byte sooth_log Log-ix disc][u32 payload length][payload] and is now
+    // [8-byte Anchor CPI-event tag][payload], because `buy` self-invokes
+    // instead of calling a second program.
     const fixture = new Uint8Array(await readFile(fixturePath));
 
-    expect(Buffer.from(fixture.slice(12, 20)).toString("hex")).toBe(
+    expect(Buffer.from(fixture.slice(8, 16)).toString("hex")).toBe(
       "4706ce2cc1dc9455",
     );
 
@@ -70,7 +74,7 @@ describe("OrdersFilled decoder", () => {
             index: 0,
             instructions: [
               {
-                programId: PROGRAM_IDS.SOOTH_LOG,
+                programId: PROGRAM_IDS.SOOTH_CORE,
                 data: [Buffer.from(fixture).toString("base64"), "base64"],
               },
             ],
@@ -80,7 +84,7 @@ describe("OrdersFilled decoder", () => {
     };
   }
 
-  it("finds the sooth_log inner instruction inside a transaction response", async () => {
+  it("finds the self-CPI inner instruction inside a transaction response", async () => {
     const fixture = new Uint8Array(await readFile(fixturePath));
     const events = decodeOrdersFilledFromTransaction(
       txAroundFixture(fixture, BUY_DISCRIMINATOR),
