@@ -1144,9 +1144,30 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       TOKEN_PROGRAM_ID,
       ASSOCIATED_TOKEN_PROGRAM_ID,
     );
+    // Same treatment for the user's USDC ATA.
+    //
+    // `trade_positions` constrains `user_usdc_ata` with
+    // `token::authority = user`, so the account must EXIST — a wallet that has
+    // never held USDC fails account validation with AccountNotInitialized
+    // (3012) before any balance is checked. That surfaces in a wallet as an
+    // opaque "simulation failed", which is the worst possible message for the
+    // most common first-time case.
+    //
+    // Creating it idempotently costs ~0.002 SOL of rent on the first trade and
+    // turns that into an ordinary insufficient-funds error, which a user can
+    // act on. It does not give anyone USDC — it just stops a missing account
+    // from masquerading as a broken transaction.
+    const usdcAtaCreateIx = createAssociatedTokenAccountIdempotentInstruction(
+      userPk, // payer
+      deriveUserUsdcAta(userPk, this.usdcMint),
+      userPk, // owner
+      this.usdcMint,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
     const preIxs = marketFeePoolInfo
-      ? [lpAtaCreateIx]
-      : [initMarketFeePoolIx, lpAtaCreateIx];
+      ? [usdcAtaCreateIx, lpAtaCreateIx]
+      : [initMarketFeePoolIx, usdcAtaCreateIx, lpAtaCreateIx];
 
     const tx = new Transaction();
     // Generous CU bump — `trade_positions` benched ~75-80k per the spike but

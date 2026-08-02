@@ -28,7 +28,7 @@
 // still displays the user's AMM positions correctly.
 
 import { yesPriceWad, type SolanaChainAdapter } from "@sooth/sdk-solana";
-import type { ReadCallShape } from "./amm-bridge";
+import { toMarketRef, type ReadCallShape } from "./amm-bridge";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -70,10 +70,23 @@ export async function dispatchPortfolioRead(
     }
 
     case "isGraduated": {
-      // AMM-only fork — markets never graduate to a SoothBook orderbook.
-      // The non-graduated branch in `useActivePositions` reads outcome-
-      // token balances + AMM position, which is the path we want.
-      return false;
+      // Reads the real AmmState flag.
+      //
+      // This used to return a hardcoded `false` with the note "AMM-only fork —
+      // markets never graduate to a SoothBook orderbook". That was true when
+      // written and is not any more: the orderbook exists. While the stub
+      // stayed, `useOnChainMarkets` could never set `stage = "live"`, so no
+      // market ever routed to /orderbook/:addr no matter what the chain said —
+      // the orderbook was unreachable through the UI by construction.
+      const marketRef = toMarketRef(call.args?.[0]);
+      if (!marketRef) return false;
+      try {
+        const amm = await ctx.adapter.readAmmState(marketRef);
+        return Boolean(amm?.isGraduated);
+      } catch {
+        // A market with no AmmState is pre-launch, not graduated.
+        return false;
+      }
     }
 
     case "isSettled":

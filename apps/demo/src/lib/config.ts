@@ -24,6 +24,7 @@ const SOOTH_CORE_ID = soothCoreIdl.address;
 export interface DemoConfig {
   node: SoothNode;
   marketRef: string | null;
+  extraMarketRefs: string[];
 }
 
 const env = ((
@@ -47,4 +48,14 @@ export const demoConfig: DemoConfig = {
     },
   },
   marketRef: env?.VITE_DEMO_MARKET_REF ?? null,
+  // Extra markets to list alongside the seeded one, comma-separated.
+  //
+  // The demo has no on-chain market registry — `getMarkets` is served from
+  // this list — so without it exactly one market is ever visible, and any
+  // market created outside the seed script is unreachable through the UI.
+  extraMarketRefs: (env?.VITE_DEMO_EXTRA_MARKET_REFS ?? "")
+    .split(",")
+    .map((s: string) => s.trim())
+    .filter(Boolean)
+    .map((s: string) => (s.startsWith("sol:") ? s : `sol:${s}`)),
 };

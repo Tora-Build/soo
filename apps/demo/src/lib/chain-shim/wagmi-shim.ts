@@ -22,6 +22,18 @@ import {
 } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import type { Address, Chain, Hash, TransactionReceipt } from "./viem-shim";
+
+/** Every market the demo should list: the seeded one plus any extras.
+ *
+ *  There is no on-chain registry — `getMarkets` is served from this list — so
+ *  without the extras a market created outside the seed script is invisible in
+ *  the UI even though it exists on chain. */
+function knownMarketRefs(demo: { marketRef: string | null; extraMarketRefs?: string[] }): string[] {
+  const refs = new Set<string>();
+  if (demo.marketRef) refs.add(demo.marketRef);
+  for (const r of demo.extraMarketRefs ?? []) refs.add(r);
+  return [...refs];
+}
 import {
   dispatchAmmRead,
   dispatchAmmWrite,
@@ -346,13 +358,13 @@ export function usePublicClient(_args?: unknown): ShimPublicClient {
     const portfolio: PortfolioBridgeCtx | null = demo
       ? {
           adapter: demo.adapter,
-          knownMarkets: demo.marketRef ? [demo.marketRef] : [],
+          knownMarkets: knownMarketRefs(demo),
         }
       : null;
     const markets: MarketsBridgeCtx | null = demo
       ? {
           adapter: demo.adapter,
-          knownMarkets: demo.marketRef ? [demo.marketRef] : [],
+          knownMarkets: knownMarketRefs(demo),
         }
       : null;
     return makeShimPublicClient(

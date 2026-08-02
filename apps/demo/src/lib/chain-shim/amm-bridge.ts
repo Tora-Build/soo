@@ -1325,7 +1325,7 @@ function decodeSolMarketRef(ref: string): PublicKey {
  * Accepts: `sol:<base58>`, raw `<base58>`, or `0x<base58>` (the synthetic
  * shape the wagmi-shim's `useAccount` produces).
  */
-function toMarketRef(v: unknown): string | undefined {
+export function toMarketRef(v: unknown): string | undefined {
   if (typeof v !== "string" || !v) return undefined;
   if (v.startsWith("sol:")) return v;
   // 0x prefix — `useAccount` wrapping. Drop the prefix.
