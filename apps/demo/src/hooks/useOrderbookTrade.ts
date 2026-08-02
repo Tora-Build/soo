@@ -3,6 +3,8 @@ import {
   parseOrderId,
   type CancelTarget,
 } from "../lib/orderbook-math";
+import { toBookPlace } from "../lib/book-order-mapping";
+import { USE_REDESIGNED_BOOK } from "../lib/book-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useAccount,
@@ -29,6 +31,8 @@ import { shortenAddress } from "../utils/format";
 type WriteFunctionName =
   | "buyYes"
   | "buyNo"
+  | "bookPlace"
+  | "bookCancel"
   | "cancel"
   | "cancelById"
   | "redeem";
@@ -502,7 +506,46 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
         },
       };
 
-      if (isBuy) {
+      // ── Redesigned book ────────────────────────────────────────────────
+      //
+      // One call for every quadrant. The legacy branches below need four,
+      // because a two-sided book has to express "buy NO" as "buy YES on the
+      // other side at the complement tick" and then mirror that again for
+      // sells. On a single axis that is one `side` flag.
+      //
+      // It is also one instruction instead of a planned batch: the program
+      // walks its own book, so nothing is precomputed off-chain and there is
+      // nothing to go stale between planning and landing (audit finding H1).
+      if (USE_REDESIGNED_BOOK) {
+        let bookArgs;
+        try {
+          bookArgs = toBookPlace({
+            outcome,
+            price: priceNum,
+            sharesWad: shares,
+            isBuy,
+          });
+        } catch (error) {
+          toast.error(getErrorMessage(error));
+          return false;
+        }
+        success = await executeWrite(
+          isBuy ? "Submitting buy order..." : "Submitting sell order...",
+          "bookPlace",
+          [
+            marketAddress,
+            bookArgs.side,
+            bookArgs.limitTick,
+            bookArgs.amount,
+            bookArgs.matchLimit,
+            bookArgs.postRemainder,
+          ],
+          maxCostWad,
+          orderWriteOptions,
+        );
+        actualSide = bookArgs.side === 0 ? 1 : 0;
+        actualTick = bookArgs.limitTick;
+      } else if (isBuy) {
         if (outcome === 0) {
           success = await executeWrite(
             "Submitting buy YES order...",
@@ -701,6 +744,34 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
       if (!target) {
         toast.error("Unable to decode order id for cancel");
         return false;
+      }
+
+      // ── Redesigned book ────────────────────────────────────────────────
+      //
+      // Cancel by the order's real sequence. Nothing is synthesised, so
+      // nothing has to be parsed back — which removes both bugs the
+      // characterisation tests pinned: "unknown-400" resolving to the NO side
+      // because "unknown" contains "no", and "yes-12345" truncating to tick
+      // 345.
+      //
+      // A level target has no meaning here. On the legacy book "cancel my
+      // order at this level" was the only thing the UI could express when the
+      // indexer had not caught up; the book now carries every order's seq in
+      // the same account the ladder came from, so the caller always has one.
+      if (USE_REDESIGNED_BOOK) {
+        if (target.kind !== "id") {
+          toast.error(
+            "Cancel needs an order id — refresh the book and try again",
+          );
+          return false;
+        }
+        return executeWrite(
+          "Cancelling order...",
+          "bookCancel",
+          [marketAddress, target.orderId],
+          0n,
+          { silent: options?.silent },
+        );
       }
 
       // Pre-simulate so we can distinguish "order is gone on-chain" (most

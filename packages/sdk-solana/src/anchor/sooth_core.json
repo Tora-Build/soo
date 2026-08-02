@@ -7372,9 +7372,9 @@
         "All fills from one `buy`, batched into a single event.",
         "",
         "Batched deliberately: the P0.1 spike showed per-fill emission OOMs the",
-        "32 KB heap. Emitted by `invoke`ing `sooth_log`, not `emit!`/`emit_cpi!` —",
+        "32 KB heap. Emitted with `emit_cpi!` (a self-CPI), not `emit!` —",
         "see that program's docs for why. Consumers must verify this arrives as a",
-        "direct inner instruction of a successful `sooth_core::buy`; `sooth_log`",
+        "direct inner instruction of a successful `sooth_core::buy`; the event",
         "itself is permissionless."
       ],
       "type": {

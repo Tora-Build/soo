@@ -89,6 +89,17 @@ These are independent findings. Several are more urgent than the redesign.
 
 ### Resolved (2026-07-31)
 
+**B0-followup — reclaiming the UNSPENT subsidy is blocked, not merely
+unfinished.** A creator posts `b·ln(2)` and usually loses far less; the
+residual is theirs. Paying it out needs total outstanding obligations, and
+three of the four sources are computable — SPL mint supply, `AmmState.q_yes/q_no`
+(already aggregated), and the new book's seats (one account). The fourth,
+legacy `OrderbookPosition`, is **one PDA per (market, user)** and no instruction
+can enumerate it. An under-count of obligations is an over-payment of the
+residual, taken out of traders' collateral. So this lands *with* the legacy-book
+deletion in Phase 5, not before — at which point the new book's seats are the
+only CLOB ledger and the sum is exact.
+
 **B0 — the LMSR subsidy was never funded.** `seed_lp` recorded
 `seed_deposit_wad` and transferred nothing, so the vault was structurally short
 by up to `b·ln(2)` and could not pay a winning AMM position at all. Fixed:

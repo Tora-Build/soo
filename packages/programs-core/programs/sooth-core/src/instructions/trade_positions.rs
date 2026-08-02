@@ -125,7 +125,21 @@ pub fn handler(
     require!(now >= market.start_time, SoothCoreError::TradingNotStarted);
     require!(now < market.deadline, SoothCoreError::TradingClosed);
 
-    let (amm_q_yes, amm_q_no, amm_b, amm_is_graduated) = {
+    // `graduated_at_entry` is read BEFORE the graduation check below, and the
+    // LP mint deliberately gates on this stale value rather than the fresh
+    // one. That is a semantic, not an accident of the borrow checker:
+    //
+    // Graduation fires when accumulated fees reach b*ln(2) — i.e. when fees
+    // have repaid the LMSR subsidy. The trade that crosses that threshold paid
+    // its fee while the market was still pre-graduation, so it earns LP like
+    // every trade before it. Gating on the post-trade flag would mean the
+    // trader who completes the repayment pays a fee and receives nothing,
+    // while the one immediately before them was paid — an arbitrary cliff.
+    //
+    // Fragile in one specific way: moving the graduation check above this read,
+    // or re-reading the flag at the mint site, silently changes who gets paid.
+    // `the_graduating_trade_still_earns_lp` pins it.
+    let (amm_q_yes, amm_q_no, amm_b, graduated_at_entry) = {
         let amm = &ctx.accounts.amm_state;
         require!(!amm.is_dismissed, SoothCoreError::MarketDismissed);
         require!(amm.b > 0, SoothCoreError::InvalidLiquidity);
@@ -250,8 +264,9 @@ pub fn handler(
         }
     }
 
-    // Pre-graduation LP mint.
-    if !amm_is_graduated && fee_usdc > 0 {
+    // Pre-graduation LP mint — see `graduated_at_entry` above for why this
+    // reads the entry-time flag.
+    if !graduated_at_entry && fee_usdc > 0 {
         let market_id = ctx.accounts.market.market_id;
         let lp_mint_authority_bump = ctx.bumps.lp_mint_authority;
         let signer_seeds: &[&[&[u8]]] = &[&[
