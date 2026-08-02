@@ -26,6 +26,7 @@
 // precompute, nothing to go stale, and no H1.
 
 import {
+  ComputeBudgetProgram,
   PublicKey,
   SystemProgram,
   TransactionInstruction,
@@ -174,6 +175,41 @@ function u16Ix(disc: Buffer, value: number): Buffer {
   disc.copy(d, 0);
   d.writeUInt16LE(value, 8);
   return d;
+}
+
+/**
+ * Heap the `book_init` transaction must request.
+ *
+ * The program's bump allocator starts at the TOP of a 256 KiB heap, but the
+ * runtime maps only 32 KiB unless the transaction asks for more. `book_init`
+ * heap-allocates (Anchor's `Box<Account<Market>>`) before the handler body
+ * runs, so without this the very first allocation writes ~200 bytes below
+ * 0x300040000 and traps:
+ *
+ *   Program ... consumed 215 of 200000 compute units
+ *   Program ... failed: Access violation in heap section at address 0x30003ff38
+ *
+ * 215 CU is the tell — the program never reached its own code, which is why
+ * the failure carries no program log and no Anchor error code.
+ */
+export const BOOK_INIT_HEAP_BYTES = 256 * 1024;
+
+/**
+ * `book_init` plus the heap-frame request it cannot run without.
+ *
+ * Prefer this over calling `buildBookInit` directly: the bare instruction
+ * always fails on its own. `buildBookInit` stays exported for callers that
+ * assemble their own transaction and supply the heap frame themselves.
+ */
+export function buildBookInitIxs(
+  refs: BookRefs,
+  payer: PublicKey,
+  initialCapacity: number,
+): TransactionInstruction[] {
+  return [
+    ComputeBudgetProgram.requestHeapFrame({ bytes: BOOK_INIT_HEAP_BYTES }),
+    buildBookInit(refs, payer, initialCapacity),
+  ];
 }
 
 export function buildBookInit(

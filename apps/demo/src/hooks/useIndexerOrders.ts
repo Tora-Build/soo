@@ -10,6 +10,7 @@ import { fetchFromIndexer } from "./indexer/config";
 import { shortenAddress as truncateAddress } from "../utils/format";
 import { useChainStore } from "../store/useChainStore";
 import { useOrderStore } from "../store/useOrderStore";
+import { USE_REDESIGNED_BOOK } from "../lib/book-flag";
 
 /** Raw order from /v12/orders endpoint */
 type IndexerOrder = {
@@ -240,6 +241,49 @@ function activityToHistory(act: IndexerActivity): HistoryRow | null {
   }
 
   return null;
+}
+
+/**
+ * Open orders straight out of the redesigned book account.
+ *
+ * The legacy function below reconstructs them by replaying OrderPlaced /
+ * OrderCancelled / OrdersFilled logs over a chunked getLogs scan and netting
+ * per price level. That is event sourcing to answer a question the chain can
+ * answer directly, and it can only ever produce a LEVEL — hence the
+ * synthesised `${side}:${tick}` id, and the cancel-by-guess it forced.
+ *
+ * Here each order carries its real `seq`, which is what `book_cancel` takes.
+ */
+async function fetchOpenOrdersFromBook(
+  publicClient: PublicClient,
+  marketAddress: `0x${string}`,
+  owner: `0x${string}`,
+): Promise<OpenOrder[]> {
+  const rows = (await (publicClient as unknown as {
+    readContract: (args: unknown) => Promise<unknown>;
+  }).readContract({
+    address: marketAddress,
+    abi: [],
+    functionName: "getMyOpenOrders",
+    args: [marketAddress, owner],
+  })) as Array<{ seq: bigint; side: number; priceTick: number; amount: bigint }>;
+
+  return rows.map((o) => ({
+    // The real sequence. Nothing synthesised, nothing to parse back.
+    id: o.seq.toString(),
+    outcome: (o.side === 0 ? 0 : 1) as 0 | 1,
+    // One axis: a bid at 400 and an ask at 400 are both "YES at 0.40".
+    yesPrice: clampUnit(o.priceTick / 1000),
+    // The book counts in USDC base units (1e6), not WAD.
+    amount: Number(o.amount) / 1e6,
+    // Partial fills decrement `amount` in place, so what remains IS the
+    // unfilled size — there is no separate filled counter to net against.
+    fillPct: 0,
+    timestamp: Number(o.seq),
+    isBuy: o.side === 0,
+    marketAddress,
+    marketName: truncateAddress(marketAddress),
+  }));
 }
 
 async function fetchOpenOrdersFromRpc(
@@ -534,6 +578,18 @@ export function useIndexerOrders(
 
       if (!publicClient || !soothBookAddress) {
         return [] as OpenOrder[];
+      }
+
+      if (USE_REDESIGNED_BOOK) {
+        // One account read. The log-replay path below cannot see these orders
+        // at all — the redesigned book emits its own event set, so scanning for
+        // the legacy ORDER_PLACED signature finds nothing and the panel renders
+        // empty however many orders are actually resting.
+        return fetchOpenOrdersFromBook(
+          publicClient,
+          marketAddress,
+          toHexAddress(ownerLower),
+        );
       }
 
       return fetchOpenOrdersFromRpc(

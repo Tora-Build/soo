@@ -119,11 +119,9 @@ fi
 # ─── Boot validator ───────────────────────────────────────────────────────
 log "phase 2: booting solana-test-validator on :$RPC_PORT"
 log "  programs:"
-log "    sooth_amm         = $SOOTH_AMM_ID"
-log "    sooth_market      = $SOOTH_MARKET_ID"
-log "    sooth_launchpad   = $SOOTH_LAUNCHPAD_ID"
-log "    sooth_adjudicator = $SOOTH_ADJUDICATOR_ID"
-log "    sooth_book        = $SOOTH_BOOK_ID"
+# One program since the merge. These lines still named the five pre-merge
+# program ids, and under `set -u` the first undefined one aborted the boot.
+log "    sooth_core        = $SOOTH_CORE_ID"
 log "  preloaded mint: $USDC_MINT_ADDR (.localnet/usdc-mint-account.json)"
 log "  ledger: $LEDGER_DIR"
 log "  log:    $VALIDATOR_LOG"

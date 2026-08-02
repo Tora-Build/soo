@@ -39,16 +39,36 @@ pub fn wad_mul(a: i128, b: i128) -> Result<i128, MathError> {
     let lh = a_lo.wrapping_mul(b_hi);
     let hl = a_hi.wrapping_mul(b_lo);
     let hh = a_hi.wrapping_mul(b_hi);
-    let (mid, carry1) = lh.overflowing_add(hl);
-    let prod_lo_hi = ll >> 64;
-    let mid_lo = mid & ((1u128 << 64) - 1);
-    let mid_hi = mid >> 64;
-    let (sum, carry2) = prod_lo_hi.overflowing_add(mid_lo << 64);
-    let _ = sum;
+
+    // Schoolbook carry into the high word.
+    //
+    // `mid` sums the three 64-bit-weighted contributions: the top half of the
+    // low partial product, plus the low halves of the two cross terms. Each is
+    // < 2^64, so `mid` < 3·2^64 and cannot overflow u128 — which is what makes
+    // `mid >> 64` the exact carry.
+    //
+    // The earlier version derived that carry from whether
+    // `(ll >> 64) + (mid_lo << 64)` overflowed u128. That is a different
+    // question: the real carry is whether `(ll >> 64) + mid_lo` crosses 2^64,
+    // and the two disagree exactly when the top limb is large. When they
+    // disagreed, `prod_hi` came out one short, the 256-bit division silently
+    // dropped 2^128, and `wad_mul` returned a number ~340.28e18 BELOW the true
+    // product instead of reporting an overflow.
+    //
+    // `lmsr_cost` ends in `wad_mul(b, m + ln_sum)`, so the wrap fired for any
+    // market whose cost exceeded that threshold — `max(q) + b·ln(2) > ~340`.
+    // `cost_delta` differences two costs, so while both endpoints wrapped the
+    // same number of times the error cancelled and the market looked healthy.
+    // A trade that straddled a wrap boundary did not cancel: it returned a
+    // large NEGATIVE cost for a buy — the program paying the trader to take
+    // shares. Reachable at b=50 with ~340 shares outstanding.
+    let mid = (ll >> 64)
+        .wrapping_add(lh & ((1u128 << 64) - 1))
+        .wrapping_add(hl & ((1u128 << 64) - 1));
     let prod_hi = hh
-        .wrapping_add(mid_hi)
-        .wrapping_add((carry1 as u128) << 64)
-        .wrapping_add(carry2 as u128);
+        .wrapping_add(lh >> 64)
+        .wrapping_add(hl >> 64)
+        .wrapping_add(mid >> 64);
 
     if prod_hi == 0 {
         let q = prod_lo / WAD_U;
@@ -224,5 +244,97 @@ mod tests {
         assert_eq!(wad_div(2 * WAD, WAD).unwrap(), 2 * WAD);
         // 1/2 in WAD
         assert_eq!(wad_div(WAD, 2 * WAD).unwrap(), WAD / 2);
+    }
+}
+
+#[cfg(test)]
+mod wide_mul_regression {
+    use super::*;
+
+    /// `wad_mul` against exact 256-bit arithmetic.
+    ///
+    /// Every expected value here was computed in unbounded integer arithmetic
+    /// outside Rust, so this checks the limb code against the real answer
+    /// rather than against itself.
+    ///
+    /// The cases that matter are the ones whose 256-bit product exceeds
+    /// `u128::MAX` — that is where the carry into the high word was computed
+    /// wrongly. The old code returned a value ~340.28e18 BELOW the truth
+    /// instead of erroring, which is how `lmsr_cost` came to report 5.37 for a
+    /// market whose real cost was 345.65, and how `cost_delta` came to return
+    /// a NEGATIVE cost for a buy.
+    const CASES: &[(i128, i128, Option<i128>)] = &[
+        (50000000000000000000i128, 6000000000000000000i128, Some(300000000000000000000)),
+        (50000000000000000000i128, 6794000000000000000i128, Some(339700000000000000000)),
+        (50000000000000000000i128, 6913015252399953000i128, Some(345650762619997650000)),
+        (1000000000000000000000i128, 693147180559945309i128, Some(693147180559945309000)),
+        (340000000000000000000i128, 1000000000000000000i128, Some(340000000000000000000)),
+        (341000000000000000000i128, 1000000000000000000i128, Some(341000000000000000000)),
+        (9223372036854775808i128, 9223372036854775808i128, Some(85070591730234615865)),
+        (340282366920938463463i128, 1000000000000000000i128, Some(340282366920938463463)),
+        (183505726384713937977i128, 67347853917828622095i128, Some(12358716853642743736150)),
+        (642339135128645349172i128, 689275300611517638674i128, Some(442748500460339272785903)),
+        (607076888410727187574i128, 92925393275891119565i128, Some(56412858604271091726770)),
+        (81500891058152892251i128, 647309402353816049445i128, Some(52756293082156419208008)),
+        (960321088193274137127i128, 749502757839938400346i128, Some(719763304012709673269071)),
+        (72822376571655375090i128, 471969934648895407312i128, Some(34369972311501439358864)),
+        (276263145136825950877i128, 484957694340233674414i128, Some(133975937896736452591737)),
+        (139101102706615248549i128, 651326527868963874393i128, Some(90600238248643842902940)),
+        (215494914043210999856i128, 674811416020804295651i128, Some(145418428090780719902644)),
+        (427740722418364175688i128, 840207585234866222547i128, Some(359390999489750971409256)),
+        (65750989692839587896i128, 575648334017700784562i128, Some(37849447676698124604870)),
+        (507870597250376708437i128, 540750570594768549657i128, Some(274631315251447096342072)),
+        (551990064978929869266i128, 282230886201776187737i128, Some(155788645213579399314954)),
+        (814972850484755067944i128, 96736506339188206113i128, Some(78837626317184790725417)),
+        (614281173101062221488i128, 403525062943035093511i128, Some(247877849040327568709209)),
+        (340320922844352277793i128, 91868010949655182589i128, Some(31264606266261711622420)),
+        (489058839889633185553i128, 401348410590161990869i128, Some(196282988074772793106280)),
+        (589064862982749058390i128, 886875560631283495377i128, Some(522427230606015767206627)),
+        (932907666524625309051i128, 384030836146294444120i128, Some(358265311222740280511120)),
+        (418654305316653646403i128, 691691563534093164494i128, Some(289579651024755773365749)),
+        (82202479323338841310i128, 820402309883385003394i128, Some(67439103915008380476151)),
+        (56539270209784373531i128, 363428381242310869520i128, Some(20547975448963544958029)),
+        (531670670213447520052i128, 455941307313910661296i128, Some(242410620437582322946808)),
+        (418162835230683370121i128, 552307481536635514632i128, Some(230954462398477814344114)),
+    ];
+
+    #[test]
+    fn matches_exact_arithmetic() {
+        for &(a, b, want) in CASES {
+            let got = wad_mul(a, b).ok();
+            assert_eq!(got, want, "wad_mul({a}, {b})");
+        }
+    }
+
+    #[test]
+    fn is_sign_symmetric_across_the_boundary() {
+        // The sign is applied after the magnitude, so a wrap in the magnitude
+        // shows up identically on both signs. Pinning this keeps a future
+        // "fix" from special-casing negatives.
+        for &(a, b, want) in CASES {
+            assert_eq!(wad_mul(-a, b).ok(), want.map(|v| -v), "wad_mul(-{a}, {b})");
+            assert_eq!(wad_mul(-a, -b).ok(), want, "wad_mul(-{a}, -{b})");
+        }
+    }
+
+    #[test]
+    fn agrees_with_naive_multiplication_when_it_cannot_overflow() {
+        // Below the boundary the schoolbook path and a plain i128 multiply
+        // must agree exactly. This is the half of the domain the old code got
+        // right, so it guards the fix against regressing the easy cases.
+        for a in [1i128, 7, 1_000, WAD, 3 * WAD, 999_999] {
+            for b in [1i128, 2, WAD, WAD / 3, 12_345_678] {
+                assert_eq!(wad_mul(a, b).unwrap(), a * b / WAD, "wad_mul({a}, {b})");
+            }
+        }
+    }
+
+    #[test]
+    fn reports_overflow_instead_of_wrapping() {
+        // A quotient that genuinely exceeds i128 must be an error. Before the
+        // fix the same input class silently wrapped, which is strictly worse
+        // than failing: the caller cannot tell.
+        assert_eq!(wad_mul(i128::MAX, i128::MAX), Err(MathError::Overflow));
+        assert_eq!(wad_mul(i128::MAX, 2 * WAD), Err(MathError::Overflow));
     }
 }

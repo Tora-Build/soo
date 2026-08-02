@@ -294,6 +294,47 @@ export async function dispatchAmmRead(
       return USDC_DECIMALS;
     }
 
+    case "getMyOpenOrders": {
+      // The redesigned book's answer to "what are my resting orders".
+      //
+      // The legacy path reconstructs this by replaying OrderPlaced /
+      // OrderCancelled / OrdersFilled logs and netting them per price level —
+      // event sourcing, over a chunked getLogs scan, producing an order id
+      // synthesised as `${side}:${tick}` because a level is all it can know.
+      //
+      // Here the orders ARE the account. One read, exact amounts, and every
+      // order carries its real `seq` — which is what `book_cancel` takes, and
+      // what removes the synthesised-id round trip entirely.
+      const marketRef = toMarketRef(call.args?.[0]);
+      const owner = toAddressRef(call.args?.[1]);
+      if (!marketRef || !owner) return [] as readonly unknown[];
+      const snapshot = await readBookCached(ctx, marketRef);
+      if (!snapshot) return [] as readonly unknown[];
+      const ownerBase58 = owner.replace(/^sol:/, "");
+      const mine: unknown[] = [];
+      for (const [side, orders] of [
+        [0, snapshot.bids],
+        [1, snapshot.asks],
+      ] as const) {
+        for (const o of orders) {
+          if (o.trader !== ownerBase58) continue;
+          mine.push({
+            seq: o.seq,
+            side,
+            priceTick: o.priceTick,
+            amount: o.amount,
+          });
+        }
+      }
+      // Earliest first — the order the matcher would consume them.
+      mine.sort((a, b) => {
+        const x = (a as { seq: bigint }).seq;
+        const y = (b as { seq: bigint }).seq;
+        return x < y ? -1 : x > y ? 1 : 0;
+      });
+      return mine as readonly unknown[];
+    }
+
     case "getOrdersAtTick": {
       // EVM SoothBook.getOrdersAtTick(marketKey, side, tick) →
       // (totalAmount: u128, makers: Order[]).

@@ -263,3 +263,82 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod wide_cost_regression {
+    use super::*;
+
+    /// Buying shares must never produce a negative cost.
+    ///
+    /// `lmsr_cost` ends in `wad_mul(b, m + ln_sum)`, and that product exceeds
+    /// `u128::MAX` once the cost passes ~340.28e18 — which is just
+    /// `max(q) + b·ln(2)`, i.e. a market with a few hundred shares
+    /// outstanding. The old `wad_mul` wrapped there instead of erroring.
+    ///
+    /// `cost_delta` differences two costs, so while both endpoints wrapped the
+    /// same number of times the error cancelled exactly and the market looked
+    /// healthy. A trade that straddled a wrap boundary did not cancel: at
+    /// b = 50, q = (307, 303), buying 4 YES returned **-338.16** — the program
+    /// paying the trader to take shares.
+    #[test]
+    fn buying_never_costs_a_negative_amount() {
+        for b in [1i128, 50, 100, 1_000, 10_000] {
+            let b = b * WAD;
+            for q in [0i128, 100, 300, 320, 340, 400, 1_000, 5_000] {
+                for d in [1i128, 4, 50, 500] {
+                    let c = cost_delta(q * WAD, q * WAD, b, d * WAD, 0)
+                        .unwrap_or_else(|e| panic!("b={b} q={q} d={d}: {e:?}"));
+                    assert!(c > 0, "b={b} q={q} d={d} gave cost {c}");
+                }
+            }
+        }
+    }
+
+    /// Cost is bounded by the number of shares bought.
+    ///
+    /// A share can never cost more than 1 unit under LMSR, so this catches a
+    /// wrap in the other direction — one that inflates the charge rather than
+    /// inverting it.
+    #[test]
+    fn buying_never_costs_more_than_one_per_share() {
+        for b in [1i128, 50, 1_000] {
+            let b = b * WAD;
+            for q in [0i128, 300, 340, 1_000] {
+                for d in [1i128, 4, 50, 500] {
+                    let c = cost_delta(q * WAD, q * WAD, b, d * WAD, 0).unwrap();
+                    assert!(c <= d * WAD, "b={b} q={q} d={d} gave cost {c}");
+                }
+            }
+        }
+    }
+
+    /// A balanced market's cost has a closed form: `q + b·ln(2)`.
+    ///
+    /// Checked straight through the wrap boundary, since that is the only
+    /// place the limb arithmetic can disagree with the identity.
+    #[test]
+    fn balanced_cost_matches_the_closed_form() {
+        let b = 50 * WAD;
+        for q in [0i128, 100, 300, 320, 339, 340, 341, 400, 1_000] {
+            let got = lmsr_cost(q * WAD, q * WAD, b).unwrap();
+            let want = q * WAD + wad_mul(b, LN2_WAD).unwrap();
+            let diff = (got - want).abs();
+            assert!(diff < 1_000_000, "q={q}: got {got}, want {want}");
+        }
+    }
+
+    /// Buying then selling the same size returns to the same cost.
+    ///
+    /// The wrap was not symmetric, so a round trip across the boundary lost
+    /// (or created) value.
+    #[test]
+    fn a_round_trip_is_value_neutral() {
+        let b = 50 * WAD;
+        for q in [300i128, 320, 340] {
+            let buy = cost_delta(q * WAD, q * WAD, b, 10 * WAD, 0).unwrap();
+            let sell =
+                cost_delta((q + 10) * WAD, q * WAD, b, -10 * WAD, 0).unwrap();
+            assert_eq!(buy, -sell, "q={q}");
+        }
+    }
+}
