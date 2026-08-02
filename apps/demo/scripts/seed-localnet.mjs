@@ -108,6 +108,7 @@ const { soothCoreIdl } = await import(sdkUrl("anchor/index.js"));
 const {
   deriveAmmStatePda,
   deriveFeePoolAuthorityPda,
+  marketFeePoolPda,
   deriveFeePoolVaultAta,
   deriveLockAuthorityPda,
   deriveLockVaultAta,
@@ -788,6 +789,34 @@ async function init() {
   } else {
     log(`  lp_mint ${lpMintPda.toBase58()} already exists, skipping seedLp`);
   }
+  // ─── init_market_fee_pool ──────────────────────────────────────────────
+  //
+  // Per-market fee destination for both venues. Every trading instruction
+  // takes it as an account, so without it `buy`, `book_place` and
+  // `trade_positions` all fail with AccountNotInitialized — the seed script
+  // was creating a market nobody could trade on.
+  const [marketFeePoolPdaAddr] = marketFeePoolPda(marketId, PROGRAMS);
+  if (!(await connection.getAccountInfo(marketFeePoolPdaAddr))) {
+    await launchpadProgram.methods
+      .initMarketFeePool()
+      .accounts({
+        market: marketPda,
+        feePoolAuthority: feePoolAuthorityPda,
+        usdcMint: USDC_MINT_DEVNET,
+        marketFeePool: marketFeePoolPdaAddr,
+        signer: creator.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: SYSVAR_RENT_PUBKEY,
+      })
+      .signers([creator])
+      .preInstructions([heapFrameIx()])
+      .rpc();
+    log(`  initMarketFeePool OK (${marketFeePoolPdaAddr.toBase58()})`);
+  } else {
+    log(`  market_fee_pool already present, skipping`);
+  }
+
 
   // ─── Write .env.local for vite ────────────────────────────────────────
   // Inline the mint authority secret bytes so the in-browser faucet

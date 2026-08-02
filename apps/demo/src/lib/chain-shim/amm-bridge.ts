@@ -296,15 +296,40 @@ export async function dispatchAmmRead(
 
     case "getOrdersAtTick": {
       // EVM SoothBook.getOrdersAtTick(marketKey, side, tick) →
-      // (totalAmount: u128, makers: Order[]). The Solana fork doesn't
-      // surface a per-tick aggregator on-chain; the demo reads this to
-      // populate the order-book depth panel, which we leave empty
-      // (depth view shows "no liquidity"). The non-empty tuple shape is
-      // load-bearing — `useOrderbook.scanTickDepth` destructures
-      // `[totalAmount] = result.result`, and a bare `undefined` would
-      // throw "Cannot destructure undefined" inside the multicall loop,
-      // leaving `useOrderbook.isLoading` stuck on the first poll.
-      return [0n, [] as readonly unknown[]] as const;
+      // (totalAmount: u128, makers: Order[]).
+      //
+      // This used to return `[0n, []]` unconditionally — the depth panel
+      // always read "no liquidity" — because the legacy book stores one
+      // account per price level and there was no way to enumerate them
+      // without 999 RPC round trips.
+      //
+      // The redesigned book is a SINGLE account, so the whole ladder comes
+      // from one `getAccountInfo`. `useOrderbook` still issues 999 of these
+      // through its multicall loop, but every one after the first is now
+      // served from a short-lived cache of that one fetch, not the network.
+      //
+      // The non-empty tuple shape stays load-bearing:
+      // `useOrderbook.scanTickDepth` destructures `[totalAmount] =
+      // result.result`, and a bare `undefined` throws inside the multicall
+      // loop, leaving `isLoading` stuck on the first poll.
+      const marketRef = toMarketRef(call.args?.[0]);
+      const side = Number(call.args?.[1] ?? -1);
+      const tick = Number(call.args?.[2] ?? 0);
+      if (!marketRef || (side !== 0 && side !== 1)) {
+        return [0n, [] as readonly unknown[]] as const;
+      }
+      const snapshot = await readBookCached(ctx, marketRef);
+      if (!snapshot) return [0n, [] as readonly unknown[]] as const;
+
+      // On the unified axis both sides quote the YES price, so a tick maps
+      // straight through — no complement flip, which is what the legacy
+      // two-sided book required and what made it easy to render the wrong
+      // side of the market.
+      const orders = (side === 1 ? snapshot.bids : snapshot.asks).filter(
+        (o) => o.priceTick === tick,
+      );
+      const total = orders.reduce((acc, o) => acc + o.amount, 0n);
+      return [total, orders as readonly unknown[]] as const;
     }
 
     case "isMarketRegistered": {
@@ -988,6 +1013,48 @@ async function dispatchSettle(
  * program walks its own book, so nothing is predicted off-chain and there is
  * nothing to go stale between planning and landing (audit finding H1).
  */
+/**
+ * One decoded book per market, cached briefly.
+ *
+ * `useOrderbook` walks 999 ticks per side through a multicall. Fetching the
+ * account for each would be 1,998 RPC calls per poll; this collapses them to
+ * one. The TTL is short because the ladder polls every 10s and a stale book is
+ * worse than a slow one.
+ *
+ * A missing book (market created before the redesign, or never initialised)
+ * caches as `null` so the miss is not retried 1,998 times either.
+ */
+const BOOK_CACHE_TTL_MS = 2_000;
+const bookCache = new Map<
+  string,
+  { at: number; snapshot: Awaited<ReturnType<SolanaChainAdapter["readBook"]>> | null }
+>();
+
+/** Clear the book cache. Exported for tests, which need each case to start
+ *  from a cold cache to observe fetch counts. */
+export function __resetBookCache(): void {
+  bookCache.clear();
+}
+
+async function readBookCached(
+  ctx: AmmBridgeCtx,
+  marketRef: string,
+): Promise<Awaited<ReturnType<SolanaChainAdapter["readBook"]>> | null> {
+  const hit = bookCache.get(marketRef);
+  if (hit && Date.now() - hit.at < BOOK_CACHE_TTL_MS) return hit.snapshot;
+  let snapshot = null;
+  try {
+    snapshot = await ctx.adapter.readBook(marketRef);
+  } catch {
+    // Not every market has a book: one created before the redesign, or one
+    // whose book_init has not run. Depth reads as empty rather than throwing
+    // and stalling the panel.
+    snapshot = null;
+  }
+  bookCache.set(marketRef, { at: Date.now(), snapshot });
+  return snapshot;
+}
+
 async function dispatchBookPlace(
   call: WriteCallShape,
   ctx: AmmBridgeCtx,
