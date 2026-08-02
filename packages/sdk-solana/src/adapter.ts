@@ -4618,20 +4618,76 @@ function makeNetworkError(
 ): SoothError {
   return new SoothError({
     kind: "NetworkError",
-    msg: errorText(raw),
+    msg: withHint(errorText(raw)),
     signature,
     attempt,
   });
 }
 
+/**
+ * Append a plain-language hint for failures that are common and whose RPC
+ * wording does not say what to do about them.
+ *
+ * "Attempt to debit an account but found no record of a prior credit" means
+ * the fee payer has never received lamports. On a local validator that is the
+ * single most common first-run failure — a freshly-imported wallet with no
+ * airdrop — and the raw text names neither the account nor the remedy.
+ */
+function withHint(text: string): string {
+  if (/found no record of a prior credit/i.test(text)) {
+    return `${text}\n  HINT: the signing wallet has no SOL. Airdrop to it (\`solana airdrop 2 <PUBKEY> -u <RPC>\`) before trading.`;
+  }
+  if (/insufficient (funds|lamports)/i.test(text)) {
+    return `${text}\n  HINT: the signing wallet cannot cover this trade plus fees and rent.`;
+  }
+  return text;
+}
+
+/**
+ * Human-readable text for an RPC error, INCLUDING program logs.
+ *
+ * web3.js `SendTransactionError.message` is the bare string
+ * `"Simulation failed."` — everything that identifies the actual failure lives
+ * on `.logs`. Returning only `.message` produced errors like
+ * `NetworkError attempt=1 msg=Simulation failed.`, which tells a user nothing
+ * and tells a developer less: the same text covers a missing token account, an
+ * unfunded wallet, a wrong program id and a paused protocol.
+ *
+ * The last few log lines carry the Anchor error name and code, so they are
+ * appended.
+ */
 function errorText(raw: unknown): string {
-  if (raw instanceof Error) return raw.message;
+  if (raw instanceof Error) {
+    const logs = extractLogs(raw);
+    if (logs.length > 0) {
+      // Tail rather than head: the Anchor error line and the failing program
+      // are always at the end, while the head is invoke/success noise.
+      const tail = logs.slice(-6).join("\n  ");
+      return `${raw.message}\n  ${tail}`;
+    }
+    return raw.message;
+  }
   if (typeof raw === "string") return raw;
   try {
     return JSON.stringify(raw);
   } catch {
     return String(raw);
   }
+}
+
+/** Program logs off a web3.js SendTransactionError, in any of its shapes. */
+function extractLogs(raw: unknown): string[] {
+  const e = raw as {
+    logs?: unknown;
+    transactionLogs?: unknown;
+    cause?: { logs?: unknown };
+  };
+  for (const candidate of [e?.logs, e?.transactionLogs, e?.cause?.logs]) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter((l): l is string => typeof l === "string");
+    }
+  }
+  return [];
 }
 
 // Heuristic: which RPC error strings indicate a transient/recoverable
