@@ -517,7 +517,19 @@ async function init() {
   // Use chain time, not 1_000_000 sentinel (real validator wall clock).
   const startTime = Math.floor(Date.now() / 1000);
   const deadline = startTime + 7 * 24 * 60 * 60;
-  const bWad = 1_000n * WAD;
+  // Liquidity parameter. Overridable because it decides two things that
+  // matter for local testing:
+  //
+  //   - the LMSR subsidy the creator must post, b * ln(2) — ~693 USDC at
+  //     b = 1000, which is real money the seed has to mint;
+  //   - how much volume it takes to GRADUATE, since graduation fires when
+  //     accumulated fees reach that same b * ln(2). At b = 1000 and a 1% fee
+  //     that is ~69,300 USDC of trading, which no local session will reach —
+  //     and the orderbook UI only unlocks once a market is graduated.
+  //
+  // SEED_B_WAD=1 gives a thin AMM that graduates after ~70 USDC of volume,
+  // which is what makes the orderbook reachable on localnet.
+  const bWad = BigInt(process.env.SEED_B_WAD ?? "1000") * WAD;
 
   // ─── ProtocolConfig (singleton) ──────────────────────────────────────
   //
