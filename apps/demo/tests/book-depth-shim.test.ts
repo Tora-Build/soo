@@ -111,6 +111,35 @@ describe("getOrdersAtTick", () => {
     expect(readBook).toHaveBeenCalledTimes(1);
   });
 
+  it("fetches once even when every tick is requested CONCURRENTLY", async () => {
+    // The case the sequential test above cannot catch, and the one that
+    // actually broke: `useOrderbook.scanTickDepth` issues its 999 tick reads
+    // through a multicall, so they all run at once. A cache keyed on the
+    // RESOLVED value is checked by all of them before any resolves — every one
+    // misses, and the shim fires ~2,000 RPC calls per poll. Against a local
+    // validator that reads as the market list hanging forever.
+    //
+    // Caching the in-flight promise is what makes this one fetch.
+    let resolveFetch: (v: BookSnapshot) => void = () => {};
+    const readBook = vi.fn(
+      () =>
+        new Promise<BookSnapshot>((res) => {
+          resolveFetch = res;
+        }),
+    );
+    const ctx = ctxWith(readBook);
+
+    const all = Promise.all(
+      Array.from({ length: 200 }, (_, i) => depth(ctx, 1, i + 1)),
+    );
+    // Nothing has resolved yet — this is precisely the window the value-cache
+    // left open.
+    expect(readBook).toHaveBeenCalledTimes(1);
+    resolveFetch(snapshot());
+    await all;
+    expect(readBook).toHaveBeenCalledTimes(1);
+  });
+
   it("refetches once the cache expires", async () => {
     // A stale ladder is worse than a slow one; the panel polls every 10s.
     const readBook = vi.fn(async () => snapshot());

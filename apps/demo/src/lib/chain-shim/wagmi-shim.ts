@@ -28,10 +28,16 @@ import type { Address, Chain, Hash, TransactionReceipt } from "./viem-shim";
  *  There is no on-chain registry — `getMarkets` is served from this list — so
  *  without the extras a market created outside the seed script is invisible in
  *  the UI even though it exists on chain. */
-function knownMarketRefs(demo: { marketRef: string | null; extraMarketRefs?: string[] }): string[] {
+function knownMarketRefs(demo: {
+  marketRef: string | null;
+  // Required, not optional. Typing it `?:` is what let the field be missing
+  // from DemoCtx entirely while this silently returned only the seeded
+  // market — a loose signature hiding the very bug it was added to fix.
+  extraMarketRefs: string[];
+}): string[] {
   const refs = new Set<string>();
   if (demo.marketRef) refs.add(demo.marketRef);
-  for (const r of demo.extraMarketRefs ?? []) refs.add(r);
+  for (const r of demo.extraMarketRefs) refs.add(r);
   return [...refs];
 }
 import {

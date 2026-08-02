@@ -1025,9 +1025,25 @@ async function dispatchSettle(
  * caches as `null` so the miss is not retried 1,998 times either.
  */
 const BOOK_CACHE_TTL_MS = 2_000;
+
+/**
+ * Single-flight cache. Stores the in-flight PROMISE, not the resolved value.
+ *
+ * That distinction is the whole point. `useOrderbook.scanTickDepth` issues its
+ * 999 tick reads through a multicall, i.e. CONCURRENTLY — so a cache keyed on
+ * the resolved value is checked by all 999 before any of them resolves, every
+ * one misses, and the shim fires ~2,000 RPC calls per poll. On a local
+ * validator that reads as the market list hanging forever.
+ *
+ * Caching the promise means the first caller starts the fetch and the other 998
+ * await the same one.
+ */
 const bookCache = new Map<
   string,
-  { at: number; snapshot: Awaited<ReturnType<SolanaChainAdapter["readBook"]>> | null }
+  {
+    at: number;
+    inflight: Promise<Awaited<ReturnType<SolanaChainAdapter["readBook"]>> | null>;
+  }
 >();
 
 /** Clear the book cache. Exported for tests, which need each case to start
@@ -1041,18 +1057,14 @@ async function readBookCached(
   marketRef: string,
 ): Promise<Awaited<ReturnType<SolanaChainAdapter["readBook"]>> | null> {
   const hit = bookCache.get(marketRef);
-  if (hit && Date.now() - hit.at < BOOK_CACHE_TTL_MS) return hit.snapshot;
-  let snapshot = null;
-  try {
-    snapshot = await ctx.adapter.readBook(marketRef);
-  } catch {
-    // Not every market has a book: one created before the redesign, or one
-    // whose book_init has not run. Depth reads as empty rather than throwing
-    // and stalling the panel.
-    snapshot = null;
-  }
-  bookCache.set(marketRef, { at: Date.now(), snapshot });
-  return snapshot;
+  if (hit && Date.now() - hit.at < BOOK_CACHE_TTL_MS) return hit.inflight;
+
+  // A market with no book — created before the redesign, or never
+  // book_init'd — resolves to null rather than rejecting, so the miss is
+  // cached too and not retried 999 times.
+  const inflight = ctx.adapter.readBook(marketRef).catch(() => null);
+  bookCache.set(marketRef, { at: Date.now(), inflight });
+  return inflight;
 }
 
 async function dispatchBookPlace(

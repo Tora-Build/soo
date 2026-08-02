@@ -32,6 +32,9 @@ interface DemoCtx {
   userRef: string | null;
   signer: SignerRef | null;
   marketRef: string | null;
+  /** Additional markets to list. There is no on-chain registry, so a market
+   *  created outside the seed script is invisible without this. */
+  extraMarketRefs: string[];
   connected: boolean;
   isOverride: boolean;
 }
@@ -54,6 +57,8 @@ export function DemoProvider({ children, override }: DemoProviderProps) {
       userRef: override.userRef,
       signer: override.signer,
       marketRef: override.marketRef,
+      // An override (tests, e2e) names one market explicitly.
+      extraMarketRefs: [],
       connected: true,
       isOverride: true,
     };
@@ -107,6 +112,7 @@ function ProductionDemoProvider({ children }: { children: ReactNode }) {
     userRef,
     signer,
     marketRef: demoConfig.marketRef,
+    extraMarketRefs: demoConfig.extraMarketRefs,
     connected: !!wallet.connected,
     isOverride: false,
   };
