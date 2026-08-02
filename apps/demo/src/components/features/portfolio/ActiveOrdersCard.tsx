@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { NUM_TICKS } from "../../../lib/orderbook-math";
 import { useQuery } from '@tanstack/react-query';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { useOrderStore, type ActiveOrder } from '../../../store/useOrderStore';
@@ -85,7 +86,8 @@ function orderToActiveOrder(marketRef: string, order: Awaited<ReturnType<typeof 
         marketAddress,
         marketName: shortMarket(marketRef),
         outcome: order.side === 1 ? 0 : 1,
-        price: order.tick / 1000,
+        // YES-denominated; the row already carries a side-resolved tick.
+        price: order.tick / NUM_TICKS,
         amount: Number(order.amount) / 1e18,
         timestamp: Date.now(),
         isBuy: !order.escrow,

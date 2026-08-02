@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { tickToYesPrice } from "../lib/orderbook-math";
 import { useAccount, usePublicClient } from "@/lib/chain-shim";
 import { SOOTHBOOK_ABI } from "../config/abis";
 import { encodePacked, formatUnits, keccak256 } from "@/lib/chain-shim";
@@ -96,7 +97,7 @@ export function useOrderbook(marketAddress: `0x${string}`) {
           const [totalAmount] = result.result as readonly [bigint, bigint];
           if (totalAmount <= 0n) continue;
 
-          const yesPriceValue = side === 1 ? tick / 1000 : (1000 - tick) / 1000;
+          const yesPriceValue = tickToYesPrice(tick, side === 1 ? 1 : 0);
           const yesPrice = yesPriceValue.toFixed(4);
 
           orders.push({
@@ -158,7 +159,7 @@ export function useOrderbook(marketAddress: `0x${string}`) {
     const asks: Order[] = [];
     for (const entry of agg.values()) {
       const yesPriceValue =
-        entry.side === 1 ? entry.tick / 1000 : (1000 - entry.tick) / 1000;
+        tickToYesPrice(entry.tick, entry.side === 1 ? 1 : 0);
       const yesPrice = yesPriceValue.toFixed(4);
       const order: Order = {
         id: `${entry.side}:${entry.tick}`,

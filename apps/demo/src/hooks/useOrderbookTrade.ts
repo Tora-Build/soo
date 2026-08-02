@@ -1,4 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
+import {
+  parseOrderId,
+  type CancelTarget,
+} from "../lib/orderbook-math";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useAccount,
@@ -21,17 +25,6 @@ import { ERC20_ABI, SOOTHBOOK_ABI } from "../config/abis";
 import { useDeployments } from "./useDeployments";
 import { useOrderStore } from "../store/useOrderStore";
 import { shortenAddress } from "../utils/format";
-
-type CancelTarget =
-  | {
-      kind: "level";
-      side: 0 | 1;
-      tick: number;
-    }
-  | {
-      kind: "id";
-      orderId: bigint;
-    };
 
 type WriteFunctionName =
   | "buyYes"
@@ -75,35 +68,6 @@ const fromWad = (amount: bigint, decimals: number) => {
   if (decimals === 18) return amount;
   if (decimals < 18) return amount / 10n ** BigInt(18 - decimals);
   return amount * 10n ** BigInt(decimals - 18);
-};
-
-const parseOrderId = (orderId: string): CancelTarget | null => {
-  const normalized = orderId.trim().toLowerCase();
-  if (!normalized) return null;
-
-  if (/^\d+$/.test(normalized)) {
-    return { kind: "id", orderId: BigInt(normalized) };
-  }
-
-  const directMatch = normalized.match(/^(0|1):(\d{1,3})$/);
-  if (directMatch) {
-    const side = Number(directMatch[1]) as 0 | 1;
-    const tick = Number(directMatch[2]);
-    if (tick >= 1 && tick <= 999) return { kind: "level", side, tick };
-  }
-
-  const suffixTick = normalized.match(/(\d{1,3})$/);
-  if (!suffixTick) return null;
-
-  const tick = Number(suffixTick[1]);
-  if (tick < 1 || tick > 999) return null;
-
-  if (normalized.includes("no")) return { kind: "level", side: 0, tick };
-  if (normalized.includes("yes") || normalized.includes("bid"))
-    return { kind: "level", side: 1, tick };
-  if (normalized.includes("ask")) return { kind: "level", side: 0, tick };
-
-  return { kind: "level", side: 1, tick };
 };
 
 const getErrorMessage = (error: unknown): string => {

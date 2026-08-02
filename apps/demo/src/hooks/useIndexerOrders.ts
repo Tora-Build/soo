@@ -1,4 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import {
+  clampUnit,
+  refundAmountWad as computeRefundWad,
+  tickToYesPrice,
+} from "../lib/orderbook-math";
 import { formatUnits, parseAbiItem, type Address } from "@/lib/chain-shim";
 import { usePublicClient } from "@/lib/chain-shim";
 import { fetchFromIndexer } from "./indexer/config";
@@ -139,10 +144,6 @@ export type HistoryRow = {
   sortKey: number;
 };
 
-function clampUnit(v: number): number {
-  return Math.max(0, Math.min(1, v));
-}
-
 function clampPercent(v: number): number {
   return Math.max(0, Math.min(100, v));
 }
@@ -161,8 +162,8 @@ function orderToOpen(
     originalAmount > 0 ? ((originalAmount - remaining) / originalAmount) * 100 : 0;
   const yesPrice =
     order.side === 1
-      ? clampUnit(order.tick / 1000)
-      : clampUnit((1000 - order.tick) / 1000);
+      ? tickToYesPrice(order.tick, 1)
+      : tickToYesPrice(order.tick, 0);
 
   // `id` is what gets passed to onCancelOrder, which feeds parseOrderId.
   // Use the on-chain `orderId` (pure-digit string) so parseOrderId returns
@@ -190,8 +191,8 @@ function activityToHistory(act: IndexerActivity): HistoryRow | null {
     const side: "YES" | "NO" = d.side === 1 ? "YES" : "NO";
     const yesPrice =
       d.side === 1
-        ? clampUnit((d.tick ?? 0) / 1000)
-        : clampUnit((1000 - (d.tick ?? 0)) / 1000);
+        ? tickToYesPrice(d.tick ?? 0, 1)
+        : tickToYesPrice(d.tick ?? 0, 0);
     const status = d.status ?? "active";
     const type =
       status === "cancelled" ? ("cancelled" as const) : ("placed" as const);
@@ -200,7 +201,7 @@ function activityToHistory(act: IndexerActivity): HistoryRow | null {
     if (status === "cancelled" && !d.escrow && d.tick != null) {
       const tick = BigInt(d.tick);
       const amt = BigInt(d.amount ?? "0");
-      refundAmountWad = (tick * amt) / 1000n;
+      refundAmountWad = computeRefundWad(tick, amt);
     }
 
     return {
@@ -351,8 +352,8 @@ async function fetchOpenOrdersFromRpc(
         : 0;
     const yesPrice =
       level.side === 1
-        ? clampUnit(level.tick / 1000)
-        : clampUnit((1000 - level.tick) / 1000);
+        ? tickToYesPrice(level.tick, 1)
+        : tickToYesPrice(level.tick, 0);
 
     openOrders.push({
       id: `${level.side}:${level.tick}`,
@@ -439,8 +440,8 @@ async function fetchHistoryRowsFromRpc(
         amount: Number(formatUnits(log.args.amount ?? 0n, 18)),
         yesPrice:
           Number(log.args.side ?? 0) === 1
-            ? clampUnit(tick / 1000)
-            : clampUnit((1000 - tick) / 1000),
+            ? tickToYesPrice(tick, 1)
+            : tickToYesPrice(tick, 0),
         refundAmountWad: null,
         timestamp: Number(log.blockNumber ?? 0n),
         sortKey,
@@ -463,8 +464,8 @@ async function fetchHistoryRowsFromRpc(
         amount: Number(formatUnits(log.args.amount ?? 0n, 18)),
         yesPrice:
           Number(log.args.side ?? 0) === 1
-            ? clampUnit(tick / 1000)
-            : clampUnit((1000 - tick) / 1000),
+            ? tickToYesPrice(tick, 1)
+            : tickToYesPrice(tick, 0),
         refundAmountWad: null,
         timestamp: Number(log.blockNumber ?? 0n),
         sortKey,
