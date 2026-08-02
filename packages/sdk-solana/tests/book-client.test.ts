@@ -307,3 +307,93 @@ describe("book client — corrupt input", () => {
     expect(() => decodeBook(data)).toThrow(/past block_count/);
   }, 60_000);
 });
+
+describe("adapter book surface", () => {
+  // The demo's chain-shim submits through adapter builders, so these must
+  // return the same TradeRequest shape as every other path — otherwise the
+  // book needs a special case in the shim, which is exactly the kind of
+  // divergence that leaves one code path untested.
+  async function adapterFor(smoke: SmokeContext) {
+    const { SolanaChainAdapter } = await import("../src/adapter.js");
+    const { LiteSvmConnection } = await import("./fixtures/svm.js");
+    return new SolanaChainAdapter({
+      node: {
+        id: "book-adapter",
+        chainKind: "solana",
+        chainId: "test",
+        rpcUrl: "http://localhost:8899",
+      },
+      programIds: smoke.programs,
+      usdcMint: smoke.usdcMint,
+      connection: new LiteSvmConnection(smoke.ctx),
+    });
+  }
+
+  it("buildBookPlace returns a submittable TradeRequest", async () => {
+    const smoke = await boot();
+    const adapter = await adapterFor(smoke);
+    const { encodePubkeyRef } = await import("../src/refs.js");
+    const req = await adapter.buildBookPlace(
+      encodePubkeyRef(smoke.marketPda),
+      {
+        user: encodePubkeyRef(smoke.creator.publicKey),
+        side: SIDE_BID,
+        limitTick: 500,
+        amount: ONE_SHARE,
+        matchLimit: 4,
+        postRemainder: true,
+      },
+    );
+    expect(req.kind).toBe("trade");
+    expect((req.meta as { operation?: string }).operation).toBe("bookPlace");
+    // Flat account list — no per-fill bundles, which is what retires H1.
+    expect(req.accounts.length).toBe(11);
+  }, 60_000);
+
+  it("buildBookCancel and buildBookWithdraw round-trip too", async () => {
+    const smoke = await boot();
+    const adapter = await adapterFor(smoke);
+    const { encodePubkeyRef } = await import("../src/refs.js");
+    const marketRef = encodePubkeyRef(smoke.marketPda);
+    const user = encodePubkeyRef(smoke.creator.publicKey);
+
+    const cancel = await adapter.buildBookCancel(marketRef, { user, orderSeq: 7n });
+    expect((cancel.meta as { operation?: string }).operation).toBe("bookCancel");
+
+    const withdraw = await adapter.buildBookWithdraw(marketRef, { user });
+    expect((withdraw.meta as { operation?: string }).operation).toBe("bookWithdraw");
+  }, 60_000);
+
+  it("readBook decodes the live account in one fetch", async () => {
+    // The whole ladder in a single getAccountInfo. The legacy UI issued 999
+    // getOrdersAtTick calls through a multicall because the old book stores
+    // one account per price level.
+    const smoke = await boot();
+    const adapter = await adapterFor(smoke);
+    const { encodePubkeyRef } = await import("../src/refs.js");
+    const maker = await trader(smoke);
+    await sendBookTx(
+      smoke,
+      maker,
+      buildBookPlace(refs(smoke), maker.publicKey, {
+        side: SIDE_ASK,
+        limitTick: 620,
+        amount: 3n * ONE_SHARE,
+        matchLimit: 0,
+        postRemainder: true,
+      }),
+    );
+    const snap = await adapter.readBook(encodePubkeyRef(smoke.marketPda));
+    expect(snap.asks).toHaveLength(1);
+    expect(snap.asks[0]!.priceTick).toBe(620);
+  }, 60_000);
+
+  it("readBook fails loudly when the book was never created", async () => {
+    const smoke = await bootSmoke();
+    const adapter = await adapterFor(smoke);
+    const { encodePubkeyRef } = await import("../src/refs.js");
+    await expect(
+      adapter.readBook(encodePubkeyRef(smoke.marketPda)),
+    ).rejects.toThrow(/book account not found/);
+  }, 60_000);
+});

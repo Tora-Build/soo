@@ -483,6 +483,18 @@ export async function dispatchAmmWrite(
   ) {
     return dispatchOrderbookWrite(call, ctx);
   }
+  // Redesigned book. Distinct function names rather than a mode flag on the
+  // legacy ones, so a caller cannot land on the wrong book by accident while
+  // both are live.
+  if (call.functionName === "bookPlace") {
+    return dispatchBookPlace(call, ctx);
+  }
+  if (call.functionName === "bookCancel") {
+    return dispatchBookCancel(call, ctx);
+  }
+  if (call.functionName === "bookWithdraw") {
+    return dispatchBookWithdraw(call, ctx);
+  }
   return NOT_HANDLED;
 }
 
@@ -964,6 +976,69 @@ async function dispatchSettle(
     throw new Error("settle: invalid market reference");
   }
   const req = await ctx.adapter.buildSettle(marketRef, {
+    user: `sol:${userBase58}`,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+/**
+ * `bookPlace(market, side, limitTick, amount, matchLimit, postRemainder)`
+ *
+ * One instruction. No planner, no simulator, no per-fill account bundles — the
+ * program walks its own book, so nothing is predicted off-chain and there is
+ * nothing to go stale between planning and landing (audit finding H1).
+ */
+async function dispatchBookPlace(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "bookPlace");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) throw new Error("bookPlace: invalid market reference");
+
+  const side = Number(args[1] ?? -1);
+  if (side !== 0 && side !== 1) {
+    throw new Error(`bookPlace: side must be 0 (bid) or 1 (ask), got ${args[1]}`);
+  }
+  const limitTick = Number(args[2] ?? 0);
+  const req = await ctx.adapter.buildBookPlace(marketRef, {
+    user: `sol:${userBase58}`,
+    side,
+    limitTick,
+    amount: BigInt((args[3] ?? 0) as string | number | bigint),
+    matchLimit: Number(args[4] ?? 8),
+    postRemainder: Boolean(args[5] ?? true),
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+/** `bookCancel(market, orderSeq)` — a real sequence, not a synthesised id. */
+async function dispatchBookCancel(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "bookCancel");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) throw new Error("bookCancel: invalid market reference");
+  const req = await ctx.adapter.buildBookCancel(marketRef, {
+    user: `sol:${userBase58}`,
+    orderSeq: BigInt((args[1] ?? 0) as string | number | bigint),
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+/** `bookWithdraw(market)` — move seat credit into the wallet. */
+async function dispatchBookWithdraw(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "bookWithdraw");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) throw new Error("bookWithdraw: invalid market reference");
+  const req = await ctx.adapter.buildBookWithdraw(marketRef, {
     user: `sol:${userBase58}`,
   });
   return submitAndSynth(ctx.adapter, req, signer);

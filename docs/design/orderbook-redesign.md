@@ -634,7 +634,39 @@ from a real on-chain transaction** (`test/fixtures/bookfilled.bin`), and a
 cross-package test in the SDK decodes that same file. Neither can drift without
 one of them failing.
 
-Still to do in this phase: the demo.
+*Demo view layer + write path landed 2026-08-02* — demo 6 → 47 tests, SDK
+209 → 213.
+
+The demo's orderbook logic had **no unit coverage at all**, so it was extracted
+and characterised before being changed (`src/lib/orderbook-math.ts`, 18 tests).
+Writing those found two live bugs, both from round-tripping a price level
+through a synthesised `"${side}:${tick}"` id: `"unknown-400"` resolves to the
+**NO** side because "unknown" contains "no", and `"yes-12345"` truncates to tick
+**345**. Neither is patched — the redesigned book gives every order a real `seq`
+the moment it rests, so the synthesised-id path is deleted rather than fixed.
+
+`src/lib/book-view.ts` (23 tests) replaces two things at once:
+
+- **The 999-call ladder scan.** `useOrderbook` walks every tick from 999 down
+  issuing `getOrdersAtTick` through a multicall, because the legacy book has one
+  account per price level and no way to enumerate them. The new book is one
+  account: `adapter.readBook()` is a single `getAccountInfo` plus a decode.
+- **The complement flip.** `yesPrice(tick)` takes **no side argument** — on the
+  unified axis a bid at 400 and an ask at 400 are both "YES at 0.40". A side
+  parameter could only reintroduce the bug it used to cause.
+
+It also adds `quoteSweep`, which walks the same side the on-chain matcher would
+at the same prices, so a quote shown to a user matches what they pay. The legacy
+UI could not do this without the 999-call scan.
+
+The adapter gained `buildBookPlace` / `buildBookCancel` / `buildBookWithdraw`
+in the same `TradeRequest` shape as every other path, plus `readBook`, and the
+chain-shim routes `bookPlace` / `bookCancel` / `bookWithdraw` to them. Distinct
+function names rather than a mode flag on the legacy ones, so a caller cannot
+land on the wrong book by accident while both are live.
+
+Still to do in this phase: point the React components at these (they still read
+through the legacy hooks), and delete the legacy book once nothing calls it.
 
 **Phase 5 — deploy fresh.** New program IDs for `sooth_core` and `sooth_log`,
 generated and backed up before deploying.

@@ -75,7 +75,17 @@ import {
   SOOTH_CORE_PROGRAM_ID,
   type ProgramIds,
 } from "./pdas.js";
-import { eventAuthorityPda } from "./book/index.js";
+import {
+  bookPda,
+  decodeBook,
+  eventAuthorityPda,
+  buildBookCancel as buildBookCancelIx,
+  buildBookPlace as buildBookPlaceIx,
+  buildBookWithdraw as buildBookWithdrawIx,
+  type BookRefs,
+  type BookSnapshot,
+  type PlaceArgs,
+} from "./book/index.js";
 import { decodePubkeyRef, encodeSignatureRef } from "./refs.js";
 import { SoothError, notImplemented } from "./errors.js";
 import {
@@ -2185,6 +2195,119 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
         operation: "settle",
       },
     };
+  }
+
+  // ─── Redesigned book (docs/design/orderbook-redesign.md) ──────────────
+  //
+  // Thin wrappers over the raw instruction builders in `./book`, in the same
+  // TradeRequest shape as every other path so the demo's chain-shim can submit
+  // them without a special case.
+  //
+  // There is no planner or simulator here, and that is the point: the program
+  // walks its own book, so a taker sends one instruction with a `matchLimit`
+  // and nothing has to be predicted off-chain. The legacy `matching-driver`
+  // had to precompute the exact crossing sequence, which is where audit
+  // finding H1 comes from.
+
+  private bookRefs(marketPda: PublicKey, marketId: Uint8Array): BookRefs {
+    return {
+      marketId,
+      marketPda,
+      usdcMint: this.usdcMint,
+      programs: this.programIds,
+    };
+  }
+
+  async buildBookPlace(
+    market: MarketRef,
+    args: PlaceArgs & { user: AddressRef },
+  ): Promise<TradeRequest> {
+    if (!args.user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method: "buildBookPlace — args.user is required at build time",
+      });
+    }
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const ix = buildBookPlaceIx(
+      this.bookRefs(marketPda, resolved.marketId),
+      userPk,
+      args,
+    );
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "bookPlace",
+      },
+    };
+  }
+
+  async buildBookCancel(
+    market: MarketRef,
+    args: { user: AddressRef; orderSeq: bigint },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const ix = buildBookCancelIx(
+      this.bookRefs(marketPda, resolved.marketId),
+      userPk,
+      args.orderSeq,
+    );
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "bookCancel",
+      },
+    };
+  }
+
+  async buildBookWithdraw(
+    market: MarketRef,
+    args: { user: AddressRef },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const ix = buildBookWithdrawIx(
+      this.bookRefs(marketPda, resolved.marketId),
+      userPk,
+    );
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "bookWithdraw",
+      },
+    };
+  }
+
+  /** Decoded book snapshot — one `getAccountInfo`, no per-tick scan. */
+  async readBook(market: MarketRef): Promise<BookSnapshot> {
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const [pda] = bookPda(resolved.marketId, this.programIds);
+    const info = await this.connection.getAccountInfo(pda);
+    if (!info) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `book account not found for market ${marketPda.toBase58()}`,
+      });
+    }
+    return decodeBook(Buffer.from(info.data));
   }
 
   // ─── sooth_book order lifecycle builders ──────────────────────────────
