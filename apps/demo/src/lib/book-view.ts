@@ -178,6 +178,73 @@ export interface MyPosition {
  * Both live in the book account's seat, so this needs no extra fetch — the
  * same `getAccountInfo` that produced the ladder produced this.
  */
+/**
+ * The two legs of a match, in USDC base units — a mirror of `leg_costs`.
+ *
+ * A YES share and a NO share sum to exactly 1, so a fill at tick `t` splits
+ * `amount` into `t/1000` from the bid and `(1000-t)/1000` from the ask. The
+ * MAKER leg floors and the taker leg takes the remainder, so the pair sums to
+ * `amount` exactly. Flooring both would let the pair come to `amount - 1` and
+ * bleed the vault by one base unit per fill.
+ *
+ * Returned as `[bid, ask]`.
+ */
+export function legCosts(
+  priceTick: number,
+  amount: bigint,
+  takerSide: number,
+): [bigint, bigint] {
+  const tick = BigInt(priceTick);
+  if (tick <= 0n || tick >= BigInt(NUM_TICKS)) {
+    throw new RangeError(`tick ${priceTick} outside 1..${NUM_TICKS - 1}`);
+  }
+  const takerIsBid = takerSide === SIDE_BID;
+  const makerTicks = takerIsBid ? BigInt(NUM_TICKS) - tick : tick;
+  const makerCost = (amount * makerTicks) / BigInt(NUM_TICKS);
+  const takerCost = amount - makerCost;
+  return takerIsBid ? [takerCost, makerCost] : [makerCost, takerCost];
+}
+
+/**
+ * USDC locked behind a single resting order — a mirror of `escrow_of`.
+ *
+ * A maker posts only their own leg; the counterparty brings the other. So a
+ * bid at 0.40 for 10 shares locks 4 USDC, not 10.
+ */
+export function escrowOf(order: {
+  priceTick: number;
+  amount: bigint;
+  side: number;
+}): bigint {
+  const [bid, ask] = legCosts(order.priceTick, order.amount, order.side);
+  return order.side === SIDE_BID ? bid : ask;
+}
+
+/**
+ * A trader's whole standing in one book: withdrawable credit, escrow locked
+ * behind resting orders, and net share position.
+ *
+ * The demo's Trading Account card hardcoded `reserved = 0`, so collateral sat
+ * in the book invisibly — a trader who placed orders watched their wallet
+ * balance drop with nothing to account for it.
+ */
+export function myAccount(
+  snapshot: BookSnapshot,
+  trader: string,
+): { credit: bigint; escrow: bigint; net: bigint; openOrders: number } {
+  const pos = myPosition(snapshot, trader);
+  let escrow = 0n;
+  let openOrders = 0;
+  for (const side of [snapshot.bids, snapshot.asks]) {
+    for (const o of side) {
+      if (o.trader !== trader) continue;
+      escrow += escrowOf(o);
+      openOrders += 1;
+    }
+  }
+  return { credit: pos.credit, escrow, net: pos.net, openOrders };
+}
+
 export function myPosition(snapshot: BookSnapshot, trader: string): MyPosition {
   const seat: BookSeat = snapshot.seats.find((s) => s.trader === trader) ?? {
     trader,

@@ -127,6 +127,18 @@ log "  ledger: $LEDGER_DIR"
 log "  log:    $VALIDATOR_LOG"
 
 # --reset wipes the ledger so each run starts clean.
+# --limit-ledger-size keeps the ledger from being trimmed out from under us.
+#
+# solana-test-validator purges old shreds aggressively by default — after a few
+# minutes `getFirstAvailableBlock` had advanced past every book transaction, so
+# `getSignaturesForAddress` returned nothing and order history read as empty on
+# a market that had plainly traded. The data was not missing, the ledger was.
+#
+# This is also why history cannot rest on signature-walking in production: an
+# RPC provider trims too. The durable answer is an indexer consuming the book's
+# CPI events (packages/sooth-data). This flag makes localnet behave while that
+# is built.
+#
 # --quiet suppresses the per-slot status spam; we still capture stderr.
 # Run in background so we can run phase 3 + vite in foreground.
 solana-test-validator \
@@ -134,6 +146,7 @@ solana-test-validator \
   --quiet \
   --rpc-port "$RPC_PORT" \
   --ledger "$LEDGER_DIR" \
+  --limit-ledger-size 100000000 \
   --bpf-program "$SOOTH_CORE_ID" "$CORE_SO" \
   --account "$USDC_MINT_ADDR" "$USDC_DUMP" \
   >"$VALIDATOR_LOG" 2>&1 &

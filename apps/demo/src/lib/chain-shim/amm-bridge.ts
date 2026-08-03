@@ -61,6 +61,7 @@ import {
   type SoothRequest,
 } from "@sooth/sdk-solana";
 import { AnchorProvider, Program, type Idl } from "@coral-xyz/anchor";
+import { myAccount } from "../book-view";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -292,6 +293,22 @@ export async function dispatchAmmRead(
 
     case "decimals": {
       return USDC_DECIMALS;
+    }
+
+    case "getBookAccount": {
+      // A trader's standing inside the book: withdrawable credit, collateral
+      // locked behind resting orders, and net share position.
+      //
+      // The Trading Account card hardcoded `reserved = 0`, so escrowed
+      // collateral was invisible — a trader who placed orders saw their wallet
+      // balance drop with nothing on the page to account for it.
+      const marketRef = toMarketRef(call.args?.[0]);
+      const owner = toAddressRef(call.args?.[1]);
+      if (!marketRef || !owner) return [0n, 0n, 0n, 0n] as const;
+      const snapshot = await readBookCached(ctx, marketRef);
+      if (!snapshot) return [0n, 0n, 0n, 0n] as const;
+      const acct = myAccount(snapshot, owner.replace(/^sol:/, ""));
+      return [acct.credit, acct.escrow, acct.net, BigInt(acct.openOrders)] as const;
     }
 
     case "getMyOpenOrders": {

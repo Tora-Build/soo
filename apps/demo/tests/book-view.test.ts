@@ -12,6 +12,9 @@ import {
   ONE_SHARE_BASE,
   SIDE_ASK,
   SIDE_BID,
+  escrowOf,
+  legCosts,
+  myAccount,
   myOrders,
   myPosition,
   quoteSweep,
@@ -290,5 +293,103 @@ describe("quoteSweep", () => {
     expect(q.filled).toBe(3n * ONE_SHARE_BASE);
     expect(q.cost).toBe(1_500_000n);
     expect(q.levels).toBe(1);
+  });
+});
+
+describe("legCosts", () => {
+  // A mirror of the program's `leg_costs`. The invariant that matters is that
+  // the pair sums to `amount` EXACTLY — flooring both legs lets the pair come
+  // to `amount - 1`, which bleeds the vault by a base unit per fill.
+  it("splits the amount at the tick", () => {
+    const [bid, ask] = legCosts(400, 10n * ONE_SHARE_BASE, SIDE_BID);
+    expect(bid).toBe(4n * ONE_SHARE_BASE);
+    expect(ask).toBe(6n * ONE_SHARE_BASE);
+  });
+
+  it("sums to the amount exactly, at every tick and awkward size", () => {
+    // 7 base units at tick 333 is where naive double-flooring loses one.
+    for (const amount of [1n, 7n, 999n, 1_000_001n, 123_456_789n]) {
+      for (const tick of [1, 333, 500, 667, 999]) {
+        for (const side of [SIDE_BID, SIDE_ASK]) {
+          const [bid, ask] = legCosts(tick, amount, side);
+          expect(bid + ask).toBe(amount);
+        }
+      }
+    }
+  });
+
+  it("gives the maker the floored leg on both sides", () => {
+    // Taker takes the remainder, so rounding dust always lands with the taker,
+    // never in a gap between the two.
+    const [bidT, askT] = legCosts(333, 10n, SIDE_BID); // taker is the bid
+    expect(askT).toBe((10n * 667n) / 1000n); // maker (ask) floors
+    expect(bidT).toBe(10n - askT);
+
+    const [bidA, askA] = legCosts(333, 10n, SIDE_ASK); // taker is the ask
+    expect(bidA).toBe((10n * 333n) / 1000n); // maker (bid) floors
+    expect(askA).toBe(10n - bidA);
+  });
+
+  it("rejects a tick that cannot rest", () => {
+    expect(() => legCosts(0, 10n, SIDE_BID)).toThrow(RangeError);
+    expect(() => legCosts(1000, 10n, SIDE_BID)).toThrow(RangeError);
+  });
+});
+
+describe("escrowOf", () => {
+  it("locks only the maker's own leg", () => {
+    // A bid at 0.40 for 10 shares locks 4 USDC — not 10. The counterparty
+    // brings the other 6. Charging the full notional would overstate what the
+    // trader has committed by more than 2x at mid prices.
+    expect(escrowOf({ priceTick: 400, amount: 10n * ONE_SHARE_BASE, side: SIDE_BID })).toBe(
+      4n * ONE_SHARE_BASE,
+    );
+    expect(escrowOf({ priceTick: 400, amount: 10n * ONE_SHARE_BASE, side: SIDE_ASK })).toBe(
+      6n * ONE_SHARE_BASE,
+    );
+  });
+
+  it("is symmetric under the YES/NO flip", () => {
+    // A bid at t and an ask at 1000-t are the same trade seen from the two
+    // sides, so they must lock the same collateral.
+    for (const tick of [100, 250, 400, 750]) {
+      const bid = escrowOf({ priceTick: tick, amount: 1_000_000n, side: SIDE_BID });
+      const ask = escrowOf({ priceTick: 1000 - tick, amount: 1_000_000n, side: SIDE_ASK });
+      expect(bid).toBe(ask);
+    }
+  });
+});
+
+describe("myAccount", () => {
+  it("totals credit, escrow and net across both sides", () => {
+    seq = 0n;
+    const snap = snapshot({
+      bids: [order(ALICE, 400, 10, SIDE_BID), order(BOB, 400, 99, SIDE_BID)],
+      asks: [order(ALICE, 600, 10, SIDE_ASK)],
+      seats: [{ trader: ALICE, credit: 3n * ONE_SHARE_BASE, net: 5n * ONE_SHARE_BASE }],
+    });
+    const acct = myAccount(snap, ALICE);
+    // bid 10 @ 0.40 locks 4; ask 10 @ 0.60 locks 4 (the 1-0.60 leg).
+    expect(acct.escrow).toBe(8n * ONE_SHARE_BASE);
+    expect(acct.credit).toBe(3n * ONE_SHARE_BASE);
+    expect(acct.net).toBe(5n * ONE_SHARE_BASE);
+    expect(acct.openOrders).toBe(2);
+  });
+
+  it("counts no one else's escrow", () => {
+    // The book is one shared account, so only the filter keeps Bob's locked
+    // collateral out of Alice's Trading Account.
+    seq = 0n;
+    const snap = snapshot({ bids: [order(BOB, 400, 50, SIDE_BID)] });
+    expect(myAccount(snap, ALICE).escrow).toBe(0n);
+  });
+
+  it("reads as flat zeros for a trader who has never traded", () => {
+    expect(myAccount(snapshot(), ALICE)).toEqual({
+      credit: 0n,
+      escrow: 0n,
+      net: 0n,
+      openOrders: 0,
+    });
   });
 });

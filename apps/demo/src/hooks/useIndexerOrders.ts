@@ -604,7 +604,13 @@ export function useIndexerOrders(
   // right RPC / indexer rows.
   const { selectedChainId } = useChainStore();
   const chainId = (chainIdProp ?? Number(selectedChainId)) || undefined;
+  // EVM addresses are hex and case-insensitive, so lowercasing is free — and
+  // the indexer stores them lowercased, so its routes need it.
   const ownerLower = owner?.toLowerCase();
+  // Solana pubkeys are base58 and case-SENSITIVE. Lowercasing one produces a
+  // string that matches no trader on the book, which is a silently empty panel
+  // rather than an error. Keep the original for every Solana-side read.
+  const ownerExact = owner;
   const publicClient = usePublicClient({ chainId });
 
   const {
@@ -612,7 +618,7 @@ export function useIndexerOrders(
     isLoading: ordersLoading,
     refetch: refetchOrders,
   } = useQuery<OpenOrder[]>({
-    queryKey: ["indexer-orders", chainId, marketKey, ownerLower],
+    queryKey: ["indexer-orders", chainId, marketKey, ownerLower, ownerExact],
     queryFn: async () => {
       if (!chainId || !marketKey || !ownerLower) return [] as OpenOrder[];
       // Use the owner-scoped endpoint so the filter by maker is actually
@@ -640,7 +646,7 @@ export function useIndexerOrders(
         return fetchOpenOrdersFromBook(
           publicClient,
           marketAddress,
-          toHexAddress(ownerLower),
+          ownerExact as `0x${string}`,
         );
       }
 
@@ -663,7 +669,7 @@ export function useIndexerOrders(
     isLoading: activityLoading,
     refetch: refetchActivity,
   } = useQuery<HistoryRow[]>({
-    queryKey: ["indexer-activity", chainId, marketKey, ownerLower],
+    queryKey: ["indexer-activity", chainId, marketKey, ownerLower, ownerExact],
     queryFn: async () => {
       if (!chainId || !marketKey) return [] as HistoryRow[];
       const params = ownerLower
@@ -689,7 +695,7 @@ export function useIndexerOrders(
         return fetchHistoryFromBook(
           publicClient,
           marketAddress,
-          toHexAddress(ownerLower),
+          ownerExact as `0x${string}`,
         );
       }
 

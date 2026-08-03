@@ -6,6 +6,8 @@ import { ERC20_ABI, SOOTHBOOK_ABI } from "../config/abis";
 import { useTokenBalances } from "./useTokenBalances";
 import { useDeployments } from "./useDeployments";
 import { useBaseTokenDecimals } from "./useBaseTokenDecimals";
+import { demoConfig } from "../lib/config";
+import { USE_REDESIGNED_BOOK } from "../lib/book-flag";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
@@ -44,10 +46,68 @@ export function useTraderVault() {
     },
   });
 
+  // Book seat: collateral locked behind resting orders, plus the credit a
+  // cancel or a fill has already returned but which has not been withdrawn.
+  //
+  // `reservedBalance` used to be a hardcoded 0n, so a trader who placed orders
+  // watched their wallet balance drop with nothing on the page accounting for
+  // it — the collateral was sitting in the book, invisible. On the redesigned
+  // book that is the normal resting state, not an edge case.
+  // A seat is per-market but the Trading Account is global, so this sums over
+  // every market the demo knows about. There is no on-chain market registry —
+  // `demoConfig` IS the list — so a market missing from it is also missing
+  // from this total.
+  const marketRefs = useMemo(
+    () =>
+      [demoConfig.marketRef, ...demoConfig.extraMarketRefs].filter(
+        (r): r is string => !!r,
+      ),
+    [],
+  );
+
+  const bookAccountContracts = useMemo(() => {
+    if (!address || !USE_REDESIGNED_BOOK) return [];
+    return marketRefs.map((marketRef) => ({
+      address: (soothBookAddress ?? ZERO_ADDRESS) as `0x${string}`,
+      abi: SOOTHBOOK_ABI,
+      functionName: "getBookAccount" as const,
+      args: [marketRef, address] as const,
+      chainId,
+    }));
+  }, [address, marketRefs, soothBookAddress, chainId]);
+
+  const {
+    data: bookAccountData,
+    refetch: refetchBookAccount,
+  } = useReadContracts({
+    contracts: bookAccountContracts,
+    query: {
+      enabled: bookAccountContracts.length > 0,
+      // Matches the book cache's own window — polling faster just re-reads the
+      // same cached snapshot.
+      staleTime: 5_000,
+      refetchInterval: 10_000,
+    },
+  });
+
+  let bookCredit = 0n;
+  let bookEscrow = 0n;
+  for (const leg of bookAccountData ?? []) {
+    const r = leg?.result as
+      | readonly [bigint, bigint, bigint, bigint]
+      | undefined;
+    if (!r) continue; // a market with no book yet — contributes nothing
+    bookCredit += r[0];
+    bookEscrow += r[1];
+  }
+
   const userUsdcBalance = balances[0] ?? 0n;
-  const availableBalance = userUsdcBalance;
-  const reservedBalance = 0n;
-  const totalBalance = userUsdcBalance;
+  // Spendable right now: what is in the wallet, plus credit sitting in the
+  // seat that a withdraw would return.
+  const availableBalance = userUsdcBalance + bookCredit;
+  // Committed to resting orders. Not spendable, but still the trader's.
+  const reservedBalance = bookEscrow;
+  const totalBalance = availableBalance + reservedBalance;
   const allowance = (allowanceData?.[0]?.result as bigint | undefined) ?? 0n;
 
   const approveUSDC = useCallback(
@@ -101,8 +161,12 @@ export function useTraderVault() {
   );
 
   const refetch = useCallback(async () => {
-    await Promise.all([refetchBalances(), refetchAllowance()]);
-  }, [refetchBalances, refetchAllowance]);
+    await Promise.all([
+      refetchBalances(),
+      refetchAllowance(),
+      refetchBookAccount(),
+    ]);
+  }, [refetchBalances, refetchAllowance, refetchBookAccount]);
 
   return {
     deposit,

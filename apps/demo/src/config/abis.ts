@@ -160,6 +160,12 @@ export const SOOTHBOOK_ABI = parseAbi([
   "function isMarketRegistered(address market) view returns (bool)",
   "function registeredMarkets(bytes32 marketKey) view returns (bool)",
   "function getOrdersAtTick(bytes32 marketKey, uint8 side, uint16 tick) view returns (uint256 totalAmount, uint256 orderCount)",
+  // Solana-only reads. The chain-shim routes by `functionName` and ignores the
+  // address, but wagmi still parses the ABI, so an entry has to exist here for
+  // the call to be issued at all.
+  "function getBookAccount(bytes32 marketKey, address owner) view returns (uint256 credit, uint256 escrow, int256 net, uint256 openOrders)",
+  "function getMyOpenOrders(bytes32 marketKey, address owner) view returns (uint256[] seqs)",
+  "function getMyOrderHistory(bytes32 marketKey, address owner) view returns (uint256[] rows)",
   "function feeBps() view returns (uint24)",
   "function feeRecipient() view returns (address)",
   "function owner() view returns (address)",

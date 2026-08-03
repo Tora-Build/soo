@@ -130,6 +130,34 @@ describe("getMyOpenOrders", () => {
     expect(bare).toHaveLength(1);
   });
 
+  it("accepts the 0x-wrapped address `useAccount` hands out", async () => {
+    // `useAccount` returns `0x${base58}` so upstream wagmi-typed slots keep
+    // type-checking. The shim has to unwrap that, not treat it as hex.
+    const ctx = ctxWith(async () => snapshot({ bids: [order(ALICE, 400, 1, 0)] }));
+    const wrapped = (await dispatchAmmRead(
+      { functionName: "getMyOpenOrders", args: [MARKET, `0x${ALICE}`] } as never,
+      ctx,
+    )) as Row[];
+    expect(wrapped).toHaveLength(1);
+  });
+
+  it("finds nothing once the pubkey has been case-folded", async () => {
+    // The bug this pins. Base58 is case-SENSITIVE; EVM hex is not. The hook
+    // lowercased the owner on its way in — free for an EVM address, and for a
+    // Solana pubkey it produces a string matching no trader on the book. The
+    // panel then renders empty, with no error anywhere to say why.
+    //
+    // Asserting the folded form finds NOTHING is what makes the requirement
+    // explicit: callers must pass the pubkey through unchanged.
+    const ctx = ctxWith(async () => snapshot({ bids: [order(ALICE, 400, 1, 0)] }));
+    const folded = (await dispatchAmmRead(
+      { functionName: "getMyOpenOrders", args: [MARKET, `0x${ALICE.toLowerCase()}`] } as never,
+      ctx,
+    )) as Row[];
+    expect(folded).toEqual([]);
+    expect(ALICE.toLowerCase()).not.toBe(ALICE); // the fixture must actually differ
+  });
+
   it("orders earliest-first, matching consumption order", async () => {
     const a = order(ALICE, 500, 1, 0);
     const b = order(ALICE, 500, 1, 0);
