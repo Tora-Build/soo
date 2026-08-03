@@ -415,6 +415,58 @@ async function fetchOpenOrdersFromRpc(
   return openOrders.sort((a, b) => b.timestamp - a.timestamp);
 }
 
+/**
+ * Order history from the redesigned book's own events.
+ *
+ * There is no indexer on the Solana fork, so this reads the book PDA's
+ * transaction signatures and decodes the CPI events the program emits. That is
+ * bounded work per call, not an index — deep history needs a real indexer.
+ */
+async function fetchHistoryFromBook(
+  publicClient: PublicClient,
+  marketAddress: `0x${string}`,
+  owner: `0x${string}`,
+): Promise<HistoryRow[]> {
+  const rows = (await (publicClient as unknown as {
+    readContract: (args: unknown) => Promise<unknown>;
+  }).readContract({
+    address: marketAddress,
+    abi: [],
+    functionName: "getMyOrderHistory",
+    args: [marketAddress, owner],
+  })) as Array<{
+    signature: string;
+    type: "placed" | "filled" | "cancelled";
+    role?: "maker" | "taker";
+    seq: bigint;
+    side: number | null;
+    priceTick: number | null;
+    amount: bigint;
+    refund?: bigint;
+    ts: bigint;
+  }>;
+
+  return rows.map((r, i) => {
+    // One transaction can produce several rows (a taker crossing three resting
+    // orders), so the signature alone is not unique.
+    const key = `${r.signature}:${r.type}:${r.seq}:${i}`;
+    const ts = Number(r.ts);
+    return {
+      key,
+      type: r.type,
+      // The book quotes one YES axis; side 0 is a bid (long YES).
+      side: r.side === 1 ? "NO" : "YES",
+      orderId: r.seq.toString(),
+      orderRef: r.signature,
+      amount: Number(r.amount) / 1e6,
+      yesPrice: r.priceTick === null ? 0 : clampUnit(r.priceTick / 1000),
+      refundAmountWad: r.refund && r.refund > 0n ? r.refund * 10n ** 12n : null,
+      timestamp: ts,
+      sortKey: ts,
+    } satisfies HistoryRow;
+  });
+}
+
 async function fetchHistoryRowsFromRpc(
   publicClient: PublicClient,
   soothBookAddress: Address,
@@ -628,6 +680,17 @@ export function useIndexerOrders(
 
       if (!publicClient || !soothBookAddress || !ownerLower) {
         return [] as HistoryRow[];
+      }
+
+      if (USE_REDESIGNED_BOOK) {
+        // Same reason as open orders: the redesigned book emits versioned CPI
+        // events, not the EVM-shaped ORDER_* logs the scan below looks for, so
+        // that path finds nothing however much the user has traded.
+        return fetchHistoryFromBook(
+          publicClient,
+          marketAddress,
+          toHexAddress(ownerLower),
+        );
       }
 
       return fetchHistoryRowsFromRpc(

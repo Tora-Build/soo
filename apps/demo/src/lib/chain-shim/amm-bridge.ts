@@ -335,6 +335,113 @@ export async function dispatchAmmRead(
       return mine as readonly unknown[];
     }
 
+    case "getMyOrderHistory": {
+      // Order history from the book's own CPI events.
+      //
+      // The legacy path replays EVM-shaped ORDER_PLACED / ORDER_CANCELLED /
+      // ORDER_FILLED logs through `getLogs`. The redesigned book emits none of
+      // those signatures, and there is no indexer on this fork
+      // (VITE_USE_INDEXER=false), so history was always empty.
+      const marketRef = toMarketRef(call.args?.[0]);
+      const owner = toAddressRef(call.args?.[1]);
+      if (!marketRef || !owner) return [] as readonly unknown[];
+      const ownerBase58 = owner.replace(/^sol:/, "");
+
+      let records: Awaited<ReturnType<typeof ctx.adapter.readBookHistory>>;
+      try {
+        records = await ctx.adapter.readBookHistory(marketRef, { limit: 200 });
+      } catch {
+        // No book, or an RPC that does not serve signature history. Degrade to
+        // empty rather than stalling the panel on a thrown promise.
+        return [] as readonly unknown[];
+      }
+
+      // A `cancelled` event carries only the seq — not the side or the price,
+      // since the program already freed the node by the time it emits. The
+      // matching `placed` event is in this same stream, so remember each
+      // order's terms as it goes by and enrich the later rows from it.
+      // Without this a cancel renders as an order with no price.
+      const terms = new Map<string, { side: number; priceTick: number }>();
+
+      const rows: unknown[] = [];
+      for (const { signature, event } of records) {
+        if (event.kind === "placed") {
+          terms.set(event.seq.toString(), {
+            side: event.side,
+            priceTick: event.priceTick,
+          });
+          if (event.trader !== ownerBase58) continue;
+          rows.push({
+            signature,
+            type: "placed",
+            seq: event.seq,
+            side: event.side,
+            priceTick: event.priceTick,
+            amount: event.amount,
+            refund: 0n,
+            ts: event.ts,
+          });
+          continue;
+        }
+
+        if (event.kind === "cancelled") {
+          if (event.trader !== ownerBase58) continue;
+          const t = terms.get(event.seq.toString());
+          rows.push({
+            signature,
+            type: "cancelled",
+            seq: event.seq,
+            // null when the order was placed outside the fetched window —
+            // honest about the gap rather than rendering a made-up price.
+            side: t?.side ?? null,
+            priceTick: t?.priceTick ?? null,
+            amount: 0n,
+            refund: event.refund,
+            ts: event.ts,
+          });
+          continue;
+        }
+
+        // A fill touches two parties, and the panel must show it to both: the
+        // taker who crossed, and every maker whose resting order was consumed.
+        // Attributing it to the taker alone would hide from a maker that their
+        // order traded at all.
+        if (event.taker === ownerBase58) {
+          for (const f of event.fills) {
+            rows.push({
+              signature,
+              type: "filled",
+              role: "taker",
+              seq: f.makerSeq,
+              side: event.takerSide,
+              // Execution price is the MAKER's tick, not the taker's limit —
+              // that difference IS the price improvement the taker received.
+              priceTick: f.priceTick,
+              amount: f.amount,
+              fee: event.fee,
+              ts: event.ts,
+            });
+          }
+        }
+        for (const f of event.fills) {
+          if (f.maker !== ownerBase58) continue;
+          rows.push({
+            signature,
+            type: "filled",
+            role: "maker",
+            seq: f.makerSeq,
+            // The maker sat on the side opposite the taker.
+            side: event.takerSide === 0 ? 1 : 0,
+            priceTick: f.priceTick,
+            amount: f.amount,
+            fee: 0n, // the taker pays the fee
+            ts: event.ts,
+          });
+        }
+      }
+      return rows as readonly unknown[];
+    }
+
     case "getOrdersAtTick": {
       // EVM SoothBook.getOrdersAtTick(marketKey, side, tick) →
       // (totalAmount: u128, makers: Order[]).

@@ -15,6 +15,7 @@
 import {
   AnchorProvider,
   Program,
+  utils as anchorUtils,
   type Idl,
   type Wallet,
 } from "@coral-xyz/anchor";
@@ -86,6 +87,10 @@ import {
   type BookSnapshot,
   type PlaceArgs,
 } from "./book/index.js";
+import {
+  decodeBookEventsFromInner,
+  type BookEvent,
+} from "./book/events.js";
 import { decodePubkeyRef, encodeSignatureRef } from "./refs.js";
 import { SoothError, notImplemented } from "./errors.js";
 import {
@@ -2329,6 +2334,56 @@ export class SolanaChainAdapter implements ChainAdapter, SoothSolanaClient {
       });
     }
     return decodeBook(Buffer.from(info.data));
+  }
+
+  /**
+   * Order history for a market, reconstructed from the book's own events.
+   *
+   * There is no indexer on the Solana fork (`VITE_USE_INDEXER=false`), and the
+   * legacy history path replays EVM-shaped ORDER_PLACED / ORDER_CANCELLED /
+   * ORDER_FILLED logs through `getLogs` — signatures the redesigned book does
+   * not emit, so it always returned nothing.
+   *
+   * The book emits versioned CPI events instead (`emit_cpi!`), which land as
+   * inner instructions on the transaction. So history is: walk the book PDA's
+   * signatures, decode the events, keep them in chain order.
+   *
+   * Bounded by `limit` signatures — this is a read over transaction history,
+   * not an index, and the cost is one `getTransaction` per signature. Callers
+   * wanting deep history need a real indexer.
+   */
+  async readBookHistory(
+    market: MarketRef,
+    opts?: { limit?: number },
+  ): Promise<Array<{ signature: string; slot: number; event: BookEvent }>> {
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const [pda] = bookPda(resolved.marketId, this.programIds);
+
+    const limit = opts?.limit ?? 100;
+    const sigs = await this.connection.getSignaturesForAddress(pda, { limit });
+    if (sigs.length === 0) return [];
+
+    const out: Array<{ signature: string; slot: number; event: BookEvent }> = [];
+    // Oldest first, so the caller sees the order the chain applied.
+    for (const sig of [...sigs].reverse()) {
+      if (sig.err) continue; // a failed tx changed nothing
+      const tx = await this.connection.getTransaction(sig.signature, {
+        maxSupportedTransactionVersion: 0,
+        commitment: "confirmed",
+      });
+      if (!tx?.meta?.innerInstructions) continue;
+      const inner = tx.meta.innerInstructions.flatMap((group) =>
+        // web3.js hands inner-instruction data back base58-encoded.
+        group.instructions.map((ix) =>
+          anchorUtils.bytes.bs58.decode((ix as { data: string }).data),
+        ),
+      );
+      for (const event of decodeBookEventsFromInner(inner)) {
+        out.push({ signature: sig.signature, slot: sig.slot, event });
+      }
+    }
+    return out;
   }
 
   // ─── sooth_book order lifecycle builders ──────────────────────────────
