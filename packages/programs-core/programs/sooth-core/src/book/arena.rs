@@ -229,7 +229,7 @@ impl<'a> Book<'a> {
         Ok(())
     }
 
-    fn node(&self, idx: u32) -> BookResult<OrderNode> {
+    pub(crate) fn node(&self, idx: u32) -> BookResult<OrderNode> {
         self.blocks
             .get(idx as usize)
             .copied()

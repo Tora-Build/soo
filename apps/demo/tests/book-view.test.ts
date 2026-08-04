@@ -393,3 +393,48 @@ describe("myAccount", () => {
     });
   });
 });
+
+describe("quoteSweep — self-owned liquidity", () => {
+  // The matcher steps over the taker's own resting orders. A quote that counts
+  // them promises a fill the chain will not give, and it is worst exactly when
+  // the trader is making the market: their own order is often the best price,
+  // so the quote is built almost entirely on liquidity they cannot take.
+  it("skips the caller's own orders", () => {
+    seq = 0n;
+    const snap = snapshot({
+      asks: [order(ALICE, 400, 1, SIDE_ASK), order(BOB, 500, 1, SIDE_ASK)],
+    });
+    const q = quoteSweep(snap, SIDE_BID, 2n * ONE_SHARE_BASE, undefined, ALICE);
+    // Only Bob's share is reachable.
+    expect(q.filled).toBe(ONE_SHARE_BASE);
+    expect(q.cost).toBe(500_000n);
+  });
+
+  it("steps over them rather than stopping", () => {
+    // The distinction that matters: Alice's 400 sits in FRONT of Bob's 500.
+    // Stopping would report zero; skipping reaches Bob.
+    seq = 0n;
+    const snap = snapshot({
+      asks: [order(ALICE, 400, 1, SIDE_ASK), order(BOB, 500, 5, SIDE_ASK)],
+    });
+    expect(quoteSweep(snap, SIDE_BID, 3n * ONE_SHARE_BASE, undefined, ALICE).filled).toBe(
+      3n * ONE_SHARE_BASE,
+    );
+  });
+
+  it("counts every order when no taker is given", () => {
+    // An anonymous depth quote has no owner to exclude, so nothing is skipped.
+    seq = 0n;
+    const snap = snapshot({ asks: [order(ALICE, 400, 1, SIDE_ASK)] });
+    expect(quoteSweep(snap, SIDE_BID, ONE_SHARE_BASE).filled).toBe(ONE_SHARE_BASE);
+  });
+
+  it("still honours the limit tick while skipping", () => {
+    seq = 0n;
+    const snap = snapshot({
+      asks: [order(ALICE, 400, 1, SIDE_ASK), order(BOB, 700, 5, SIDE_ASK)],
+    });
+    const q = quoteSweep(snap, SIDE_BID, 5n * ONE_SHARE_BASE, 500, ALICE);
+    expect(q.filled).toBe(0n);
+  });
+});

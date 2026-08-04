@@ -276,6 +276,15 @@ export function quoteSweep(
   side: number,
   amount: bigint,
   limitTick?: number,
+  /**
+   * The trader this quote is for.
+   *
+   * Their own resting orders are skipped, because the matcher skips them: it
+   * steps over a self-owned order and keeps matching. Counting that liquidity
+   * here would quote a fill the chain will not give — worst when the trader is
+   * the one making the market, since their own order is often the best price.
+   */
+  taker?: string,
 ): { cost: bigint; filled: bigint; levels: number; avgPrice: number | null } {
   const resting = side === SIDE_BID ? snapshot.asks : snapshot.bids;
   let remaining = amount;
@@ -285,6 +294,8 @@ export function quoteSweep(
 
   for (const o of resting) {
     if (remaining === 0n) break;
+    // Skip, do not stop — the order behind a self-owned one is reachable.
+    if (taker !== undefined && o.trader === taker) continue;
     if (limitTick !== undefined) {
       const crosses =
         side === SIDE_BID ? o.priceTick <= limitTick : o.priceTick >= limitTick;

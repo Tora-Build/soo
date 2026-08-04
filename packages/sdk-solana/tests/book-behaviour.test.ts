@@ -219,7 +219,12 @@ describe("book_place — resting and crossing", () => {
     expect((await bookHeader(smoke)).orderCount).toBe(3);
   }, 120_000);
 
-  it("refuses to self-cross", async () => {
+  it("refuses to self-cross, and cancels the newest rather than resting it", async () => {
+    // Settling both legs against one seat would double-count the position, so
+    // this pairing never trades. What must NOT happen is both orders resting:
+    // that leaves a bid at 900 above an ask at 400, both this trader's own, and
+    // anyone may lift the pair and bank 0.50/share out of them. Cancel-newest
+    // drops the incoming order and leaves the older one with its priority.
     const smoke = await boot();
     const solo = await trader(smoke);
     await sendBookTx(
@@ -232,9 +237,13 @@ describe("book_place — resting and crossing", () => {
       solo,
       bookPlaceIx(smoke, solo.publicKey, SIDE_BID, 900, ONE_SHARE, 8, true),
     );
-    // Both rest; neither filled. Settling both legs against one seat would
-    // double-count the position and invent collateral.
-    expect((await bookHeader(smoke)).orderCount).toBe(2);
+    expect((await bookHeader(smoke)).orderCount).toBe(1);
+
+    // The ask survives with its priority; the bid side is empty, so the book
+    // is not crossed.
+    const h = await bookHeader(smoke);
+    expect(h.asksHead).not.toBe(0xffffffff);
+    expect(h.bidsHead, "the crossing bid must not rest").toBe(0xffffffff);
   }, 60_000);
 
   it("is blocked while the protocol is paused", async () => {

@@ -217,5 +217,21 @@ pub fn handler(
         });
     }
 
+    // Self-trade prevention fired: the remainder crossed the caller's own
+    // resting orders and was cancelled rather than rested (cancel-newest).
+    //
+    // Logged rather than emitted as an event: nothing changed on chain, so
+    // there is no state for an indexer to record. But the transaction succeeds
+    // with less filled than asked and nothing resting, which is otherwise
+    // indistinguishable from an empty book — and the two need different
+    // messages in a UI.
+    if result.self_trade_cancelled > 0 {
+        msg!(
+            "self-trade prevention: cancelled {} of {} (crossed own resting orders)",
+            result.self_trade_cancelled,
+            amount,
+        );
+    }
+
     Ok(())
 }
