@@ -483,4 +483,46 @@ mod tests {
         let after = book.header.block_count;
         assert!(after - before <= 4, "seats must not be reallocated per fill");
     }
+
+    
+    #[test]
+    fn own_resting_order_blocks_access_to_liquidity_behind_it() {
+        // A has an ask at 485. Someone else has an ask at 490. A now wants to
+        // BUY at 500 — which should cross the stranger's 490.
+        //
+        // `place` stops at the first self-owned order instead of stepping over
+        // it, so A's own 485 sits at the top of the ask side and shields the
+        // 490 behind it. A gets no fill and rests at 500 — while a resting ask
+        // at 490 is right there, crossable.
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        book.insert(SIDE_ASK, 485, ONE_SHARE, trader(1)).unwrap(); // A's own
+        book.insert(SIDE_ASK, 490, ONE_SHARE, trader(2)).unwrap(); // someone else
+
+        let r = book
+            .place(trader(1), SIDE_BID, 500, ONE_SHARE, 0, 8, true)
+            .unwrap();
+
+        println!("fills={} resting={}", r.fills, r.resting);
+        assert_eq!(r.fills, 0, "no fill against trader(2)'s crossable 490");
+    }
+
+    #[test]
+    fn a_self_cross_leaves_the_book_crossed() {
+        // The state a user lands in by quoting both sides: a bid ABOVE an ask,
+        // both their own. Anyone may lift both legs — buy at 485, sell at 515 —
+        // and bank the spread, which comes straight out of this user.
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        book.place(trader(1), SIDE_BID, 515, 2 * ONE_SHARE, 0, 8, true)
+            .unwrap();
+        book.place(trader(1), SIDE_ASK, 485, 2 * ONE_SHARE, 0, 8, true)
+            .unwrap();
+
+        let best_bid = book.best(SIDE_BID).unwrap().1.price_tick;
+        let best_ask = book.best(SIDE_ASK).unwrap().1.price_tick;
+        println!("best bid {best_bid}, best ask {best_ask}");
+        assert!(best_bid > best_ask, "book is crossed and stays that way");
+    }
+
 }

@@ -517,4 +517,18 @@ mod tests {
         assert_eq!(split_delta(-10, -5), (0, 5), "add to a short");
         assert_eq!(split_delta(10, 0), (0, 0), "no-op");
     }
+
+    #[test]
+    fn the_515_485_crossing_economics() {
+        // A bids 515 (buy YES @ 0.515). B asks 485 (buy NO @ 0.515).
+        // B is the taker, so the fill executes at A's resting 515.
+        let (bid, ask) = leg_costs(515, 2 * ONE_SHARE, SIDE_ASK).unwrap();
+        println!("A (bid maker) pays {} for 2 YES  -> {}/share", bid, bid as f64 / 2.0 / 1e6);
+        println!("B (ask taker) pays {} for 2 NO   -> {}/share", ask, ask as f64 / 2.0 / 1e6);
+        println!("sum = {} (must equal 2 shares x $1 = {})", bid + ask, 2 * ONE_SHARE);
+        assert_eq!(bid + ask, 2 * ONE_SHARE);
+        assert_eq!(bid, 1_030_000); // A pays exactly its 0.515 limit
+        assert_eq!(ask, 970_000);   // B pays 0.485 — better than its 0.515 limit
+    }
+
 }
