@@ -11,6 +11,7 @@ import { shortenAddress as truncateAddress } from "../utils/format";
 import { useChainStore } from "../store/useChainStore";
 import { useOrderStore } from "../store/useOrderStore";
 import { USE_REDESIGNED_BOOK } from "../lib/book-flag";
+import { SIDE_BID } from "../lib/book-order-mapping";
 
 /** Raw order from /v12/orders endpoint */
 type IndexerOrder = {
@@ -271,7 +272,15 @@ async function fetchOpenOrdersFromBook(
   return rows.map((o) => ({
     // The real sequence. Nothing synthesised, nothing to parse back.
     id: o.seq.toString(),
-    outcome: (o.side === 0 ? 0 : 1) as 0 | 1,
+    // `OpenOrder.outcome` follows the LEGACY convention, where 1 is the YES
+    // side — `tickToYesPrice(tick, 1)` returns the tick as a YES price, and
+    // the panel reads `sideIsYes = outcome === 1`.
+    //
+    // The redesigned book numbers its sides the other way round: 0 is
+    // SIDE_BID, which BUYS YES. Passing the book's side straight through
+    // inverted every row — a resting bid rendered as "Sell" in the YES tab and
+    // "Buy" in the NO tab, at prices that looked plausible either way.
+    outcome: (o.side === SIDE_BID ? 1 : 0) as 0 | 1,
     // One axis: a bid at 400 and an ask at 400 are both "YES at 0.40".
     yesPrice: clampUnit(o.priceTick / 1000),
     // The book counts in USDC base units (1e6), not WAD.
@@ -280,7 +289,7 @@ async function fetchOpenOrdersFromBook(
     // unfilled size — there is no separate filled counter to net against.
     fillPct: 0,
     timestamp: Number(o.seq),
-    isBuy: o.side === 0,
+    isBuy: o.side === SIDE_BID,
     marketAddress,
     marketName: truncateAddress(marketAddress),
   }));
