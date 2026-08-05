@@ -558,4 +558,41 @@ mod tests {
         assert_eq!(theirs_yes + theirs_no, 970_000);
     }
 
+    #[test]
+    fn a_self_match_would_destroy_the_traders_money() {
+        // Why the matcher refuses to trade a trader against themselves, and why
+        // "just let it mint a pair" is NOT a simplification.
+        //
+        // A seat holds ONE signed net, not separate YES and NO balances. So
+        // "holds 1 YES and 1 NO" and "holds nothing" are the same number: 0.
+        //
+        // Buying YES and buying NO at a crossing price is exactly minting a
+        // pair — 100c for something worth 100c. In a token model that is a
+        // wash. Here the pair collapses to net 0, so the trader pays 100c and
+        // is left holding, by the seat's own arithmetic, nothing at all.
+        let start: i64 = 0;
+
+        // The bid leg: +1 YES for 51.5c.
+        let bid = settle_leg(SIDE_BID, start, ONE_SHARE, 515_000).unwrap();
+        // The ask leg, computed from the SAME starting net — which is what
+        // `place` does, since it reads both nets before applying either.
+        let ask = settle_leg(SIDE_ASK, start, ONE_SHARE, 485_000).unwrap();
+
+        println!("bid leg -> new_net {}", bid.new_net);
+        println!("ask leg -> new_net {}", ask.new_net);
+        println!("paid {}c total", (bid.collateral_in + ask.collateral_in) / 10_000);
+
+        // Applied in sequence, the second write lands on top of the first:
+        // `new_net` is absolute, not a delta.
+        let after_both = ask.new_net;
+        assert_eq!(after_both, -(ONE_SHARE as i64), "second leg overwrites the first");
+
+        // And the honest combined position — long one, short one — is zero.
+        let combined = bid.new_net + ask.new_net;
+        assert_eq!(combined, 0, "a minted pair is indistinguishable from nothing");
+
+        // Either way the trader paid a full dollar.
+        assert_eq!(bid.collateral_in + ask.collateral_in, ONE_SHARE);
+    }
+
 }

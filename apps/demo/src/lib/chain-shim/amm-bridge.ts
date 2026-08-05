@@ -1291,11 +1291,58 @@ async function dispatchBookCancel(
   const args = call.args ?? [];
   const marketRef = toMarketRef(args[0]);
   if (!marketRef) throw new Error("bookCancel: invalid market reference");
-  const req = await ctx.adapter.buildBookCancel(marketRef, {
-    user: `sol:${userBase58}`,
+  const userRef = `sol:${userBase58}`;
+  const cancel = await ctx.adapter.buildBookCancel(marketRef, {
+    user: userRef,
     orderSeq: BigInt((args[1] ?? 0) as string | number | bigint),
   });
-  return submitAndSynth(ctx.adapter, req, signer);
+
+  // Cancel AND withdraw, in one transaction.
+  //
+  // `book_cancel` refunds escrow to the trader's seat inside the book, not to
+  // their wallet. That split is deliberate — it is what keeps a fill free of
+  // token movement, so a transaction touches the vault at most twice however
+  // many orders it crosses or cancels. But for a single cancel from the UI it
+  // meant the money left the wallet on place and did not come back, which
+  // reads as funds lost.
+  //
+  // Composing the two instructions keeps the batching property (a multi-cancel
+  // still nets to one transfer) while making a single cancel whole again in
+  // one signature. Withdraw is the MAIN instruction with cancel ahead of it in
+  // `preIxs`, because pre-instructions run first and the credit has to exist
+  // before it can be drained.
+  try {
+    const withdraw = await ctx.adapter.buildBookWithdraw(marketRef, {
+      user: userRef,
+    });
+    const cancelMeta = cancel.meta as {
+      ixProgramId: string;
+      ixKeys: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }>;
+      ixData: string;
+    };
+    const composed = {
+      ...withdraw,
+      meta: {
+        ...(withdraw.meta as Record<string, unknown>),
+        preIxs: [
+          {
+            programId: cancelMeta.ixProgramId,
+            keys: cancelMeta.ixKeys,
+            data: cancelMeta.ixData,
+          },
+          ...((withdraw.meta as { preIxs?: unknown[] }).preIxs ?? []),
+        ],
+        operation: "bookCancel",
+      },
+    } as typeof cancel;
+    return await submitAndSynth(ctx.adapter, composed, signer);
+  } catch (err) {
+    // If the composed form fails for any reason, the cancel itself must still
+    // go through — leaving the order resting would be strictly worse than
+    // leaving the refund in seat credit, which the Withdraw button recovers.
+    void err;
+    return submitAndSynth(ctx.adapter, cancel, signer);
+  }
 }
 
 /** `bookWithdraw(market)` — move seat credit into the wallet. */
