@@ -61,7 +61,7 @@ import {
   type SoothRequest,
 } from "@sooth/sdk-solana";
 import { AnchorProvider, Program, type Idl } from "@coral-xyz/anchor";
-import { myAccount } from "../book-view";
+import { myAccount, selfCrossExposure } from "../book-view";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -293,6 +293,31 @@ export async function dispatchAmmRead(
 
     case "decimals": {
       return USDC_DECIMALS;
+    }
+
+    case "getSelfCrossExposure": {
+      // "Would this order cross only my own resting orders?"
+      //
+      // The matcher cancels such a remainder rather than resting it, so the
+      // transaction succeeds and the order simply never appears. Asking first
+      // lets the form say so instead of leaving the trader to wonder where it
+      // went.
+      const marketRef = toMarketRef(call.args?.[0]);
+      const owner = toAddressRef(call.args?.[1]);
+      const side = Number(call.args?.[2]);
+      const limitTick = Number(call.args?.[3]);
+      const amount = BigInt((call.args?.[4] as string | bigint) ?? 0n);
+      if (!marketRef || !owner) return [false, 0n, 0n] as const;
+      const snapshot = await readBookCached(ctx, marketRef);
+      if (!snapshot) return [false, 0n, 0n] as const;
+      const r = selfCrossExposure(
+        snapshot,
+        owner.replace(/^sol:/, ""),
+        side,
+        limitTick,
+        amount,
+      );
+      return [r.crosses, r.ownAmount, r.othersAmount] as const;
     }
 
     case "getBookAccount": {

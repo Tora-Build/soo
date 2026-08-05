@@ -102,13 +102,68 @@ export function useTraderVault() {
   }
 
   const userUsdcBalance = balances[0] ?? 0n;
-  // Spendable right now: what is in the wallet, plus credit sitting in the
-  // seat that a withdraw would return.
-  const availableBalance = userUsdcBalance + bookCredit;
+  // Spendable right now: the wallet, and ONLY the wallet.
+  //
+  // Seat credit is the trader's money but `book_place` never draws on it —
+  // collateral is pulled from the wallet — so counting it here would show
+  // funds that cannot actually fund an order. It is surfaced separately as
+  // claimable, with a withdraw that moves it into the wallet first.
+  const availableBalance = userUsdcBalance;
   // Committed to resting orders. Not spendable, but still the trader's.
   const reservedBalance = bookEscrow;
-  const totalBalance = availableBalance + reservedBalance;
+  // Everything the trader owns across wallet, book escrow and seat credit.
+  const totalBalance = userUsdcBalance + bookEscrow + bookCredit;
   const allowance = (allowanceData?.[0]?.result as bigint | undefined) ?? 0n;
+
+  /**
+   * Move seat credit back into the wallet.
+   *
+   * Cancelling an order does NOT return USDC to the wallet — the refund lands
+   * in the trader's seat inside the book, and `book_withdraw` is the single
+   * place credit becomes tokens again. That split is what keeps a fill free of
+   * token movement, but it means a trader who cancels sees their money vanish
+   * from the wallet with no way to get it back: nothing in the UI called
+   * `bookWithdraw` at all.
+   *
+   * Withdraws across every known market, since credit is per-market and the
+   * Trading Account is global.
+   */
+  const withdrawBookCredit = useCallback(async () => {
+    if (!address || bookCredit <= 0n) return false;
+    let ok = false;
+    for (const marketRef of marketRefs) {
+      try {
+        await writeContractAsync({
+          address: (soothBookAddress ?? ZERO_ADDRESS) as `0x${string}`,
+          abi: SOOTHBOOK_ABI,
+          functionName: "bookWithdraw",
+          args: [marketRef],
+          chainId,
+        } as never);
+        ok = true;
+      } catch (err) {
+        // A market where the trader holds no credit reverts; that is not a
+        // failure of the operation, only of that leg.
+        void err;
+      }
+    }
+    if (ok) {
+      toast.success("Withdrew cancelled-order refunds to your wallet");
+      await Promise.all([refetchBalances(), refetchBookAccount()]);
+    } else {
+      toast.error("Nothing to withdraw");
+    }
+    return ok;
+  }, [
+    address,
+    bookCredit,
+    marketRefs,
+    soothBookAddress,
+    chainId,
+    writeContractAsync,
+    refetchBalances,
+    refetchBookAccount,
+  ]);
 
   const approveUSDC = useCallback(
     async (amount: string) => {
@@ -177,6 +232,9 @@ export function useTraderVault() {
     reservedBalance,
     totalBalance,
     userUsdcBalance,
+    /** Cancelled-order refunds sitting in the book, withdrawable to the wallet. */
+    claimableBalance: bookCredit,
+    withdrawBookCredit,
     allowance,
     isPending,
     isLoading: !address || balancesLoading || allowanceLoading,

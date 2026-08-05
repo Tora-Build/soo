@@ -28,6 +28,8 @@ export const TradingAccountCard: React.FC = () => {
   const {
     availableBalance,
     reservedBalance,
+    claimableBalance,
+    withdrawBookCredit,
     totalBalance,
     userUsdcBalance,
     decimals,
@@ -48,6 +50,10 @@ export const TradingAccountCard: React.FC = () => {
 
   const available = parseFloat(formatUnits(availableBalance, decimals));
   const reserved = parseFloat(formatUnits(reservedBalance, decimals));
+  // Refunds from cancelled orders. Cancelling does not return USDC to the
+  // wallet — it lands in the trader's seat inside the book — so without this
+  // the money simply disappears from view until they withdraw it.
+  const claimable = parseFloat(formatUnits(claimableBalance ?? 0n, decimals));
   const cashValue = parseFloat(formatUnits(totalBalance, decimals));
   const totalAccountValue = cashValue + vaultValue;
   const walletAvailable = parseFloat(
@@ -202,6 +208,34 @@ export const TradingAccountCard: React.FC = () => {
               {formatCurrency(reserved)}
             </div>
           </div>
+
+          {/* Claimable — refunds from cancelled orders.
+              Shown only when non-zero: an always-visible $0.00 row trains the
+              eye to skip it, and this is money the trader has to act on. */}
+          {claimable > 0 && (
+            <div
+              className="flex-1 flex flex-col justify-between p-3"
+              title="Refunds from cancelled orders. Cancelling returns collateral to your book account, not your wallet — withdraw to move it back."
+            >
+              <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted flex items-center gap-1">
+                <ArrowDownLeft size={9} className="text-faint" /> Claimable
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="font-mono text-sm text-pos leading-none">
+                  {formatCurrency(claimable)}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-5 px-1.5 text-[10px]"
+                  disabled={isPending}
+                  onClick={() => void withdrawBookCredit?.()}
+                >
+                  Withdraw
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Position Value */}
           <div className="flex-1 flex flex-col justify-between p-3">

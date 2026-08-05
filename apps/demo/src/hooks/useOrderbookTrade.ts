@@ -529,6 +529,37 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
           toast.error(getErrorMessage(error));
           return false;
         }
+        // Warn before spending a transaction that will do nothing.
+        //
+        // The matcher refuses to trade a trader against themselves: it steps
+        // over their own resting orders and CANCELS the remainder rather than
+        // resting it, so the book cannot end up crossed against them. The
+        // transaction still succeeds — it just has no effect — and the order
+        // silently never appears, which reads as a lost order.
+        try {
+          const exposure = (await publicClient?.readContract({
+            address: marketAddress,
+            abi: SOOTHBOOK_ABI,
+            functionName: "getSelfCrossExposure",
+            args: [
+              marketAddress,
+              userAddress,
+              bookArgs.side,
+              bookArgs.limitTick,
+              bookArgs.amount,
+            ],
+          })) as readonly [boolean, bigint, bigint] | undefined;
+          if (exposure?.[0]) {
+            toast.error(
+              "This would cross your own resting order, so it cannot be filled — cancel that order first, or pick a price on the same side of it.",
+              { duration: 7000 },
+            );
+            return false;
+          }
+        } catch {
+          // A pre-flight check must never block a trade it failed to evaluate.
+        }
+
         success = await executeWrite(
           isBuy ? "Submitting buy order..." : "Submitting sell order...",
           "bookPlace",
