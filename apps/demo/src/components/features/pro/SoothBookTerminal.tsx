@@ -29,6 +29,8 @@ import { MintMergePanel } from "./MintMergePanel";
 import { LiquidityMap } from "./LiquidityMap";
 import { HistoricalPriceCard } from "./HistoricalPriceCard";
 import { UserOrdersPanel } from "./UserOrdersPanel";
+import { orderCollateral } from "../../../lib/order-collateral";
+import { USE_REDESIGNED_BOOK } from "../../../lib/book-flag";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -304,13 +306,24 @@ function SoothBookTerminalActive({
   // Submit-side validation
   const availableUsdc = Number(formatUnits(availableBalance, 18));
   const availableShares = Number(formatUnits(relevantTokenBalance, 18));
-  // Buy pays `price × shares` USDC. Sell burns shares (escrow). Short
-  // selling without shares is not supported by the demo flow today —
-  // block any sell where requested > held.
-  const insufficientBalance =
-    sharesNum > 0 && isBuying && estimatedCost > availableUsdc;
-  const insufficientShares =
-    sharesNum > 0 && !isBuying && sharesNum > availableShares;
+  // A sell no longer needs shares.
+  //
+  // On the legacy book selling YES delivers YES tokens, so you had to mint a
+  // pair for $1 first and sell off the leg you did not want. The redesigned
+  // book collateralises a sell in USDC instead — selling YES at p IS buying NO
+  // at (1 - p) — and the seat carries the negative position. The program
+  // accepts that; this gate was blocking it.
+  const collateral = orderCollateral({
+    shares: sharesNum,
+    price: limitPriceNum,
+    isBuying,
+    isYes,
+    availableUsdc,
+    availableShares,
+    redesignedBook: USE_REDESIGNED_BOOK,
+  });
+  const insufficientBalance = collateral.kind === "usdc" && !!collateral.error;
+  const insufficientShares = collateral.kind === "shares" && !!collateral.error;
   // Tick is uint16 in [1, 999] = price ∈ {0.001, …, 0.999}. Input is in
   // cents at 0.1¢ precision, so 0.1 ≤ value ≤ 99.9 in 0.1 increments.
   const tickOffStep =
@@ -319,13 +332,9 @@ function SoothBookTerminalActive({
   const tickOutOfRange =
     sharesNum > 0 &&
     (limitPriceCents < 0.1 || limitPriceCents > 99.9 || tickOffStep);
-  const validationError = insufficientBalance
-    ? `Insufficient USDC — need ${fmtUsd(estimatedCost)}, have ${fmtUsd(availableUsdc)}`
-    : insufficientShares
-      ? `Insufficient ${isYes ? "YES" : "NO"} — need ${sharesNum.toLocaleString()}, have ${availableShares.toLocaleString()}`
-      : tickOutOfRange
-        ? "Price must be 0.1¢–99.9¢ in 0.1¢ steps"
-        : null;
+  const validationError =
+    collateral.error ??
+    (tickOutOfRange ? "Price must be 0.1¢–99.9¢ in 0.1¢ steps" : null);
 
   const handleLevelClick = useCallback(
     (price: number) => setLimitPrice(Math.round(price * 100).toString()),

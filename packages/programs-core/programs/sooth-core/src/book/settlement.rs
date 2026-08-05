@@ -531,4 +531,31 @@ mod tests {
         assert_eq!(ask, 970_000);   // B pays 0.485 — better than its 0.515 limit
     }
 
+    #[test]
+    fn a_self_match_would_have_cost_exactly_one_dollar_a_pair() {
+        // If the two legs DID match each other, the fill happens at ONE tick and
+        // the split sums to 100c by construction — not 51.5 + 51.5 = 103.
+        let (bid, ask) = leg_costs(515, ONE_SHARE, SIDE_ASK).unwrap();
+        println!("buy-YES leg {}c   buy-NO leg {}c   total {}c",
+            bid as f64 / 10_000.0, ask as f64 / 10_000.0, (bid + ask) as f64 / 10_000.0);
+        assert_eq!(bid + ask, ONE_SHARE, "a pair always costs exactly 1.00");
+    }
+
+    #[test]
+    fn a_crossed_book_lifted_by_someone_else_really_does_cost_3c() {
+        // The DIFFERENT scenario. Two separate fills at two different ticks:
+        // the quoter pays their own limit on both legs, the arbitrageur pays
+        // the complement of each.
+        let (mine_yes, theirs_no) = leg_costs(515, ONE_SHARE, SIDE_ASK).unwrap();
+        let (theirs_yes, mine_no) = leg_costs(485, ONE_SHARE, SIDE_BID).unwrap();
+        println!("quoter pays {}c + {}c = {}c for a pair worth 100c",
+            mine_yes as f64 / 10_000.0, mine_no as f64 / 10_000.0,
+            (mine_yes + mine_no) as f64 / 10_000.0);
+        println!("arb    pays {}c + {}c = {}c",
+            theirs_yes as f64 / 10_000.0, theirs_no as f64 / 10_000.0,
+            (theirs_yes + theirs_no) as f64 / 10_000.0);
+        assert_eq!(mine_yes + mine_no, 1_030_000);
+        assert_eq!(theirs_yes + theirs_no, 970_000);
+    }
+
 }

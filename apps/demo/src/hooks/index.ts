@@ -85,9 +85,6 @@ export { useDeployments, getDeployments } from "./useDeployments";
 export { useOrderbook } from "./useOrderbook";
 export { useOrderbookTrade } from "./useOrderbookTrade";
 export { useSoothBookMarket } from "./useSoothBook";
-export { useSoothBookFeed } from "./useSoothBookFeed";
-export { useSoothBookMarkets } from "./useSoothBookMarkets";
-export type { IndexedMarket } from "./useSoothBookMarkets";
 export type { SoothBookMarketState, SoothBookPrices } from "./useSoothBook";
 
 // ============================================================
