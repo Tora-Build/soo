@@ -42,9 +42,14 @@ node scripts/seed-book.mjs "$GRADUATED"
 
 # The last seed run left ITS market as the default; the graduated one is the
 # interesting one to land on, so make that the default and carry the other.
+# `node -e` does NOT put a script path in argv, so the first real argument is
+# argv[1], not argv[2]. Destructuring one slot too far read the market address
+# as the filename and died on ENOENT — after graduation and the ladder had
+# already succeeded, so the whole fixture looked broken when only the last
+# step was.
 node -e '
 const fs = require("node:fs");
-const [, , path, main, extra] = process.argv;
+const [, path, main, extra] = process.argv;
 let s = fs.readFileSync(path, "utf8");
 s = s.replace(/^VITE_DEMO_MARKET_REF=.*$/m, `VITE_DEMO_MARKET_REF=sol:${main}`);
 s = s.replace(

@@ -29,6 +29,7 @@
 
 import { yesPriceWad, type SolanaChainAdapter } from "@sooth/sdk-solana";
 import { toMarketRef, type ReadCallShape } from "./amm-bridge";
+import { fallbackUnlessUnreachable } from "./rpc-errors";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -83,9 +84,15 @@ export async function dispatchPortfolioRead(
       try {
         const amm = await ctx.adapter.readAmmState(marketRef);
         return Boolean(amm?.isGraduated);
-      } catch {
-        // A market with no AmmState is pre-launch, not graduated.
-        return false;
+      } catch (err) {
+        // A market with no AmmState is pre-launch, so `false` is the truth.
+        //
+        // An unreachable RPC is NOT. This value decides routing — a market
+        // reading as not-graduated has no orderbook tab — so swallowing a
+        // dead-chain error here makes the orderbook vanish with nothing on
+        // screen explaining why. That is exactly what happened when the
+        // validator was killed out from under a running dev server.
+        return fallbackUnlessUnreachable(err, false);
       }
     }
 
