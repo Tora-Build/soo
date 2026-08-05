@@ -145,12 +145,9 @@ export const SOOTH_OPTIMISTIC_ADJUDICATOR_ABI = parseAbi([
 
 export const SOOTHBOOK_ABI = parseAbi([
   // Write functions
-  "function buyYes(bytes32 marketKey, uint16 tick, uint128 amount, bool escrow, uint32 matchLimit)",
-  "function buyNo(bytes32 marketKey, uint16 tick, uint128 amount, bool escrow, uint32 matchLimit)",
   "function mint(bytes32 marketKey, uint256 amount)",
   "function merge(bytes32 marketKey, uint256 amount)",
   "function cancel(bytes32 marketKey, uint8 side, uint16 tick)",
-  "function cancelById(uint64 orderId)",
   // View functions
   "function getBalance(bytes32 marketKey, address user) view returns (uint256 yes, uint256 no)",
   "function getBestTick(bytes32 marketKey, uint8 side) view returns (uint16)",

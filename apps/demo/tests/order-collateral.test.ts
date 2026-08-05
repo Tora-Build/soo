@@ -12,8 +12,7 @@
 // position. Verified on chain — a wallet holding only USDC reached net -2
 // having never held an outcome token.
 //
-// So the gate rejected orders the program accepts. These cases pin both
-// regimes, because the legacy path still needs the old rule.
+// So the gate rejected orders the program accepts.
 
 import { describe, expect, it } from "vitest";
 
@@ -26,7 +25,6 @@ const base = {
   isYes: true,
   availableUsdc: 100,
   availableShares: 0,
-  redesignedBook: true,
 };
 
 describe("what an order costs", () => {
@@ -101,51 +99,11 @@ describe("selling on the redesigned book", () => {
   });
 });
 
-describe("selling on the legacy book", () => {
-  it("still requires the tokens", () => {
-    // The legacy write path really does deliver tokens, so the old rule holds
-    // there and must not be relaxed along with the new one.
-    const c = orderCollateral({
-      ...base,
-      redesignedBook: false,
-      isBuying: false,
-      shares: 10,
-      availableShares: 3,
-    });
-    expect(c.kind).toBe("shares");
-    expect(c.error).toMatch(/Insufficient YES/);
-  });
-
-  it("passes when the trader holds enough", () => {
-    const c = orderCollateral({
-      ...base,
-      redesignedBook: false,
-      isBuying: false,
-      shares: 10,
-      availableShares: 10,
-    });
-    expect(c.error).toBeNull();
-  });
-
-  it("names the outcome actually being sold", () => {
-    const c = orderCollateral({
-      ...base,
-      redesignedBook: false,
-      isBuying: false,
-      isYes: false,
-      shares: 10,
-      availableShares: 0,
-    });
-    expect(c.error).toMatch(/Insufficient NO/);
-  });
-});
-
-describe("buying is unchanged in both regimes", () => {
-  it("is gated on USDC either way", () => {
-    for (const redesignedBook of [true, false]) {
+describe("buying", () => {
+  it("is gated on USDC", () => {
+    {
       const c = orderCollateral({
         ...base,
-        redesignedBook,
         isBuying: true,
         shares: 10,
         price: 0.4,
@@ -162,17 +120,14 @@ describe("an empty form is not an error", () => {
     // The form renders before anything is typed; a validation error there
     // reads as "something is wrong" when the trader has simply not started.
     for (const isBuying of [true, false]) {
-      for (const redesignedBook of [true, false]) {
-        const c = orderCollateral({
-          ...base,
-          shares: 0,
-          isBuying,
-          redesignedBook,
-          availableUsdc: 0,
-          availableShares: 0,
-        });
-        expect(c.error).toBeNull();
-      }
+      const c = orderCollateral({
+        ...base,
+        shares: 0,
+        isBuying,
+        availableUsdc: 0,
+        availableShares: 0,
+      });
+      expect(c.error).toBeNull();
     }
   });
 });

@@ -114,20 +114,6 @@ export {
 } from "./book/events.js";
 
 export {
-  DEFAULT_MATCH_LIMIT_PER_TX,
-  FILL_BUNDLE_LEN,
-  submitOrderbookBuyMultiTx,
-  planMatch,
-  simulateMatch,
-} from "./orderbook/matching-driver.js";
-export type {
-  BookSideSnapshot,
-  BuildOrderbookBuyTxTaker,
-  MatchSimulation,
-  MarketBookSnapshot,
-  SoothSolanaClient,
-} from "./orderbook/matching-driver.js";
-export {
   classifyError as classifyOrderbookError,
   type ClassifiedError as ClassifiedOrderbookError,
 } from "./orderbook/error-classifier.js";

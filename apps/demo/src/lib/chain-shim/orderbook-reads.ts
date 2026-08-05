@@ -1,5 +1,15 @@
-// chain-shim/orderbook-reads.ts — bridges W7 BookSide inline orders to the
-// EVM-shaped event log surface upstream's useIndexerOrders consumes.
+// A trader's resting orders, in the EVM-shaped form upstream components expect.
+//
+// This used to walk the legacy two-sided book: read `MarketBook`, expand a tick
+// bitmap per side, then fetch a `BookSide` account for every occupied tick —
+// one RPC round trip per price level, and the reason the depth panel was never
+// wired up. Those accounts are gone.
+//
+// The redesigned book is a single account, so the same answer is one read. The
+// exported shape is unchanged so `ActiveOrdersCard` and `wagmi-shim` need no
+// edits, but `escrow` is now always false: collateral is posted in USDC per
+// leg, never by delivering outcome tokens, so the flag no longer distinguishes
+// anything.
 
 import { PublicKey, type Connection as SolanaConnection } from "@solana/web3.js";
 import { type SolanaChainAdapter } from "@sooth/sdk-solana";
@@ -27,36 +37,29 @@ export async function fetchUserOpenOrders(
     return [];
   }
 
-  const marketBook = await adapter.fetchMarketBook(soothMarketRef);
-  if (!marketBook) return [];
-
-  const out: OnChainOrder[] = [];
-  for (const side of [0, 1] as const) {
-    const ticks = ticksFromBitmap(
-      side === 1 ? marketBook.bitmapFor : marketBook.bitmapAgainst,
-    );
-    for (const tick of ticks) {
-      const bookSide = await adapter.fetchBookSide(soothMarketRef, side, tick);
-      if (!bookSide) continue;
-      const start = Math.max(0, Math.floor(bookSide.headIndex));
-      for (let index = start; index < bookSide.orders.length; index += 1) {
-        const order = bookSide.orders[index];
-        if (!order || order.amount <= 0n || !order.maker.equals(userPk)) {
-          continue;
-        }
-        out.push({
-          orderId: order.id,
-          maker: order.maker,
-          amount: order.amount,
-          side,
-          tick,
-          escrow: order.escrow,
-          levelId: `${side}:${tick}`,
-        });
-      }
-    }
+  let snapshot;
+  try {
+    snapshot = await adapter.readBook(soothMarketRef);
+  } catch {
+    // No book on this market yet. Empty, not an error.
+    return [];
   }
 
+  const out: OnChainOrder[] = [];
+  for (const order of [...snapshot.bids, ...snapshot.asks]) {
+    if (order.trader !== userBase58) continue;
+    out.push({
+      orderId: order.seq,
+      maker: userPk,
+      // Callers format this as WAD; the book counts in USDC base units (1e6).
+      amount: order.amount * 1_000_000_000_000n,
+      side: (order.side === 0 ? 1 : 0) as 0 | 1,
+      tick: order.priceTick,
+      escrow: false,
+      levelId: `${order.side}:${order.priceTick}`,
+    });
+  }
+  // Newest first, matching the previous ordering.
   return out.sort((a, b) => (a.orderId > b.orderId ? -1 : 1));
 }
 

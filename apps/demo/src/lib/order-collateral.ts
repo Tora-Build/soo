@@ -46,11 +46,6 @@ export interface OrderCollateralInput {
   availableUsdc: number;
   /** Trader's holding of the quoted outcome token, in whole shares. */
   availableShares: number;
-  /**
-   * True once the redesigned book is the write path. On the legacy book a sell
-   * still delivers tokens, so the old gate is still correct there.
-   */
-  redesignedBook: boolean;
 }
 
 function fmt(n: number): string {
@@ -66,21 +61,7 @@ function fmt(n: number): string {
  * the number shown here is the number that gets escrowed.
  */
 export function orderCollateral(input: OrderCollateralInput): OrderCollateral {
-  const { shares, price, isBuying, isYes, availableUsdc, availableShares } =
-    input;
-
-  // A sell on the legacy book is settled in tokens, so it is gated on tokens.
-  if (!isBuying && !input.redesignedBook) {
-    return {
-      kind: "shares",
-      required: shares,
-      available: availableShares,
-      error:
-        shares > 0 && shares > availableShares
-          ? `Insufficient ${isYes ? "YES" : "NO"} — need ${fmt(shares)}, have ${fmt(availableShares)}`
-          : null,
-    };
-  }
+  const { shares, price, isBuying, availableUsdc } = input;
 
   const required = shares * (isBuying ? price : 1 - price);
   return {

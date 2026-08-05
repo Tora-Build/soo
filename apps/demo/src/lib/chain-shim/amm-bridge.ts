@@ -53,8 +53,6 @@ import {
   LN2_WAD,
   WAD,
   WAD_TO_USDC_SCALAR,
-  DEFAULT_MATCH_LIMIT_PER_TX,
-  submitOrderbookBuyMultiTx,
   soothCoreIdl,
   type SolanaChainAdapter,
   type SignerRef,
@@ -540,12 +538,11 @@ export async function dispatchAmmRead(
         return false;
       }
       try {
-        // Path 1: candidate is already the lazy-created MarketBook PDA.
+        // A market is "registered" if its account exists. The second path
+        // here used to resolve a lazily-created MarketBook PDA, which the
+        // single-account book removed.
         const direct = await ctx.connection.getAccountInfo(candidate);
-        if (direct) return true;
-        // Path 2: candidate is the soothMarketPda.
-        await ctx.adapter.resolveOrderbookMarket(`sol:${candidate.toBase58()}`);
-        return true;
+        return direct !== null;
       } catch {
         return false;
       }
@@ -690,16 +687,8 @@ export async function dispatchAmmWrite(
   if (call.functionName === "redeemLp") {
     return dispatchRedeemLp(call, ctx);
   }
-  if (
-    call.functionName === "buyYes" ||
-    call.functionName === "buyNo" ||
-    call.functionName === "cancel" ||
-    call.functionName === "cancelById"
-  ) {
-    return dispatchOrderbookWrite(call, ctx);
-  }
-  // Redesigned book. Distinct function names rather than a mode flag on the
-  // legacy ones, so a caller cannot land on the wrong book by accident while
+  // The book write path. Distinct function names rather than a mode flag, so a
+  // caller cannot land on the wrong instruction by accident while
   // both are live.
   if (call.functionName === "bookPlace") {
     return dispatchBookPlace(call, ctx);
@@ -1414,153 +1403,6 @@ async function dispatchRedeemLp(
   return submitAndSynth(ctx.adapter, req, signer);
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-// ─── sooth_book orderbook dispatch ──────────────────────────────────────────
-//
-// Upstream's `useOrderbookTrade.placeOrder` calls `writeContractAsync` with
-// EVM ABI signatures that pre-date the Solana fork:
-//
-//   buyYes(marketKey, tick, shares, escrow, matchLimit)
-//   buyNo (marketKey, tick, shares, escrow, matchLimit)
-//   cancel(marketKey, side, tick)
-//   cancelById(orderId)
-//
-// `marketKey` is the FNV-1a folding of `marketAddress` produced by
-// `viem-shim.keccak256` — it's a deterministic identifier, but not invertible
-// to the underlying sooth_market PDA. We therefore source the active market
-// from `ctx.marketRef` (set by `DemoContext.marketRef` during page mount).
-//
-// Outcome encoding:
-//   - The hook inverts EVM's outcome convention internally
-//     (see useOrderbookTrade.ts:482-485 — outcome===0 calls buyYes,
-//     outcome===1 calls buyNo). The hook never exposes the raw outcome
-//     enum to the shim layer.
-//   - `buyYes` therefore means "place an order requesting YES shares"
-//     → on Solana, sooth_book seeds `MarketOutcome` index 0 = YES,
-//       so we pass `side=1` (BuyArgs convention: 1=YES) and the SDK
-//       adapter maps that to outcomeIndex=0.
-//   - `buyNo`  → `side=0` (BuyArgs: 0=NO) → adapter outcomeIndex=1.
-//
-// Sell path: upstream's hook collapses sell-YES into "buyNo at oppositeTick"
-// (and sell-NO into "buyYes at oppositeTick") by submitting the inverted-side
-// purchase against the resting ask.
-async function dispatchOrderbookWrite(
-  call: WriteCallShape,
-  ctx: AmmBridgeCtx,
-): Promise<string> {
-  const fn = call.functionName ?? "";
-  const { signer, userBase58 } = requireWallet(ctx, fn);
-
-  if (!ctx.marketRef) {
-    throw new Error(
-      `${fn}: no active marketRef on chain-shim ctx — orderbook writes need DemoContext.marketRef`,
-    );
-  }
-  const args = (call.args ?? []) as readonly unknown[];
-
-  if (fn === "cancelById") {
-    const raw = args[0];
-    const orderId =
-      typeof raw === "bigint"
-        ? raw
-        : typeof raw === "string" && /^\d+$/.test(raw)
-          ? BigInt(raw)
-          : null;
-    if (orderId == null) {
-      throw new Error(
-        "cancelById: Solana orderbook expects a decimal composite order_id",
-      );
-    }
-    const decoded = decodeCompositeOrderId(orderId);
-    const req = await ctx.adapter.buildOrderbookCancel(
-      ctx.marketRef,
-      decoded.side,
-      decoded.tick,
-      { user: `sol:${userBase58}`, byId: orderId },
-    );
-    return submitAndSynth(ctx.adapter, req, signer);
-  }
-
-  if (fn === "cancel") {
-    const sideRaw = args[1];
-    const tickRaw = args[2];
-    const side = (Number(sideRaw) === 1 ? 1 : 0) as 0 | 1;
-    const tickArg =
-      typeof tickRaw === "number" ? tickRaw : Number(tickRaw ?? 0);
-    if (!Number.isFinite(tickArg) || tickArg < 1 || tickArg > 999) {
-      throw new Error(
-        `cancel: invalid tick ${String(tickRaw)} (expected 1..999)`,
-      );
-    }
-    const req = await ctx.adapter.buildOrderbookCancel(
-      ctx.marketRef,
-      side,
-      tickArg,
-      { user: `sol:${userBase58}` },
-    );
-    return submitAndSynth(ctx.adapter, req, signer);
-  }
-
-  // buyYes / buyNo path. EVM args: `[marketKey, tick, shares, escrow, matchLimit]`.
-  const tickRaw = args[1];
-  const sharesRaw = args[2];
-  const tick = typeof tickRaw === "number" ? tickRaw : Number(tickRaw ?? 0);
-  if (!Number.isFinite(tick) || tick < 1 || tick > 999) {
-    throw new Error(`${fn}: invalid tick ${String(tickRaw)} (expected 1..999)`);
-  }
-  // Upstream packs shares as 18-decimal WAD (`parseUnits(amount, 18)`); W7
-  // sooth_book stores inline order amounts in the same WAD unit.
-  const sharesWad =
-    typeof sharesRaw === "bigint"
-      ? sharesRaw
-      : BigInt((sharesRaw as { toString(): string })?.toString() ?? "0");
-  if (sharesWad <= 0n) {
-    throw new Error(`${fn}: shares must be positive`);
-  }
-
-  // Outcome encoding (see header comment for the full rationale).
-  // BuyArgs.side: 0=NO, 1=YES.
-  const side: 0 | 1 = fn === "buyYes" ? 1 : 0;
-  const rawLimit =
-    typeof args[4] === "number"
-      ? args[4]
-      : Number((args[4] as { toString(): string })?.toString() ?? 0);
-  const matchLimitPerTx =
-    Number.isFinite(rawLimit) && rawLimit > 0
-      ? Math.min(Math.floor(rawLimit), DEFAULT_MATCH_LIMIT_PER_TX)
-      : DEFAULT_MATCH_LIMIT_PER_TX;
-  const user = `sol:${userBase58}`;
-  const escrow = typeof args[3] === "boolean" ? args[3] : false;
-
-  let lastSignature = "";
-  const { batchesSubmitted } = await submitOrderbookBuyMultiTx(
-    ctx.adapter,
-    ctx.marketRef,
-    { side, tick, amount: sharesWad, escrow, matchLimitPerTx, user },
-    async (ixs) => {
-      const receipt = await ctx.adapter.submit(
-        requestFromInstructions(ixs, userBase58),
-        signer,
-      );
-      lastSignature = receipt.txId.replace(/^sol:/, "");
-    },
-  );
-  if (batchesSubmitted > 0) {
-    return synthHashFromSignature(lastSignature);
-  }
-
-  const req = await ctx.adapter.buildOrderbookBuy(ctx.marketRef, {
-    side,
-    tick,
-    amount: sharesWad,
-    escrow,
-    matchLimit: matchLimitPerTx,
-    user,
-  } as never);
-
-  return submitAndSynth(ctx.adapter, req, signer);
-}
 
 function decodeSolMarketRef(ref: string): PublicKey {
   const stripped = ref.startsWith("sol:") ? ref.slice(4) : ref;

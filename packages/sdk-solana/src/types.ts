@@ -297,20 +297,28 @@ export interface ChainAdapter {
   // Writes
   buildTrade(market: MarketRef, args: TradeArgs): Promise<TradeRequest>;
   buildClaim(market: MarketRef, args: ClaimArgs): Promise<ClaimRequest>;
-  buildOrderbookBuy(
+  // The book: one place/cancel/withdraw set. The legacy two-sided
+  // buy/sell/cancel trio it replaced is gone along with the instructions
+  // behind it.
+  buildBookPlace(
     market: MarketRef,
-    args: BuyArgs,
-  ): Promise<OrderbookRequest>;
-  buildOrderbookSell(
+    args: {
+      user: AddressRef;
+      side: number;
+      limitTick: number;
+      amount: bigint;
+      matchLimit?: number;
+      postRemainder?: boolean;
+    },
+  ): Promise<TradeRequest>;
+  buildBookCancel(
     market: MarketRef,
-    args: SellArgs,
-  ): Promise<OrderbookRequest>;
-  buildOrderbookCancel(
+    args: { user: AddressRef; orderSeq: bigint },
+  ): Promise<TradeRequest>;
+  buildBookWithdraw(
     market: MarketRef,
-    side: 0 | 1,
-    tick: number,
-    options: OrderbookCancelOptions,
-  ): Promise<OrderbookRequest>;
+    args: { user: AddressRef },
+  ): Promise<TradeRequest>;
   buildCreateMarket(args: CreateMarketArgs): Promise<CreateMarketRequest>;
 
   // Submission

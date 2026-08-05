@@ -10,7 +10,6 @@ import { fetchFromIndexer } from "./indexer/config";
 import { shortenAddress as truncateAddress } from "../utils/format";
 import { useChainStore } from "../store/useChainStore";
 import { useOrderStore } from "../store/useOrderStore";
-import { USE_REDESIGNED_BOOK } from "../lib/book-flag";
 import { SIDE_BID } from "../lib/book-order-mapping";
 
 /** Raw order from /v12/orders endpoint */
@@ -66,16 +65,6 @@ type IndexerActivity = {
   };
 };
 
-const ORDER_PLACED = parseAbiItem(
-  "event OrderPlaced(bytes32 indexed marketKey, uint8 side, uint16 tick, address indexed maker, uint128 amount, bool escrow, uint64 orderId)",
-);
-const ORDER_CANCELLED = parseAbiItem(
-  "event OrderCancelled(bytes32 indexed marketKey, uint8 side, uint16 tick, address indexed maker, uint128 amount, uint64 orderId)",
-);
-const ORDER_FILLED = parseAbiItem(
-  "event OrderFilled(bytes32 indexed marketKey, uint8 takerSide, uint16 yesTick, uint16 noTick, address indexed taker, address indexed maker, uint128 amount, uint256 surplus, uint64 makerOrderId)",
-);
-
 const CHAIN_LOOKBACK_BLOCKS: Record<number, bigint> = {
   84532: 200_000n,
   10143: 20_000n,
@@ -89,37 +78,8 @@ const CHAIN_CHUNK_SIZES: Record<number, bigint> = {
 
 type PublicClient = NonNullable<ReturnType<typeof usePublicClient>>;
 
-function toHexAddress(value: string): `0x${string}` {
-  return value.toLowerCase() as `0x${string}`;
-}
 
-function getScanRanges(
-  fromBlock: bigint,
-  toBlock: bigint,
-  chunkSize: bigint,
-): Array<{ from: bigint; to: bigint }> {
-  if (toBlock < fromBlock) return [];
-  const ranges: Array<{ from: bigint; to: bigint }> = [];
-  let start = fromBlock;
 
-  while (start <= toBlock) {
-    const end = start + chunkSize - 1n;
-    ranges.push({ from: start, to: end > toBlock ? toBlock : end });
-    start = end + 1n;
-  }
-
-  return ranges;
-}
-
-function getFallbackWindow(
-  chainId: number | undefined,
-  latest: bigint,
-): { fromBlock: bigint; chunkSize: bigint } {
-  const lookback = CHAIN_LOOKBACK_BLOCKS[chainId ?? 0] ?? 100_000n;
-  const chunkSize = CHAIN_CHUNK_SIZES[chainId ?? 0] ?? 2_000n;
-  const fromBlock = latest > lookback ? latest - lookback : 0n;
-  return { fromBlock, chunkSize };
-}
 
 export type OpenOrder = {
   id: string;
@@ -295,134 +255,6 @@ async function fetchOpenOrdersFromBook(
   }));
 }
 
-async function fetchOpenOrdersFromRpc(
-  publicClient: PublicClient,
-  soothBookAddress: Address,
-  marketKey: `0x${string}`,
-  ownerLower: `0x${string}`,
-  marketAddress: `0x${string}`,
-  chainId: number | undefined,
-): Promise<OpenOrder[]> {
-  const latest = await publicClient.getBlockNumber();
-  const { fromBlock, chunkSize } = getFallbackWindow(chainId, latest);
-  const ranges = getScanRanges(fromBlock, latest, chunkSize);
-
-  const levels = new Map<
-    string,
-    {
-      side: 0 | 1;
-      tick: number;
-      placed: bigint;
-      cancelled: bigint;
-      filled: bigint;
-      lastBlock: bigint;
-    }
-  >();
-
-  for (const range of ranges) {
-    const [placed, cancelled, filled] = await Promise.all([
-      publicClient.getLogs({
-        address: soothBookAddress,
-        event: ORDER_PLACED,
-        args: { marketKey, maker: ownerLower },
-        fromBlock: range.from,
-        toBlock: range.to,
-      }),
-      publicClient.getLogs({
-        address: soothBookAddress,
-        event: ORDER_CANCELLED,
-        args: { marketKey, maker: ownerLower },
-        fromBlock: range.from,
-        toBlock: range.to,
-      }),
-      publicClient.getLogs({
-        address: soothBookAddress,
-        event: ORDER_FILLED,
-        args: { marketKey, maker: ownerLower },
-        fromBlock: range.from,
-        toBlock: range.to,
-      }),
-    ]);
-
-    const upsert = (
-      side: 0 | 1,
-      tick: number,
-      blockNumber: bigint | null | undefined,
-    ) => {
-      const key = `${side}:${tick}`;
-      const existing = levels.get(key);
-      if (existing) {
-        if (blockNumber && blockNumber > existing.lastBlock)
-          existing.lastBlock = blockNumber;
-        return existing;
-      }
-      const created = {
-        side,
-        tick,
-        placed: 0n,
-        cancelled: 0n,
-        filled: 0n,
-        lastBlock: blockNumber ?? 0n,
-      };
-      levels.set(key, created);
-      return created;
-    };
-
-    for (const log of placed) {
-      const side = Number(log.args.side ?? 0) as 0 | 1;
-      const tick = Number(log.args.tick ?? 0);
-      const entry = upsert(side, tick, log.blockNumber);
-      entry.placed += log.args.amount ?? 0n;
-    }
-
-    for (const log of cancelled) {
-      const side = Number(log.args.side ?? 0) as 0 | 1;
-      const tick = Number(log.args.tick ?? 0);
-      const entry = upsert(side, tick, log.blockNumber);
-      entry.cancelled += log.args.amount ?? 0n;
-    }
-
-    for (const log of filled) {
-      const takerSide = Number(log.args.takerSide ?? 0);
-      const makerSide: 0 | 1 = takerSide === 1 ? 0 : 1;
-      const makerTick = Number(
-        takerSide === 1 ? (log.args.noTick ?? 0) : (log.args.yesTick ?? 0),
-      );
-      const entry = upsert(makerSide, makerTick, log.blockNumber);
-      entry.filled += log.args.amount ?? 0n;
-    }
-  }
-
-  const openOrders: OpenOrder[] = [];
-  for (const level of levels.values()) {
-    const remaining = level.placed - level.cancelled - level.filled;
-    if (remaining <= 0n) continue;
-
-    const initial = level.placed;
-    const fillPct =
-      initial > 0n
-        ? Number(((initial - remaining) * 10_000n) / initial) / 100
-        : 0;
-    const yesPrice =
-      level.side === 1
-        ? tickToYesPrice(level.tick, 1)
-        : tickToYesPrice(level.tick, 0);
-
-    openOrders.push({
-      id: `${level.side}:${level.tick}`,
-      outcome: level.side,
-      yesPrice,
-      amount: Number(formatUnits(remaining, 18)),
-      fillPct: clampPercent(fillPct),
-      timestamp: Number(level.lastBlock),
-      isBuy: true,
-      marketAddress,
-      marketName: truncateAddress(marketAddress),
-    });
-  }
-
-  return openOrders.sort((a, b) => b.timestamp - a.timestamp);
-}
 
 /**
  * Order history from the redesigned book's own events.
@@ -476,130 +308,6 @@ async function fetchHistoryFromBook(
   });
 }
 
-async function fetchHistoryRowsFromRpc(
-  publicClient: PublicClient,
-  soothBookAddress: Address,
-  marketKey: `0x${string}`,
-  ownerLower: `0x${string}`,
-  chainId: number | undefined,
-): Promise<HistoryRow[]> {
-  const latest = await publicClient.getBlockNumber();
-  const { fromBlock, chunkSize } = getFallbackWindow(chainId, latest);
-  const ranges = getScanRanges(fromBlock, latest, chunkSize);
-
-  const rows = new Map<string, HistoryRow>();
-
-  const upsert = (key: string, row: HistoryRow) => {
-    const existing = rows.get(key);
-    if (!existing || row.sortKey > existing.sortKey) {
-      rows.set(key, row);
-    }
-  };
-
-  for (const range of ranges) {
-    const [placed, cancelled, filledAsMaker, filledAsTaker] =
-      await Promise.all([
-      publicClient.getLogs({
-        address: soothBookAddress,
-        event: ORDER_PLACED,
-        args: { marketKey, maker: ownerLower },
-        fromBlock: range.from,
-        toBlock: range.to,
-      }),
-      publicClient.getLogs({
-        address: soothBookAddress,
-        event: ORDER_CANCELLED,
-        args: { marketKey, maker: ownerLower },
-        fromBlock: range.from,
-        toBlock: range.to,
-      }),
-      publicClient.getLogs({
-        address: soothBookAddress,
-        event: ORDER_FILLED,
-        args: { marketKey, maker: ownerLower },
-        fromBlock: range.from,
-        toBlock: range.to,
-      }),
-      publicClient.getLogs({
-        address: soothBookAddress,
-        event: ORDER_FILLED,
-        args: { marketKey, taker: ownerLower },
-        fromBlock: range.from,
-        toBlock: range.to,
-      }),
-    ]);
-
-    for (const log of placed) {
-      const side: "YES" | "NO" =
-        Number(log.args.side ?? 0) === 1 ? "YES" : "NO";
-      const tick = Number(log.args.tick ?? 0);
-      const sortKey = Number(
-        (log.blockNumber ?? 0n) * 10_000n + BigInt(log.logIndex ?? 0),
-      );
-      upsert(`${log.transactionHash}-${log.logIndex}-placed`, {
-        key: `${log.transactionHash}-${log.logIndex}-placed`,
-        type: "placed",
-        side,
-        orderId: String(log.args.orderId ?? `${Number(log.args.side ?? 0)}:${tick}`),
-        orderRef: log.transactionHash,
-        amount: Number(formatUnits(log.args.amount ?? 0n, 18)),
-        yesPrice:
-          Number(log.args.side ?? 0) === 1
-            ? tickToYesPrice(tick, 1)
-            : tickToYesPrice(tick, 0),
-        refundAmountWad: null,
-        timestamp: Number(log.blockNumber ?? 0n),
-        sortKey,
-      });
-    }
-
-    for (const log of cancelled) {
-      const side: "YES" | "NO" =
-        Number(log.args.side ?? 0) === 1 ? "YES" : "NO";
-      const tick = Number(log.args.tick ?? 0);
-      const sortKey = Number(
-        (log.blockNumber ?? 0n) * 10_000n + BigInt(log.logIndex ?? 0),
-      );
-      upsert(`${log.transactionHash}-${log.logIndex}-cancelled`, {
-        key: `${log.transactionHash}-${log.logIndex}-cancelled`,
-        type: "cancelled",
-        side,
-        orderId: String(log.args.orderId ?? `${Number(log.args.side ?? 0)}:${tick}`),
-        orderRef: log.transactionHash,
-        amount: Number(formatUnits(log.args.amount ?? 0n, 18)),
-        yesPrice:
-          Number(log.args.side ?? 0) === 1
-            ? tickToYesPrice(tick, 1)
-            : tickToYesPrice(tick, 0),
-        refundAmountWad: null,
-        timestamp: Number(log.blockNumber ?? 0n),
-        sortKey,
-      });
-    }
-
-    for (const log of [...filledAsMaker, ...filledAsTaker]) {
-      const yesTick = Number(log.args.yesTick ?? 0);
-      const sortKey = Number(
-        (log.blockNumber ?? 0n) * 10_000n + BigInt(log.logIndex ?? 0),
-      );
-      upsert(`${log.transactionHash}-${log.logIndex}-filled`, {
-        key: `${log.transactionHash}-${log.logIndex}-filled`,
-        type: "filled",
-        side: Number(log.args.takerSide ?? 0) === 1 ? "YES" : "NO",
-        orderId: "",
-        orderRef: log.transactionHash,
-        amount: Number(formatUnits(log.args.amount ?? 0n, 18)),
-        yesPrice: clampUnit(yesTick / 1000),
-        refundAmountWad:
-          (log.args.surplus ?? 0n) > 0n ? (log.args.surplus ?? 0n) : null,
-        timestamp: Number(log.blockNumber ?? 0n),
-        sortKey,
-      });
-    }
-  }
-
-  return Array.from(rows.values()).sort((a, b) => b.sortKey - a.sortKey);
-}
 
 export function useIndexerOrders(
   chainIdProp: number | undefined,
@@ -647,25 +355,12 @@ export function useIndexerOrders(
         return [] as OpenOrder[];
       }
 
-      if (USE_REDESIGNED_BOOK) {
-        // One account read. The log-replay path below cannot see these orders
-        // at all — the redesigned book emits its own event set, so scanning for
-        // the legacy ORDER_PLACED signature finds nothing and the panel renders
-        // empty however many orders are actually resting.
-        return fetchOpenOrdersFromBook(
-          publicClient,
-          marketAddress,
-          ownerExact as `0x${string}`,
-        );
-      }
-
-      return fetchOpenOrdersFromRpc(
+      // One account read. Orders live in the book account, so there is
+      // nothing to reconstruct.
+      return fetchOpenOrdersFromBook(
         publicClient,
-        toHexAddress(soothBookAddress),
-        marketKey,
-        toHexAddress(ownerLower),
         marketAddress,
-        chainId,
+        ownerExact as `0x${string}`,
       );
     },
     enabled: !!chainId && !!marketKey && !!ownerLower,
@@ -697,23 +392,11 @@ export function useIndexerOrders(
         return [] as HistoryRow[];
       }
 
-      if (USE_REDESIGNED_BOOK) {
-        // Same reason as open orders: the redesigned book emits versioned CPI
-        // events, not the EVM-shaped ORDER_* logs the scan below looks for, so
-        // that path finds nothing however much the user has traded.
-        return fetchHistoryFromBook(
-          publicClient,
-          marketAddress,
-          ownerExact as `0x${string}`,
-        );
-      }
-
-      return fetchHistoryRowsFromRpc(
+      // History comes from the book's own CPI events.
+      return fetchHistoryFromBook(
         publicClient,
-        toHexAddress(soothBookAddress),
-        marketKey,
-        toHexAddress(ownerLower),
-        chainId,
+        marketAddress,
+        ownerExact as `0x${string}`,
       );
     },
     enabled: !!chainId && !!marketKey && !!ownerLower,

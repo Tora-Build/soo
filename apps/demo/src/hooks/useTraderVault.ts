@@ -7,7 +7,6 @@ import { useTokenBalances } from "./useTokenBalances";
 import { useDeployments } from "./useDeployments";
 import { useBaseTokenDecimals } from "./useBaseTokenDecimals";
 import { demoConfig } from "../lib/config";
-import { USE_REDESIGNED_BOOK } from "../lib/book-flag";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
@@ -66,7 +65,7 @@ export function useTraderVault() {
   );
 
   const bookAccountContracts = useMemo(() => {
-    if (!address || !USE_REDESIGNED_BOOK) return [];
+    if (!address) return [];
     return marketRefs.map((marketRef) => ({
       address: (soothBookAddress ?? ZERO_ADDRESS) as `0x${string}`,
       abi: SOOTHBOOK_ABI,

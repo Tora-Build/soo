@@ -30,7 +30,6 @@ import { LiquidityMap } from "./LiquidityMap";
 import { HistoricalPriceCard } from "./HistoricalPriceCard";
 import { UserOrdersPanel } from "./UserOrdersPanel";
 import { orderCollateral } from "../../../lib/order-collateral";
-import { USE_REDESIGNED_BOOK } from "../../../lib/book-flag";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -320,7 +319,6 @@ function SoothBookTerminalActive({
     isYes,
     availableUsdc,
     availableShares,
-    redesignedBook: USE_REDESIGNED_BOOK,
   });
   const insufficientBalance = collateral.kind === "usdc" && !!collateral.error;
   const insufficientShares = collateral.kind === "shares" && !!collateral.error;

@@ -4,7 +4,6 @@ import {
   type CancelTarget,
 } from "../lib/orderbook-math";
 import { toBookPlace } from "../lib/book-order-mapping";
-import { USE_REDESIGNED_BOOK } from "../lib/book-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useAccount,
@@ -29,12 +28,9 @@ import { useOrderStore } from "../store/useOrderStore";
 import { shortenAddress } from "../utils/format";
 
 type WriteFunctionName =
-  | "buyYes"
-  | "buyNo"
   | "bookPlace"
   | "bookCancel"
   | "cancel"
-  | "cancelById"
   | "redeem";
 type ExecuteWriteOptions = {
   silent?: boolean;
@@ -506,17 +502,17 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
         },
       };
 
-      // ── Redesigned book ────────────────────────────────────────────────
+      // ── The book write path ────────────────────────────────────────────
       //
-      // One call for every quadrant. The legacy branches below need four,
-      // because a two-sided book has to express "buy NO" as "buy YES on the
-      // other side at the complement tick" and then mirror that again for
-      // sells. On a single axis that is one `side` flag.
+      // One call for every quadrant. The legacy two-sided book needed four,
+      // because it had to express "buy NO" as "buy YES on the other side at
+      // the complement tick" and then mirror that again for sells. On a single
+      // axis that is one `side` flag.
       //
       // It is also one instruction instead of a planned batch: the program
       // walks its own book, so nothing is precomputed off-chain and there is
       // nothing to go stale between planning and landing (audit finding H1).
-      if (USE_REDESIGNED_BOOK) {
+      {
         let bookArgs;
         try {
           bookArgs = toBookPlace({
@@ -576,108 +572,6 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
         );
         actualSide = bookArgs.side === 0 ? 1 : 0;
         actualTick = bookArgs.limitTick;
-      } else if (isBuy) {
-        if (outcome === 0) {
-          success = await executeWrite(
-            "Submitting buy YES order...",
-            "buyYes",
-            [marketKey, directTick, shares, false, 100],
-            maxCostWad,
-            orderWriteOptions,
-          );
-          actualSide = 1;
-          actualTick = directTick;
-        } else {
-          success = await executeWrite(
-            "Submitting buy NO order...",
-            "buyNo",
-            [marketKey, directTick, shares, false, 100],
-            maxCostWad,
-            orderWriteOptions,
-          );
-          actualSide = 0;
-          actualTick = directTick;
-        }
-      } else {
-        const sellFunction: WriteFunctionName =
-          outcome === 0 ? "buyNo" : "buyYes";
-        const sellLabel =
-          outcome === 0
-            ? "Submitting sell YES order..."
-            : "Submitting sell NO order...";
-        const matchLimit = 100;
-        const buildSellArgs = (chunkShares: bigint) =>
-          [marketKey, oppositeTick, chunkShares, escrow, matchLimit] as const;
-
-        const fullEstimate = await estimateGas(
-          sellFunction,
-          buildSellArgs(shares),
-        );
-        if (!fullEstimate.gasCapHit) {
-          success = await executeWrite(
-            sellLabel,
-            sellFunction,
-            buildSellArgs(shares),
-            undefined,
-            orderWriteOptions,
-          );
-        } else {
-          let chunkSize = shares / 2n;
-          if (chunkSize < MIN_SHARE_CHUNK) chunkSize = MIN_SHARE_CHUNK;
-
-          while (chunkSize >= MIN_SHARE_CHUNK) {
-            const check = await estimateGas(
-              sellFunction,
-              buildSellArgs(chunkSize),
-            );
-            if (!check.gasCapHit) break;
-            if (chunkSize === MIN_SHARE_CHUNK) {
-              toast.error(
-                "Order too deep for per-tx gas cap. Raise price or submit smaller slices manually.",
-              );
-              return false;
-            }
-            chunkSize = chunkSize / 2n;
-            if (chunkSize < MIN_SHARE_CHUNK) chunkSize = MIN_SHARE_CHUNK;
-          }
-
-          const totalShares = shares;
-          let remaining = shares;
-          let submitted = 0n;
-          toast("Large sweep detected. Splitting into smaller transactions.");
-
-          while (remaining > 0n) {
-            const currentChunk = remaining > chunkSize ? chunkSize : remaining;
-            const chunkSuccess = await executeWrite(
-              sellLabel,
-              sellFunction,
-              buildSellArgs(currentChunk),
-              undefined,
-              orderWriteOptions,
-            );
-            if (!chunkSuccess) {
-              if (submitted > 0n) {
-                const submittedShares = Number(formatUnits(submitted, 18));
-                toast.error(
-                  `Partially submitted ${submittedShares.toLocaleString(undefined, { maximumFractionDigits: 3 })} shares. Submit remaining manually.`,
-                );
-              }
-              return false;
-            }
-            submitted += currentChunk;
-            remaining -= currentChunk;
-          }
-
-          success = submitted === totalShares;
-        }
-
-        if (outcome === 0) {
-          actualSide = 0;
-          actualTick = oppositeTick;
-        } else {
-          actualSide = 1;
-          actualTick = oppositeTick;
-        }
       }
 
       if (success) {
@@ -777,7 +671,7 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
         return false;
       }
 
-      // ── Redesigned book ────────────────────────────────────────────────
+      // ── The book write path ────────────────────────────────────────────
       //
       // Cancel by the order's real sequence. Nothing is synthesised, so
       // nothing has to be parsed back — which removes both bugs the
@@ -789,7 +683,7 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
       // order at this level" was the only thing the UI could express when the
       // indexer had not caught up; the book now carries every order's seq in
       // the same account the ladder came from, so the caller always has one.
-      if (USE_REDESIGNED_BOOK) {
+      {
         if (target.kind !== "id") {
           toast.error(
             "Cancel needs an order id — refresh the book and try again",
@@ -804,67 +698,6 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
           { silent: options?.silent },
         );
       }
-
-      // Pre-simulate so we can distinguish "order is gone on-chain" (most
-      // common: stale entry in local useOrderStore from a prior session
-      // that already filled or was cancelled) from real failures. On
-      // OrderNotActive we clean the local store entry silently instead
-      // of broadcasting a doomed tx.
-      if (publicClient && userAddress) {
-        try {
-          if (target.kind === "id") {
-            await publicClient.simulateContract({
-              account: userAddress,
-              address: soothBookAddress,
-              abi: SOOTHBOOK_ABI,
-              functionName: "cancelById",
-              args: [target.orderId],
-            });
-          } else {
-            await publicClient.simulateContract({
-              account: userAddress,
-              address: soothBookAddress,
-              abi: SOOTHBOOK_ABI,
-              functionName: "cancel",
-              args: [marketKey, target.side, target.tick],
-            });
-          }
-        } catch (error: unknown) {
-          const msg = getErrorMessage(error);
-          if (msg.includes("OrderNotActive") || msg.includes("0x1d4ecc5b")) {
-            useOrderStore.getState().removeOrder(orderId);
-            if (!options?.silent) {
-              toast.success("Order already cleared on-chain — removed locally");
-            }
-            return true;
-          }
-          // Other simulation errors (gas cap, market inactive, etc.) fall
-          // through to executeWrite which surfaces them via toast.
-        }
-      }
-
-      const success =
-        target.kind === "id"
-          ? await executeWrite(
-              "Cancelling order...",
-              "cancelById",
-              [target.orderId],
-              undefined,
-              options,
-            )
-          : await executeWrite(
-              "Cancelling order...",
-              "cancel",
-              [marketKey, target.side, target.tick],
-              undefined,
-              options,
-            );
-
-      if (success) {
-        useOrderStore.getState().removeOrder(orderId);
-      }
-
-      return success;
     },
     [executeWrite, marketKey, soothBookAddress, publicClient, userAddress],
   );

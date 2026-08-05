@@ -78,7 +78,6 @@ pub mod constants;
 pub mod error;
 pub mod events;
 pub mod instructions;
-pub mod matching;
 pub mod math;
 pub mod state;
 
@@ -91,13 +90,8 @@ pub mod sooth_core {
     use crate::instructions::book_init;
     use crate::instructions::book_ops;
     use crate::instructions::book_place;
-    use crate::instructions::buy;
-    use crate::instructions::cancel;
-    use crate::instructions::cancel_by_id;
     use crate::instructions::claim_refund;
     use crate::instructions::claim_unlocked;
-    use crate::instructions::close_book_side;
-    use crate::instructions::compact_book_side;
     use crate::instructions::create_market;
     use crate::instructions::dismiss_market;
     use crate::instructions::dispute;
@@ -107,16 +101,13 @@ pub mod sooth_core {
     use crate::instructions::initialize_amm_state;
     use crate::instructions::lock_for_resolution;
     use crate::instructions::merge_complete_set;
-    use crate::instructions::merge_complete_set_for_orderbook;
     use crate::instructions::mint_complete_set;
-    use crate::instructions::mint_complete_set_for_orderbook;
     use crate::instructions::mint_complete_set_to_program_owned;
     use crate::instructions::pause;
     use crate::instructions::redeem;
     use crate::instructions::redeem_from_program_owned;
     use crate::instructions::redeem_lp;
     use crate::instructions::redeem_amm_position;
-    use crate::instructions::redeem_orderbook;
     use crate::instructions::register_adjudicator;
     use crate::instructions::request_lock;
     use crate::instructions::seed_lp;
@@ -228,12 +219,6 @@ pub mod sooth_core {
         mint_complete_set::handler(ctx, amount)
     }
 
-    pub fn mint_complete_set_for_orderbook(
-        ctx: Context<MintCompleteSetForOrderbook>,
-        amount: u64,
-    ) -> Result<()> {
-        mint_complete_set_for_orderbook::handler(ctx, amount)
-    }
 
     pub fn mint_complete_set_to_program_owned(
         ctx: Context<MintCompleteSetToProgramOwned>,
@@ -249,12 +234,6 @@ pub mod sooth_core {
         merge_complete_set::handler(ctx, amount)
     }
 
-    pub fn merge_complete_set_for_orderbook(
-        ctx: Context<MergeCompleteSetForOrderbook>,
-        amount: u64,
-    ) -> Result<()> {
-        merge_complete_set_for_orderbook::handler(ctx, amount)
-    }
 
     // ── AMM ───────────────────────────────────────────────────────────────────
 
@@ -316,9 +295,6 @@ pub mod sooth_core {
         redeem_book_seat::handler(ctx)
     }
 
-    pub fn redeem_orderbook(ctx: Context<RedeemOrderbook>) -> Result<()> {
-        redeem_orderbook::handler(ctx)
-    }
 
     pub fn redeem_from_program_owned(
         ctx: Context<RedeemFromProgramOwned>,
@@ -361,38 +337,8 @@ pub mod sooth_core {
         book_ops::withdraw_handler(ctx)
     }
 
-    pub fn buy<'info>(
-        ctx: Context<'_, '_, '_, 'info, BuyOrder<'info>>,
-        side: u8,
-        tick: u16,
-        amount: u128,
-        escrow: bool,
-        match_limit: u32,
-    ) -> Result<()> {
-        buy::handler(ctx, side, tick, amount, escrow, match_limit)
-    }
 
-    pub fn cancel(ctx: Context<CancelOrder>, side: u8, tick: u16) -> Result<()> {
-        cancel::handler(ctx, side, tick)
-    }
 
-    pub fn cancel_by_id(
-        ctx: Context<CancelByIdOrder>,
-        order_id: u64,
-        side: u8,
-        tick: u16,
-    ) -> Result<()> {
-        cancel_by_id::handler(ctx, order_id, side, tick)
-    }
 
-    pub fn close_book_side(ctx: Context<CloseBookSide>) -> Result<()> {
-        close_book_side::handler(ctx)
-    }
 
-    pub fn compact_book_side(
-        ctx: Context<CompactBookSide>,
-        max_drops: u8,
-    ) -> Result<()> {
-        compact_book_side::handler(ctx, max_drops)
-    }
 }
