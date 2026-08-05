@@ -87,6 +87,24 @@ pub fn handler(
     post_remainder: bool,
 ) -> Result<()> {
     require_not_paused(&ctx.accounts.protocol_config)?;
+
+    // Trading stops when the market does.
+    //
+    // `book_place` checked only the pause flag, so orders matched on a LOCKED
+    // or SETTLED market — one whose outcome is already known. That is free
+    // money against anyone with a stale resting order: once YES has won, buy
+    // YES from them at any price below 1.00 and redeem it for the full dollar.
+    // The maker did nothing wrong except fail to cancel in time.
+    //
+    // Every other trading path already gates on this (`trade_positions`,
+    // `sell_positions` both require `is_open`); the book was the gap.
+    // `book_cancel` stays ungated on purpose — a maker must always be able to
+    // get out, and after settlement that is the only way to recover escrow.
+    require!(
+        ctx.accounts.market.is_open(),
+        SoothCoreError::MarketNotOpen
+    );
+
     require!(
         side == SIDE_BID || side == SIDE_ASK,
         SoothCoreError::InvalidOutcome

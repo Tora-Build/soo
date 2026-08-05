@@ -18,6 +18,7 @@
 use anchor_lang::prelude::Pubkey;
 
 use super::arena::{as_seat_mut, Book, BookError, OrderNode, KIND_SEAT, NIL, SIDE_ASK, SIDE_BID};
+use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
 use super::settlement::{leg_costs, settle_leg, taker_fee, SettleError};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -344,6 +345,58 @@ impl<'a> Book<'a> {
         let amount = seat.credit;
         seat.credit = 0;
         Ok(amount)
+    }
+
+    /// Drain a trader's whole settled standing: credit plus the payout their
+    /// net position earns under `winning_outcome`.
+    ///
+    /// A seat carries a SIGNED net — `> 0` long YES, `< 0` long NO — so the
+    /// payout is just "does the winning side match the sign", and each winning
+    /// share redeems for exactly one unit. Every matched share was backed by a
+    /// full unit at fill time (the bid leg and the ask leg sum to 1.00), so the
+    /// total paid out here can never exceed what was taken in.
+    ///
+    /// `OUTCOME_INVALID` splits: both sides of a matched share are worth half,
+    /// which is the same rule `redeem_amm_position` and `redeem_orderbook`
+    /// apply, so the three ledgers cannot drift.
+    ///
+    /// Zeroes both fields before returning, so a second call pays nothing.
+    /// Resting orders are deliberately untouched — their escrow is recovered
+    /// with `book_cancel`, which stays available after settlement precisely so
+    /// a maker is never trapped.
+    pub fn take_settlement(&mut self, trader: Pubkey, winning_outcome: u8) -> R<u64> {
+        let idx = self.seat_mut(trader)?;
+        let node = self.blocks.get_mut(idx as usize).ok_or(BookError::InvalidIndex)?;
+        let seat = as_seat_mut(node);
+
+        let net = seat.net;
+        let magnitude = net.unsigned_abs();
+        let payout = match winning_outcome {
+            OUTCOME_YES => {
+                if net > 0 {
+                    magnitude
+                } else {
+                    0
+                }
+            }
+            OUTCOME_NO => {
+                if net < 0 {
+                    magnitude
+                } else {
+                    0
+                }
+            }
+            OUTCOME_INVALID => magnitude / 2,
+            _ => return Err(MatchError::Book(BookError::InvalidSide)),
+        };
+
+        let total = seat
+            .credit
+            .checked_add(payout)
+            .ok_or(MatchError::Settle(SettleError::Overflow))?;
+        seat.credit = 0;
+        seat.net = 0;
+        Ok(total)
     }
 
     /// A trader's current credit, without draining it.
@@ -690,5 +743,134 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_winning_long_is_paid_one_per_share() {
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        // trader(2) buys 10 from trader(1)'s resting ask at 400.
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.place(trader(2), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
+            .unwrap();
+
+        // YES wins: the long is paid in full, the short gets nothing.
+        assert_eq!(book.take_settlement(trader(2), OUTCOME_YES).unwrap(), 10 * ONE_SHARE);
+        assert_eq!(book.take_settlement(trader(1), OUTCOME_YES).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_winning_short_is_paid_one_per_share() {
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.place(trader(2), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
+            .unwrap();
+
+        // NO wins: the seller of YES was long NO all along.
+        assert_eq!(book.take_settlement(trader(1), OUTCOME_NO).unwrap(), 10 * ONE_SHARE);
+        assert_eq!(book.take_settlement(trader(2), OUTCOME_NO).unwrap(), 0);
+    }
+
+    #[test]
+    fn the_two_sides_together_are_paid_exactly_what_was_backed() {
+        // The invariant the vault depends on. Each matched share was backed by
+        // one unit at fill time — the bid leg and the ask leg sum to 1.00 — and
+        // exactly one holder is paid. Total out must equal total in, at every
+        // tick and every outcome, or the vault drains or strands funds.
+        for tick in [1u16, 250, 400, 515, 750, 999] {
+            for outcome in [OUTCOME_YES, OUTCOME_NO, OUTCOME_INVALID] {
+                let mut a = Acct::new(32);
+                let mut book = load_book(a.bytes()).unwrap();
+                book.insert(SIDE_ASK, tick, 10 * ONE_SHARE, trader(1)).unwrap();
+                book.place(trader(2), SIDE_BID, tick, 10 * ONE_SHARE, 0, 8, false)
+                    .unwrap();
+
+                let (bid_leg, ask_leg) = leg_costs(tick, 10 * ONE_SHARE, SIDE_BID).unwrap();
+                let backed = bid_leg + ask_leg;
+
+                let paid = book.take_settlement(trader(1), outcome).unwrap()
+                    + book.take_settlement(trader(2), outcome).unwrap();
+
+                assert_eq!(
+                    paid, backed,
+                    "tick {tick} outcome {outcome}: paid {paid}, backed {backed}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_invalid_outcome_splits_both_sides() {
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.place(trader(2), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
+            .unwrap();
+        assert_eq!(book.take_settlement(trader(1), OUTCOME_INVALID).unwrap(), 5 * ONE_SHARE);
+        assert_eq!(book.take_settlement(trader(2), OUTCOME_INVALID).unwrap(), 5 * ONE_SHARE);
+    }
+
+    #[test]
+    fn redeeming_twice_pays_nothing_the_second_time() {
+        // The seat survives the call, so it IS callable again. Zeroing before
+        // the transfer is what stops a repeat from draining the vault.
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.place(trader(2), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
+            .unwrap();
+        assert_eq!(book.take_settlement(trader(2), OUTCOME_YES).unwrap(), 10 * ONE_SHARE);
+        assert_eq!(book.take_settlement(trader(2), OUTCOME_YES).unwrap(), 0);
+    }
+
+    #[test]
+    fn redeeming_twice_does_not_pay_credit_again_either() {
+        // Found by mutation: zeroing only `net` and leaving `credit` passed
+        // every other test here, because none of them had BOTH a position and
+        // credit on the same seat. A repeat call would then re-pay the credit
+        // every time — an unbounded drain on the vault, not a rounding error.
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+
+        // Credit, from a cancelled order.
+        let idx = book.insert(SIDE_BID, 300, 4 * ONE_SHARE, trader(1)).unwrap();
+        let seq = book.node(idx).unwrap().seq;
+        let refund = book.cancel(trader(1), seq).unwrap();
+        assert!(refund > 0);
+
+        // ...and a winning position on the same seat.
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(2)).unwrap();
+        book.place(trader(1), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
+            .unwrap();
+
+        let first = book.take_settlement(trader(1), OUTCOME_YES).unwrap();
+        assert!(first > 10 * ONE_SHARE, "position AND credit both paid");
+        assert_eq!(
+            book.take_settlement(trader(1), OUTCOME_YES).unwrap(),
+            0,
+            "nothing left on a second call",
+        );
+    }
+
+    #[test]
+    fn settlement_pays_credit_alongside_the_position() {
+        // Credit is money already released — a cancelled order's escrow, or
+        // collateral freed by a fill that closed exposure. It must come out
+        // with the payout, or a trader has to make a second call for it.
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        let seq = book.insert(SIDE_BID, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        let node_seq = book.node(seq).unwrap().seq;
+        let refund = book.cancel(trader(1), node_seq).unwrap();
+        assert!(refund > 0);
+        // Flat position, but the refund is sitting in credit.
+        assert_eq!(book.take_settlement(trader(1), OUTCOME_YES).unwrap(), refund);
+    }
+
+    #[test]
+    fn a_trader_who_never_traded_is_paid_nothing() {
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        assert_eq!(book.take_settlement(trader(9), OUTCOME_YES).unwrap(), 0);
+    }
 
 }

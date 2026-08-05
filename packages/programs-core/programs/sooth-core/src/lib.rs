@@ -307,6 +307,15 @@ pub mod sooth_core {
         redeem_amm_position::handler(ctx)
     }
 
+    /// Pay out a book position after settlement. See `redeem_book_seat`.
+    ///
+    /// The book's fifth-and-a-half instruction, and the one that was missing:
+    /// place/cancel/withdraw moved collateral, but nothing turned a winning
+    /// seat position into money.
+    pub fn redeem_book_seat(ctx: Context<RedeemBookSeat>) -> Result<()> {
+        redeem_book_seat::handler(ctx)
+    }
+
     pub fn redeem_orderbook(ctx: Context<RedeemOrderbook>) -> Result<()> {
         redeem_orderbook::handler(ctx)
     }
