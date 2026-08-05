@@ -34,55 +34,59 @@ import {
   initMarketFeePool,
   sendTx,
 } from "./fixtures/orderbook.js";
+import {
+  ONE_SHARE,
+  SIDE_BID,
+  bookInitIx,
+  bookPlaceIx,
+  sendBookTx,
+  sendBookTxRaw,
+  trader,
+} from "./fixtures/book.js";
+
+/** A market with an initialised book, ready to take an order. */
+async function boot() {
+  const smoke = await bootSmoke();
+  await initMarketFeePool(
+    smoke.ctx,
+    anchorProgram(smoke.ctx, smoke.creator),
+    smoke,
+    smoke.creator,
+  );
+  await sendBookTx(smoke, smoke.creator, bookInitIx(smoke, smoke.creator.publicKey, 32));
+  return smoke;
+}
 
 describe("256 KB allocator caller contract", () => {
   it("a transaction without the heap frame faults on first allocation", async () => {
-    const smoke = await bootSmoke();
-    const { ctx } = smoke;
-    const user = smoke.user;
-    const program = anchorProgram(ctx, user);
-    await initMarketFeePool(ctx, program, smoke, smoke.creator);
+    const smoke = await boot();
+    const user = await trader(smoke);
 
-    const order = await buyTx(program, smoke, {
-      signer: user,
-      side: 1,
-      tick: 900,
-      amount: SHARES,
-      matchLimit: 0,
-      remaining: [],
-    });
-
-    // Same instruction that succeeds elsewhere in the suite — the ONLY
-    // difference is the missing compute-budget preamble.
-    // Match only "Access violation" — the suffix differs by runtime version.
+    // Same instruction that succeeds below — the ONLY difference is the
+    // missing compute-budget preamble.
+    //
+    // Match only "Access violation": the suffix differs by runtime version.
     // LiteSVM and solana-test-validator say "in heap section at address
     // 0x30003ff68 of size 8"; live devnet says "writing 8 bytes at address
-    // 0x30003ff68 (in unallocated ...)". Both are the same fault, and pinning
-    // the full LiteSVM phrasing would have made this test lie about devnet.
+    // 0x30003ff68 (in unallocated ...)". Same fault, and pinning the full
+    // LiteSVM phrasing would make this test lie about devnet.
     await expect(
-      sendTx(ctx, [user], order, { skipHeapFrame: true }),
+      sendBookTxRaw(
+        smoke,
+        user,
+        { skipHeapFrame: true },
+        bookPlaceIx(smoke, user.publicKey, SIDE_BID, 400, 5n * ONE_SHARE, 8, true),
+      ),
     ).rejects.toThrow(/Access violation/);
   });
 
   it("the same order succeeds with the frame", async () => {
-    const smoke = await bootSmoke();
-    const { ctx } = smoke;
-    const user = smoke.user;
-    const program = anchorProgram(ctx, user);
-    await initMarketFeePool(ctx, program, smoke, smoke.creator);
-
-    // sendTx prepends the frame by default, as the SDK adapter does.
-    await sendTx(
-      ctx,
-      [user],
-      await buyTx(program, smoke, {
-        signer: user,
-        side: 1,
-        tick: 900,
-        amount: SHARES,
-        matchLimit: 0,
-        remaining: [],
-      }),
+    const smoke = await boot();
+    const user = await trader(smoke);
+    await sendBookTx(
+      smoke,
+      user,
+      bookPlaceIx(smoke, user.publicKey, SIDE_BID, 400, 5n * ONE_SHARE, 8, true),
     );
   });
 

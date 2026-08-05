@@ -41,7 +41,7 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use crate::constants::BASE_TOKEN_MINT;
 use crate::error::SoothCoreError;
 use crate::events::Redeemed;
-use crate::instructions::orderbook_common::wad_to_base;
+use crate::math::wad_to_base;
 use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
 use crate::state::{Market, Position};
 

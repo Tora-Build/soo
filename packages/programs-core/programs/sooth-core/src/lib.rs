@@ -107,6 +107,7 @@ pub mod sooth_core {
     use crate::instructions::redeem;
     use crate::instructions::redeem_from_program_owned;
     use crate::instructions::redeem_lp;
+    use crate::instructions::reclaim_subsidy;
     use crate::instructions::redeem_amm_position;
     use crate::instructions::register_adjudicator;
     use crate::instructions::request_lock;
@@ -282,6 +283,12 @@ pub mod sooth_core {
 
     /// Pay out an AMM `Position` after settlement. Before this existed the
     /// AMM had no post-settlement exit at all — see the module docs.
+    /// Return the unspent LMSR subsidy to the creator after settlement.
+    /// See `reclaim_subsidy` — bug B0's residual half.
+    pub fn reclaim_subsidy(ctx: Context<ReclaimSubsidy>) -> Result<()> {
+        reclaim_subsidy::handler(ctx)
+    }
+
     pub fn redeem_amm_position(ctx: Context<RedeemAmmPosition>) -> Result<()> {
         redeem_amm_position::handler(ctx)
     }

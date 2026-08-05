@@ -34,38 +34,44 @@ import {
   sendTx,
   setPaused,
 } from "./fixtures/orderbook.js";
+import {
+  ONE_SHARE,
+  SIDE_BID,
+  bookHeader,
+  bookCancelIx,
+  bookInitIx,
+  bookPlaceIx,
+  sendBookTx,
+  trader,
+} from "./fixtures/book.js";
 
-const SIDE = 1;
-const TICK = 900;
+const TICK = 400;
 
 describe("protocol pause (circuit-breaker)", () => {
-  it("blocks a CLOB buy while paused, and allows it again after unpause", async () => {
+  it("blocks a book order while paused, and allows it again after unpause", async () => {
+    // The pause is the protocol's circuit breaker, so it has to reach the book
+    // as well as the AMM. This used to exercise the legacy CLOB `buy`; the
+    // instruction is gone, the property is not.
     const smoke = await bootSmoke();
     const { ctx, creator } = smoke;
-    const user = smoke.user;
-    const program = anchorProgram(ctx, user);
+    const program = anchorProgram(ctx, creator);
     await initMarketFeePool(ctx, program, smoke, creator);
+    await sendBookTx(smoke, creator, bookInitIx(smoke, creator.publicKey, 32));
 
+    const user = await trader(smoke);
     const order = () =>
-      buyTx(program, smoke, {
-        signer: user,
-        side: SIDE,
-        tick: TICK,
-        amount: SHARES,
-        matchLimit: 0,
-        remaining: [],
-      });
+      bookPlaceIx(smoke, user.publicKey, SIDE_BID, TICK, 5n * ONE_SHARE, 8, true);
 
     await setPaused(ctx, program, smoke, creator, true);
-    await expect(sendTx(ctx, [user], await order())).rejects.toThrow(
+    await expect(sendBookTx(smoke, user, order())).rejects.toThrow(
       customError(CLOB_ERROR.ProtocolPaused),
     );
 
     await setPaused(ctx, program, smoke, creator, false);
-    await sendTx(ctx, [user], await order());
+    await sendBookTx(smoke, user, order());
 
-    const bookSide = fillBundle(smoke, SIDE, TICK, user.publicKey)[0]!;
-    expect(liveAmount(await fetchBookSide(program, bookSide))).toBe(SHARES);
+    // One order resting, which is what "allowed again" means here.
+    expect((await bookHeader(smoke)).orderCount).toBe(1);
   });
 
   it("blocks an AMM trade while paused", async () => {
@@ -121,32 +127,27 @@ describe("protocol pause (circuit-breaker)", () => {
   });
 
   it("still allows cancel while paused — exits must not be trapped", async () => {
+    // The circuit breaker stops new risk, it does not trap existing risk. A
+    // maker who cannot cancel during a halt is a maker whose collateral is
+    // hostage to it, so `book_cancel` is deliberately ungated.
     const smoke = await bootSmoke();
     const { ctx, creator } = smoke;
-    const user = smoke.user;
-    const program = anchorProgram(ctx, user);
+    const program = anchorProgram(ctx, creator);
     await initMarketFeePool(ctx, program, smoke, creator);
+    await sendBookTx(smoke, creator, bookInitIx(smoke, creator.publicKey, 32));
 
-    // Rest an order before the halt.
-    await sendTx(
-      ctx,
-      [user],
-      await buyTx(program, smoke, {
-        signer: user,
-        side: SIDE,
-        tick: TICK,
-        amount: SHARES,
-        matchLimit: 0,
-        remaining: [],
-      }),
+    const user = await trader(smoke);
+    await sendBookTx(
+      smoke,
+      user,
+      bookPlaceIx(smoke, user.publicKey, SIDE_BID, TICK, 5n * ONE_SHARE, 8, true),
     );
+    expect((await bookHeader(smoke)).orderCount).toBe(1);
 
+    const seq = (await bookHeader(smoke)).nextSeq - 1n;
     await setPaused(ctx, program, smoke, creator, true);
+    await sendBookTx(smoke, user, bookCancelIx(smoke, user.publicKey, seq));
 
-    // The maker can still withdraw it.
-    await sendTx(ctx, [user], await cancelTx(program, smoke, user, SIDE, TICK));
-
-    const bookSide = fillBundle(smoke, SIDE, TICK, user.publicKey)[0]!;
-    expect(liveAmount(await fetchBookSide(program, bookSide))).toBe(0n);
+    expect((await bookHeader(smoke)).orderCount).toBe(0);
   });
 });

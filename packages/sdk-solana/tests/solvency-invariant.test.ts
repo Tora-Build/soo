@@ -45,7 +45,18 @@ import {
   deriveYesMintPda,
   orderbookPositionPda,
 } from "../src/pdas.js";
+import { decodeBook } from "../src/book/index.js";
 import { bootSmoke } from "./fixtures/setup.js";
+import {
+  ONE_SHARE,
+  SIDE_ASK,
+  SIDE_BID,
+  bookInitIx,
+  bookPda,
+  bookPlaceIx,
+  sendBookTx,
+  trader,
+} from "./fixtures/book.js";
 import { LiteSvmConnection } from "./fixtures/svm.js";
 import {
   SHARES,
@@ -102,8 +113,17 @@ export async function checkCollateralBacking(
   usdcMint: PublicKey,
   opts: {
     program?: any;
-    orderbookPositions?: PublicKey[];
     ammPositions?: PublicKey[];
+    /**
+     * The book account, if this market has one.
+     *
+     * Replaces the old `orderbookPositions` list. That was one PDA per
+     * (market, user) and callers had to know every trader in advance to derive
+     * them — the same non-enumerability that blocked reclaiming the LMSR
+     * subsidy. The redesigned book is a single account, so the whole CLOB
+     * ledger is one read and cannot be under-counted by forgetting a trader.
+     */
+    book?: PublicKey;
   } = {},
 ): Promise<SolvencyReport> {
   const [yesMintPda] = deriveYesMintPda(marketId, programs);
@@ -130,8 +150,21 @@ export async function checkCollateralBacking(
       noTotal += BigInt(pos.noShares.toString()) / WAD_TO_BASE;
     }
   };
-  await walk(opts.orderbookPositions, "orderbookPosition");
   await walk(opts.ammPositions, "position");
+
+  // Book seats: a signed net, so a long counts against YES and a short against
+  // NO. Resting escrow and unwithdrawn credit are USDC obligations rather than
+  // share obligations, so they are not part of this comparison.
+  if (opts.book) {
+    const raw = await conn.getAccountInfo(opts.book);
+    if (raw) {
+      const snapshot = decodeBook(Buffer.from(raw.data));
+      for (const seat of snapshot.seats) {
+        if (seat.net > 0n) yesTotal += seat.net;
+        else if (seat.net < 0n) noTotal += -seat.net;
+      }
+    }
+  }
 
   const obligations = yesTotal > noTotal ? yesTotal : noTotal;
   return {
@@ -269,62 +302,48 @@ const LMSR_SUBSIDY = 693_147_181n;
     expect(summedLegs / 1_000_000_000_000n).toBe(0n);
   }, 60_000);
 
-  it("holds after a real CLOB cross — and mint supply alone would miss it", async () => {
-    // The case main's version cannot see. A crossing buy moves USDC into the
-    // vault and credits two OrderbookPositions; no SPL token is minted, so the
-    // mint-supply-only view reports zero obligations against a non-zero vault.
+  it("holds after a real book cross — and mint supply alone would miss it", async () => {
+    // The case main's version cannot see. A crossing order moves USDC into the
+    // vault and moves two seats; no SPL token is minted, so a mint-supply-only
+    // view reports zero obligations against a non-zero vault.
     const smoke = await bootSmoke();
     const { ctx, marketId, programs } = smoke;
-    const maker = await createFundedMaker(smoke, 10_000n);
-    const taker = smoke.user;
-    const program = anchorProgram(ctx, maker);
-    await initMarketFeePool(ctx, program, smoke, maker);
-
-    await sendTx(
-      ctx,
-      [maker],
-      await buyTx(program, smoke, {
-        signer: maker,
-        side: 1,
-        tick: 900,
-        amount: SHARES,
-        matchLimit: 0,
-        remaining: [],
-      }),
-    );
-    await sendTx(
-      ctx,
-      [taker],
-      await buyTx(program, smoke, {
-        signer: taker,
-        side: 0,
-        tick: 999,
-        amount: SHARES,
-        matchLimit: 1,
-        remaining: fillBundle(smoke, 1, 900, maker.publicKey),
-      }),
+    const program = anchorProgram(ctx, smoke.creator);
+    await initMarketFeePool(ctx, program, smoke, smoke.creator);
+    await sendBookTx(
+      smoke,
+      smoke.creator,
+      bookInitIx(smoke, smoke.creator.publicKey, 32),
     );
 
-    const positions = [maker.publicKey, taker.publicKey].map(
-      (k) => orderbookPositionPda(marketId, k, programs)[0],
+    const maker = await trader(smoke);
+    const taker = await trader(smoke);
+    await sendBookTx(
+      smoke,
+      maker,
+      bookPlaceIx(smoke, maker.publicKey, SIDE_ASK, 400, 10n * ONE_SHARE, 8, true),
     );
+    await sendBookTx(
+      smoke,
+      taker,
+      bookPlaceIx(smoke, taker.publicKey, SIDE_BID, 400, 10n * ONE_SHARE, 8, false),
+    );
+
     const conn = new LiteSvmConnection(ctx);
     const r = await checkCollateralBacking(
       conn,
       marketId,
       programs,
       smoke.usdcMint,
-      { program, orderbookPositions: positions },
+      { program, book: bookPda(marketId) },
     );
 
-    // Mint supply saw nothing; the share ledgers carry the whole position.
+    // Mint supply saw nothing; the seat ledger carries the whole position.
     expect(r.yesSupply).toBe(0n);
     expect(r.noSupply).toBe(0n);
     expect(r.yesTotal).toBeGreaterThan(0n);
     expect(r.noTotal).toBeGreaterThan(0n);
     expect(r.solvent).toBe(true);
-
-    // And the vault has real headroom — the cross funded it above the payout.
     expect(r.vault).toBeGreaterThanOrEqual(r.obligations);
   }, 120_000);
 

@@ -21,7 +21,16 @@ pub struct LpPosition {
     ///
     /// When you add a field, shrink this by exactly its serialized size and
     /// leave `SPACE` unchanged.
-    pub _reserved: [u8; 32],
+    /// Subsidy already reclaimed after settlement, in USDC base units.
+    ///
+    /// Carved out of `_reserved` (32 -> 24), so `SPACE` is unchanged and no
+    /// account needs migrating. Tracks the running total because
+    /// `reclaim_subsidy` is callable more than once: obligations shrink as
+    /// traders redeem, so the free residual grows over time and a creator
+    /// should not have to guess when to make their single call.
+    pub reclaimed_base: u64,
+
+    pub _reserved: [u8; 24],
 }
 
 impl LpPosition {
@@ -33,5 +42,6 @@ impl LpPosition {
         + 16                       // seed_deposit_wad
         + 8                        // graduated_at
         + 1                        // bump
-        + 32; // _reserved
+        + 8                        // reclaimed_base
+        + 24; // _reserved
 }

@@ -114,7 +114,32 @@ un-swapped and surplus split out of the payout. **B4** replaced with the shared
 drain of the entire LP yield vault, not merely weak binding — bound to a single
 market and verified by mutation. **B5** was a false positive and is closed.
 
-Remaining from §3: B3, B7–B12.
+**Status 2026-08-05 — all of §3 is closed.**
+
+The legacy book is deleted, which resolved most of these by removing the code
+they described: **B3** (tombstones wedging a tick), **B7** (`cancel_by_id`
+bitmap divergence), **B8** (`match_at_tick` partial `head_index`), **B11**
+(escrow legs paying no fee — the redesigned `taker_fee` charges
+`min(p, 1-p)` symmetrically) and **B12** (`BookSide` rent ratchet) all lived in
+`matching.rs`, `book_side.rs` or `cancel_by_id.rs`.
+
+**B9** — the divergent tick validation — is now structurally impossible.
+`orderbook_common.rs` held the loose `tick <= NUM_TICKS` check that accepted 0
+and 1000; every function in it was dead once the legacy instructions went, and
+its `wad_to_base` was byte-identical to `math/book.rs`'s. The file is gone, so
+only the strict `1..=999` validation remains.
+
+**B10** was investigated and is not a bug; see the note on `graduated_at_entry`
+in `trade_positions`.
+
+**B0's residual half is closed** by `reclaim_subsidy`. The blocker was
+enumerability: the sum of outstanding obligations needs every ledger, and
+legacy `OrderbookPosition` was one PDA per (market, user) with no way to list
+them. With that ledger deleted the remaining three — SPL mint supply,
+`AmmState.q_yes/q_no`, and the book's seats — are each a single account read.
+Two guards: pay only `vault - obligations`, and never more than the subsidy
+posted less what has already been reclaimed, so an accounting error can at
+worst return the creator's own capital early rather than reach trading profits.
 
 ### Original writeup
 

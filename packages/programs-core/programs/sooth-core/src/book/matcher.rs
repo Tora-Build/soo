@@ -17,7 +17,7 @@
 
 use anchor_lang::prelude::Pubkey;
 
-use super::arena::{as_seat_mut, Book, BookError, OrderNode, KIND_SEAT, NIL, SIDE_ASK, SIDE_BID};
+use super::arena::{as_seat, as_seat_mut, Book, BookError, OrderNode, KIND_SEAT, NIL, SIDE_ASK, SIDE_BID};
 use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
 use super::settlement::{leg_costs, settle_leg, taker_fee, SettleError};
 
@@ -396,6 +396,71 @@ impl<'a> Book<'a> {
             .ok_or(MatchError::Settle(SettleError::Overflow))?;
         seat.credit = 0;
         seat.net = 0;
+        Ok(total)
+    }
+
+    /// Everything this book still owes, in USDC base units, under
+    /// `winning_outcome`.
+    ///
+    /// Three components, and all three are enumerable because the redesigned
+    /// book is ONE account — which is precisely what the legacy
+    /// `OrderbookPosition` (one PDA per market-user, no way to list them) made
+    /// impossible, and why reclaiming the unspent LMSR subsidy had to wait for
+    /// that ledger to be deleted:
+    ///
+    ///   - **positions**: every seat's winning side, one unit per share;
+    ///   - **credit**: already-released USDC nobody has withdrawn yet;
+    ///   - **escrow**: collateral behind orders still resting, which comes back
+    ///     to its owner through `book_cancel`.
+    ///
+    /// Deliberately counts escrow at full value even after settlement. A
+    /// resting order cannot fill any more — `book_place` is gated on the market
+    /// being open — so its escrow is a pure refund obligation.
+    pub fn total_obligations(&self, winning_outcome: u8) -> R<u64> {
+        let mut total: u64 = 0;
+
+        let mut cursor = self.header.seats_head;
+        while cursor != NIL {
+            let node = self.blocks.get(cursor as usize).ok_or(BookError::InvalidIndex)?;
+            let seat = as_seat(node);
+            let magnitude = seat.net.unsigned_abs();
+            let owed = match winning_outcome {
+                OUTCOME_YES => {
+                    if seat.net > 0 {
+                        magnitude
+                    } else {
+                        0
+                    }
+                }
+                OUTCOME_NO => {
+                    if seat.net < 0 {
+                        magnitude
+                    } else {
+                        0
+                    }
+                }
+                OUTCOME_INVALID => magnitude / 2,
+                _ => return Err(MatchError::Book(BookError::InvalidSide)),
+            };
+            total = total
+                .checked_add(owed)
+                .and_then(|t| t.checked_add(seat.credit))
+                .ok_or(MatchError::Settle(SettleError::Overflow))?;
+            cursor = seat.next;
+        }
+
+        for side in [SIDE_BID, SIDE_ASK] {
+            let mut cursor = self.head_of(side);
+            while cursor != NIL {
+                let node = self.blocks.get(cursor as usize).ok_or(BookError::InvalidIndex)?;
+                let escrow = self.escrow_of(node)?;
+                total = total
+                    .checked_add(escrow)
+                    .ok_or(MatchError::Settle(SettleError::Overflow))?;
+                cursor = node.next;
+            }
+        }
+
         Ok(total)
     }
 
@@ -871,6 +936,80 @@ mod tests {
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
         assert_eq!(book.take_settlement(trader(9), OUTCOME_YES).unwrap(), 0);
+    }
+
+    #[test]
+    fn obligations_cover_every_matched_share() {
+        // The property `reclaim_subsidy` rests on. Whatever the book owes must
+        // be at least what settlement will actually pay out, or the residual is
+        // overstated and the reclaim reaches into traders' collateral.
+        for tick in [1u16, 250, 515, 999] {
+            for outcome in [OUTCOME_YES, OUTCOME_NO, OUTCOME_INVALID] {
+                let mut a = Acct::new(32);
+                let mut book = load_book(a.bytes()).unwrap();
+                book.insert(SIDE_ASK, tick, 10 * ONE_SHARE, trader(1)).unwrap();
+                book.place(trader(2), SIDE_BID, tick, 10 * ONE_SHARE, 0, 8, false)
+                    .unwrap();
+
+                let owed = book.total_obligations(outcome).unwrap();
+                let paid = book.take_settlement(trader(1), outcome).unwrap()
+                    + book.take_settlement(trader(2), outcome).unwrap();
+                assert!(
+                    owed >= paid,
+                    "tick {tick} outcome {outcome}: owed {owed} < paid {paid}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn obligations_count_resting_escrow() {
+        // A resting order's escrow comes back through `book_cancel`, which
+        // works after settlement. Leaving it out would let the creator reclaim
+        // money a maker is still owed.
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        let idx = book.insert(SIDE_BID, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        let escrow = book.escrow_of(&book.node(idx).unwrap()).unwrap();
+        assert!(escrow > 0);
+        assert_eq!(book.total_obligations(OUTCOME_YES).unwrap(), escrow);
+    }
+
+    #[test]
+    fn obligations_count_unwithdrawn_credit() {
+        // Credit is money already released to a trader that they have not
+        // collected. It is still owed.
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        let idx = book.insert(SIDE_BID, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        let seq = book.node(idx).unwrap().seq;
+        let refund = book.cancel(trader(1), seq).unwrap();
+        // The order is gone, so escrow is zero — but the refund is in credit.
+        assert_eq!(book.total_obligations(OUTCOME_YES).unwrap(), refund);
+    }
+
+    #[test]
+    fn an_empty_book_owes_nothing() {
+        let mut a = Acct::new(32);
+        let book = load_book(a.bytes()).unwrap();
+        assert_eq!(book.total_obligations(OUTCOME_YES).unwrap(), 0);
+    }
+
+    #[test]
+    fn obligations_fall_as_traders_redeem() {
+        // Why `reclaim_subsidy` is callable more than once: the free residual
+        // grows as obligations are settled, so a one-shot call would force the
+        // creator to guess when to fire it.
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.place(trader(2), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
+            .unwrap();
+
+        let before = book.total_obligations(OUTCOME_YES).unwrap();
+        book.take_settlement(trader(2), OUTCOME_YES).unwrap();
+        let after = book.total_obligations(OUTCOME_YES).unwrap();
+        assert!(after < before, "redeeming must reduce what is owed");
     }
 
 }

@@ -190,12 +190,29 @@ export async function sendBookTx(
   signer: Keypair,
   ...ixs: TransactionInstruction[]
 ): Promise<Sent> {
-  // The 256 KB heap frame is still mandatory even though the book path
-  // allocates nothing: the custom #[global_allocator] is program-wide, so the
-  // caller contract binds every instruction until the old borsh book is gone.
-  const tx = new Transaction()
-    .add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }))
-    .add(heapFrameIx());
+  return sendBookTxRaw(smoke, signer, {}, ...ixs);
+}
+
+/**
+ * `sendBookTx` with the preamble under the caller's control.
+ *
+ * `skipHeapFrame` exists for one test: proving the frame is genuinely required.
+ * Nothing else should use it.
+ */
+export async function sendBookTxRaw(
+  smoke: SmokeContext,
+  signer: Keypair,
+  opts: { skipHeapFrame?: boolean },
+  ...ixs: TransactionInstruction[]
+): Promise<Sent> {
+  // The 256 KB heap frame is mandatory even though the book path allocates
+  // little: the custom #[global_allocator] is program-wide, and the allocator
+  // hands out addresses from the TOP of a region the runtime only maps when
+  // asked, so the first allocation faults without it.
+  const tx = new Transaction().add(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
+  );
+  if (!opts.skipHeapFrame) tx.add(heapFrameIx());
   for (const ix of ixs) tx.add(ix);
 
   const bh = await smoke.ctx.banksClient.getLatestBlockhash();
