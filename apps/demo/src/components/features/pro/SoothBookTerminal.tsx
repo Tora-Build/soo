@@ -168,6 +168,7 @@ function SoothBookTerminalActive({
   const {
     placeOrder,
     cancelOrder,
+    cancelOrders,
     isPending,
     availableBalance,
     refetchBalance,
@@ -973,6 +974,7 @@ function SoothBookTerminalActive({
                   chainId={chainId}
                   viewOutcome={viewOutcome}
                   onCancelOrder={cancelOrder}
+                  onCancelOrders={cancelOrders}
                 />
               </div>
             )}

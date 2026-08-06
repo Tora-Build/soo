@@ -195,6 +195,23 @@ function u16Ix(disc: Buffer, value: number): Buffer {
 export const BOOK_INIT_HEAP_BYTES = 256 * 1024;
 
 /**
+ * Cancels that fit in one transaction alongside the trailing withdraw.
+ *
+ * Measured, not guessed. A transaction de-duplicates its account list, so
+ * every cancel after the first adds only ~24 bytes — its header, a few account
+ * indices and the 8-byte sequence:
+ *
+ *    5 cancels ->  634 bytes
+ *   20 cancels ->  994 bytes
+ *   25 cancels -> 1114 bytes
+ *   30 cancels -> over the 1232-byte limit
+ *
+ * 24 leaves room for the ATA pre-instruction and the compute-budget preamble
+ * without sitting on the edge.
+ */
+export const MAX_CANCELS_PER_TX = 24;
+
+/**
  * `book_init` plus the heap-frame request it cannot run without.
  *
  * Prefer this over calling `buildBookInit` directly: the bare instruction

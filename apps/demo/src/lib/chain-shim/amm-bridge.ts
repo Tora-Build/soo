@@ -60,6 +60,7 @@ import {
 } from "@sooth/sdk-solana";
 import { AnchorProvider, Program, type Idl } from "@coral-xyz/anchor";
 import { myAccount, selfCrossExposure } from "../book-view";
+import { MAX_CANCELS_PER_TX } from "@sooth/sdk-solana";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -697,6 +698,9 @@ export async function dispatchAmmWrite(
   }
   if (call.functionName === "bookCancel") {
     return dispatchBookCancel(call, ctx);
+  }
+  if (call.functionName === "bookCancelMany") {
+    return dispatchBookCancelMany(call, ctx);
   }
   if (call.functionName === "bookWithdraw") {
     return dispatchBookWithdraw(call, ctx);
@@ -1340,6 +1344,47 @@ async function dispatchBookCancel(
     void err;
     return submitAndSynth(ctx.adapter, cancel, signer);
   }
+}
+
+/**
+ * `bookCancelMany(market, seqs)` — cancel many orders together.
+ *
+ * The panel's "Cancel Selected" used to loop the single-cancel path, so N
+ * orders meant N transactions: N wallet prompts, N fees, and a half-finished
+ * run leaving the trader to work out which ones went. Cancelling is what people
+ * do when they want out quickly, which is the worst moment to ask for
+ * approvals one at a time.
+ *
+ * Chunked at `MAX_CANCELS_PER_TX`, which is measured rather than assumed — a
+ * transaction de-duplicates its account list, so each extra cancel costs only
+ * ~24 bytes and 25 is where the 1232-byte limit bites.
+ *
+ * Each chunk ends in a withdraw, so refunds reach the wallet instead of
+ * stopping at seat credit.
+ */
+async function dispatchBookCancelMany(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "bookCancelMany");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) throw new Error("bookCancelMany: invalid market reference");
+
+  const raw = (args[1] ?? []) as Array<string | number | bigint>;
+  const seqs = raw.map((v) => BigInt(v));
+  if (seqs.length === 0) throw new Error("bookCancelMany: nothing selected");
+
+  let lastSig = "";
+  for (let i = 0; i < seqs.length; i += MAX_CANCELS_PER_TX) {
+    const chunk = seqs.slice(i, i + MAX_CANCELS_PER_TX);
+    const req = await ctx.adapter.buildBookCancelMany(marketRef, {
+      user: `sol:${userBase58}`,
+      orderSeqs: chunk,
+    });
+    lastSig = await submitAndSynth(ctx.adapter, req, signer);
+  }
+  return lastSig;
 }
 
 /**

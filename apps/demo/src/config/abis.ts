@@ -162,6 +162,7 @@ export const SOOTHBOOK_ABI = parseAbi([
   // the call to be issued at all.
   "function getBookAccount(bytes32 marketKey, address owner) view returns (uint256 credit, uint256 escrow, int256 net, uint256 openOrders)",
   "function bookWithdraw(bytes32 marketKey)",
+  "function bookCancelMany(bytes32 marketKey, uint64[] orderSeqs)",
   "function redeemBookSeat(bytes32 marketKey)",
   "function reclaimSubsidy(bytes32 marketKey)",
   "function getSelfCrossExposure(bytes32 marketKey, address owner, uint8 side, uint16 tick, uint256 amount) view returns (bool crosses, uint256 own, uint256 others)",

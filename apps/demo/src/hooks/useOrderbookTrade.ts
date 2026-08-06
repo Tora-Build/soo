@@ -30,6 +30,7 @@ import { shortenAddress } from "../utils/format";
 type WriteFunctionName =
   | "bookPlace"
   | "bookCancel"
+  | "bookCancelMany"
   | "cancel"
   | "redeem";
 type ExecuteWriteOptions = {
@@ -658,6 +659,42 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
     [placeOrder],
   );
 
+  /**
+   * Cancel several orders in ONE transaction.
+   *
+   * The panel used to loop `cancelOrder`, so N orders meant N wallet prompts
+   * and N fees, and a partial failure left the trader to work out which ones
+   * went through. The shim chunks this at the measured transaction limit and
+   * ends each chunk with a withdraw, so refunds reach the wallet.
+   */
+  const cancelOrders = useCallback(
+    async (orderIds: string[]): Promise<boolean> => {
+      const seqs: bigint[] = [];
+      for (const id of orderIds) {
+        const target = parseOrderId(id);
+        // A level target has no meaning on this book — every order has a real
+        // sequence — so skip rather than cancel something adjacent.
+        if (target?.kind === "id") seqs.push(target.orderId);
+      }
+      if (seqs.length === 0) {
+        toast.error("Nothing cancellable in the selection");
+        return false;
+      }
+      const ok = await executeWrite(
+        `Cancelling ${seqs.length} order(s)...`,
+        "bookCancelMany",
+        [marketAddress, seqs],
+        0n,
+        { silent: true },
+      );
+      if (ok) {
+        for (const id of orderIds) useOrderStore.getState().removeOrder(id);
+      }
+      return ok;
+    },
+    [executeWrite, marketAddress],
+  );
+
   const cancelOrder = useCallback(
     async (orderId: string, options?: ExecuteWriteOptions) => {
       if (!marketKey || !soothBookAddress) {
@@ -723,6 +760,7 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
     placeSpotOrder,
     executeHybridSell,
     cancelOrder,
+    cancelOrders,
     executeTakerOrder,
     depositShares,
     redeem,

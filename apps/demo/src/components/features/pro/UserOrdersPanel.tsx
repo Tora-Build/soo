@@ -26,6 +26,14 @@ export interface UserOrdersPanelProps {
     orderId: string,
     options?: { silent?: boolean },
   ) => Promise<boolean>;
+  /**
+   * Cancel several orders in ONE transaction.
+   *
+   * Optional so the panel still works without it, falling back to the
+   * per-order loop — but the loop is N wallet prompts and N fees, and a
+   * half-finished run leaves the trader working out which ones went.
+   */
+  onCancelOrders?: (orderIds: string[]) => Promise<boolean>;
 }
 
 function formatOrderId(orderId: string): string {
@@ -440,6 +448,7 @@ export function UserOrdersPanel({
   chainId,
   viewOutcome,
   onCancelOrder,
+  onCancelOrders,
 }: UserOrdersPanelProps): JSX.Element {
   const { address: userAddress } = useAccount();
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
@@ -532,12 +541,43 @@ export function UserOrdersPanel({
   }, [totalHistoryPages]);
 
   const handleBatchCancel = async () => {
-    if (!onCancelOrder || selectedCancelableOrderIds.length === 0) return;
+    if (selectedCancelableOrderIds.length === 0) return;
 
     setActionInProgress("batch-cancel");
     const toastId = toast.loading(
       `Cancelling ${selectedCancelableOrderIds.length} order(s)...`,
     );
+
+    // One transaction for the whole selection when the caller supports it.
+    if (onCancelOrders) {
+      try {
+        const ok = await onCancelOrders(selectedCancelableOrderIds);
+        if (ok) {
+          toast.success(
+            `Cancelled ${selectedCancelableOrderIds.length} order(s)`,
+            { id: toastId },
+          );
+          setSelectedOrderIds([]);
+          onRefresh?.();
+        } else {
+          toast.error("Batch cancel failed", { id: toastId });
+        }
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Batch cancel failed",
+          { id: toastId },
+        );
+      } finally {
+        setActionInProgress(null);
+      }
+      return;
+    }
+
+    if (!onCancelOrder) {
+      setActionInProgress(null);
+      toast.dismiss(toastId);
+      return;
+    }
 
     try {
       let cancelled = 0;

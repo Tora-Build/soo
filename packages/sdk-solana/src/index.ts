@@ -86,6 +86,7 @@ export {
   buildBookCancel,
   buildBookGrow,
   BOOK_INIT_HEAP_BYTES,
+  MAX_CANCELS_PER_TX,
   buildBookInit,
   buildBookInitIxs,
   buildBookPlace,

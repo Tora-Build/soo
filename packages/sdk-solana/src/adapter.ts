@@ -2326,6 +2326,66 @@ export class SolanaChainAdapter implements ChainAdapter {
     };
   }
 
+  /**
+   * Cancel several orders in ONE transaction, then sweep the refunds.
+   *
+   * The panel's "Cancel Selected" used to loop `buildBookCancel`, so N orders
+   * meant N transactions: N signatures, N fees, N chances to half-finish and
+   * leave the trader guessing which ones went. Cancelling is the action people
+   * take when they want out quickly, which is the worst time to make them
+   * approve prompts one at a time.
+   *
+   * Batching is cheap here because a transaction de-duplicates its account
+   * list: every cancel touches the same book, market and signer, so the second
+   * instruction onward adds only its header, a few account indices and the
+   * 8-byte sequence. `book_withdraw` goes last so the whole batch's refunds
+   * land in the wallet rather than in seat credit — the same composition a
+   * single cancel already uses.
+   *
+   * Ordering matters: withdraw must come after every cancel, or it sweeps only
+   * what was already there.
+   */
+  async buildBookCancelMany(
+    market: MarketRef,
+    args: { user: AddressRef; orderSeqs: readonly bigint[] },
+  ): Promise<TradeRequest> {
+    if (args.orderSeqs.length === 0) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildBookCancelMany: no orders given",
+      });
+    }
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const refs = this.bookRefs(marketPda, resolved.marketId);
+
+    const cancels = args.orderSeqs.map((seq) =>
+      buildBookCancelIx(refs, userPk, seq),
+    );
+    // Withdraw is the MAIN instruction so the cancels can ride in `preIxs`,
+    // which `submit` replays in order ahead of it.
+    const withdraw = buildBookWithdrawIx(refs, userPk);
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(withdraw.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(withdraw, userPk),
+        preIxs: [
+          this.usdcAtaCreateIx(userPk),
+          ...cancels.map((ix) => serializeIx(ix)),
+        ],
+        // Each cancel scans the book for its order, so a full batch needs well
+        // more than the 400k default. 1.4M is the per-transaction maximum.
+        computeUnitLimit: 1_400_000,
+        operation: "bookCancelMany",
+      },
+    };
+  }
+
   async buildBookCancel(
     market: MarketRef,
     args: { user: AddressRef; orderSeq: bigint },
@@ -3066,7 +3126,15 @@ export class SolanaChainAdapter implements ChainAdapter {
         parseOptionalPublicKey(meta.marketPda),
       );
       const tx = new Transaction();
-      tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+      // 400k suits a single instruction. A batch does not: each `book_cancel`
+      // walks the book to find its order, so a 24-cancel transaction ran out
+      // partway through and failed with "Program failed to complete" — which
+      // names neither the limit nor the instruction that hit it. Builders that
+      // know they are batching say so; everything else is unchanged.
+      const requested = (meta as unknown as { computeUnitLimit?: unknown })
+        .computeUnitLimit;
+      const unitLimit = typeof requested === "number" ? requested : 400_000;
+      tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: unitLimit }));
       // sooth_core ships a 256 KB custom #[global_allocator] (see its lib.rs).
       // The runtime only maps that heap when the transaction asks, and the
       // allocator addresses from the TOP of the region — so without this every
