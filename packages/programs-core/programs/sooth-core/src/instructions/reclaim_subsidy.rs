@@ -77,16 +77,17 @@ pub struct ReclaimSubsidy<'info> {
     #[account(seeds = [b"book", market.market_id.as_ref()], bump)]
     pub book: UncheckedAccount<'info>,
 
-    #[account(
-        seeds = [b"yes_mint", market.market_id.as_ref()],
-        bump,
-    )]
+    // Bound by ADDRESS, not by re-derived seeds.
+    //
+    // The market already stores both mints, and every other instruction binds
+    // them this way. Deriving them here invented a seed layout — the real one
+    // is `[b"mint", market_id, b"Y"]`, not `[b"yes_mint", market_id]` — and
+    // Anchor rejected the whole instruction with a bare ConstraintSeeds (2006)
+    // that named the constraint, not the mistake.
+    #[account(address = market.yes_mint @ SoothCoreError::VaultAuthorityMismatch)]
     pub yes_mint: Box<Account<'info, Mint>>,
 
-    #[account(
-        seeds = [b"no_mint", market.market_id.as_ref()],
-        bump,
-    )]
+    #[account(address = market.no_mint @ SoothCoreError::VaultAuthorityMismatch)]
     pub no_mint: Box<Account<'info, Mint>>,
 
     /// CHECK: derived via seeds; signs the vault outflow.

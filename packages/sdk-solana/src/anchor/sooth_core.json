@@ -2433,53 +2433,10 @@
           }
         },
         {
-          "name": "yes_mint",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  121,
-                  101,
-                  115,
-                  95,
-                  109,
-                  105,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market.market_id",
-                "account": "Market"
-              }
-            ]
-          }
+          "name": "yes_mint"
         },
         {
-          "name": "no_mint",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  110,
-                  111,
-                  95,
-                  109,
-                  105,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market.market_id",
-                "account": "Market"
-              }
-            ]
-          }
+          "name": "no_mint"
         },
         {
           "name": "vault_authority",

@@ -516,7 +516,12 @@ async function init() {
 
   // Use chain time, not 1_000_000 sentinel (real validator wall clock).
   const startTime = Math.floor(Date.now() / 1000);
-  const deadline = startTime + 7 * 24 * 60 * 60;
+  // Trading deadline. `request_lock` refuses until `now >= deadline`, so a
+  // week-long default makes the settlement path untestable on a localnet that
+  // lives for minutes. Overridable so a market can be created that locks
+  // almost immediately.
+  const deadline =
+    startTime + Number(process.env.SEED_DEADLINE_SECS ?? 7 * 24 * 60 * 60);
   // Liquidity parameter. Overridable because it decides two things that
   // matter for local testing:
   //
