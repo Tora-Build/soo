@@ -164,6 +164,61 @@ export function useTraderVault() {
     refetchBookAccount,
   ]);
 
+  /**
+   * Post-settlement claims, per market.
+   *
+   * Two separate on-chain paths, and neither is `bookWithdraw`:
+   *
+   *   - `redeemBookSeat` turns a seat's signed net into USDC against the
+   *     resolved outcome. Without it a winning book position is unspendable —
+   *     the book could trade but never pay out.
+   *   - `reclaimSubsidy` returns the creator's unspent LMSR subsidy. It fails
+   *     for anyone else: the program binds `lp_position` to the signer.
+   *
+   * Tried across every known market and reported per market, because a failure
+   * usually just means "nothing owed here" and should not abort the others.
+   */
+  const claimSettled = useCallback(
+    async (kind: "redeemBookSeat" | "reclaimSubsidy") => {
+      if (!address) return false;
+      let ok = 0;
+      for (const marketRef of marketRefs) {
+        try {
+          await writeContractAsync({
+            address: (soothBookAddress ?? ZERO_ADDRESS) as `0x${string}`,
+            abi: SOOTHBOOK_ABI,
+            functionName: kind,
+            args: [marketRef],
+            chainId,
+          } as never);
+          ok += 1;
+        } catch (err) {
+          void err; // nothing owed on this market, or not the creator
+        }
+      }
+      if (ok > 0) {
+        toast.success(
+          kind === "redeemBookSeat"
+            ? `Redeemed book position on ${ok} market(s)`
+            : `Reclaimed subsidy on ${ok} market(s)`,
+        );
+        await Promise.all([refetchBalances(), refetchBookAccount()]);
+      } else {
+        toast.error("Nothing to claim — the market may not be settled yet");
+      }
+      return ok > 0;
+    },
+    [
+      address,
+      marketRefs,
+      soothBookAddress,
+      chainId,
+      writeContractAsync,
+      refetchBalances,
+      refetchBookAccount,
+    ],
+  );
+
   const approveUSDC = useCallback(
     async (amount: string) => {
       if (!tokenAddress || !soothBookAddress) {
@@ -234,6 +289,7 @@ export function useTraderVault() {
     /** Cancelled-order refunds sitting in the book, withdrawable to the wallet. */
     claimableBalance: bookCredit,
     withdrawBookCredit,
+    claimSettled,
     allowance,
     isPending,
     isLoading: !address || balancesLoading || allowanceLoading,

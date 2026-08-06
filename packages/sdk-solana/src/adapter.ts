@@ -63,6 +63,7 @@ import {
   deriveMarketPda,
   deriveMarketVaultAta,
   deriveNoMintPda,
+  deriveLpPositionPda,
   derivePositionPda,
   deriveProtocolConfigPda,
   deriveUserLpAta,
@@ -2176,6 +2177,121 @@ export class SolanaChainAdapter implements ChainAdapter {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, userPk),
         operation: "bookPlace",
+      },
+    };
+  }
+
+  /**
+   * Pay out a book position after settlement (`redeem_book_seat`).
+   *
+   * The book's own claim path. `book_withdraw` moves seat CREDIT — USDC
+   * already released by a cancel or a closing fill — while this converts the
+   * seat's signed net into money against the resolved outcome. Both exist
+   * because they answer different questions, and only this one requires the
+   * market to be settled.
+   */
+  async buildRedeemBookSeat(
+    market: MarketRef,
+    args: { user: AddressRef },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const [book] = bookPda(resolved.marketId, this.programIds);
+    const [vaultAuthority] = deriveVaultAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .redeemBookSeat()
+      .accounts({
+        book,
+        market: marketPda,
+        vaultAuthority,
+        vault: deriveMarketVaultAta(
+          resolved.marketId,
+          this.usdcMint,
+          this.programIds,
+        ),
+        userUsdcAta: getAssociatedTokenAddressSync(this.usdcMint, userPk),
+        user: userPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "redeemBookSeat",
+      },
+    };
+  }
+
+  /**
+   * Return the unspent LMSR subsidy to the creator (`reclaim_subsidy`).
+   *
+   * Reads every ledger that can still owe the vault — mint supply, AMM
+   * aggregate, and the book's seats — so it needs all three accounts even
+   * though it only moves USDC.
+   */
+  async buildReclaimSubsidy(
+    market: MarketRef,
+    args: { creator: AddressRef },
+  ): Promise<TradeRequest> {
+    const creatorPk = decodePubkeyRef(args.creator);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const [book] = bookPda(resolved.marketId, this.programIds);
+    const [ammState] = deriveAmmStatePda(resolved.marketId, this.programIds);
+    const [lpPosition] = deriveLpPositionPda(
+      resolved.marketId,
+      creatorPk,
+      this.programIds,
+    );
+    const [vaultAuthority] = deriveVaultAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const [yesMint] = deriveYesMintPda(resolved.marketId, this.programIds);
+    const [noMint] = deriveNoMintPda(resolved.marketId, this.programIds);
+
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .reclaimSubsidy()
+      .accounts({
+        market: marketPda,
+        ammState,
+        lpPosition,
+        book,
+        yesMint,
+        noMint,
+        vaultAuthority,
+        vault: deriveMarketVaultAta(
+          resolved.marketId,
+          this.usdcMint,
+          this.programIds,
+        ),
+        creatorUsdcAta: getAssociatedTokenAddressSync(
+          this.usdcMint,
+          creatorPk,
+        ),
+        creator: creatorPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, creatorPk),
+        operation: "reclaimSubsidy",
       },
     };
   }

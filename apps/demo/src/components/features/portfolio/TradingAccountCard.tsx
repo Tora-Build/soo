@@ -30,6 +30,7 @@ export const TradingAccountCard: React.FC = () => {
     reservedBalance,
     claimableBalance,
     withdrawBookCredit,
+    claimSettled,
     totalBalance,
     userUsdcBalance,
     decimals,
@@ -236,6 +237,38 @@ export const TradingAccountCard: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Post-settlement claims.
+              Separate from Claimable above, which is USDC already released.
+              These convert a settled POSITION into money, and the subsidy one
+              only succeeds for a market's creator. */}
+          <div className="flex-1 flex flex-col justify-between p-3">
+            <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted flex items-center gap-1">
+              <Coins size={9} className="text-faint" /> Settled
+            </div>
+            <div className="flex items-center gap-1 mt-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-5 px-1.5 text-[10px]"
+                disabled={isPending}
+                onClick={() => void claimSettled?.("redeemBookSeat")}
+                title="Convert a settled book position into USDC"
+              >
+                Redeem
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-5 px-1.5 text-[10px]"
+                disabled={isPending}
+                onClick={() => void claimSettled?.("reclaimSubsidy")}
+                title="Creator only: return the unspent LMSR subsidy"
+              >
+                Subsidy
+              </Button>
+            </div>
+          </div>
 
           {/* Position Value */}
           <div className="flex-1 flex flex-col justify-between p-3">

@@ -43,7 +43,7 @@ export function OperatorActionsPanel() {
   const { writeContractAsync } = useWriteContract();
   const [adjudicator, setAdjudicator] = useState<AdjudicatorState | null>(null);
   const [pending, setPending] = useState<
-    "lock" | "attestYes" | "attestNo" | "attestInvalid" | null
+    "lock" | "attestYes" | "attestNo" | "attestInvalid" | "settle" | null
   >(null);
 
   const marketRef = demoConfig.marketRef;
@@ -121,6 +121,23 @@ export function OperatorActionsPanel() {
     [marketRef, writeContractAsync, refresh],
   );
 
+  const settleMarket = useCallback(async () => {
+    if (!marketRef) return;
+    const tid = toast.loading("Settling — Locked → Settled…");
+    setPending("settle");
+    try {
+      await writeContractAsync({ functionName: "settle", args: [marketRef] });
+      toast.success("Market settled", { id: tid });
+      void refresh();
+    } catch (e) {
+      toast.error((e as Error).message?.slice(0, 120) ?? "Settle failed", {
+        id: tid,
+      });
+    } finally {
+      setPending(null);
+    }
+  }, [marketRef, writeContractAsync, refresh]);
+
   if (!isConnected || !marketRef) return null;
   // No-op render if we're not the adjudicator authority for this market.
   if (!isAuthority) return null;
@@ -144,11 +161,12 @@ export function OperatorActionsPanel() {
         </span>
       </div>
       <p className="text-xs text-muted mb-4">
-        You are the registered adjudicator for this market. Requesting a lock
-        moves it to Locked (no further trades). Attesting an outcome settles the
-        market — users can then redeem winning shares for USDC. There is a 24h
-        lock window between request_lock and attest_outcome on chains with real
-        wall-clock; localnet ignores the gate only in tests.
+        You are the registered adjudicator for this market. The lifecycle is
+        three steps, not two: REQUEST LOCK moves it to Locked (no further
+        trades), ATTEST records an outcome, and SETTLE finalises it once the
+        veto window has passed. Attesting no longer settles on its own — that
+        window is what makes `dispute` reachable at all. Only after SETTLE can
+        holders redeem.
       </p>
       <div
         className="flex flex-wrap gap-3"
@@ -189,6 +207,16 @@ export function OperatorActionsPanel() {
           data-testid="operator-attest-invalid"
         >
           ATTEST INVALID
+        </Button>
+        <Button
+          className="btn btn-primary"
+          onClick={settleMarket}
+          disabled={pending !== null || !settled}
+          isLoading={pending === "settle"}
+          data-testid="operator-settle"
+          title="Available once an outcome is attested and the veto window has passed"
+        >
+          SETTLE
         </Button>
       </div>
     </Card>

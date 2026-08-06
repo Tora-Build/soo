@@ -699,6 +699,12 @@ export async function dispatchAmmWrite(
   if (call.functionName === "bookWithdraw") {
     return dispatchBookWithdraw(call, ctx);
   }
+  if (call.functionName === "redeemBookSeat") {
+    return dispatchRedeemBookSeat(call, ctx);
+  }
+  if (call.functionName === "reclaimSubsidy") {
+    return dispatchReclaimSubsidy(call, ctx);
+  }
   return NOT_HANDLED;
 }
 
@@ -1332,6 +1338,46 @@ async function dispatchBookCancel(
     void err;
     return submitAndSynth(ctx.adapter, cancel, signer);
   }
+}
+
+/**
+ * `redeemBookSeat(market)` — pay out a book position after settlement.
+ *
+ * Distinct from `bookWithdraw`, which moves seat CREDIT. This converts the
+ * seat's signed net into money against the resolved outcome, and only works
+ * once the market has settled.
+ */
+async function dispatchRedeemBookSeat(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "redeemBookSeat");
+  const marketRef = toMarketRef((call.args ?? [])[0]);
+  if (!marketRef) throw new Error("redeemBookSeat: invalid market reference");
+  const req = await ctx.adapter.buildRedeemBookSeat(marketRef, {
+    user: `sol:${userBase58}`,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+/**
+ * `reclaimSubsidy(market)` — return the unspent LMSR subsidy to the creator.
+ *
+ * Only the market's creator can call it; the program binds `lp_position` to
+ * the signer, so anyone else fails the seeds constraint rather than getting a
+ * silent no-op.
+ */
+async function dispatchReclaimSubsidy(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "reclaimSubsidy");
+  const marketRef = toMarketRef((call.args ?? [])[0]);
+  if (!marketRef) throw new Error("reclaimSubsidy: invalid market reference");
+  const req = await ctx.adapter.buildReclaimSubsidy(marketRef, {
+    creator: `sol:${userBase58}`,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /** `bookWithdraw(market)` — move seat credit into the wallet. */
