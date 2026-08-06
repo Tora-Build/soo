@@ -3125,6 +3125,35 @@ export class SolanaChainAdapter implements ChainAdapter {
           undefined,
           this.programErrorLookup,
         );
+        // Name the wallet.
+        //
+        // "Attempt to debit an account but found no record of a prior credit"
+        // means the FEE PAYER has no lamports, and the raw message identifies
+        // neither the account nor the cluster. When several wallets are in
+        // play — and a browser extension decides which one is connected — that
+        // is unanswerable from the message alone: every candidate can look
+        // funded while the one actually signing is not.
+        //
+        // So resolve it here, where the fee payer and the connection are both
+        // in hand, and state the balance as observed on THIS RPC.
+        if (/found no record of a prior credit/i.test(classified.error.message)) {
+          const balance = await this.connection
+            .getBalance(userPk)
+            .catch(() => null);
+          classified.error = new SoothError({
+            kind: "NetworkError",
+            msg:
+              `${classified.error.message}\n  SIGNER: ${userPk.toBase58()}` +
+              `\n  BALANCE: ${balance === null ? "unreadable" : `${balance / 1e9} SOL`}` +
+              ` on ${this.connection.rpcEndpoint}` +
+              (balance === 0
+                ? `\n  This wallet has no SOL on this cluster. If it looks funded` +
+                  ` elsewhere, the wallet extension is connected to a different` +
+                  ` account or a different network than the app.`
+                : ""),
+            attempt,
+          });
+        }
         lastError = classified.error;
         if (classified.retryable && attempt < maxAttempts) {
           await sleep(backoffMs(attempt));
