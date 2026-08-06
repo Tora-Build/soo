@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   parseOrderId,
   type CancelTarget,
 } from "../lib/orderbook-math";
 import { toBookPlace } from "../lib/book-order-mapping";
+import { setSelfTradeNotifier } from "../lib/chain-shim/amm-bridge";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useAccount,
@@ -214,6 +215,16 @@ const parseOrderReceipt = (
 export function useOrderbookTrade(marketAddress: `0x${string}`) {
   const { address: userAddress } = useAccount();
   const publicClient = usePublicClient();
+
+  // Route the shim's self-trade notice to a toast.
+  //
+  // Without it an order that entirely crossed the trader's own resting orders
+  // is dropped by the program and simply never appears — a successful
+  // transaction that does nothing, with no error to explain it.
+  useEffect(() => {
+    setSelfTradeNotifier((msg) => toast.error(msg, { duration: 8000 }));
+    return () => setSelfTradeNotifier(null);
+  }, []);
   const { contracts } = useDeployments();
   const queryClient = useQueryClient();
   const soothBookAddress = contracts.SoothBook as `0x${string}` | undefined;

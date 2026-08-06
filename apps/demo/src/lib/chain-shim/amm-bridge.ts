@@ -96,10 +96,37 @@ async function placedAmountOf(
       const records = await ctx.adapter.readBookHistory(marketRef, {
         limit: 200,
       });
-      for (const { event } of records) {
-        if (event.kind === "placed") {
-          placedAmounts.set(`${marketRef}:${event.seq}`, event.amount);
-        }
+
+      // The `placed` event records what RESTED, not what was asked for.
+      //
+      // `book_place` matches first and rests the remainder, and emits
+      // `BookOrderPlaced { amount: result.resting }`. So an order for 10 that
+      // filled 7 immediately records "placed 3" — and reading that as the
+      // original size makes it 0% filled forever, even though the trader
+      // watched 70% of it go.
+      //
+      // The fills are in the SAME transaction, so the original is
+      // `resting + everything this taker filled under that signature`. That is
+      // why this groups by signature rather than looking at events in
+      // isolation.
+      const filledBySignature = new Map<string, Map<string, bigint>>();
+      for (const { signature, event } of records) {
+        if (event.kind !== "filled") continue;
+        const perTaker =
+          filledBySignature.get(signature) ?? new Map<string, bigint>();
+        const total = event.fills.reduce((acc, f) => acc + f.amount, 0n);
+        perTaker.set(event.taker, (perTaker.get(event.taker) ?? 0n) + total);
+        filledBySignature.set(signature, perTaker);
+      }
+
+      for (const { signature, event } of records) {
+        if (event.kind !== "placed") continue;
+        const filledHere =
+          filledBySignature.get(signature)?.get(event.trader) ?? 0n;
+        placedAmounts.set(
+          `${marketRef}:${event.seq}`,
+          event.amount + filledHere,
+        );
       }
     } catch {
       // No history available; every order reads as unfilled.
@@ -112,6 +139,20 @@ async function placedAmountOf(
 export function __resetPlacedAmounts(): void {
   placedAmounts.clear();
   placedFetchedFor = null;
+}
+
+/**
+ * Surface a self-trade-prevention notice.
+ *
+ * Kept behind a tiny indirection so the shim does not import a toast library
+ * directly — the demo wires this at startup, and tests leave it unset.
+ */
+let selfTradeNotifier: ((msg: string) => void) | null = null;
+export function setSelfTradeNotifier(fn: ((msg: string) => void) | null): void {
+  selfTradeNotifier = fn;
+}
+function toastSelfTrade(msg: string): void {
+  selfTradeNotifier?.(msg);
 }
 
 /** USDC base units (1e6) -> WAD (1e18), the scale upstream formatters use. */
@@ -1334,7 +1375,45 @@ async function dispatchBookPlace(
     matchLimit: Number(args[4] ?? 8),
     postRemainder: Boolean(args[5] ?? true),
   });
-  return submitAndSynth(ctx.adapter, req, signer);
+  // Submit directly rather than through `submitAndSynth`, because that returns
+  // a SYNTHESISED 32-byte hex hash for upstream's EVM typing — not a signature
+  // any RPC can look up. The real one is needed to read the program's logs.
+  const receipt = await ctx.adapter.submit(req, signer);
+  const realSignature = receipt.txId.replace(/^sol:/, "");
+
+  // Say when self-trade prevention ate the order.
+  //
+  // The matcher never trades a trader against themselves: it steps over their
+  // own resting orders, fills everyone else, and CANCELS whatever is left
+  // rather than resting it into a book crossed against them. The transaction
+  // succeeds either way, so an order that was entirely self-crossing simply
+  // vanishes — no fill, no resting order, no error. "It does not place
+  // anything" with nothing to explain why.
+  //
+  // The program already says so in its logs; this surfaces it rather than
+  // duplicating the matcher's reasoning off-chain, which is what the removed
+  // pre-check got wrong.
+  try {
+    const tx = await ctx.connection.getTransaction(realSignature, {
+      maxSupportedTransactionVersion: 0,
+      commitment: "confirmed",
+    });
+    const line = (tx?.meta?.logMessages ?? []).find((l) =>
+      l.includes("self-trade prevention"),
+    );
+    if (line) {
+      const m = line.match(/cancelled (\d+) of (\d+)/);
+      const shares = (v: string) => Number(BigInt(v)) / 1_000_000;
+      toastSelfTrade(
+        m
+          ? `${shares(m[1]!)} of ${shares(m[2]!)} shares were not placed — they would have crossed your own resting order.`
+          : "Part of your order was not placed — it would have crossed your own resting order.",
+      );
+    }
+  } catch {
+    // Diagnostics only. Never fail a landed transaction over a missing log.
+  }
+  return synthHashFromSignature(realSignature);
 }
 
 /** `bookCancel(market, orderSeq)` — a real sequence, not a synthesised id. */
