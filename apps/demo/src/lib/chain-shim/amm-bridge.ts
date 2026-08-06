@@ -1465,10 +1465,33 @@ function decodeSolMarketRef(ref: string): PublicKey {
 export function toMarketRef(v: unknown): string | undefined {
   if (typeof v !== "string" || !v) return undefined;
   if (v.startsWith("sol:")) return v;
-  // 0x prefix — `useAccount` wrapping. Drop the prefix.
+
   if (v.startsWith("0x")) {
     const tail = v.slice(2);
     if (!tail) return undefined;
+
+    // A `marketKey`: 32 raw bytes as hex.
+    //
+    // Upstream hooks identify a market by `keccak256(encodePacked(...))`, and
+    // the shim's keccak256 returns the pubkey's own 32 bytes as hex — the
+    // identity path. But this function only ever stripped "0x" and handed the
+    // rest on as base58, so a marketKey became a ref no `PublicKey` could
+    // parse, every read on it degraded to empty, and the shared orderbook
+    // ladder rendered as "no liquidity" on a market full of it. Only the
+    // panels that pass a real market ref worked, which looked like "orders
+    // exist per wallet and nowhere else".
+    //
+    // 64 hex chars is unambiguous: base58 of 32 bytes is at most 44, so this
+    // cannot collide with the `0x${base58}` form `useAccount` produces.
+    if (tail.length === 64 && /^[0-9a-fA-F]+$/.test(tail)) {
+      try {
+        return `sol:${new PublicKey(Buffer.from(tail, "hex")).toBase58()}`;
+      } catch {
+        return undefined;
+      }
+    }
+
+    // Otherwise `useAccount`'s `0x${base58}` wrapping.
     return `sol:${tail}`;
   }
   return `sol:${v}`;
