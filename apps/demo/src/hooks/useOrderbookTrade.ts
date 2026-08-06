@@ -222,7 +222,8 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
   // is dropped by the program and simply never appears — a successful
   // transaction that does nothing, with no error to explain it.
   useEffect(() => {
-    setSelfTradeNotifier((msg) => toast.error(msg, { duration: 8000 }));
+    // Informational, not a failure: the order WAS placed.
+    setSelfTradeNotifier((msg) => toast.success(msg, { duration: 8000 }));
     return () => setSelfTradeNotifier(null);
   }, []);
   const { contracts } = useDeployments();

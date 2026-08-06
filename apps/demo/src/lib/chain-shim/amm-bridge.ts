@@ -1402,12 +1402,12 @@ async function dispatchBookPlace(
       l.includes("self-trade prevention"),
     );
     if (line) {
-      const m = line.match(/cancelled (\d+) of (\d+)/);
+      const m = line.match(/cancelled (\d+) of your own/);
       const shares = (v: string) => Number(BigInt(v)) / 1_000_000;
       toastSelfTrade(
         m
-          ? `${shares(m[1]!)} of ${shares(m[2]!)} shares were not placed — they would have crossed your own resting order.`
-          : "Part of your order was not placed — it would have crossed your own resting order.",
+          ? `Your order was placed. ${shares(m[1]!)} shares of your own resting orders were cancelled and refunded to make way.`
+          : "Your order was placed; some of your own resting orders were cancelled and refunded to make way.",
       );
     }
   } catch {

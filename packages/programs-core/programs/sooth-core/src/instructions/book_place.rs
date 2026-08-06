@@ -235,19 +235,14 @@ pub fn handler(
         });
     }
 
-    // Self-trade prevention fired: the remainder crossed the caller's own
-    // resting orders and was cancelled rather than rested (cancel-newest).
-    //
-    // Logged rather than emitted as an event: nothing changed on chain, so
-    // there is no state for an indexer to record. But the transaction succeeds
-    // with less filled than asked and nothing resting, which is otherwise
-    // indistinguishable from an empty book — and the two need different
-    // messages in a UI.
+    // The caller's own resting orders were cancelled to make way for this one,
+    // and their escrow refunded to seat credit. Logged so a client can tell
+    // the trader which of their orders went, rather than leaving them to
+    // notice an order missing.
     if result.self_trade_cancelled > 0 {
         msg!(
-            "self-trade prevention: cancelled {} of {} (crossed own resting orders)",
+            "self-trade prevention: cancelled {} of your own resting shares (refunded)",
             result.self_trade_cancelled,
-            amount,
         );
     }
 

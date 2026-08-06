@@ -219,12 +219,19 @@ describe("book_place — resting and crossing", () => {
     expect((await bookHeader(smoke)).orderCount).toBe(3);
   }, 120_000);
 
-  it("refuses to self-cross, and cancels the newest rather than resting it", async () => {
-    // Settling both legs against one seat would double-count the position, so
-    // this pairing never trades. What must NOT happen is both orders resting:
-    // that leaves a bid at 900 above an ask at 400, both this trader's own, and
-    // anyone may lift the pair and bank 0.50/share out of them. Cancel-newest
-    // drops the incoming order and leaves the older one with its priority.
+  it("cancels the trader's own resting order and places the new one", async () => {
+    // A seat cannot trade against itself — it holds one signed net, so the two
+    // legs would cancel to zero after a full unit had been paid. Something has
+    // to give, and the choice matters to whoever is trading:
+    //
+    //   - resting the incoming order leaves the book CROSSED against its own
+    //     owner, free for anyone to lift both legs;
+    //   - dropping the incoming order means a trader who quoted one side
+    //     cannot then quote the other, and their order silently never appears.
+    //
+    // Cancelling the RESTING order is neither. It is exact — the order had
+    // escrow and no fill, so the refund returns what it cost — and the trader
+    // ends holding the order they just placed.
     const smoke = await boot();
     const solo = await trader(smoke);
     await sendBookTx(
@@ -237,13 +244,12 @@ describe("book_place — resting and crossing", () => {
       solo,
       bookPlaceIx(smoke, solo.publicKey, SIDE_BID, 900, ONE_SHARE, 8, true),
     );
-    expect((await bookHeader(smoke)).orderCount).toBe(1);
 
-    // The ask survives with its priority; the bid side is empty, so the book
-    // is not crossed.
+    // One order, and it is the new one.
     const h = await bookHeader(smoke);
-    expect(h.asksHead).not.toBe(0xffffffff);
-    expect(h.bidsHead, "the crossing bid must not rest").toBe(0xffffffff);
+    expect(h.orderCount).toBe(1);
+    expect(h.asksHead, "the crossed ask was cancelled").toBe(0xffffffff);
+    expect(h.bidsHead, "the new bid rests").not.toBe(0xffffffff);
   }, 60_000);
 
   it("is blocked while the protocol is paused", async () => {

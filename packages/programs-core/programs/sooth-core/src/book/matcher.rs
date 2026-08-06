@@ -69,13 +69,15 @@ pub struct MatchResult {
     pub fee: u64,
     /// Number of distinct fills — the number the CU budget is measured against.
     pub fills: u32,
-    /// Shares dropped by self-trade prevention rather than rested.
+    /// Shares of the trader's OWN resting orders cancelled to make way.
     ///
-    /// Non-zero means the order matched everything it could from other
-    /// traders, and the leftover would have crossed the trader's OWN resting
-    /// orders. Resting it would leave the book crossed against them, so it is
-    /// cancelled (cancel-newest). Surfaced so a caller can tell "no liquidity"
-    /// from "we refused to cross you against yourself".
+    /// A seat cannot trade against itself — it holds one signed net, so the
+    /// two legs would cancel to zero after a full unit had been paid. So when
+    /// an incoming order crosses its owner's resting order, the RESTING one is
+    /// cancelled and refunded, and the incoming order carries on.
+    ///
+    /// Surfaced so a caller can tell the trader which of their orders went,
+    /// rather than leaving them to notice.
     pub self_trade_cancelled: u64,
     /// Sequence assigned to the resting remainder, meaningful when
     /// `resting > 0`.
@@ -183,7 +185,6 @@ impl<'a> Book<'a> {
         // rests one at 490 left a bid of 500 with zero fills, against
         // liquidity that plainly crossed.
         let mut cursor = self.head_of(opposite);
-        let mut self_crossed = false;
 
         while remaining > 0 && out.fills < match_limit && cursor != NIL {
             let resting = self.node(cursor)?;
@@ -192,12 +193,50 @@ impl<'a> Book<'a> {
                 // The side list is price-ordered, so nothing further crosses.
                 break;
             }
-            // Self-trade prevention. Settling both legs against one seat would
-            // double-count the position, so this pairing is never traded — but
-            // it must not stop the walk either. Note it and step past.
+            // Self-trade prevention: CANCEL THE RESTING ORDER, keep going.
+            //
+            // Trading a seat against itself is not possible here — the seat
+            // holds one SIGNED net, so `+n` and `-n` sum to zero and the pair
+            // would collapse to nothing while a full unit had been paid for
+            // it. That much is a property of the representation, not a policy
+            // choice.
+            //
+            // What IS a policy choice is what happens instead, and the first
+            // two answers were both wrong:
+            //
+            //   - resting the incoming order left the book CROSSED against its
+            //     own owner, free for anyone to lift both legs;
+            //   - dropping the incoming order (cancel-newest) meant a trader
+            //     who quoted one side could not then quote the other at a
+            //     crossing price at all. The order vanished, the transaction
+            //     succeeded, and nothing had happened.
+            //
+            // Cancelling the RESTING order is the one answer that is neither.
+            // It is economically exact: the order had escrow posted and no
+            // fill, so refunding it returns precisely what it cost. The
+            // trader ends holding the order they just placed, which is what
+            // placing it meant. And the book cannot end up crossed, because
+            // the crossing side is gone before the remainder rests.
+            //
+            // Read `next` BEFORE removing: `remove` unlinks the node.
             if resting.trader == taker {
-                self_crossed = true;
-                cursor = resting.next;
+                let next = resting.next;
+                let refund = self.escrow_of(&resting)?;
+                self.remove(idx)?;
+                let node = self
+                    .blocks
+                    .get_mut(taker_seat as usize)
+                    .ok_or(BookError::InvalidIndex)?;
+                let seat = as_seat_mut(node);
+                seat.credit = seat
+                    .credit
+                    .checked_add(refund)
+                    .ok_or(MatchError::Settle(SettleError::Overflow))?;
+                out.self_trade_cancelled = out
+                    .self_trade_cancelled
+                    .checked_add(resting.amount)
+                    .ok_or(MatchError::Settle(SettleError::Overflow))?;
+                cursor = next;
                 continue;
             }
 
@@ -255,27 +294,6 @@ impl<'a> Book<'a> {
             remaining -= fill;
             out.filled += fill;
             out.fills += 1;
-        }
-
-        // Self-trade prevention: cancel-newest.
-        //
-        // The remainder would rest at a price that crosses one of this
-        // trader's own orders, leaving the book crossed — a standing bid above
-        // a standing ask, both theirs. Anyone may lift both legs and bank the
-        // difference, and it comes straight out of the trader who quoted them.
-        // Real venues resolve a self-trade by cancelling a side precisely so
-        // that state cannot exist.
-        //
-        // Cancel-NEWEST drops the incoming order: the resting one has time
-        // priority and other traders may already be pricing against it, while
-        // the incoming order is the one that knows it is crossing.
-        //
-        // This runs only after the walk above, so the trader still gets every
-        // fill available from everyone else first — prevention costs them the
-        // unfillable remainder, never a real counterparty.
-        if remaining > 0 && self_crossed {
-            out.self_trade_cancelled = remaining;
-            return Ok(out);
         }
 
         if remaining > 0 && post_remainder {
@@ -649,128 +667,76 @@ mod tests {
 
     
     #[test]
-    fn own_resting_order_is_stepped_over_to_reach_liquidity_behind_it() {
-        // A has an ask at 485; a stranger has one at 490. A bids 500.
+    fn meeting_your_own_order_cancels_it_and_places_yours() {
+        // The behaviour a trader expects from placing an order: the order they
+        // placed is the one they end up with.
         //
-        // The matcher used to STOP at the first self-owned order, so A's own
-        // 485 shielded the stranger's crossable 490 and A got nothing. A
-        // trader must always be able to trade with everyone else; their own
-        // resting order is not a wall.
+        // A seat cannot trade against itself, so something has to give. The
+        // earlier answers both failed the trader — resting the incoming order
+        // left the book crossed against them, and dropping it meant the order
+        // silently never appeared. Cancelling the RESTING order is exact: it
+        // had escrow and no fill, so the refund returns what it cost.
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
-        book.insert(SIDE_ASK, 485, ONE_SHARE, trader(1)).unwrap(); // A's own
+        book.place(trader(1), SIDE_BID, 515, 2 * ONE_SHARE, 0, 8, true)
+            .unwrap();
+
+        let r = book
+            .place(trader(1), SIDE_ASK, 485, 2 * ONE_SHARE, 0, 8, true)
+            .unwrap();
+
+        assert_eq!(r.fills, 0, "never trades against itself");
+        assert_eq!(r.resting, 2 * ONE_SHARE, "the new order IS placed");
+        assert_eq!(r.self_trade_cancelled, 2 * ONE_SHARE, "the old one went");
+
+        // Exactly one order left, and it is the new one.
+        assert!(book.best(SIDE_BID).is_none(), "the crossed bid was cancelled");
+        assert_eq!(book.best(SIDE_ASK).unwrap().1.price_tick, 485);
+    }
+
+    #[test]
+    fn the_cancelled_order_is_refunded_in_full() {
+        // The money property. The resting order never filled, so its escrow is
+        // owed back whole — anything less would charge the trader for placing
+        // a second order.
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        let idx = book.insert(SIDE_BID, 515, 2 * ONE_SHARE, trader(1)).unwrap();
+        let escrow = book.escrow_of(&book.node(idx).unwrap()).unwrap();
+        assert!(escrow > 0);
+
+        book.place(trader(1), SIDE_ASK, 485, 2 * ONE_SHARE, 0, 8, true)
+            .unwrap();
+
+        assert_eq!(book.credit_of(trader(1)).unwrap(), escrow);
+    }
+
+    #[test]
+    fn other_traders_still_fill_first() {
+        // Cancelling one's own order must not cost anyone else their fill. A
+        // stranger's crossable order is taken; only the trader's own is
+        // cancelled.
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        book.insert(SIDE_ASK, 485, ONE_SHARE, trader(1)).unwrap(); // own
         book.insert(SIDE_ASK, 490, ONE_SHARE, trader(2)).unwrap(); // stranger
 
         let r = book
-            .place(trader(1), SIDE_BID, 500, ONE_SHARE, 0, 8, true)
+            .place(trader(1), SIDE_BID, 500, 2 * ONE_SHARE, 0, 8, true)
             .unwrap();
 
-        assert_eq!(r.fills, 1, "the stranger's 490 must fill");
+        assert_eq!(r.fills, 1);
         assert_eq!(r.filled_orders[0].maker, trader(2));
-        assert_eq!(r.filled_orders[0].price_tick, 490);
-        // A's own 485 is untouched — stepped over, not traded, not cancelled.
-        assert_eq!(book.best(SIDE_ASK).unwrap().1.price_tick, 485);
-        assert_eq!(book.best(SIDE_ASK).unwrap().1.trader, trader(1));
-    }
-
-    #[test]
-    fn self_trade_prevention_cancels_the_newest_instead_of_crossing_the_book() {
-        // Quoting both sides at a crossing price. Resting the remainder would
-        // leave a standing bid ABOVE a standing ask, both this trader's own —
-        // free money for anyone who lifts both legs, paid by the quoter.
-        //
-        // Cancel-newest drops the incoming order; the resting one keeps its
-        // time priority.
-        let mut a = Acct::new(32);
-        let mut book = load_book(a.bytes()).unwrap();
-        book.place(trader(1), SIDE_BID, 515, 2 * ONE_SHARE, 0, 8, true)
-            .unwrap();
-        let r = book
-            .place(trader(1), SIDE_ASK, 485, 2 * ONE_SHARE, 0, 8, true)
-            .unwrap();
-
-        assert_eq!(r.fills, 0);
-        assert_eq!(r.resting, 0, "the newest order must not rest");
-        assert_eq!(r.self_trade_cancelled, 2 * ONE_SHARE);
-        // The book is not crossed: the older bid stands, no ask was added.
-        assert_eq!(book.best(SIDE_BID).unwrap().1.price_tick, 515);
-        assert!(book.best(SIDE_ASK).is_none(), "no crossed ask may rest");
-    }
-
-    #[test]
-    fn prevention_only_costs_the_remainder_after_every_real_fill() {
-        // The order in which the two rules apply is the whole point. A bids
-        // 515 into a book holding its OWN ask at 485 and a stranger's at 500.
-        // The stranger must fill first; only the leftover is cancelled.
-        let mut a = Acct::new(32);
-        let mut book = load_book(a.bytes()).unwrap();
-        book.insert(SIDE_ASK, 485, 3 * ONE_SHARE, trader(1)).unwrap(); // own
-        book.insert(SIDE_ASK, 500, ONE_SHARE, trader(2)).unwrap(); // stranger
-
-        let r = book
-            .place(trader(1), SIDE_BID, 515, 4 * ONE_SHARE, 0, 8, true)
-            .unwrap();
-
-        assert_eq!(r.fills, 1, "the stranger fills");
+        assert_eq!(r.self_trade_cancelled, ONE_SHARE);
+        // Bought 1 from the stranger; the other 1 rests.
         assert_eq!(r.filled, ONE_SHARE);
-        // 3 left over, and it would cross its own 485 -> cancelled, not rested.
-        assert_eq!(r.self_trade_cancelled, 3 * ONE_SHARE);
-        assert_eq!(r.resting, 0);
+        assert_eq!(r.resting, ONE_SHARE);
     }
 
     #[test]
-    fn a_cancelled_remainder_is_not_charged_collateral() {
-        // The property with money attached. Escrow for a resting order is added
-        // to `taker_collateral_in` when it rests; a remainder that never rests
-        // must never be charged, or `book_place` pulls USDC for an order that
-        // does not exist and the trader has no way to get it back — there is no
-        // order to cancel.
-        let mut a = Acct::new(32);
-        let mut book = load_book(a.bytes()).unwrap();
-        book.place(trader(1), SIDE_BID, 515, 2 * ONE_SHARE, 0, 8, true)
-            .unwrap();
-
-        let r = book
-            .place(trader(1), SIDE_ASK, 485, 2 * ONE_SHARE, 0, 8, true)
-            .unwrap();
-
-        assert_eq!(r.self_trade_cancelled, 2 * ONE_SHARE);
-        assert_eq!(r.taker_collateral_in, 0, "nothing rested, nothing owed");
-        assert_eq!(r.fee, 0, "no fill, no fee");
-    }
-
-    #[test]
-    fn an_ioc_order_still_reports_why_it_did_not_fill() {
-        // An immediate-or-cancel order drops its remainder either way, so the
-        // OUTCOME is the same whether prevention fired or the book was simply
-        // empty. The reason is not the same, and the caller cannot tell them
-        // apart from `filled` alone: "nobody was there" and "the only crossable
-        // liquidity was your own" call for different messages.
-        let mut a = Acct::new(32);
-        let mut book = load_book(a.bytes()).unwrap();
-        book.insert(SIDE_ASK, 485, ONE_SHARE, trader(1)).unwrap();
-        let r = book
-            .place(trader(1), SIDE_BID, 515, ONE_SHARE, 0, 8, false)
-            .unwrap();
-        assert_eq!(r.resting, 0);
-        assert_eq!(r.taker_collateral_in, 0);
-        assert_eq!(r.self_trade_cancelled, ONE_SHARE, "reason is reported");
-
-        // Contrast: an empty book leaves the same zeros but no reason.
-        let mut b = Acct::new(32);
-        let mut empty = load_book(b.bytes()).unwrap();
-        let r2 = empty
-            .place(trader(1), SIDE_BID, 515, ONE_SHARE, 0, 8, false)
-            .unwrap();
-        assert_eq!(r2.filled, r.filled);
-        assert_eq!(r2.self_trade_cancelled, 0);
-    }
-
-    #[test]
-    fn a_remainder_that_crosses_nothing_of_its_own_still_rests() {
-        // Prevention must not fire just because the trader has orders on the
-        // book. Their own ask sits at 600; a bid at 515 does not cross it, so
-        // the remainder rests normally.
+    fn an_order_that_crosses_nothing_of_its_own_is_untouched() {
+        // Prevention must not fire merely because the trader has orders on the
+        // book — only when one of them actually crosses.
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
         book.insert(SIDE_ASK, 600, ONE_SHARE, trader(1)).unwrap();
@@ -779,7 +745,34 @@ mod tests {
             .unwrap();
         assert_eq!(r.self_trade_cancelled, 0);
         assert_eq!(r.resting, ONE_SHARE);
-        assert_eq!(book.best(SIDE_BID).unwrap().1.price_tick, 515);
+        assert_eq!(book.best(SIDE_ASK).unwrap().1.price_tick, 600, "kept");
+    }
+
+    #[test]
+    fn the_book_is_never_left_crossed() {
+        // The invariant behind all of this. Whatever the trader does, a bid
+        // above an ask is free money for anyone who lifts both — and it would
+        // be paid by whoever quoted them.
+        let mut a = Acct::new(32);
+        let mut book = load_book(a.bytes()).unwrap();
+        for (side, tick) in [
+            (SIDE_BID, 515u16),
+            (SIDE_ASK, 485),
+            (SIDE_BID, 700),
+            (SIDE_ASK, 300),
+        ] {
+            book.place(trader(1), side, tick, ONE_SHARE, 0, 8, true).unwrap();
+            if let (Some((_, bid)), Some((_, ask))) =
+                (book.best(SIDE_BID), book.best(SIDE_ASK))
+            {
+                assert!(
+                    bid.price_tick < ask.price_tick,
+                    "crossed: bid {} >= ask {}",
+                    bid.price_tick,
+                    ask.price_tick,
+                );
+            }
+        }
     }
 
     #[test]
