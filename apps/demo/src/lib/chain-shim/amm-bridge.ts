@@ -59,6 +59,9 @@ import {
   type SoothRequest,
 } from "@sooth/sdk-solana";
 import { AnchorProvider, Program, type Idl } from "@coral-xyz/anchor";
+/** USDC base units (1e6) -> WAD (1e18), the scale upstream formatters use. */
+const BASE_TO_WAD = 1_000_000_000_000n;
+
 import { myAccount, selfCrossExposure } from "../book-view";
 import { MAX_CANCELS_PER_TX } from "@sooth/sdk-solana";
 
@@ -517,7 +520,23 @@ export async function dispatchAmmRead(
       const orders = (side === 1 ? snapshot.bids : snapshot.asks).filter(
         (o) => o.priceTick === tick,
       );
-      const total = orders.reduce((acc, o) => acc + o.amount, 0n);
+      // Return WAD, not the book's base units.
+      //
+      // The book counts in USDC base units (1e6). Every upstream formatter
+      // assumes 18 — `useOrderbook` does `formatUnits(totalAmount, 18)` — so
+      // handing back raw base units rendered 25 shares as
+      // 0.000000000000000025, which displays as "0" and makes every depth bar
+      // zero-width. The ladder was loading correctly the whole time; it just
+      // drew nothing and read as empty.
+      //
+      // Converting here rather than at the call site keeps the shim's two
+      // order reads consistent: `orderbook-reads.ts` already returns WAD, and
+      // two reads of the same concept disagreeing on units is what produced
+      // this.
+      const total = orders.reduce(
+        (acc, o) => acc + o.amount * BASE_TO_WAD,
+        0n,
+      );
       return [total, orders as readonly unknown[]] as const;
     }
 

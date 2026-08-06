@@ -23,7 +23,17 @@ import {
 } from "../src/lib/chain-shim/amm-bridge";
 
 const MARKET = "sol:BtWVTobCWpViPPVpfaz7osbLpeMYjGNw3kNvdFiWE4qJ";
+/** What the BOOK counts in: USDC base units. */
 const ONE_SHARE = 1_000_000n;
+/**
+ * What the SHIM returns: WAD.
+ *
+ * Upstream formats every amount with `formatUnits(x, 18)`, so returning the
+ * book's base units rendered 25 shares as 0.000000000000000025 — displayed as
+ * "0", with every depth bar zero-width. The ladder had been loading correctly
+ * and drawing nothing.
+ */
+const ONE_SHARE_WAD = 1_000_000_000_000_000_000n;
 
 let seq = 0n;
 function order(priceTick: number, shares: number, side: number) {
@@ -75,8 +85,8 @@ describe("getOrdersAtTick", () => {
   it("aggregates every order resting at a tick", async () => {
     const ctx = ctxWith(async () => snapshot());
     const [total, orders] = await depth(ctx, 1, 390);
-    // Two orders at 390 — 3 + 2 shares.
-    expect(total).toBe(5n * ONE_SHARE);
+    // Two orders at 390 — 3 + 2 shares, reported in WAD.
+    expect(total).toBe(5n * ONE_SHARE_WAD);
     expect(orders).toHaveLength(2);
   });
 
@@ -86,11 +96,22 @@ describe("getOrdersAtTick", () => {
     // required inverting one side, which is how a panel ends up rendering the
     // wrong side of the market.
     const ctx = ctxWith(async () => snapshot());
-    expect((await depth(ctx, 1, 390))[0]).toBe(5n * ONE_SHARE);
-    expect((await depth(ctx, 0, 610))[0]).toBe(4n * ONE_SHARE);
+    expect((await depth(ctx, 1, 390))[0]).toBe(5n * ONE_SHARE_WAD);
+    expect((await depth(ctx, 0, 610))[0]).toBe(4n * ONE_SHARE_WAD);
     // A bid tick queried on the ask side finds nothing, rather than silently
     // returning the complement's depth.
     expect((await depth(ctx, 0, 390))[0]).toBe(0n);
+  });
+
+  it("reports WAD, the scale every upstream formatter assumes", async () => {
+    // The bug this pins. `useOrderbook` renders with `formatUnits(x, 18)`, so
+    // base units come out as 0.000000000000000025 — "0" on screen, and a
+    // zero-width depth bar. Asserting the SCALE, not just the number, is what
+    // makes that visible in a test rather than only in a browser.
+    const ctx = ctxWith(async () => snapshot());
+    const [total] = await depth(ctx, 1, 390);
+    expect(total).toBe(5n * ONE_SHARE_WAD);
+    expect(Number(total) / 1e18).toBeCloseTo(5, 10);
   });
 
   it("returns an empty level rather than undefined", async () => {
