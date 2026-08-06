@@ -158,7 +158,25 @@ export function useOnChainMarkets() {
                     abi: ABIS.LaunchpadEngine,
                     functionName: "isGraduated",
                     args: [marketAddress],
-                  }).catch(() => false),
+                    // Falls back to `false`, but says so.
+                    //
+                    // This value decides `stage`, and `stage === "live"` is
+                    // what opens a market on the ORDERBOOK rather than the
+                    // AMM — so a swallowed failure sends a graduated market to
+                    // the wrong panel and looks like it is still bonding.
+                    //
+                    // Letting the error propagate is worse: the enclosing
+                    // handler returns `null` for the whole market, so the
+                    // market vanishes from the list rather than merely opening
+                    // on the wrong tab. Keep the fallback, lose the silence.
+                  }).catch((e) => {
+                    console.warn(
+                      `[useOnChainMarkets] isGraduated failed for ${marketAddress} —` +
+                        ` treating as bonding, so it will open on the AMM:`,
+                      e,
+                    );
+                    return false;
+                  }),
                   // Per-market trial deadline. Markets pre-trial-cap-change
                   // may have a larger stored value than the current
                   // defaultTrialPeriod — that's intentional (contract
