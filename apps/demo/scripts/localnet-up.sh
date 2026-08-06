@@ -65,7 +65,7 @@ solana-test-validator \
   --quiet \
   --rpc-port "$RPC_PORT" \
   --ledger "$LEDGER_DIR" \
-  --limit-ledger-size 100000000 \
+  --limit-ledger-size 10000000 \
   --bpf-program "$SOOTH_CORE_ID" "$CORE_SO" \
   --account "$USDC_MINT_ADDR" "$USDC_DUMP" \
   >"$LOG" 2>&1 &

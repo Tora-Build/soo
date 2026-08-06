@@ -137,9 +137,10 @@ export const OrderbookPageBody = ({
               Orderbook unavailable
             </h2>
             <p className="text-sm text-muted max-w-md mx-auto">
-              The orderbook terminal failed to load on this chain. The{" "}
-              <span className="font-mono">sooth_book</span> program is gated on
-              spike P1 and isn't deployed on the Solana fork yet.
+              The orderbook terminal failed to load. This is a render error, not
+              a missing program — the book lives in{" "}
+              <span className="font-mono">sooth_core</span> and is deployed.
+              Check the browser console for the cause.
             </p>
             <a
               href={`/amm/${marketAddress}`}

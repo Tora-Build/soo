@@ -127,7 +127,16 @@ log "  ledger: $LEDGER_DIR"
 log "  log:    $VALIDATOR_LOG"
 
 # --reset wipes the ledger so each run starts clean.
-# --limit-ledger-size keeps the ledger from being trimmed out from under us.
+# --limit-ledger-size keeps the ledger from being trimmed out from under us,
+# WITHOUT letting it grow without bound.
+#
+# The first attempt at this used 100,000,000 shreds, which is effectively
+# unlimited: after a few hours of dev the ledger reached 57 GB and the
+# validator stopped serving RPC entirely — which reads from the browser as
+# every panel going empty at once, with no error that points at disk.
+#
+# 10,000,000 keeps hours of history (enough for order history to walk
+# signatures) while staying bounded.
 #
 # solana-test-validator purges old shreds aggressively by default — after a few
 # minutes `getFirstAvailableBlock` had advanced past every book transaction, so
@@ -146,7 +155,7 @@ solana-test-validator \
   --quiet \
   --rpc-port "$RPC_PORT" \
   --ledger "$LEDGER_DIR" \
-  --limit-ledger-size 100000000 \
+  --limit-ledger-size 10000000 \
   --bpf-program "$SOOTH_CORE_ID" "$CORE_SO" \
   --account "$USDC_MINT_ADDR" "$USDC_DUMP" \
   >"$VALIDATOR_LOG" 2>&1 &
