@@ -59,10 +59,65 @@ import {
   type SoothRequest,
 } from "@sooth/sdk-solana";
 import { AnchorProvider, Program, type Idl } from "@coral-xyz/anchor";
+/**
+ * Size an order had when it was placed, in base units.
+ *
+ * The book account holds only the REMAINING amount: a partial fill decrements
+ * the node in place, and no second field records what it started as. So "40%
+ * filled" is not answerable from the book alone — which is why every partially
+ * filled order showed 0%.
+ *
+ * The `BookOrderPlaced` event carries it. Cached per (market, seq) because an
+ * order's original size never changes, so the history walk happens once rather
+ * than on every 15-second poll.
+ *
+ * Falls back to the remaining amount when the placement predates the fetched
+ * window. That reads as "0% filled" — the old behaviour — which is better than
+ * inventing a percentage.
+ */
+const placedAmounts = new Map<string, bigint>();
+let placedFetchedFor: string | null = null;
+
+async function placedAmountOf(
+  ctx: AmmBridgeCtx,
+  marketRef: string,
+  seq: bigint,
+  remaining: bigint,
+): Promise<bigint> {
+  const key = `${marketRef}:${seq}`;
+  const cached = placedAmounts.get(key);
+  if (cached !== undefined) return cached;
+
+  // Walk history only when this market has not been walked yet — a miss on a
+  // genuinely absent order must not re-walk on every poll.
+  if (placedFetchedFor !== marketRef) {
+    placedFetchedFor = marketRef;
+    try {
+      const records = await ctx.adapter.readBookHistory(marketRef, {
+        limit: 200,
+      });
+      for (const { event } of records) {
+        if (event.kind === "placed") {
+          placedAmounts.set(`${marketRef}:${event.seq}`, event.amount);
+        }
+      }
+    } catch {
+      // No history available; every order reads as unfilled.
+    }
+  }
+  return placedAmounts.get(key) ?? remaining;
+}
+
+/** Test hook: forget cached placement sizes. */
+export function __resetPlacedAmounts(): void {
+  placedAmounts.clear();
+  placedFetchedFor = null;
+}
+
 /** USDC base units (1e6) -> WAD (1e18), the scale upstream formatters use. */
 const BASE_TO_WAD = 1_000_000_000_000n;
 
-import { myAccount, selfCrossExposure } from "../book-view";
+import { myAccount } from "../book-view";
 import { MAX_CANCELS_PER_TX } from "@sooth/sdk-solana";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -297,31 +352,6 @@ export async function dispatchAmmRead(
       return USDC_DECIMALS;
     }
 
-    case "getSelfCrossExposure": {
-      // "Would this order cross only my own resting orders?"
-      //
-      // The matcher cancels such a remainder rather than resting it, so the
-      // transaction succeeds and the order simply never appears. Asking first
-      // lets the form say so instead of leaving the trader to wonder where it
-      // went.
-      const marketRef = toMarketRef(call.args?.[0]);
-      const owner = toAddressRef(call.args?.[1]);
-      const side = Number(call.args?.[2]);
-      const limitTick = Number(call.args?.[3]);
-      const amount = BigInt((call.args?.[4] as string | bigint) ?? 0n);
-      if (!marketRef || !owner) return [false, 0n, 0n] as const;
-      const snapshot = await readBookCached(ctx, marketRef);
-      if (!snapshot) return [false, 0n, 0n] as const;
-      const r = selfCrossExposure(
-        snapshot,
-        owner.replace(/^sol:/, ""),
-        side,
-        limitTick,
-        amount,
-      );
-      return [r.crosses, r.ownAmount, r.othersAmount] as const;
-    }
-
     case "getBookAccount": {
       // A trader's standing inside the book: withdrawable credit, collateral
       // locked behind resting orders, and net share position.
@@ -364,6 +394,11 @@ export async function dispatchAmmRead(
           if (o.trader !== ownerBase58) continue;
           mine.push({
             seq: o.seq,
+            // Size at placement, so the panel can show how much has filled.
+            // The book stores only what REMAINS — a partial fill decrements
+            // the node in place — so the original has to come from the
+            // `placed` event. Cached because it never changes.
+            placedAmount: await placedAmountOf(ctx, marketRef, o.seq, o.amount),
             side,
             priceTick: o.priceTick,
             amount: o.amount,

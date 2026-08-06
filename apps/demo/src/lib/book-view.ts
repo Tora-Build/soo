@@ -245,45 +245,6 @@ export function myAccount(
   return { credit: pos.credit, escrow, net: pos.net, openOrders };
 }
 
-/**
- * Would this order cross one of the trader's OWN resting orders?
- *
- * The matcher never trades a trader against themselves. It steps over their
- * own orders to reach everyone else's, and whatever is left is CANCELLED
- * rather than rested, so the book cannot end up crossed against them.
- *
- * That is the right behaviour and it is invisible: the transaction succeeds,
- * nothing rests, and the order simply never appears. Knowing in advance lets
- * the UI say so instead of leaving the trader to wonder.
- *
- * Returns the size that would be cancelled if nothing else filled first —
- * a worst case, since liquidity from other traders is consumed before the
- * remainder is dropped.
- */
-export function selfCrossExposure(
-  snapshot: BookSnapshot,
-  trader: string,
-  side: number,
-  limitTick: number,
-  amount: bigint,
-): { crosses: boolean; ownAmount: bigint; othersAmount: bigint } {
-  const opposite = side === SIDE_BID ? snapshot.asks : snapshot.bids;
-  let ownAmount = 0n;
-  let othersAmount = 0n;
-  for (const o of opposite) {
-    const crosses =
-      side === SIDE_BID ? o.priceTick <= limitTick : o.priceTick >= limitTick;
-    // The side list is price-ordered, so the first non-crossing order ends it.
-    if (!crosses) break;
-    if (o.trader === trader) ownAmount += o.amount;
-    else othersAmount += o.amount;
-  }
-  // Only a remainder gets cancelled, so an order fully covered by other
-  // traders' liquidity is never affected however much of its own it crosses.
-  const crosses = ownAmount > 0n && othersAmount < amount;
-  return { crosses, ownAmount, othersAmount };
-}
-
 export function myPosition(snapshot: BookSnapshot, trader: string): MyPosition {
   const seat: BookSeat = snapshot.seats.find((s) => s.trader === trader) ?? {
     trader,

@@ -336,7 +336,15 @@ function SoothBookTerminalActive({
     (tickOutOfRange ? "Price must be 0.1¢–99.9¢ in 0.1¢ steps" : null);
 
   const handleLevelClick = useCallback(
-    (price: number) => setLimitPrice(Math.round(price * 100).toString()),
+    (price: number) => {
+      // Keep the tenth of a cent.
+      //
+      // The tick grid is 1/1000, so a level sits at 0.1c resolution and the
+      // form validates in 0.1c steps. Rounding to a whole cent moved the click
+      // OFF the level it came from: clicking 51.5c filled the form with 52c,
+      // which no longer crosses the order that was clicked.
+      setLimitPrice((Math.round(price * 1000) / 10).toFixed(1));
+    },
     [],
   );
 

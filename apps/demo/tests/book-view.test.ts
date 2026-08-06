@@ -17,7 +17,6 @@ import {
   myAccount,
   myOrders,
   myPosition,
-  selfCrossExposure,
   quoteSweep,
   toBookView,
   toLadder,
@@ -440,68 +439,3 @@ describe("quoteSweep — self-owned liquidity", () => {
   });
 });
 
-describe("selfCrossExposure", () => {
-  // The matcher steps over the trader's own orders and CANCELS whatever
-  // remainder would cross them. Correct, and invisible: the transaction
-  // succeeds, nothing rests, and the order never appears. This is what lets
-  // the UI say so before the trader spends a transaction wondering.
-  it("flags an order that can only cross the trader's own", () => {
-    seq = 0n;
-    const snap = snapshot({ asks: [order(ALICE, 400, 5, SIDE_ASK)] });
-    const r = selfCrossExposure(snap, ALICE, SIDE_BID, 500, 5n * ONE_SHARE_BASE);
-    expect(r.crosses).toBe(true);
-    expect(r.ownAmount).toBe(5n * ONE_SHARE_BASE);
-    expect(r.othersAmount).toBe(0n);
-  });
-
-  it("does NOT flag it when other traders can fill the whole order", () => {
-    // Only a REMAINDER is cancelled. An order that other liquidity covers
-    // entirely is unaffected no matter how much of its own it crosses, so
-    // warning here would be a false alarm on a trade that works fine.
-    seq = 0n;
-    const snap = snapshot({
-      asks: [order(ALICE, 400, 5, SIDE_ASK), order(BOB, 450, 10, SIDE_ASK)],
-    });
-    const r = selfCrossExposure(snap, ALICE, SIDE_BID, 500, 5n * ONE_SHARE_BASE);
-    expect(r.crosses).toBe(false);
-    expect(r.othersAmount).toBe(10n * ONE_SHARE_BASE);
-  });
-
-  it("flags the shortfall when other liquidity is not enough", () => {
-    seq = 0n;
-    const snap = snapshot({
-      asks: [order(ALICE, 400, 5, SIDE_ASK), order(BOB, 450, 2, SIDE_ASK)],
-    });
-    const r = selfCrossExposure(snap, ALICE, SIDE_BID, 500, 10n * ONE_SHARE_BASE);
-    expect(r.crosses).toBe(true);
-  });
-
-  it("ignores the trader's own orders that do not cross", () => {
-    // An order resting far away is irrelevant. Warning about it would make the
-    // message fire constantly for anyone quoting both sides of a wide market.
-    seq = 0n;
-    const snap = snapshot({ asks: [order(ALICE, 900, 5, SIDE_ASK)] });
-    expect(
-      selfCrossExposure(snap, ALICE, SIDE_BID, 500, 5n * ONE_SHARE_BASE).crosses,
-    ).toBe(false);
-  });
-
-  it("reproduces the reported case: buy YES and buy NO at the same price", () => {
-    // "buy YES @51.5" is a bid at 515; "buy NO @51.5" is an ask at 485. The
-    // second one crosses the first, and with nothing else on that side it is
-    // cancelled in full — which is exactly what looked like a lost order.
-    seq = 0n;
-    const snap = snapshot({ bids: [order(ALICE, 515, 2, SIDE_BID)] });
-    const r = selfCrossExposure(snap, ALICE, SIDE_ASK, 485, 2n * ONE_SHARE_BASE);
-    expect(r.crosses).toBe(true);
-    expect(r.ownAmount).toBe(2n * ONE_SHARE_BASE);
-  });
-
-  it("says nothing for a trader with no orders on that side", () => {
-    seq = 0n;
-    const snap = snapshot({ asks: [order(BOB, 400, 5, SIDE_ASK)] });
-    expect(
-      selfCrossExposure(snap, ALICE, SIDE_BID, 500, 5n * ONE_SHARE_BASE).crosses,
-    ).toBe(false);
-  });
-});

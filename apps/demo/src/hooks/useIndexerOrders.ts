@@ -227,7 +227,13 @@ async function fetchOpenOrdersFromBook(
     abi: [],
     functionName: "getMyOpenOrders",
     args: [marketAddress, owner],
-  })) as Array<{ seq: bigint; side: number; priceTick: number; amount: bigint }>;
+  })) as Array<{
+    seq: bigint;
+    side: number;
+    priceTick: number;
+    amount: bigint;
+    placedAmount?: bigint;
+  }>;
 
   return rows.map((o) => ({
     // The real sequence. Nothing synthesised, nothing to parse back.
@@ -245,9 +251,16 @@ async function fetchOpenOrdersFromBook(
     yesPrice: clampUnit(o.priceTick / 1000),
     // The book counts in USDC base units (1e6), not WAD.
     amount: Number(o.amount) / 1e6,
-    // Partial fills decrement `amount` in place, so what remains IS the
-    // unfilled size — there is no separate filled counter to net against.
-    fillPct: 0,
+    // The book stores only what REMAINS, so the fill fraction needs the size
+    // at placement, which comes from the `placed` event. Without it every
+    // partially-filled order read as 0% — the order visibly shrank in the
+    // ladder while its own row claimed nothing had happened.
+    fillPct: (() => {
+      const placed = o.placedAmount ?? o.amount;
+      if (placed <= 0n) return 0;
+      const filled = placed > o.amount ? placed - o.amount : 0n;
+      return clampPercent(Number((filled * 10_000n) / placed) / 100);
+    })(),
     timestamp: Number(o.seq),
     isBuy: o.side === SIDE_BID,
     marketAddress,
