@@ -181,7 +181,32 @@ export function useOrderbook(marketAddress: `0x${string}`) {
 
   const fetchOrderbook = useCallback(
     async (isBackground = false) => {
-      if (!soothBookAddress || !marketKey || !publicClient) return;
+      // Why the ladder is empty, said out loud.
+      //
+      // This function has five paths that bail without rendering anything, and
+      // every one of them used to be silent — so "no liquidity" looked
+      // identical whether the market had none, the market ref failed to parse,
+      // or the RPC was unreachable. Several rounds of debugging went into
+      // distinguishing those from the outside; a one-line reason turns the
+      // next report into a fact.
+      const bail = (why: string) => {
+        // eslint-disable-next-line no-console
+        console.warn(`[useOrderbook] no ladder: ${why}`, {
+          marketAddress,
+          marketKey,
+        });
+      };
+
+      if (!soothBookAddress || !marketKey || !publicClient) {
+        bail(
+          !publicClient
+            ? "no publicClient (wallet/provider not ready)"
+            : !marketKey
+              ? "no marketKey derived from marketAddress"
+              : "no soothBookAddress in deployments",
+        );
+        return;
+      }
 
       if (!isBackground) setIsLoading(true);
       try {
@@ -233,10 +258,12 @@ export function useOrderbook(marketAddress: `0x${string}`) {
         });
 
         if (marketRes.status !== "success") {
+          bail("isMarketRegistered call failed");
           setIsSupported(false);
           return;
         }
         if (!(marketRes.result as boolean)) {
+          bail("isMarketRegistered returned false — market ref did not resolve");
           setIsSupported(false);
           return;
         }
@@ -266,11 +293,15 @@ export function useOrderbook(marketAddress: `0x${string}`) {
           setUserNoShares(0);
         }
 
+        if (bids.length === 0 && asks.length === 0) {
+          bail("scan returned no levels on either side");
+        }
         setOrderbook({ bids, asks });
         setLastUpdated(Date.now());
         setIsSupported(true);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "";
+        bail(`threw: ${message.slice(0, 120)}`);
         if (
           message.includes("reverted") ||
           message.includes("function selector")
@@ -282,6 +313,7 @@ export function useOrderbook(marketAddress: `0x${string}`) {
       }
     },
     [
+      marketAddress,
       marketKey,
       publicClient,
       scanTickDepth,
