@@ -3140,10 +3140,18 @@ export class SolanaChainAdapter implements ChainAdapter {
           const balance = await this.connection
             .getBalance(userPk)
             .catch(() => null);
+          // Rebuild from the INNER text, not `error.message`. The latter is
+          // already "SoothError: NetworkError attempt=1 msg=…", so feeding it
+          // back in as `msg` nests the prefix and pushes the useful part off
+          // the end of a toast — which is exactly how this diagnostic failed
+          // to reach the person who needed it.
+          const inner =
+            (classified.error.fields as { msg?: string }).msg ??
+            classified.error.message;
           classified.error = new SoothError({
             kind: "NetworkError",
             msg:
-              `${classified.error.message}\n  SIGNER: ${userPk.toBase58()}` +
+              `${inner}\n  SIGNER: ${userPk.toBase58()}` +
               `\n  BALANCE: ${balance === null ? "unreadable" : `${balance / 1e9} SOL`}` +
               ` on ${this.connection.rpcEndpoint}` +
               (balance === 0

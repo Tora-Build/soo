@@ -692,11 +692,17 @@ export const SimpleTradingPanel = ({
           },
           onError: (error: any) => {
             logger.trade.error("Error:", error);
-            const errorMsg =
-              error?.cause?.shortMessage ||
-              error?.message ||
-              "Transaction failed";
-            toast.error(`Trade failed: ${errorMsg}`);
+            // Prefer the full message over `shortMessage`.
+            //
+            // The adapter appends the diagnostic that actually identifies a
+            // failure — the signing wallet and its balance — AFTER the generic
+            // text, so a "short" message is exactly the part that says nothing.
+            const errorMsg: string =
+              error?.message || error?.cause?.shortMessage || "Transaction failed";
+            toast.error(`Trade failed: ${errorMsg}`, {
+              duration: 12000,
+              style: { maxWidth: "44rem", whiteSpace: "pre-wrap" },
+            });
           },
         },
       );
