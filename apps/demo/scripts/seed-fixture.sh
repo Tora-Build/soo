@@ -37,8 +37,16 @@ GRADUATED=$(SEED_B_WAD=50 node scripts/seed-localnet.mjs init \
 log "3/4  driving $GRADUATED to graduation"
 node scripts/graduate-market.mjs "$GRADUATED"
 
-log "4/4  resting a two-sided ladder on the graduated book"
-node scripts/seed-book.mjs "$GRADUATED"
+# The book must EXIST even when empty — `book_place` needs the account — but
+# resting a maker ladder in it is optional. SEED_LADDER=0 gives a completely
+# clean book to trade into from scratch.
+if [[ "${SEED_LADDER:-1}" == "0" ]]; then
+  log "4/4  initialising an EMPTY book (SEED_LADDER=0)"
+  node scripts/seed-book.mjs "$GRADUATED" --empty
+else
+  log "4/4  resting a two-sided ladder on the graduated book"
+  node scripts/seed-book.mjs "$GRADUATED"
+fi
 
 # The last seed run left ITS market as the default; the graduated one is the
 # interesting one to land on, so make that the default and carry the other.

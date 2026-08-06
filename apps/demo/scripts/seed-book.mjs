@@ -114,6 +114,16 @@ try {
   log(`  book_init OK (capacity ${INITIAL_CAPACITY})`);
 }
 
+// `--empty` initialises the book and stops. The account must exist before
+// anything can rest in it, but the maker ladder is a convenience, not a
+// requirement — and a clean book is what you want when testing the matching
+// engine from scratch.
+if (process.argv.includes("--empty")) {
+  const b = await adapter.readBook(marketRef);
+  log(`book ready, ${b.orderCount} orders resting (empty by request)`);
+  process.exit(0);
+}
+
 // A two-sided ladder around 0.50. Bids and asks are quoted on the SAME YES
 // axis — a bid at 470 and an ask at 530 are both YES prices, not complements.
 const LADDER = [

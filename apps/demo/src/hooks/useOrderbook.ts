@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { tickToYesPrice } from "../lib/orderbook-math";
+import { yesPrice as tickYesPrice } from "../lib/book-view";
 import { useAccount, usePublicClient } from "@/lib/chain-shim";
 import { SOOTHBOOK_ABI } from "../config/abis";
 import { encodePacked, formatUnits, keccak256 } from "@/lib/chain-shim";
@@ -97,7 +97,16 @@ export function useOrderbook(marketAddress: `0x${string}`) {
           const [totalAmount] = result.result as readonly [bigint, bigint];
           if (totalAmount <= 0n) continue;
 
-          const yesPriceValue = tickToYesPrice(tick, side === 1 ? 1 : 0);
+          // One axis: the tick IS the YES price on BOTH sides.
+          //
+          // `tickToYesPrice(tick, 0)` returns the COMPLEMENT, which the legacy
+          // two-sided book needed because its side 0 was the NO side. The
+          // redesigned book quotes everything on the YES axis, so complementing
+          // the asks rendered them at 1 - p: a ladder seeded with asks at
+          // 530/545/560 displayed as 0.470/0.455/0.440, landing on top of the
+          // bids that really were at those prices. Two sides of the book
+          // showing the same numbers.
+          const yesPriceValue = tickYesPrice(tick);
           const yesPrice = yesPriceValue.toFixed(4);
 
           orders.push({
@@ -158,8 +167,8 @@ export function useOrderbook(marketAddress: `0x${string}`) {
     const bids: Order[] = [];
     const asks: Order[] = [];
     for (const entry of agg.values()) {
-      const yesPriceValue =
-        tickToYesPrice(entry.tick, entry.side === 1 ? 1 : 0);
+      // Same single axis as the RPC path above.
+      const yesPriceValue = tickYesPrice(entry.tick);
       const yesPrice = yesPriceValue.toFixed(4);
       const order: Order = {
         id: `${entry.side}:${entry.tick}`,
