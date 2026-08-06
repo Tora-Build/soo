@@ -2176,6 +2176,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, userPk),
+        preIxs: [this.usdcAtaCreateIx(userPk)],
         operation: "bookPlace",
       },
     };
@@ -2190,6 +2191,33 @@ export class SolanaChainAdapter implements ChainAdapter {
    * because they answer different questions, and only this one requires the
    * market to be settled.
    */
+  /**
+   * Idempotent create for a user's USDC ATA, as a pre-instruction.
+   *
+   * Every book instruction that moves USDC constrains `user_usdc_ata` with
+   * `token::authority = user`, which requires the account to already exist. A
+   * wallet that has never held USDC has no ATA, so its FIRST order failed at
+   * simulation with nothing on screen naming the cause — the wallet looked
+   * funded, because it had plenty of SOL.
+   *
+   * `buildTrade` already did this for the AMM path; the book paths did not.
+   *
+   * Idempotent, so it is a no-op for everyone else, and data-only, so `submit`
+   * can replay the identical bytes under a fresh blockhash.
+   */
+  private usdcAtaCreateIx(userPk: PublicKey) {
+    return serializeIx(
+      createAssociatedTokenAccountIdempotentInstruction(
+        userPk, // payer
+        getAssociatedTokenAddressSync(this.usdcMint, userPk),
+        userPk, // owner
+        this.usdcMint,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID,
+      ),
+    );
+  }
+
   async buildRedeemBookSeat(
     market: MarketRef,
     args: { user: AddressRef },
@@ -2227,6 +2255,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, userPk),
+        preIxs: [this.usdcAtaCreateIx(userPk)],
         operation: "redeemBookSeat",
       },
     };
@@ -2291,6 +2320,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, creatorPk),
+        preIxs: [this.usdcAtaCreateIx(creatorPk)],
         operation: "reclaimSubsidy",
       },
     };
@@ -2338,6 +2368,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, userPk),
+        preIxs: [this.usdcAtaCreateIx(userPk)],
         operation: "bookWithdraw",
       },
     };

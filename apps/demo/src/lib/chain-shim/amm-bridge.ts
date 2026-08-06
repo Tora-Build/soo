@@ -524,16 +524,18 @@ export async function dispatchAmmRead(
       // SoothBookTerminal gates the trade form on this read. MarketBook is
       // lazy-created by the first buy_yes/buy_no, so a valid sooth_market PDA
       // is enough to consider the book available.
-      const raw = call.args?.[0];
-      if (typeof raw !== "string" || !raw) return false;
-      const tail = raw.startsWith("0x")
-        ? raw.slice(2)
-        : raw.startsWith("sol:")
-          ? raw.slice(4)
-          : raw;
+      // Parse through `toMarketRef` rather than by hand.
+      //
+      // This had its own stripping logic, so it accepted `sol:`, bare base58
+      // and `0x${base58}` but not a `marketKey` — and a `false` here makes the
+      // hook set `isSupported(false)` and return before fetching any depth, so
+      // the whole ladder vanishes on a market that is plainly registered.
+      // Keeping one parser means every caller's form works everywhere.
+      const marketRef = toMarketRef(call.args?.[0]);
+      if (!marketRef) return false;
       let candidate: PublicKey;
       try {
-        candidate = new PublicKey(tail);
+        candidate = new PublicKey(marketRef.slice(4));
       } catch {
         return false;
       }
