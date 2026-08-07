@@ -4,10 +4,13 @@
 // end (create_market → register_adjudicator → seed_lp) — no `setAccount`
 // shortcuts.
 //
-// Why the placeholder address:
-//   `declare_id!("BgcooFgTuDQ…")` in `programs/sooth-core/src/lib.rs` bakes
-//   the placeholder into the .so binary. Anchor's runtime checks
-//   `program_id == crate::ID`, so the program must execute at its declared ID.
+// Why it deploys at the declared address:
+//   `declare_id!` in `programs/sooth-core/src/lib.rs` bakes the id into the
+//   .so binary, and Anchor's runtime checks `program_id == crate::ID`, so the
+//   program must execute at exactly that address. Read it from the source
+//   rather than repeating it here — a copy goes stale on the next deploy and
+//   fails as "every instruction rejected", which looks nothing like a wrong
+//   constant.
 //
 // USDC mint sleight-of-hand:
 //   The on-chain `usdc_mint` accounts are constrained to the canonical
