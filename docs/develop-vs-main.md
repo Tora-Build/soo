@@ -27,10 +27,16 @@ five before sending. `develop` holds the whole book in one account and walks it
 on chain. This is the change everything else follows from.
 
 **A class of bug was closed.** Not a rewrite — specific, found defects, each of
-which could take or strand real money. They are listed in §5 because they are
+which could take or strand real money. They are listed in §6 because they are
 the part an auditor should read first.
 
-The trade-off: `develop` is younger. `main` has had more eyes and more
+The capacity consequence, since it is the question most often asked: a
+transaction goes from **5 fills to 256**, and a fill costs ~20× less compute.
+That is not extra parallelism — neither branch parallelizes within a market —
+it is density, and it comes at the cost of maximum book depth. §5 has the
+measurements and the trade.
+
+The other trade-off: `develop` is younger. `main` has had more eyes and more
 calendar time. What `develop` has instead is a settlement path verified end to
 end on a validator, which `main` never had.
 
@@ -135,8 +141,9 @@ is for.
 
 Two consequences worth naming:
 
-- **256 orders per market, not per tick.** A different limit, more useful in
-  practice, and reached rather than hit sideways.
+- **256 orders per market, not per tick.** A different limit — one a busy price
+  level cannot hit sideways, but also a lower total depth than `main` could
+  hold across many ticks. §5 has the trade.
 - **`close_book_side` / `compact_book_side` are gone.** There is nothing to
   compact.
 
@@ -159,7 +166,87 @@ incidental to a fill against someone else.
 
 ---
 
-## 5. Correctness fixes
+## 5. Capacity and throughput
+
+Measured, not projected — both figures come from the same LiteSVM harness
+(`packages/sdk-solana/tests/book-cu-budget.test.ts`, which exists to check this
+claim rather than assume it). The `main` row is the legacy harness the redesign
+was measured against.
+
+### Per transaction
+
+| fills | `main` CU | `main` bytes | `main` writable | `develop` CU | `develop` bytes | `develop` writable |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 66,708 | 778 | 10 | 42,360 | 540 | 5 |
+| 5 | 184,749 | 1,174 | 22 | 42,973 | 540 | 5 |
+| 20 | — | — | — | 63,288 | 540 | 5 |
+| 40 | — | — | — | 100,036 | 540 | 5 |
+| 60 | — | — | — | 127,764 | 540 | 5 |
+
+`main` stops at **five fills, and not because of compute**. Each fill adds 99
+transaction bytes and 3 writable accounts, so a sixth makes the transaction
+1,273 bytes against Solana's 1,232-byte packet limit — rejected before it
+executes. That is the real ceiling, and it is a data-layout consequence: the
+accounts have to be listed because the fills touch different ticks.
+
+`develop` is flat at 540 bytes and 5 writable accounts whether it fills 1 or
+60, because the book is one account. Marginal cost is **1,448 CU/fill against
+29,510** — roughly **20× cheaper per fill** — and the binding constraint moves
+from transaction size to book depth.
+
+**Fills per transaction: 5 → 256 (~51×.)**
+
+### Throughput
+
+Solana caps writes to any single account at 12M CU per block. This is the
+number that matters, and it is where the intuition misleads.
+
+`main`'s per-tick accounts *look* like they let different price levels trade in
+parallel. They do not: every buy also write-locks `market_fee_pool`, which is
+per-market. So **neither branch parallelizes within a market** — both serialize
+on a per-market writable account, and the per-tick split buys nothing in
+throughput. Across *different* markets both scale the same way.
+
+Per market, per block:
+
+| | `main` | `develop` | gain |
+|---|---:|---:|---:|
+| small trades (5 fills/tx) | ~325 fills | ~1,396 fills | 4.3× |
+| batched (60 fills/tx) | not possible | ~5,636 fills | ~17× |
+
+At ~2.5 blocks/sec: roughly 800 fills/sec, against 3,500–14,000 depending on
+how well trades batch.
+
+### What this means for volume
+
+Notional volume per fill is unchanged — a fill can be any size on either
+branch. The economically meaningful difference is **atomicity**, not rate.
+
+On `main`, sweeping twenty price levels took four transactions, and the book
+could move between them: partial fills at drifting prices, with no way to
+express "all of it or none". On `develop` the same sweep is one transaction
+against the book state at that instant.
+
+### The regression
+
+`develop` caps a market at **256 resting orders in total**. `main` allowed 50
+per tick across many ticks, so its theoretical maximum book depth was far
+higher.
+
+This is a real trade, not a free win: density and atomicity bought with maximum
+depth. At 256 orders the account is ~20 KB and ~$2.9 of rent at full extension;
+raising the cap means a bigger account, not a redesign.
+
+### Caveats
+
+These are LiteSVM numbers, not devnet or mainnet under contention. The 12M
+per-account figure is Solana's current limit and the scheduler does not
+guarantee any market the full budget. Treat the throughput table as a ceiling,
+not a forecast.
+
+---
+
+## 6. Correctness fixes
 
 The ones with money on the other side. Each is a real defect that existed, not
 a hardening measure.
@@ -217,7 +304,7 @@ that Anchor can resolve an account constraint.
 
 ---
 
-## 6. New: `packages/sooth-data`
+## 7. New: `packages/sooth-data`
 
 Does not exist on `main`. An indexer for book history.
 
@@ -239,7 +326,7 @@ be invisible in the archive while sitting plainly in an event. State answers
 
 ---
 
-## 7. Deployment
+## 8. Deployment
 
 `develop` is live on devnet at a **fresh program id**, deliberately — not an
 upgrade over `main`'s, so no account written by the old layout is reachable at
@@ -261,7 +348,7 @@ plain `.rpc()` does not.
 
 ---
 
-## 8. Known gaps
+## 9. Known gaps
 
 Stated plainly, because a comparison document that only lists improvements is
 not useful for deciding anything.
@@ -272,6 +359,12 @@ not useful for deciding anything.
   market keys, case-folded pubkeys, WAD-vs-base-unit confusion all came from
   it. It is confined to the demo: nothing in `programs-core` or `sdk-solana`
   imports it.
+- **Maximum book depth is lower.** 256 resting orders per market against
+  `main`'s 50-per-tick across many ticks. Deliberate (§5), but it is a ceiling
+  `main` did not have, and a market that reaches it rejects new makers.
+- **No parallelism within a market.** Every trade write-locks the book, so one
+  market's throughput is capped by Solana's 12M CU per-account budget however
+  many validators are free. `main` has the same limit for a different reason.
 - **Younger code.** Fewer calendar-weeks of review than `main`.
 - **No mainnet deployment**, and no audit yet.
 - **The indexer polls.** Fine for devnet and a handful of markets; a busy
@@ -285,7 +378,7 @@ not useful for deciding anything.
 
 ---
 
-## 9. Running it
+## 10. Running it
 
 ```bash
 cd apps/demo && pnpm dev        # http://localhost:5175
