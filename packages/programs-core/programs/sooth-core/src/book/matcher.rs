@@ -356,12 +356,22 @@ impl<'a> Book<'a> {
     }
 
     /// Drain a trader's withdrawable credit, returning the amount.
+    ///
+    /// Looks the seat up rather than creating one: a wallet with no seat has
+    /// nothing to withdraw, and allocating a block to say so is what let any
+    /// signer consume the arena (see [`Book::seat_of`]).
+    ///
+    /// Frees the seat when draining empties it, so a trader who withdraws and
+    /// leaves does not hold a block forever.
     pub fn take_credit(&mut self, trader: Pubkey) -> R<u64> {
-        let idx = self.seat_mut(trader)?;
+        let Some(idx) = self.seat_of(trader) else {
+            return Ok(0);
+        };
         let node = self.blocks.get_mut(idx as usize).ok_or(BookError::InvalidIndex)?;
         let seat = as_seat_mut(node);
         let amount = seat.credit;
         seat.credit = 0;
+        self.free_seat_if_empty(trader)?;
         Ok(amount)
     }
 
@@ -383,7 +393,11 @@ impl<'a> Book<'a> {
     /// with `book_cancel`, which stays available after settlement precisely so
     /// a maker is never trapped.
     pub fn take_settlement(&mut self, trader: Pubkey, winning_outcome: u8) -> R<u64> {
-        let idx = self.seat_mut(trader)?;
+        // Looked up, not created — same reason as `take_credit`. Redeeming a
+        // seat that does not exist owes nothing and must not cost a block.
+        let Some(idx) = self.seat_of(trader) else {
+            return Ok(0);
+        };
         let node = self.blocks.get_mut(idx as usize).ok_or(BookError::InvalidIndex)?;
         let seat = as_seat_mut(node);
 
@@ -414,6 +428,10 @@ impl<'a> Book<'a> {
             .ok_or(MatchError::Settle(SettleError::Overflow))?;
         seat.credit = 0;
         seat.net = 0;
+        // Both fields are now zero, so the seat carries nothing. Freeing it
+        // here is what stops a settled market's arena staying full of the
+        // people who traded it.
+        self.free_seat_if_empty(trader)?;
         Ok(total)
     }
 

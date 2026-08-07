@@ -33,10 +33,9 @@ the part an auditor should read first.
 The capacity consequence, since it is the question most often asked: a
 transaction goes from **5 fills to ~256**, and a fill costs ~20× less compute.
 That is not extra parallelism — neither branch parallelizes within a market —
-it is density. It is bought with book capacity, and the cap is tighter than it
-looks: 256 counts *blocks*, which orders and permanent per-trader seats share,
-so a market stops accepting orders after roughly 256 lifetime wallets. §5 has
-the measurements, the trade, and what to do about it.
+it is density. It is bought with book capacity: 256 counts *blocks*, which
+orders share with one seat per currently-seated trader. §5 has the
+measurements and the trade.
 
 The other trade-off: `develop` is younger. `main` has had more eyes and more
 calendar time. What `develop` has instead is a settlement path verified end to
@@ -232,35 +231,40 @@ could move between them: partial fills at drifting prices, with no way to
 express "all of it or none". On `develop` the same sweep is one transaction
 against the book state at that instant.
 
-### The regression, and it is worse than "lower depth"
+### The cost side: seats share the arena
 
-`MAX_ORDERS = 256` bounds **blocks, not orders** — and orders and seats share
-one arena. A seat is allocated per distinct trader and is **never freed**:
-`redeem_book_seat` zeroes it and leaves it in place deliberately, so that a
-stale index cannot resolve to somebody else's money
-(`instructions/redeem_book_seat.rs:38`). So the real constraint is
+`MAX_ORDERS = 256` bounds **blocks, not orders**, and orders share the arena
+with seats — one per distinct trader. So the constraint is
 
 ```
-live orders + lifetime distinct traders ≤ 256
+live orders + seated traders ≤ 256
 ```
 
-Measured: 60 makers fit in a 150-block book (2 blocks each — one order, one
+Measured: 60 makers fit a 150-block book at two blocks each (one order, one
 seat); 80 did not.
 
-That is not a depth ceiling, it is an **expiry date**. A market stops accepting
-orders once roughly 256 wallets have ever touched it — about 128 traders if
-each holds one order — and no amount of cancelling frees the space back,
-because the seats persist. `main` had no equivalent limit: its cap was 50 per
-tick across as many ticks as existed.
+Seats were originally never freed, which made that a *lifetime* limit rather
+than a depth one — a market stopped accepting orders once ~256 wallets had ever
+touched it, and cancelling never gave the space back. Worse, `take_credit` used
+the allocating seat lookup, so `book_withdraw` from a wallet that had never
+traded allocated a block to record a zero balance: ~256 throwaway signers could
+fill the arena and brick a market for the price of transaction fees.
 
-This needs fixing before any real market launches. Two ways:
+Both are fixed. Seats are now looked up rather than created on the exit paths,
+and a seat is returned to the free list once `credit` and `net` are both zero
+(`arena.rs::free_seat_if_empty`). What makes that safe is that a seat holds
+*only* those two fields, and orders reference their owner by **pubkey**, never
+by seat index — so an emptied seat carries no information and a resting order
+whose seat was freed simply rebuilds it on the next fill.
 
-- **Reclaim seats.** A seat with zero credit, zero net and no live orders
-  carries no information. Freeing it removes the permanent per-trader cost
-  entirely, and the cap goes back to meaning live depth. The stale-index risk
-  the comment cites is real but is the usual generation-counter problem.
-- **Raise the cap.** Nothing in the code stops you (see below), but sizing the
-  book for *lifetime traders* rather than *live depth* is treating the symptom.
+The freeing is deliberately confined to `book_withdraw` and `redeem_book_seat`.
+The matching loop caches seat indices across mutations, so returning a block
+there could hand that index to another trader mid-match — which is what the
+original "zeroed, not freed" note was guarding against. That concern was right
+about the matcher and too broad about everywhere else.
+
+The limit is now what it should be: **live** orders plus **currently-seated**
+traders, where a trader stops being seated as soon as they withdraw.
 
 ### Headroom if the cap is raised
 
@@ -305,10 +309,13 @@ Two caveats that cannot be removed from public data:
   rather than an extrapolated one.
 
 Sizing on that: ~100 levels of Polymarket-class coverage with several orders
-per level is a few hundred live orders. **4,096 blocks** (1.83 SOL, ~18% of the
-CU budget on a worst-case insert) covers that with room for a few thousand
-lifetime traders — but only seat reclamation makes the number mean live depth
-rather than cumulative footfall.
+per level is a few hundred live orders, plus a block for each trader holding
+un-withdrawn credit. 256 is plausible for a thin market and tight for a busy
+one; **4,096 blocks** (1.83 SOL, ~18% of the CU budget on a worst-case insert)
+buys a lot of headroom cheaply. Now that seats are reclaimed the number means
+live depth rather than cumulative footfall, so it can be sized against the
+Polymarket figures above rather than against how many people have ever
+traded.
 
 ### Caveats
 
@@ -432,12 +439,11 @@ not useful for deciding anything.
   market keys, case-folded pubkeys, WAD-vs-base-unit confusion all came from
   it. It is confined to the demo: nothing in `programs-core` or `sdk-solana`
   imports it.
-- **A market has a lifetime-trader ceiling, and it is low.** `MAX_ORDERS = 256`
-  counts blocks, shared by orders and by seats that are never freed, so a
-  market stops accepting orders after roughly 256 distinct wallets have ever
-  traded it — permanently, since cancelling does not release a seat. `main` had
-  no equivalent limit. This should be fixed before a real launch; §5 gives two
-  ways.
+- **256 blocks is still a real ceiling**, now on live orders plus
+  currently-seated traders rather than lifetime ones (§5). A trader holding
+  un-withdrawn credit holds a block, which is correct but means a busy market
+  can still fill up. 4,096 blocks costs 1.83 SOL and ~18% of the CU budget on a
+  worst-case insert if that proves tight.
 - **No parallelism within a market.** Every trade write-locks the book, so one
   market's throughput is capped by Solana's 12M CU per-account budget however
   many validators are free. `main` has the same limit for a different reason.

@@ -387,6 +387,76 @@ impl<'a> Book<'a> {
         }
         out
     }
+
+    /// A trader's seat if it exists — **without creating one**.
+    ///
+    /// The allocating [`Book::seat_mut`] is right on a trading path, where a
+    /// trader who is about to hold a position needs somewhere to hold it. It is
+    /// wrong on a read or an exit: `take_credit` used it, so calling
+    /// `book_withdraw` from a wallet that had never traded ALLOCATED a block to
+    /// record a zero balance. Since blocks are capped and seats were never
+    /// freed, ~256 throwaway signers could fill the arena and permanently stop
+    /// the market accepting orders, for the cost of transaction fees.
+    pub fn seat_of(&self, trader: Pubkey) -> Option<u32> {
+        let mut cursor = self.header.seats_head;
+        while cursor != NIL {
+            let node = self.blocks.get(cursor as usize)?;
+            let seat = as_seat(node);
+            if seat.trader == trader {
+                return Some(cursor);
+            }
+            cursor = seat.next;
+        }
+        None
+    }
+
+    /// Return an empty seat's block to the arena. Returns whether it freed one.
+    ///
+    /// ## Why this is safe, and why "empty" is only two fields
+    ///
+    /// A seat holds exactly `credit` and `net`. When both are zero it carries no
+    /// information: [`Book::seat_mut`] would rebuild a byte-identical one on
+    /// demand. Orders reference their owner by **pubkey**, never by seat index,
+    /// so a resting order whose seat is freed is not dangling — its next fill
+    /// simply recreates the seat.
+    ///
+    /// ## Why only from an exit instruction
+    ///
+    /// The matching loop caches seat indices across mutations (`taker_seat` is
+    /// held for the whole loop while makers allocate seats). Freeing a block
+    /// there could hand that index to a different trader mid-match, which is
+    /// exactly the aliasing the original "zeroed, not freed" comment worried
+    /// about. That concern was right about the matcher and too broad about
+    /// everywhere else: `book_withdraw` and `redeem_book_seat` hold no cached
+    /// index, so calling it there is sound and calling it inside `match_order`
+    /// is not.
+    pub fn free_seat_if_empty(&mut self, trader: Pubkey) -> BookResult<bool> {
+        let mut prev = NIL;
+        let mut cursor = self.header.seats_head;
+        while cursor != NIL {
+            let node = self.node(cursor)?;
+            let seat = as_seat(&node);
+            if seat.trader == trader {
+                if seat.credit != 0 || seat.net != 0 {
+                    return Ok(false);
+                }
+                let next = seat.next;
+                if prev == NIL {
+                    self.header.seats_head = next;
+                } else {
+                    let prev_node = self.node_mut(prev)?;
+                    as_seat_mut(prev_node).next = next;
+                }
+                // `free` zeroes the payload, so the recycled block cannot
+                // surface this trader again.
+                self.free(cursor)?;
+                return Ok(true);
+            }
+            prev = cursor;
+            cursor = seat.next;
+        }
+        Ok(false)
+    }
 }
 
 #[cfg(test)]
@@ -704,5 +774,117 @@ mod tests {
             b.insert(SIDE_BID, 500, 1, trader(i)).unwrap();
         }
         assert_eq!(b.header.block_count, 20, "should have reused every block");
+    }
+
+    // ── Seat lifecycle ──────────────────────────────────────────────────────
+    //
+    // Seats used to be permanent. Because they share the block arena with
+    // orders and the arena is capped, that made the cap a LIFETIME limit —
+    // "orders + everyone who ever traded" — rather than a depth one, and gave
+    // any signer a way to consume it.
+
+    #[test]
+    fn withdrawing_from_a_wallet_that_never_traded_costs_no_block() {
+        // The griefing vector. `take_credit` used the ALLOCATING seat lookup,
+        // so calling `book_withdraw` from a fresh keypair recorded a zero
+        // balance in a block that was never reclaimed. ~256 throwaway signers
+        // could fill the arena and stop the market accepting orders forever,
+        // for the price of transaction fees.
+        let mut f = Fixture::new(8);
+        let mut b = f.book();
+        for i in 0..8u8 {
+            assert_eq!(b.take_credit(trader(i)).unwrap(), 0);
+        }
+        assert_eq!(b.header.block_count, 0, "a no-op withdraw must allocate nothing");
+        assert_eq!(b.header.seats_head, NIL);
+    }
+
+    #[test]
+    fn draining_a_seat_returns_its_block() {
+        let mut f = Fixture::new(8);
+        let mut b = f.book();
+        let idx = b.seat_mut(trader(1)).unwrap();
+        as_seat_mut(b.blocks.get_mut(idx as usize).unwrap()).credit = 500;
+        assert_eq!(b.header.block_count, 1);
+
+        assert_eq!(b.take_credit(trader(1)).unwrap(), 500);
+        assert_eq!(b.header.seats_head, NIL, "an emptied seat is unlinked");
+        assert_ne!(b.header.free_head, NIL, "and its block is on the free list");
+
+        // Reused rather than merely forgotten.
+        b.seat_mut(trader(2)).unwrap();
+        assert_eq!(b.header.block_count, 1, "should have recycled the freed block");
+    }
+
+    #[test]
+    fn a_seat_holding_a_position_survives_a_withdraw() {
+        // Credit and net are independent: draining credit while the trader
+        // still has exposure must NOT free the seat, or the position is lost.
+        let mut f = Fixture::new(8);
+        let mut b = f.book();
+        let idx = b.seat_mut(trader(1)).unwrap();
+        {
+            let seat = as_seat_mut(b.blocks.get_mut(idx as usize).unwrap());
+            seat.credit = 100;
+            seat.net = -7;
+        }
+        assert_eq!(b.take_credit(trader(1)).unwrap(), 100);
+        assert_eq!(b.seat_of(trader(1)), Some(idx), "seat with net must remain");
+        let node = b.node(idx).unwrap();
+        assert_eq!(as_seat(&node).net, -7, "net preserved");
+    }
+
+    #[test]
+    fn freeing_a_seat_does_not_orphan_that_trader_s_resting_orders() {
+        // Orders reference their owner by PUBKEY, never by seat index, so a
+        // resting order whose seat was freed is not dangling — the next touch
+        // rebuilds an identical seat. This is what makes freeing safe at all.
+        let mut f = Fixture::new(8);
+        let mut b = f.book();
+        let order = b.insert(SIDE_BID, 400, 5, trader(1)).unwrap();
+        b.seat_mut(trader(1)).unwrap();
+
+        assert!(b.free_seat_if_empty(trader(1)).unwrap());
+        assert_eq!(b.seat_of(trader(1)), None);
+
+        // The order is untouched and still owned by them.
+        let node = b.node(order).unwrap();
+        assert_eq!(node.trader, trader(1));
+        assert_eq!(node.amount, 5);
+
+        // And the seat comes back on demand, zeroed.
+        let again = b.seat_mut(trader(1)).unwrap();
+        let node = b.node(again).unwrap();
+        let seat = as_seat(&node);
+        assert_eq!((seat.credit, seat.net), (0, 0));
+    }
+
+    #[test]
+    fn free_seat_if_empty_is_a_no_op_for_a_stranger() {
+        let mut f = Fixture::new(8);
+        let mut b = f.book();
+        b.seat_mut(trader(1)).unwrap();
+        assert!(!b.free_seat_if_empty(trader(9)).unwrap());
+        assert_eq!(b.seat_of(trader(1)).is_some(), true);
+        assert_eq!(b.header.block_count, 1);
+    }
+
+    #[test]
+    fn a_seat_in_the_middle_of_the_list_unlinks_cleanly() {
+        // The unlink has a prev==NIL branch and a prev!=NIL branch; the second
+        // one is where a list can be corrupted into a cycle or a lost tail.
+        let mut f = Fixture::new(8);
+        let mut b = f.book();
+        for i in 0..3u8 {
+            let idx = b.seat_mut(trader(i)).unwrap();
+            as_seat_mut(b.blocks.get_mut(idx as usize).unwrap()).credit = 1;
+        }
+        // seats_head is trader(2); free the middle one.
+        as_seat_mut(b.blocks.get_mut(b.seat_of(trader(1)).unwrap() as usize).unwrap()).credit = 0;
+        assert!(b.free_seat_if_empty(trader(1)).unwrap());
+
+        assert_eq!(b.seat_of(trader(1)), None);
+        assert!(b.seat_of(trader(0)).is_some(), "tail still reachable");
+        assert!(b.seat_of(trader(2)).is_some(), "head still reachable");
     }
 }
