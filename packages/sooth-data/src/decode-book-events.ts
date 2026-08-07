@@ -272,12 +272,37 @@ type TxLike = {
   } | null;
 };
 
+/**
+ * The account at `index`, whatever shape the RPC returned it in.
+ *
+ * Three encodings reach here and they are NOT interchangeable:
+ *
+ *   "json"        -> a base58 string
+ *   "jsonParsed"  -> { pubkey: "..." }
+ *   default       -> a PublicKey instance, from `connection.getTransaction`
+ *                    without an explicit encoding
+ *
+ * The third was missing, and the failure is silent in the worst way: the
+ * program-id comparison finds `null`, every instruction is skipped, and the
+ * decoder reports zero events for a transaction full of them. An indexer built
+ * on that stores nothing and looks like it is working.
+ */
 function accountKeyAt(tx: TxLike, index: number): string | null {
   const key = tx.transaction?.message?.accountKeys?.[index];
   if (typeof key === "string") return key;
-  if (key && typeof key === "object" && "pubkey" in key) {
-    const p = (key as { pubkey?: unknown }).pubkey;
-    return typeof p === "string" ? p : null;
+  if (key && typeof key === "object") {
+    if ("pubkey" in key) {
+      const p = (key as { pubkey?: unknown }).pubkey;
+      if (typeof p === "string") return p;
+      // jsonParsed can itself nest a PublicKey.
+      if (p && typeof (p as { toBase58?: unknown }).toBase58 === "function") {
+        return (p as { toBase58(): string }).toBase58();
+      }
+      return null;
+    }
+    if (typeof (key as { toBase58?: unknown }).toBase58 === "function") {
+      return (key as { toBase58(): string }).toBase58();
+    }
   }
   return null;
 }

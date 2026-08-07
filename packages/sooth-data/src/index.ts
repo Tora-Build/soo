@@ -84,3 +84,10 @@ if (isEntrypoint) {
     console.log(`sooth-data listening on http://localhost:${info.port}`);
   });
 }
+
+// Indexer surface. Kept as named exports rather than started here: the API and
+// the ingester are separate processes in any real deployment, and coupling
+// them would mean an RPC outage in one taking down the other.
+export { BookStore, type BookEventRow, type BookFillRow } from "./db.js";
+export { ingestOnce, toRows, type IngestConnection, type IngestOptions, type IngestResult } from "./ingest.js";
+export { startIndexer, type IndexerConfig, type IndexerHandle } from "./indexer-run.js";
