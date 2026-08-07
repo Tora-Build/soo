@@ -17,8 +17,14 @@
 #      failure is total and looks nothing like a deploy problem.
 #   3. The payer covers rent + fees, with an exact shortfall figure if not.
 #
-# Rent is ~7.2 SOL at the current size (--max-len = exact .so size, no
-# upgrade headroom) and is recoverable with `solana program close`. Devnet's
+# Rent is ~7.2 SOL at the current size and is recoverable with
+# `solana program close`. `--max-len` adds UPGRADE_HEADROOM on top of the .so,
+# because sizing it to the exact binary makes the next upgrade fail: the loader
+# refuses to extend by less than 10,240 bytes, so a build that grew by 640 hits
+#
+#   ExtendProgram requires a minimum of 10240 additional bytes ... only 640 were requested
+#
+# and needs a manual `solana program extend` before it will deploy. Devnet's
 # faucet is rate-limited, so fund in whatever increments you can get; this
 # script is idempotent and safe to rerun.
 #
@@ -46,6 +52,10 @@ REPO="$(cd "$(dirname "$0")/../../.." && pwd)"
 DEPLOY_DIR="${DEPLOY_DIR:-$REPO/target/deploy}"
 PROGRAMS_DIR="$REPO/packages/programs-core/programs"
 FEE_BUFFER="0.05"
+# Slack in the program account so an upgrade that grows the binary does not
+# need a separate `solana program extend` first. The loader's minimum extension
+# is 10,240 bytes, so anything smaller than that is not worth reserving.
+UPGRADE_HEADROOM=51200
 
 # The programs to deploy, smallest first so a rate-limited faucet still lands
 # something useful. This was previously left undefined when the multi-program
@@ -128,9 +138,10 @@ for p in "${PROGRAMS[@]}"; do
     die "$p keypair does not match declare_id!"
   fi
 
-  RENT="$(rent_sol "$LEN")"
+  RENT="$(rent_sol "$((LEN + UPGRADE_HEADROOM))")"
   [ -n "$RENT" ] || die "could not compute rent for $p ($LEN bytes) — RPC unreachable?"
-  printf '  %-11s %9s B  %8s SOL  → deploy\n' "$p" "$LEN" "$RENT"
+  printf '  %-11s %9s B  %8s SOL  → deploy (+%s B headroom)\n' \
+    "$p" "$LEN" "$RENT" "$UPGRADE_HEADROOM"
   TODO+=("$p")
   TOTAL_NEED="$(awk -v t="$TOTAL_NEED" -v r="$RENT" -v f="$FEE_BUFFER" 'BEGIN{printf "%.4f", t+r+f}')"
 done
@@ -158,7 +169,7 @@ for p in "${TODO[@]:-}"; do
   PID="$(solana address -k "$KP")"
   LEN="$(bytes "$SO")"
 
-  RENT="$(rent_sol "$LEN")"
+  RENT="$(rent_sol "$((LEN + UPGRADE_HEADROOM))")"
   COST="$(awk -v r="${RENT:-0}" -v f="$FEE_BUFFER" 'BEGIN{printf "%.4f", r+f}')"
   CUR="$(bal_sol)"; CUR="${CUR:-0}"
   if ! ge "$CUR" "$COST"; then
@@ -168,7 +179,7 @@ for p in "${TODO[@]:-}"; do
 
   printf '  → %s (%s B, ~%s SOL)\n' "$p" "$LEN" "$COST"
   if ! solana program deploy "$SO" --program-id "$KP" --keypair "$KEYPAIR" \
-        --url "$RPC" --max-len "$LEN"; then
+        --url "$RPC" --max-len "$((LEN + UPGRADE_HEADROOM))"; then
     printf '\n  ✗ %s deploy failed. Rerun after funding — partially written\n' "$p"
     printf '    buffers are resumable, and `solana program close --buffers`\n'
     printf '    reclaims rent from abandoned ones.\n\n'
@@ -193,10 +204,15 @@ for p in "${PROGRAMS[@]}"; do
   fi
   INFO="$(solana program show "$PID" --url "$RPC" 2>/dev/null)"
   ON_LEN="$(printf '%s' "$INFO" | grep -oE 'Data Length: [0-9]+' | grep -oE '[0-9]+')"
-  # Only assert byte-equality for programs THIS run deployed. A pre-existing
-  # deployment may be a different build of the same source and still correct.
-  if [[ " ${TODO[*]:-} " == *" $p "* ]] && [ -n "$ON_LEN" ] && [ "$ON_LEN" != "$LEN" ]; then
-    printf '  ✗ %-11s on-chain %s B != local %s B — not the build you tested\n' "$p" "$ON_LEN" "$LEN"
+  # Only assert for programs THIS run deployed. A pre-existing deployment may
+  # be a different build of the same source and still correct.
+  #
+  # The account is allocated at .so + UPGRADE_HEADROOM, so `Data Length` is the
+  # ALLOCATION, not the binary. Comparing it to $LEN would fail every deploy.
+  WANT_LEN="$((LEN + UPGRADE_HEADROOM))"
+  if [[ " ${TODO[*]:-} " == *" $p "* ]] && [ -n "$ON_LEN" ] && [ "$ON_LEN" != "$WANT_LEN" ]; then
+    printf '  ✗ %-11s on-chain %s B != expected %s B (.so %s + %s headroom)\n' \
+      "$p" "$ON_LEN" "$WANT_LEN" "$LEN" "$UPGRADE_HEADROOM"
     FAILED=1; continue
   fi
   printf '  ✓ %-11s %s (%s B)\n' "$p" "$PID" "${ON_LEN:-$LEN}"
