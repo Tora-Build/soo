@@ -266,6 +266,31 @@ about the matcher and too broad about everywhere else.
 The limit is now what it should be: **live** orders plus **currently-seated**
 traders, where a trader stops being seated as soon as they withdraw.
 
+### What 256 blocks means in people
+
+Not 256 users. It depends what they are doing, because a trader placing an
+order needs a seat *and* an order block:
+
+| a trader who is… | blocks | fits in 256 |
+|---|---:|---:|
+| holding a position (seat only) | 1 | **256** |
+| resting one order | 2 | **128** |
+
+Pinned by `capacity_in_participants_not_orders`, because it is the number
+anyone sizing a market needs and it is not the constant's face value.
+
+The first row is the one that binds. A prediction market is buy-and-hold: a
+position occupies a seat from the fill until the holder redeems after
+settlement, so **256 concurrent position holders fills the market** and leaves
+no room to quote. That is small for anything with real traction — the
+Polymarket books in §5 imply hundreds of live orders on their own, before
+counting anyone holding.
+
+So the cap is now a sensible thing to *tune* rather than a countdown to a dead
+market, and 256 is the wrong tuning for a busy one. 4,096 blocks costs 1.83 SOL
+and ~18% of the CU budget on a worst-case insert; that is the change to make
+before a market is expected to carry real volume.
+
 ### Headroom if the cap is raised
 
 Measured against a devnet RPC for rent, and on LiteSVM for the walk. The

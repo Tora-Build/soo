@@ -751,6 +751,56 @@ mod tests {
         );
     }
 
+
+    /// What `MAX_ORDERS` means in participants, pinned because it is the
+    /// number anyone sizing a market actually needs and it is not 256.
+    ///
+    /// Blocks are shared, so the answer depends on what a trader is doing:
+    ///
+    ///   - **Holding a position**: one seat, one block  -> 256 traders.
+    ///   - **Resting an order**: a seat AND an order    -> 128 traders.
+    ///
+    /// Placing always takes a seat (`place` calls `seat_mut` before matching),
+    /// so a maker costs two blocks even while their seat is still empty.
+    ///
+    /// Buy-and-hold is the normal state of a prediction market, so the 256 row
+    /// is the one that binds in practice: a market where 256 people hold a
+    /// position has no room left for anyone to quote.
+    #[test]
+    fn capacity_in_participants_not_orders() {
+        // Distinct traders each resting ONE order.
+        let mut f = Fixture::new(MAX_ORDERS as usize);
+        let mut b = f.book();
+        let mut makers = 0u32;
+        loop {
+            let t = trader_wide(makers);
+            if b.seat_mut(t).is_err() || b.insert(SIDE_BID, 400, 1, t).is_err() {
+                break;
+            }
+            makers += 1;
+        }
+        assert_eq!(
+            makers, 128,
+            "a maker costs a seat plus an order, so the arena holds half as \
+             many of them as its block count suggests"
+        );
+
+        // Traders merely HOLDING a position — one block each.
+        let mut f2 = Fixture::new(MAX_ORDERS as usize);
+        let mut b2 = f2.book();
+        let mut holders = 0u32;
+        while b2.seat_mut(trader_wide(holders)).is_ok() {
+            holders += 1;
+        }
+        assert_eq!(holders, MAX_ORDERS, "a position holder costs exactly one block");
+    }
+
+    fn trader_wide(i: u32) -> Pubkey {
+        let mut b = [0u8; 32];
+        b[..4].copy_from_slice(&i.to_le_bytes());
+        Pubkey::new_from_array(b)
+    }
+
     #[test]
     fn a_full_drain_returns_every_block_to_the_free_list() {
         let mut f = Fixture::new(32);
