@@ -360,4 +360,55 @@ describe("AMM position redemption after settlement", () => {
     // The shortfall came out of the subsidy, exactly as designed.
     expect((await getAccount(conn, a.marketVault)).amount).toBe(vault - owed);
   }, 60_000);
+
+  // Everything above hand-builds the instruction with Anchor. That proves the
+  // PROGRAM is right and says nothing about the builder the app actually
+  // calls — and a builder that derives one account wrong fails at simulation
+  // with no hint, which is how `reclaim_subsidy` shipped with invented mint
+  // seeds and was caught only by running settlement for real.
+  it("the SDK builder pays out the same as the hand-built instruction", async () => {
+    const { smoke, program, user } = await boot();
+    const a = accountsFor(smoke, user.publicKey);
+    const conn = new LiteSvmConnection(smoke.ctx);
+
+    await buy(smoke, program, user, OUTCOME_YES, SHARES);
+    await settle(smoke, program, OUTCOME_YES);
+
+    const { SolanaChainAdapter } = await import("../src/adapter.js");
+    const { encodePubkeyRef } = await import("../src/refs.js");
+    const adapter = new SolanaChainAdapter({
+      node: {
+        id: "amm-redeem-adapter",
+        chainKind: "solana",
+        chainId: "test",
+        rpcUrl: "http://localhost:8899",
+      },
+      programIds: smoke.programs,
+      usdcMint: smoke.usdcMint,
+      connection: conn,
+    } as never);
+
+    const req = await adapter.buildRedeemAmmPosition(
+      encodePubkeyRef(smoke.marketPda),
+      { user: encodePubkeyRef(user.publicKey) },
+    );
+
+    // Same account list, in the same order, with the same signer/writable
+    // flags as the instruction the program tests drive.
+    const expected = (await redeemTx(smoke, program, user.publicKey))
+      .instructions[0]!;
+    expect(req.accounts!.map((k) => k.pubkey)).toEqual(
+      expected.keys.map((k) => k.pubkey.toBase58()),
+    );
+    expect(req.accounts!.map((k) => [k.isSigner, k.isWritable])).toEqual(
+      expected.keys.map((k) => [k.isSigner, k.isWritable]),
+    );
+
+    // And it actually moves the money, not just parses.
+    const before = (await getAccount(conn, a.userUsdcAta)).amount;
+    await sendTx(smoke.ctx, [user], new Transaction().add(expected));
+    expect((await getAccount(conn, a.userUsdcAta)).amount - before).toBe(
+      SHARES / 1_000_000_000_000n,
+    );
+  }, 60_000);
 });

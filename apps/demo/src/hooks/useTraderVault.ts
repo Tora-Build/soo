@@ -167,39 +167,55 @@ export function useTraderVault() {
   /**
    * Post-settlement claims, per market.
    *
-   * Two separate on-chain paths, and neither is `bookWithdraw`:
+   * Three separate on-chain paths, and none of them is `bookWithdraw`:
    *
    *   - `redeemBookSeat` turns a seat's signed net into USDC against the
    *     resolved outcome. Without it a winning book position is unspendable —
    *     the book could trade but never pay out.
+   *   - `redeemAmmPosition` does the same for the AMM ledger. A trader who
+   *     used both venues has to claim from both; neither call can see the
+   *     other's balance, so calling one is not a substitute for the other.
    *   - `reclaimSubsidy` returns the creator's unspent LMSR subsidy. It fails
    *     for anyone else: the program binds `lp_position` to the signer.
    *
    * Tried across every known market and reported per market, because a failure
    * usually just means "nothing owed here" and should not abort the others.
+   *
+   * `positions` sweeps BOTH ledgers rather than exposing them as two buttons.
+   * Which venue a fill came from is an implementation detail the trader never
+   * chose — the book and the AMM are one order ticket in the UI — so making
+   * them press the right one of two identical-looking buttons is a way to
+   * leave money unclaimed.
    */
   const claimSettled = useCallback(
-    async (kind: "redeemBookSeat" | "reclaimSubsidy") => {
+    async (kind: "positions" | "reclaimSubsidy") => {
       if (!address) return false;
+      const fns =
+        kind === "positions"
+          ? (["redeemBookSeat", "redeemAmmPosition"] as const)
+          : ([kind] as const);
+
       let ok = 0;
       for (const marketRef of marketRefs) {
-        try {
-          await writeContractAsync({
-            address: (soothBookAddress ?? ZERO_ADDRESS) as `0x${string}`,
-            abi: SOOTHBOOK_ABI,
-            functionName: kind,
-            args: [marketRef],
-            chainId,
-          } as never);
-          ok += 1;
-        } catch (err) {
-          void err; // nothing owed on this market, or not the creator
+        for (const functionName of fns) {
+          try {
+            await writeContractAsync({
+              address: (soothBookAddress ?? ZERO_ADDRESS) as `0x${string}`,
+              abi: SOOTHBOOK_ABI,
+              functionName,
+              args: [marketRef],
+              chainId,
+            } as never);
+            ok += 1;
+          } catch (err) {
+            void err; // nothing owed on this ledger, or not the creator
+          }
         }
       }
       if (ok > 0) {
         toast.success(
-          kind === "redeemBookSeat"
-            ? `Redeemed book position on ${ok} market(s)`
+          kind === "positions"
+            ? `Redeemed settled positions (${ok} claim(s))`
             : `Reclaimed subsidy on ${ok} market(s)`,
         );
         await Promise.all([refetchBalances(), refetchBookAccount()]);

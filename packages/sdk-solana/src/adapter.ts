@@ -2262,6 +2262,68 @@ export class SolanaChainAdapter implements ChainAdapter {
   }
 
   /**
+   * Pay out an AMM `Position` after settlement (`redeem_amm_position`).
+   *
+   * The book seat and the AMM position are separate ledgers, and a trader who
+   * used both has to claim from both — `redeemBookSeat` pays the seat and
+   * knows nothing about `Position.yes_shares`.
+   *
+   * The instruction landed with bug B1 (an AMM buyer had no exit after
+   * settlement) but had no builder, so it stayed unreachable from the app and
+   * the funds stayed stranded for exactly the reason it was written to fix.
+   *
+   * Callable more than once: the handler zeroes both legs before transferring,
+   * so a second call pays nothing rather than double-paying. It deliberately
+   * does not close the `Position` account — `claim_unlocked` still needs it.
+   */
+  async buildRedeemAmmPosition(
+    market: MarketRef,
+    args: { user: AddressRef },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const [vaultAuthority] = deriveVaultAuthorityPda(
+      resolved.marketId,
+      this.programIds,
+    );
+    const [position] = derivePositionPda(
+      resolved.marketId,
+      userPk,
+      this.programIds,
+    );
+
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .redeemAmmPosition()
+      .accounts({
+        market: marketPda,
+        vaultAuthority,
+        position,
+        vault: deriveMarketVaultAta(
+          resolved.marketId,
+          this.usdcMint,
+          this.programIds,
+        ),
+        userUsdcAta: getAssociatedTokenAddressSync(this.usdcMint, userPk),
+        user: userPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        preIxs: [this.usdcAtaCreateIx(userPk)],
+        operation: "redeemAmmPosition",
+      },
+    };
+  }
+
+  /**
    * Return the unspent LMSR subsidy to the creator (`reclaim_subsidy`).
    *
    * Reads every ledger that can still owe the vault — mint supply, AMM

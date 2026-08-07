@@ -164,6 +164,7 @@ export const SOOTHBOOK_ABI = parseAbi([
   "function bookWithdraw(bytes32 marketKey)",
   "function bookCancelMany(bytes32 marketKey, uint64[] orderSeqs)",
   "function redeemBookSeat(bytes32 marketKey)",
+  "function redeemAmmPosition(bytes32 marketKey)",
   "function reclaimSubsidy(bytes32 marketKey)",
   "function getMyOpenOrders(bytes32 marketKey, address owner) view returns (uint256[] seqs)",
   "function getMyOrderHistory(bytes32 marketKey, address owner) view returns (uint256[] rows)",

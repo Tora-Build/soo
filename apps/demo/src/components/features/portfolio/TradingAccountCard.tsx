@@ -252,8 +252,8 @@ export const TradingAccountCard: React.FC = () => {
                 variant="ghost"
                 className="h-5 px-1.5 text-[10px]"
                 disabled={isPending}
-                onClick={() => void claimSettled?.("redeemBookSeat")}
-                title="Convert a settled book position into USDC"
+                onClick={() => void claimSettled?.("positions")}
+                title="Convert settled positions (book and AMM) into USDC"
               >
                 Redeem
               </Button>

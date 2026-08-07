@@ -48,6 +48,7 @@ import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
+  derivePositionPda,
   deriveUserUsdcAta,
   yesPriceWad,
   LN2_WAD,
@@ -803,6 +804,9 @@ export async function dispatchAmmWrite(
   if (call.functionName === "redeemBookSeat") {
     return dispatchRedeemBookSeat(call, ctx);
   }
+  if (call.functionName === "redeemAmmPosition") {
+    return dispatchRedeemAmmPosition(call, ctx);
+  }
   if (call.functionName === "reclaimSubsidy") {
     return dispatchReclaimSubsidy(call, ctx);
   }
@@ -1535,6 +1539,64 @@ async function dispatchRedeemBookSeat(
   const marketRef = toMarketRef((call.args ?? [])[0]);
   if (!marketRef) throw new Error("redeemBookSeat: invalid market reference");
   const req = await ctx.adapter.buildRedeemBookSeat(marketRef, {
+    user: `sol:${userBase58}`,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+/**
+ * `redeemAmmPosition(market)` — pay out an AMM position after settlement.
+ *
+ * The third claim path, and the one that had no route from the UI at all: the
+ * instruction existed on chain (bug B1) but nothing called it, so a user who
+ * bought through the AMM rather than the book saw their funds sit in the vault
+ * with no button to press.
+ *
+ * Separate from `redeemBookSeat` because they read different ledgers — a
+ * trader who used both has to claim twice, and neither call knows about the
+ * other's balance.
+ */
+async function dispatchRedeemAmmPosition(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "redeemAmmPosition");
+  const marketRef = toMarketRef((call.args ?? [])[0]);
+  if (!marketRef) throw new Error("redeemAmmPosition: invalid market reference");
+  const userPk = new PublicKey(userBase58);
+
+  // Bail before building anything if there is nothing to claim.
+  //
+  // The portfolio sweeps every known market, so without this a trader with one
+  // AMM position gets a wallet prompt per market — each for a transaction that
+  // pays zero. On Solana every one of those is a signature request, and a user
+  // who is asked to sign six things to claim one is being trained to click
+  // through prompts.
+  //
+  // The instruction is still safe to call on an empty position; this is purely
+  // about not asking.
+  const marketPda = new PublicKey(marketRef.replace(/^sol:/, ""));
+  const marketInfo = await ctx.connection.getAccountInfo(marketPda);
+  if (!marketInfo) throw new Error("redeemAmmPosition: no such market");
+  const marketId = marketInfo.data.subarray(8, 8 + 32); // after the discriminator
+  const [positionPda] = derivePositionPda(
+    marketId,
+    userPk,
+    ctx.adapter.programIds,
+  );
+  const positionInfo = await ctx.connection.getAccountInfo(positionPda);
+  if (!positionInfo) throw new Error("redeemAmmPosition: no AMM position");
+  // 8 discriminator + user(32) + market(32), then yes_shares/no_shares as
+  // i128. Tested by scanning all 32 bytes rather than reading the low u64 of
+  // each: shares are WAD-scaled, so a position of 2^64 base units would have a
+  // zero low word and read as "nothing to claim".
+  const OFF_YES = 8 + 32 + 32;
+  const shares = positionInfo.data.subarray(OFF_YES, OFF_YES + 32);
+  if (shares.every((b) => b === 0)) {
+    throw new Error("redeemAmmPosition: position already redeemed");
+  }
+
+  const req = await ctx.adapter.buildRedeemAmmPosition(marketRef, {
     user: `sol:${userBase58}`,
   });
   return submitAndSynth(ctx.adapter, req, signer);
