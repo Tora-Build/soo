@@ -76,6 +76,8 @@ import {
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
 
+import { connect } from "./lib/rpc.mjs";
+
 // We can't `import` from the `@sooth/sdk-solana` package root: its index
 // re-exports `SolanaChainAdapter`, which transitively imports
 // `@coral-xyz/anchor` with named exports. Anchor 0.30 is CommonJS, and
@@ -133,6 +135,35 @@ const heapFrameIx = () =>
 
 function programIdOrFallback(idlAddress, fallback) {
   return idlAddress ? new PublicKey(idlAddress) : fallback;
+}
+
+/**
+ * The RPC URL safe to write into `.env.local`.
+ *
+ * Seeding wants a high-limit provider endpoint — driving a market to
+ * graduation is thousands of transactions and the public one rate-limits.
+ * The browser must not get that URL: Vite inlines every `VITE_`-prefixed
+ * variable into the bundle, so a key in it is served to every visitor.
+ *
+ * A provider URL carries its key in the path (`/v2/<key>`), so anything that
+ * is not a bare public endpoint is replaced with the keyless equivalent for
+ * the cluster we are seeding. `SOLANA_BROWSER_RPC_URL` overrides, for a
+ * domain-restricted key or a proxy.
+ */
+function browserRpcUrl() {
+  if (process.env.SOLANA_BROWSER_RPC_URL) {
+    return process.env.SOLANA_BROWSER_RPC_URL;
+  }
+  const url = RPC_URL;
+  if (/^https?:\/\/(127\.0\.0\.1|localhost)/.test(url)) return url;
+  if (/^https:\/\/api\.(devnet|testnet|mainnet-beta)\.solana\.com/.test(url)) {
+    return url;
+  }
+  // Unrecognised host — assume it is a keyed provider and pick the public
+  // endpoint for whichever cluster it names.
+  if (/mainnet/.test(url)) return "https://api.mainnet-beta.solana.com";
+  if (/testnet/.test(url)) return "https://api.testnet.solana.com";
+  return "https://api.devnet.solana.com";
 }
 
 const SOOTH_CORE_ID = programIdOrFallback(
@@ -352,7 +383,7 @@ async function init() {
   log(`creator: ${creator.publicKey.toBase58()}`);
   log(`user:    ${user.publicKey.toBase58()}`);
 
-  const connection = new Connection(RPC_URL, "confirmed");
+  const connection = connect(RPC_URL);
 
   // Sanity-check: validator running + USDC mint preloaded.
   try {
@@ -874,7 +905,17 @@ async function init() {
     "# Regenerated every time `pnpm dev:localnet` runs.",
     "# Do not commit — see apps/demo/.gitignore.",
     "",
-    `VITE_SOLANA_RPC_URL=${RPC_URL}`,
+    ...(browserRpcUrl() === RPC_URL
+      ? []
+      : [
+          `# Seeded through ${RPC_URL.replace(/\/v2\/.*/, "/v2/<key>")}, but that URL`,
+          `# is NOT written here: every VITE_-prefixed variable is inlined into the`,
+          `# browser bundle at build time, so a provider key in this value is public`,
+          `# to anyone who loads the page. The demo uses the keyless endpoint below.`,
+          `# For a real deployment use a domain-restricted key, or proxy through a`,
+          `# server you control.`,
+        ]),
+    `VITE_SOLANA_RPC_URL=${browserRpcUrl()}`,
     `# No EVM indexer on the Solana fork — short-circuits the poller`,
     `# at apps/demo/src/hooks/indexer/config.ts to silence the dead-URL`,
     `# error storm (was ~261k console errors per page session).`,

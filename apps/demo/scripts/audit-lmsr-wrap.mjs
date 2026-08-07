@@ -41,6 +41,8 @@ import anchor from "@coral-xyz/anchor";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { deriveMarketVaultAta } from "@sooth/sdk-solana";
 
+import { connect } from "./lib/rpc.mjs";
+
 const DEMO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = resolve(DEMO_ROOT, "../..");
 
@@ -62,7 +64,7 @@ const PROGRAM = new PublicKey(arg("program", idl.address));
 const usdcMint = new PublicKey(
   arg("usdc", "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"),
 );
-const connection = new Connection(RPC, "confirmed");
+const connection = connect(RPC);
 const coder = new anchor.BorshAccountsCoder(idl);
 const log = (...a) => console.log(...a);
 

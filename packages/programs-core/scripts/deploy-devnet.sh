@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Deploy (or upgrade) the Sooth programs on devnet.
+# Deploy (or upgrade) the Sooth program on devnet.
 #
-# for the durable OrdersFilled record, so a crossing buy fails outright if the
-# the cheaper of the two, so a short drip still lands something useful).
+# There is one program now (`sooth_core`); `sooth_log` was folded into it and
+# the legacy orderbook deleted. The per-program loop is kept because it costs
+# nothing and the preflight checks below are the valuable part.
 #
 # Preflight checks, per program:
 #
@@ -16,7 +17,7 @@
 #      failure is total and looks nothing like a deploy problem.
 #   3. The payer covers rent + fees, with an exact shortfall figure if not.
 #
-# Rent is ~9.2 SOL for both at current sizes (--max-len = exact .so size, no
+# Rent is ~7.2 SOL at the current size (--max-len = exact .so size, no
 # upgrade headroom) and is recoverable with `solana program close`. Devnet's
 # faucet is rate-limited, so fund in whatever increments you can get; this
 # script is idempotent and safe to rerun.
@@ -24,7 +25,7 @@
 # To rehearse against a real Agave runtime without spending devnet SOL:
 #
 #   solana-test-validator --reset \
-#     --bpf-program BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W target/deploy/sooth_core.so \
+#     --bpf-program DHnXeCJThuejPHkpRwg8QrmS6GCMJWPUefGKU74ZHGPD target/deploy/sooth_core.so \
 #
 # That is how the 256 KB allocator was verified outside the test harness: with
 # requestHeapFrame the program runs, without it every instruction faults with
@@ -46,7 +47,13 @@ DEPLOY_DIR="${DEPLOY_DIR:-$REPO/target/deploy}"
 PROGRAMS_DIR="$REPO/packages/programs-core/programs"
 FEE_BUFFER="0.05"
 
-# buy path, so this order is load-bearing, not just drip-friendly.
+# The programs to deploy, smallest first so a rate-limited faucet still lands
+# something useful. This was previously left undefined when the multi-program
+# list was removed, which made the script die at the first loop under `set -u`
+# — before printing anything, so it read as a shell problem rather than a
+# missing variable.
+PROGRAMS=(sooth_core)
+
 # .so name -> crate directory (hyphenated, unlike the crate name).
 crate_dir() { printf '%s' "${1//_/-}"; }
 
@@ -84,10 +91,10 @@ for p in "${PROGRAMS[@]}"; do
   LEN="$(bytes "$SO")"
 
   # Already live? Then we neither need nor necessarily CAN touch it: the
-  # upgrade authority may belong to someone else, and a different build of the
-  # whose only contract is accepting `log(Vec<u8>)` — any build satisfying
-  # that works, so comparing binary sizes against a foreign deployment would
-  # be a false alarm. Skip the local checks entirely.
+  # upgrade authority may belong to someone else, and a pre-existing
+  # deployment may be a different build of the same source and still correct.
+  # Comparing binary sizes against a foreign deployment would be a false
+  # alarm, so skip the local checks entirely.
   if on_chain "$DECLARED"; then
     AUTH="$(solana program show "$DECLARED" --url "$RPC" 2>/dev/null | grep -oE 'Authority: \S+' | awk '{print $2}')"
     ON_LEN="$(solana program show "$DECLARED" --url "$RPC" 2>/dev/null | grep -oE 'Data Length: [0-9]+' | grep -oE '[0-9]+')"

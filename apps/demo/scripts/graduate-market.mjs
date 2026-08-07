@@ -35,6 +35,8 @@ import { fileURLToPath } from "node:url";
 import { Connection, Keypair, Transaction } from "@solana/web3.js";
 import { SolanaChainAdapter } from "@sooth/sdk-solana";
 
+import { connect } from "./lib/rpc.mjs";
+
 const DEMO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LOCALNET_DIR = resolve(DEMO_ROOT, ".localnet");
 const RPC = process.env.SOLANA_RPC_URL ?? "http://127.0.0.1:8899";
@@ -57,7 +59,7 @@ if (!marketArg) {
 }
 const marketRef = marketArg.startsWith("sol:") ? marketArg : `sol:${marketArg}`;
 
-const connection = new Connection(RPC, "confirmed");
+const connection = connect(RPC);
 // The creator holds the minted USDC float; the user wallet is deliberately
 // left alone so the operator's own balance is not consumed by the fixture.
 const trader = loadKeypair(resolve(LOCALNET_DIR, "creator-keypair.json"));

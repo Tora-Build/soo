@@ -10,7 +10,7 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W");
+declare_id!("DHnXeCJThuejPHkpRwg8QrmS6GCMJWPUefGKU74ZHGPD");
 
 // ── 256 KB bump allocator ────────────────────────────────────────────────
 //

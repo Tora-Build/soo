@@ -48,7 +48,7 @@ const SEED_MARKET_FEE_POOL = enc.encode("market_fee_pool");
 const SEED_ADJUDICATOR = enc.encode("adjudicator");
 
 export const SOOTH_CORE_PROGRAM_ID = new PublicKey(
-  "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W",
+  "DHnXeCJThuejPHkpRwg8QrmS6GCMJWPUefGKU74ZHGPD",
 );
 
 

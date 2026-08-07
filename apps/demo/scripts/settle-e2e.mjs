@@ -66,6 +66,8 @@ import {
   soothCoreIdl,
 } from "@sooth/sdk-solana";
 
+import { connect } from "./lib/rpc.mjs";
+
 const DEMO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const RPC = process.env.SOLANA_RPC_URL ?? "http://127.0.0.1:8899";
 const log = (...a) => console.log("[settle-e2e]", ...a);
@@ -83,7 +85,7 @@ if (OUTCOME === undefined) throw new Error(`bad outcome: ${outcomeArg}`);
 const env = readFileSync(resolve(DEMO_ROOT, ".env.local"), "utf8");
 const ev = (k) => env.match(new RegExp(`^${k}=(.*)$`, "m"))?.[1]?.trim();
 
-const connection = new Connection(RPC, "confirmed");
+const connection = connect(RPC);
 const soothCore = new PublicKey(ev("VITE_SOOTH_CORE_ID"));
 const USDC = new PublicKey(ev("VITE_USDC_MINT"));
 const marketRef = `sol:${marketArg}`;

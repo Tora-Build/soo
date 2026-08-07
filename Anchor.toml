@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-sooth_core = "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W"
+sooth_core = "DHnXeCJThuejPHkpRwg8QrmS6GCMJWPUefGKU74ZHGPD"
 
 [programs.localnet]
-sooth_core = "BgcooFgTuDQdoQkjLrZNRM6zM4Bu9bnAEenqdKjjR25W"
+sooth_core = "DHnXeCJThuejPHkpRwg8QrmS6GCMJWPUefGKU74ZHGPD"
 
 [registry]
 url = "https://api.apr.dev"
