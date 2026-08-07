@@ -31,10 +31,12 @@ which could take or strand real money. They are listed in §6 because they are
 the part an auditor should read first.
 
 The capacity consequence, since it is the question most often asked: a
-transaction goes from **5 fills to 256**, and a fill costs ~20× less compute.
+transaction goes from **5 fills to ~256**, and a fill costs ~20× less compute.
 That is not extra parallelism — neither branch parallelizes within a market —
-it is density, and it comes at the cost of maximum book depth. §5 has the
-measurements and the trade.
+it is density. It is bought with book capacity, and the cap is tighter than it
+looks: 256 counts *blocks*, which orders and permanent per-trader seats share,
+so a market stops accepting orders after roughly 256 lifetime wallets. §5 has
+the measurements, the trade, and what to do about it.
 
 The other trade-off: `develop` is younger. `main` has had more eyes and more
 calendar time. What `develop` has instead is a settlement path verified end to
@@ -141,9 +143,10 @@ is for.
 
 Two consequences worth naming:
 
-- **256 orders per market, not per tick.** A different limit — one a busy price
-  level cannot hit sideways, but also a lower total depth than `main` could
-  hold across many ticks. §5 has the trade.
+- **256 blocks per market, not 50 orders per tick.** A busy price level can no
+  longer be hit sideways — but orders and seats share those blocks, so the
+  usable order count is lower and shrinks as traders accumulate. §5 has the
+  measurement.
 - **`close_book_side` / `compact_book_side` are gone.** There is nothing to
   compact.
 
@@ -194,7 +197,9 @@ accounts have to be listed because the fills touch different ticks.
 29,510** — roughly **20× cheaper per fill** — and the binding constraint moves
 from transaction size to book depth.
 
-**Fills per transaction: 5 → 256 (~51×.)**
+**Fills per transaction: 5 → ~256, bounded by book capacity rather than
+transaction size (~51×).** See "The regression" below for why 256 blocks is
+fewer than 256 orders in practice.
 
 ### Throughput
 
@@ -227,15 +232,83 @@ could move between them: partial fills at drifting prices, with no way to
 express "all of it or none". On `develop` the same sweep is one transaction
 against the book state at that instant.
 
-### The regression
+### The regression, and it is worse than "lower depth"
 
-`develop` caps a market at **256 resting orders in total**. `main` allowed 50
-per tick across many ticks, so its theoretical maximum book depth was far
-higher.
+`MAX_ORDERS = 256` bounds **blocks, not orders** — and orders and seats share
+one arena. A seat is allocated per distinct trader and is **never freed**:
+`redeem_book_seat` zeroes it and leaves it in place deliberately, so that a
+stale index cannot resolve to somebody else's money
+(`instructions/redeem_book_seat.rs:38`). So the real constraint is
 
-This is a real trade, not a free win: density and atomicity bought with maximum
-depth. At 256 orders the account is ~20 KB and ~$2.9 of rent at full extension;
-raising the cap means a bigger account, not a redesign.
+```
+live orders + lifetime distinct traders ≤ 256
+```
+
+Measured: 60 makers fit in a 150-block book (2 blocks each — one order, one
+seat); 80 did not.
+
+That is not a depth ceiling, it is an **expiry date**. A market stops accepting
+orders once roughly 256 wallets have ever touched it — about 128 traders if
+each holds one order — and no amount of cancelling frees the space back,
+because the seats persist. `main` had no equivalent limit: its cap was 50 per
+tick across as many ticks as existed.
+
+This needs fixing before any real market launches. Two ways:
+
+- **Reclaim seats.** A seat with zero credit, zero net and no live orders
+  carries no information. Freeing it removes the permanent per-trader cost
+  entirely, and the cap goes back to meaning live depth. The stale-index risk
+  the comment cites is real but is the usual generation-counter problem.
+- **Raise the cap.** Nothing in the code stops you (see below), but sizing the
+  book for *lifetime traders* rather than *live depth* is treating the symptom.
+
+### Headroom if the cap is raised
+
+Measured against a devnet RPC for rent, and on LiteSVM for the walk. The
+insert is O(n) but costs about **60 CU per step**, invisible against the ~40k
+fixed cost, so it is not the binding constraint anyone expects it to be.
+
+| blocks | account | rent | worst-case insert |
+|---:|---:|---:|---:|
+| 256 | 16.5 KB | 0.116 SOL | ~15k CU |
+| 1,024 | 65.7 KB | 0.458 SOL | ~61k CU |
+| 4,096 | 262 KB | 1.83 SOL | ~246k CU |
+| 16,384 | 1.05 MB | 7.30 SOL | ~983k CU |
+| 163,840 | 10.5 MB | 72.98 SOL | — |
+
+What binds, in order: **rent** (paid per market at creation), then the
+**growth rate** — Solana permits 10,240 bytes per instruction, so 160 blocks
+per instruction, and 4,096 blocks needs 26 `book_init` instructions across
+several transactions — then the **insert walk** past ~16k blocks. The absolute
+ceiling is Solana's 10 MiB account limit at 163,840 blocks. The block index is
+`u32`, so index space is never the constraint.
+
+### How much depth is actually needed
+
+From Polymarket's public CLOB, the 30 most liquid open markets on 2026-08-07:
+
+```
+price levels per book:   min 63    median 76    max 101
+```
+
+Polymarket prices on a 1¢ grid, so only ~99 levels exist — those books occupy
+most of the available ladder. Our grid is 999 ticks (0.1¢), ten times finer,
+so equivalent coverage could span more levels if makers use the granularity.
+
+Two caveats that cannot be removed from public data:
+
+- Those are **aggregated price levels, not individual orders**. Polymarket's
+  CLOB aggregates by price; this book stores individual orders because it keeps
+  FIFO time priority. Orders ≥ levels and the multiplier is not observable.
+- **Kalshi yielded nothing.** Its public endpoints returned no order books and
+  null volume unauthenticated across 200 markets, so no comparison is offered
+  rather than an extrapolated one.
+
+Sizing on that: ~100 levels of Polymarket-class coverage with several orders
+per level is a few hundred live orders. **4,096 blocks** (1.83 SOL, ~18% of the
+CU budget on a worst-case insert) covers that with room for a few thousand
+lifetime traders — but only seat reclamation makes the number mean live depth
+rather than cumulative footfall.
 
 ### Caveats
 
@@ -359,9 +432,12 @@ not useful for deciding anything.
   market keys, case-folded pubkeys, WAD-vs-base-unit confusion all came from
   it. It is confined to the demo: nothing in `programs-core` or `sdk-solana`
   imports it.
-- **Maximum book depth is lower.** 256 resting orders per market against
-  `main`'s 50-per-tick across many ticks. Deliberate (§5), but it is a ceiling
-  `main` did not have, and a market that reaches it rejects new makers.
+- **A market has a lifetime-trader ceiling, and it is low.** `MAX_ORDERS = 256`
+  counts blocks, shared by orders and by seats that are never freed, so a
+  market stops accepting orders after roughly 256 distinct wallets have ever
+  traded it — permanently, since cancelling does not release a seat. `main` had
+  no equivalent limit. This should be fixed before a real launch; §5 gives two
+  ways.
 - **No parallelism within a market.** Every trade write-locks the book, so one
   market's throughput is capped by Solana's 12M CU per-account budget however
   many validators are free. `main` has the same limit for a different reason.
