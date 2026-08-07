@@ -31,9 +31,10 @@ which could take or strand real money. They are listed in §6 because they are
 the part an auditor should read first.
 
 The capacity consequence, since it is the question most often asked: a
-transaction goes from **5 fills to ~256**, and a fill costs ~20× less compute.
+transaction goes from **5 fills to several hundred**, and a fill costs ~20×
+less compute.
 That is not extra parallelism — neither branch parallelizes within a market —
-it is density. It is bought with book capacity: 256 counts *blocks*, which
+it is density. It is bought with book capacity: the cap counts *blocks*, which
 orders share with one seat per currently-seated trader. §5 has the
 measurements and the trade.
 
@@ -128,7 +129,7 @@ One account per market:
 
 ```
 seeds = [b"book", market_id]
-MAX_ORDERS = 256, BLOCK_SIZE = 64 bytes, zero-copy via bytemuck
+MAX_ORDERS = 4096, BLOCK_SIZE = 64 bytes, zero-copy via bytemuck
 ```
 
 A linked-list arena inside a single zero-copy account: orders and seats are
@@ -142,10 +143,9 @@ is for.
 
 Two consequences worth naming:
 
-- **256 blocks per market, not 50 orders per tick.** A busy price level can no
-  longer be hit sideways — but orders and seats share those blocks, so the
-  usable order count is lower and shrinks as traders accumulate. §5 has the
-  measurement.
+- **4,096 blocks per market, not 50 orders per tick.** A busy price level can
+  no longer be hit sideways. Orders and seats share those blocks, so the usable
+  order count is lower than the constant suggests — §5 has the measurement.
 - **`close_book_side` / `compact_book_side` are gone.** There is nothing to
   compact.
 
@@ -196,9 +196,11 @@ accounts have to be listed because the fills touch different ticks.
 29,510** — roughly **20× cheaper per fill** — and the binding constraint moves
 from transaction size to book depth.
 
-**Fills per transaction: 5 → ~256, bounded by book capacity rather than
-transaction size (~51×).** See "The regression" below for why 256 blocks is
-fewer than 256 orders in practice.
+**Fills per transaction: 5 → ~900, bounded by compute rather than transaction
+size.** `main`'s ceiling was the 1232-byte packet; here the bytes are flat, so
+the limit is the 1.4M CU budget at ~1,448 CU/fill (and whatever `match_limit`
+the caller passes). See "The cost side" below for why a block is not the same
+thing as an order.
 
 ### Throughput
 
@@ -233,19 +235,20 @@ against the book state at that instant.
 
 ### The cost side: seats share the arena
 
-`MAX_ORDERS = 256` bounds **blocks, not orders**, and orders share the arena
-with seats — one per distinct trader. So the constraint is
+`MAX_ORDERS` bounds **blocks, not orders**, and orders share the arena with
+seats — one per distinct trader. So the constraint is
 
 ```
-live orders + seated traders ≤ 256
+live orders + seated traders ≤ MAX_ORDERS
 ```
 
 Measured: 60 makers fit a 150-block book at two blocks each (one order, one
 seat); 80 did not.
 
 Seats were originally never freed, which made that a *lifetime* limit rather
-than a depth one — a market stopped accepting orders once ~256 wallets had ever
-touched it, and cancelling never gave the space back. Worse, `take_credit` used
+than a depth one — with the cap then at 256, a market stopped accepting orders
+once ~256 wallets had ever touched it, and cancelling never gave the space
+back. Worse, `take_credit` used
 the allocating seat lookup, so `book_withdraw` from a wallet that had never
 traded allocated a block to record a zero balance: ~256 throwaway signers could
 fill the arena and brick a market for the price of transaction fees.
@@ -266,30 +269,37 @@ about the matcher and too broad about everywhere else.
 The limit is now what it should be: **live** orders plus **currently-seated**
 traders, where a trader stops being seated as soon as they withdraw.
 
-### What 256 blocks means in people
+### What the cap means in people
 
-Not 256 users. It depends what they are doing, because a trader placing an
+Not a user count. It depends what they are doing, because a trader placing an
 order needs a seat *and* an order block:
 
-| a trader who is… | blocks | fits in 256 |
+| a trader who is… | blocks | fits in 4,096 |
 |---|---:|---:|
-| holding a position (seat only) | 1 | **256** |
-| resting one order | 2 | **128** |
+| holding a position (seat only) | 1 | **4,096** |
+| resting one order | 2 | **2,048** |
 
 Pinned by `capacity_in_participants_not_orders`, because it is the number
 anyone sizing a market needs and it is not the constant's face value.
 
-The first row is the one that binds. A prediction market is buy-and-hold: a
-position occupies a seat from the fill until the holder redeems after
-settlement, so **256 concurrent position holders fills the market** and leaves
-no room to quote. That is small for anything with real traction — the
-Polymarket books in §5 imply hundreds of live orders on their own, before
-counting anyone holding.
+`MAX_ORDERS` was 256, which meant 256 concurrent position holders. The first
+row is the one that binds: a prediction market is buy-and-hold, so a position
+occupies its seat from the fill until redemption after settlement — months, on
+a long-dated market. A market with 256 holders had no room left for anyone to
+quote, and the Polymarket books in §5 imply hundreds of live orders on their
+own before counting a single holder.
 
-So the cap is now a sensible thing to *tune* rather than a countdown to a dead
-market, and 256 is the wrong tuning for a busy one. 4,096 blocks costs 1.83 SOL
-and ~18% of the CU budget on a worst-case insert; that is the change to make
-before a market is expected to carry real volume.
+Raising it was cheap because **the cap is a ceiling, not an allocation**.
+`book_init` takes an initial capacity and `book_grow` extends toward the limit
+one realloc at a time, permissionlessly, so a thin market still pays thin-market
+rent (0.116 SOL at 256 blocks) and only a market that earns the room pays for
+it (1.83 SOL fully extended). Reaching the ceiling takes 26 `book_grow` calls,
+since Solana permits 10,240 bytes per instruction.
+
+Nothing walks the whole book on chain — `iter_side` is test-only and the
+event's fill list is bounded by `match_limit` — so a bigger arena does not make
+a fill more expensive. The worst-case *insert* grows with depth at ~60 CU/step,
+which is ~246k CU at 4,096, about 18% of the budget.
 
 ### Headroom if the cap is raised
 
@@ -334,13 +344,12 @@ Two caveats that cannot be removed from public data:
   rather than an extrapolated one.
 
 Sizing on that: ~100 levels of Polymarket-class coverage with several orders
-per level is a few hundred live orders, plus a block for each trader holding
-un-withdrawn credit. 256 is plausible for a thin market and tight for a busy
-one; **4,096 blocks** (1.83 SOL, ~18% of the CU budget on a worst-case insert)
-buys a lot of headroom cheaply. Now that seats are reclaimed the number means
-live depth rather than cumulative footfall, so it can be sized against the
-Polymarket figures above rather than against how many people have ever
-traded.
+per level is a few hundred live orders, plus a block for each trader holding a
+position or un-withdrawn credit. The cap is **4,096 blocks** — comfortably past
+that, at 1.83 SOL fully extended and ~18% of the CU budget on a worst-case
+insert. Because seats are reclaimed and growth is incremental, that number now
+tracks live depth rather than cumulative footfall, and a thin market never pays
+for the headroom.
 
 ### Caveats
 
@@ -464,11 +473,11 @@ not useful for deciding anything.
   market keys, case-folded pubkeys, WAD-vs-base-unit confusion all came from
   it. It is confined to the demo: nothing in `programs-core` or `sdk-solana`
   imports it.
-- **256 blocks is still a real ceiling**, now on live orders plus
-  currently-seated traders rather than lifetime ones (§5). A trader holding
-  un-withdrawn credit holds a block, which is correct but means a busy market
-  can still fill up. 4,096 blocks costs 1.83 SOL and ~18% of the CU budget on a
-  worst-case insert if that proves tight.
+- **4,096 blocks is a real ceiling**, on live orders plus currently-seated
+  traders (§5) — about 4,096 position holders or 2,048 makers. Large enough for
+  the depth the public Polymarket books show, but a genuinely popular market
+  would still reach it, and the next raise costs CU on the insert walk rather
+  than being free.
 - **No parallelism within a market.** Every trade write-locks the book, so one
   market's throughput is capped by Solana's 12M CU per-account budget however
   many validators are free. `main` has the same limit for a different reason.

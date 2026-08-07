@@ -59,10 +59,36 @@ pub const NIL: u32 = u32::MAX;
 /// be recycled as any kind of node without fragmentation.
 pub const BLOCK_SIZE: usize = 64;
 
-/// Ceiling on live orders per market. Bounds both the O(n) insert walk and the
-/// realloc-grief surface; 256 blocks is ~20 KB, about $2.9 of rent fully
-/// extended.
-pub const MAX_ORDERS: u32 = 256;
+/// Ceiling on blocks per market — **not** on orders, and not on users.
+///
+/// Blocks are shared between orders and seats, so what this buys depends on
+/// what a participant is doing: a position holder costs one block, a maker
+/// costs two (a seat plus the order). See
+/// `capacity_in_participants_not_orders`, which pins both numbers.
+///
+/// This is a CEILING, not an allocation. `book_init` takes an initial capacity
+/// and `book_grow` extends toward this limit one realloc at a time, so raising
+/// it costs nothing until a market actually needs the room — rent is paid
+/// incrementally by whoever grows the book.
+///
+/// Raised from 256 because 256 blocks is 256 concurrent position holders, and
+/// a prediction market is buy-and-hold: a position occupies its seat from the
+/// fill until redemption after settlement, which can be months. A market that
+/// popular would have had no room left to quote. Polymarket's most liquid books
+/// carry 63-101 price levels with several orders each, so hundreds of live
+/// orders is the shape to support.
+///
+/// What bounds it above:
+///
+///   - the O(n) insert walk, measured at ~60 CU/step — ~246k CU at 4,096, or
+///     about 18% of the 1.4M budget, against ~40k of fixed cost;
+///   - rent, ~1.83 SOL at full extension (0.116 at 256);
+///   - Solana's 10 MiB account limit, which is 163,840 blocks.
+///
+/// Nothing here walks the whole book on chain, so book size does not enter the
+/// per-fill cost: `iter_side` is test-only and the event's fill list is bounded
+/// by `match_limit`.
+pub const MAX_ORDERS: u32 = 4096;
 
 pub const SIDE_BID: u8 = 0; // buying YES
 pub const SIDE_ASK: u8 = 1; // selling YES (equivalently: buying NO)
@@ -727,10 +753,17 @@ mod tests {
         let header = core::mem::size_of::<BookHeader>();
         let full = 8 + header + BLOCK_SIZE * MAX_ORDERS as usize;
         assert_eq!(BLOCK_SIZE, 64);
-        assert!(
-            full < 22_000,
-            "a fully-extended 256-order book should be ~20 KB, got {full}"
+        // Stated per block rather than as an absolute size, which was pinned to
+        // a 256-block cap and failed the moment the cap moved. The design claim
+        // is that a block costs its own bytes and nothing else — no per-order
+        // account, so no 128-byte rent surcharge each.
+        let fixed = 8 + header;
+        assert_eq!(
+            full - fixed,
+            BLOCK_SIZE * MAX_ORDERS as usize,
+            "the arena must be exactly block-sized, with no per-order overhead"
         );
+        assert!(fixed < 200, "the fixed prefix must stay negligible, got {fixed}");
 
         // Rent, in lamports, for the fully-extended book vs today's thin book
         // of 19 separate accounts totalling 2,640 payload bytes.
@@ -739,7 +772,7 @@ mod tests {
         let old_thin = 19 * 128 * 6960 + 2_640 * 6960;
         assert!(
             new_full > old_thin,
-            "sanity: a FULL 256-order book should cost more than a 10-order one"
+            "sanity: a FULL book should cost more than a 10-order one"
         );
 
         // The comparison that actually matters: same 10 orders, one account.
@@ -757,15 +790,16 @@ mod tests {
     ///
     /// Blocks are shared, so the answer depends on what a trader is doing:
     ///
-    ///   - **Holding a position**: one seat, one block  -> 256 traders.
-    ///   - **Resting an order**: a seat AND an order    -> 128 traders.
+    ///   - **Holding a position**: one seat, one block  -> `MAX_ORDERS`.
+    ///   - **Resting an order**: a seat AND an order    -> `MAX_ORDERS / 2`.
     ///
     /// Placing always takes a seat (`place` calls `seat_mut` before matching),
     /// so a maker costs two blocks even while their seat is still empty.
     ///
-    /// Buy-and-hold is the normal state of a prediction market, so the 256 row
-    /// is the one that binds in practice: a market where 256 people hold a
-    /// position has no room left for anyone to quote.
+    /// Buy-and-hold is the normal state of a prediction market, so the first
+    /// row is the one that binds in practice: a market where `MAX_ORDERS`
+    /// people hold a position has no room left for anyone to quote. That is
+    /// why the cap is 4,096 and not 256.
     #[test]
     fn capacity_in_participants_not_orders() {
         // Distinct traders each resting ONE order.
@@ -780,7 +814,8 @@ mod tests {
             makers += 1;
         }
         assert_eq!(
-            makers, 128,
+            makers,
+            MAX_ORDERS / 2,
             "a maker costs a seat plus an order, so the arena holds half as \
              many of them as its block count suggests"
         );

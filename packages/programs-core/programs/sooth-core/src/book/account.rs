@@ -283,18 +283,40 @@ mod tests {
     #[test]
     fn growth_never_exceeds_solanas_per_instruction_realloc_cap() {
         // MAX_PERMITTED_DATA_INCREASE is measured from the length at
-        // instruction entry, so a single step may not exceed it — asking for
-        // the full 256-order cap from empty has to take more than one call.
-        let from_empty = book_space(0);
-        let step = grow_target(from_empty, MAX_ORDERS as usize).unwrap();
+        // instruction entry, so a single step may not exceed it — reaching the
+        // cap from empty always takes several calls.
+        //
+        // This used to assert "two steps reach 256", which stopped being true
+        // the moment the cap moved. The invariants that actually matter are
+        // that no step overshoots, that every step makes progress, and that the
+        // walk terminates exactly at capacity — so assert those instead of a
+        // step count, and the test survives the next change to MAX_ORDERS.
+        let mut len = book_space(0);
+        let mut steps = 0;
+        while let Some(next) = grow_target(len, MAX_ORDERS as usize) {
+            assert!(
+                next - len <= MAX_PERMITTED_DATA_INCREASE,
+                "step {steps} grew {} bytes, over the {MAX_PERMITTED_DATA_INCREASE} cap",
+                next - len
+            );
+            assert!(next > len, "step {steps} made no progress");
+            len = next;
+            steps += 1;
+            assert!(steps < 10_000, "grow walk did not terminate");
+        }
         assert!(
-            step - from_empty <= MAX_PERMITTED_DATA_INCREASE,
-            "one realloc step must stay within the cap"
+            capacity_for(len) >= MAX_ORDERS as usize,
+            "the walk must end at full capacity, got {}",
+            capacity_for(len)
         );
-        // 10_240 / 64 = 160 blocks per step, so two steps reach 256.
-        let step2 = grow_target(step, MAX_ORDERS as usize).unwrap();
-        assert!(capacity_for(step2) >= MAX_ORDERS as usize);
-        assert_eq!(grow_target(step2, MAX_ORDERS as usize), None, "then full");
+        // The realloc cap divided into the arena — the number of `book_grow`
+        // calls a market needs to reach the ceiling.
+        assert_eq!(
+            steps,
+            (book_space(MAX_ORDERS as usize) - book_space(0))
+                .div_ceil(MAX_PERMITTED_DATA_INCREASE),
+            "step count should be exactly the size delta over the realloc cap"
+        );
     }
 
     #[test]
@@ -326,11 +348,15 @@ mod tests {
     #[test]
     fn a_full_book_fits_the_rent_budget_in_the_design_doc() {
         let full = book_space(MAX_ORDERS as usize);
-        // (128 + bytes) * 6960 lamports, SOL at $200.
+        // (128 + bytes) * 6960 lamports.
         let lamports = (128 + full) as u64 * 6960;
-        let usd_cents = lamports * 200 / 1_000_000_000 / 10_000_000 * 100;
-        assert!(full < 22_000, "256 orders should be ~20 KB, got {full}");
-        let _ = usd_cents;
+        let sol = lamports as f64 / 1e9;
+        // A fully-extended book is the worst case a market ever pays, and it is
+        // only reached by a market that earned it — `book_grow` is incremental.
+        assert!(
+            sol < 2.5,
+            "a full {MAX_ORDERS}-block book should stay under 2.5 SOL, got {sol}"
+        );
 
         // The comparison that motivates the rewrite: 10 orders in ONE account
         // against today's 19 accounts for the same book.

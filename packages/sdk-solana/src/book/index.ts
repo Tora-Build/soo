@@ -51,8 +51,15 @@ export const BLOCKS_OFFSET = DISCRIMINATOR_LEN + HEADER_LEN;
 export const BLOCK_SIZE = 64;
 /** `arena::NIL` — u32::MAX, not 0, because 0 is a valid block index. */
 export const NIL = 0xffffffff;
-/** `arena::MAX_ORDERS`. */
-export const MAX_ORDERS = 256;
+/**
+ * `arena::MAX_ORDERS` — a ceiling on BLOCKS, which orders and seats share.
+ *
+ * A position holder costs one block and a maker costs two (a seat plus the
+ * order), so this is not a user count and not an order count. Mirrored by hand
+ * from the Rust, and pinned by `book-constants.test.ts` so the two cannot
+ * drift.
+ */
+export const MAX_ORDERS = 4096;
 
 export const SIDE_BID = 0; // buy YES
 export const SIDE_ASK = 1; // sell YES == buy NO at (1 - p)
