@@ -91,3 +91,24 @@ if (isEntrypoint) {
 export { BookStore, type BookEventRow, type BookFillRow } from "./db.js";
 export { ingestOnce, toRows, type IngestConnection, type IngestOptions, type IngestResult } from "./ingest.js";
 export { startIndexer, type IndexerConfig, type IndexerHandle } from "./indexer-run.js";
+
+// Account Archive (Alchemy). Complements the event index rather than replacing
+// it: the archive is per SLOT, so two transactions in one slot collapse to one
+// state and a fill becomes unobservable — while an event records it exactly.
+// State and charts come from here; trade history comes from the index.
+export {
+  getAccountAt,
+  httpRpc,
+  walkWrites,
+  ArchiveUnsupportedError,
+  type ArchiveAccount,
+  type ArchiveAt,
+  type RpcCall,
+} from "./account-archive.js";
+export {
+  lmsrPrice,
+  priceAtSlot,
+  priceHistory,
+  toPricePoint,
+  type PricePoint,
+} from "./price-history.js";

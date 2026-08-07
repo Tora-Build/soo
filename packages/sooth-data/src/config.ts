@@ -49,7 +49,47 @@ export const ACTIVE_CHAIN = CHAIN_CONFIGS[SOOTH_DATA_CHAIN];
 
 export const DEFAULT_RPC_URL = ACTIVE_CHAIN.rpcUrl;
 
-export const RPC_URL = process.env.RPC_URL || DEFAULT_RPC_URL;
+/**
+ * The RPC this service talks to.
+ *
+ * `ALCHEMY_API_KEY` is a convenience over `RPC_URL`: Alchemy's Solana
+ * endpoints carry the Account Archive, which answers `getAccountInfo` at any
+ * past slot. That is what makes price history a series of account reads
+ * instead of a replay of every trade, and it is also a far better backfill
+ * source for the event indexer — a public validator prunes and rate-limits,
+ * which is how this service came to measure ~2.7s cold and a 429 on the
+ * second request.
+ *
+ * Explicit `RPC_URL` still wins, so pointing at a local validator or another
+ * provider needs no code change.
+ */
+export const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || "";
+
+const ALCHEMY_HOSTS: Record<SoothDataChain, string> = {
+  mainnet: "solana-mainnet",
+  devnet: "solana-devnet",
+  // Alchemy has no localnet; a key is ignored here and the local validator is
+  // used, which is what you want when developing against one.
+  localnet: "",
+};
+
+function alchemyUrl(): string | null {
+  const host = ALCHEMY_HOSTS[SOOTH_DATA_CHAIN];
+  if (!ALCHEMY_API_KEY || !host) return null;
+  return `https://${host}.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+}
+
+export const RPC_URL =
+  process.env.RPC_URL || alchemyUrl() || DEFAULT_RPC_URL;
+
+/**
+ * Whether the configured RPC is expected to serve historical account reads.
+ *
+ * Used to decide whether price history can be served from the archive or has
+ * to be reported as unavailable — better than issuing the request and turning
+ * an "unknown field `slot`" error into a 500.
+ */
+export const HAS_ACCOUNT_ARCHIVE = Boolean(alchemyUrl());
 
 export const PORT = Number(process.env.PORT || 42069);
 
