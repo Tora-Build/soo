@@ -172,3 +172,49 @@ describe("toBookPlace — bounds and defaults", () => {
     expect(r.limitTick).toBe(NUM_TICKS - priceToTick(0.3333));
   });
 });
+
+// The caller contract, pinned directly — this is what regressed.
+//
+// `SoothBookTerminal.tsx` used to compute
+// `priceForHook = isYes ? limitPriceNum : 1 - limitPriceNum` before calling
+// `placeOrder`, on top of the complement `toBookPlace` already does from
+// `outcome`. Both landed in the same commit that introduced this file, so the
+// 18 tests here — all correct in isolation, all passing the RAW price as the
+// docstring asks — never saw the double complement: nothing exercised the
+// call site.
+//
+// The result was never an error. A 49c "buy NO" rested at the tick for a 49c
+// "sell NO" instead — silently landing 2x closer to the market than the
+// trader intended. It read as unexpected self-trading, because two ordinary
+// resting orders a trader believed were 2c apart were actually adjacent.
+describe("the caller must pass the RAW outcome price, never pre-complemented", () => {
+  it("matches the documented quadrant table for a representative order in each", () => {
+    // Table from the module docs, restated as the exact call shape a form
+    // makes: outcome in the hook's inverted encoding, price as the decimal the
+    // user typed for THAT outcome, untouched.
+    expect(place(YES, 0.6, true)).toMatchObject({ side: SIDE_BID, limitTick: 600 });
+    expect(place(YES, 0.6, false)).toMatchObject({ side: SIDE_ASK, limitTick: 600 });
+    expect(place(NO, 0.49, true)).toMatchObject({ side: SIDE_ASK, limitTick: 510 });
+    expect(place(NO, 0.51, false)).toMatchObject({ side: SIDE_BID, limitTick: 490 });
+  });
+
+  it("a NO buy at 49c and a NO sell at 51c never cross", () => {
+    // The exact shape of the regression: a NO buy at 49c and a NO sell at
+    // 51c, expected to rest 2c apart with nothing to cross.
+    //
+    // Pre-complementing did not just narrow that gap — it INVERTED which side
+    // sits where. The buggy path (`toBookPlace` called with `1 - price`)
+    // produces ASK@490 for the buy and BID@510 for the sell: the resting
+    // "sell" ends up priced ABOVE where the "buy" rests, and a bid crosses an
+    // ask whenever bid_tick >= ask_tick (book/matcher.rs `crosses`) — 510 >=
+    // 490 crosses by 20 ticks, not merely touches. That inversion is why this
+    // asserts the inequality between the two outcomes, not just their values:
+    // equal ticks would also be a bug this catches, but this one crossed by
+    // flipping their relative order entirely.
+    const buy = place(NO, 0.49, true);
+    const sell = place(NO, 0.51, false);
+    expect(buy.side).toBe(SIDE_ASK);
+    expect(sell.side).toBe(SIDE_BID);
+    expect(sell.limitTick).toBeLessThan(buy.limitTick);
+  });
+});

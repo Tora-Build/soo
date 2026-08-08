@@ -388,10 +388,19 @@ function SoothBookTerminalActive({
     if (!shares || sharesNum <= 0 || isPending) return;
     if (insufficientBalance || insufficientShares || tickOutOfRange) return;
     const outcome: 0 | 1 = isYes ? 0 : 1;
-    const priceForHook = isYes ? limitPriceNum : 1 - limitPriceNum;
+    // Send the RAW price of the selected outcome — `toBookPlace` (via
+    // `placeOrder` -> `useOrderbookTrade`) does its own YES-axis complement
+    // from `outcome`, per its documented contract ("price: Price of the
+    // outcome named above"). This used to pre-complement here too:
+    // `isYes ? limitPriceNum : 1 - limitPriceNum`. The two complements don't
+    // cancel — they compound into the WRONG tick every time a NO order was
+    // placed, silently: a 49c "buy NO" rested at the tick for 49c "sell NO"
+    // instead, moving every NO order onto its mirror price with no error and
+    // no visible sign beyond ticks 2x closer together than intended, which
+    // reads as unexpected self-crossing rather than as a price bug.
     const success = await placeOrder(
       outcome,
-      priceForHook.toFixed(4),
+      limitPriceNum.toFixed(4),
       shares,
       isBuying,
       // Sell is always escrow (burn shares); buy is non-escrow.
