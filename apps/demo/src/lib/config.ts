@@ -25,19 +25,55 @@ export interface DemoConfig {
   node: SoothNode;
   marketRef: string | null;
   extraMarketRefs: string[];
+  /**
+   * WebSocket endpoint for `confirmTransaction`'s `signatureSubscribe`.
+   *
+   * `<ConnectionProvider>` derives this from `rpcUrl` by swapping the scheme
+   * when no override is given, which is right for a validator and wrong for a
+   * provider that serves RPC but not subscriptions. Alchemy's devnet endpoint
+   * answers `getAccountInfo` fine and returns `-32601 Method not found` for
+   * anything subscription-based on this key — every confirm then retries a
+   * subscribe that can never succeed, and every write hangs at "confirming".
+   *
+   * Always the public endpoint's WS, regardless of which HTTP provider is
+   * configured: confirms are the only thing this carries, so the public
+   * endpoint's stricter rate limit is not a concern here the way it is for
+   * reads.
+   */
+  wsUrl: string;
 }
 
 const env = ((
   import.meta as unknown as { env?: Record<string, string | undefined> }
 ).env ?? {}) as Record<string, string | undefined>;
 
+/**
+ * The WS endpoint to pair with `rpcUrl`. See `DemoConfig.wsUrl`.
+ *
+ * `VITE_SOLANA_WS_URL` wins outright. Otherwise: a local validator derives
+ * its own ws port correctly by scheme-swapping, so leave those alone; any
+ * other HTTP endpoint — devnet direct or a keyed provider — gets the public
+ * devnet subscription endpoint, since that is the one guaranteed to answer
+ * `signatureSubscribe`.
+ */
+function resolveWsUrl(rpcUrl: string): string {
+  if (env?.VITE_SOLANA_WS_URL) return env.VITE_SOLANA_WS_URL;
+  if (/^https?:\/\/(127\.0\.0\.1|localhost)/.test(rpcUrl)) {
+    return rpcUrl.replace(/^http/, "ws");
+  }
+  return "wss://api.devnet.solana.com/";
+}
+
+const rpcUrl = env?.VITE_SOLANA_RPC_URL ?? DEFAULT_DEVNET_RPC;
+
 export const demoConfig: DemoConfig = {
+  wsUrl: resolveWsUrl(rpcUrl),
   node: {
     id: "solana-devnet",
     chainKind: "solana",
     chainId: "solana:devnet",
     cluster: "devnet",
-    rpcUrl: env?.VITE_SOLANA_RPC_URL ?? DEFAULT_DEVNET_RPC,
+    rpcUrl,
     programs: {
       // The adapter reads `soothCore` and `usdcMint` — nothing else. The
       // previous `soothAmm`/`soothMarket` keys were silently ignored after

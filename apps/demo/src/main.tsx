@@ -88,7 +88,16 @@ function Root() {
     // even though useWallet().publicKey is still populated. The next
     // wallet.signTransaction() then throws "not connected"
     // (anza-xyz/wallet-adapter#686).
-    <ConnectionProvider endpoint={demoConfig.node.rpcUrl}>
+    <ConnectionProvider
+      endpoint={demoConfig.node.rpcUrl}
+      config={{ commitment: "confirmed", wsEndpoint: demoConfig.wsUrl }}
+    >
+      {/* `wsEndpoint` matters as soon as `rpcUrl` is not a validator: web3.js
+          scheme-swaps http->ws by default, and a provider that serves RPC but
+          not subscriptions (Alchemy's devnet endpoint, on this key) then
+          answers every `signatureSubscribe` with -32601 — every write hangs
+          at "confirming" with nothing on screen explaining why.
+          See `resolveWsUrl` in lib/config.ts. */}
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           {IS_TEST_MODE && <TestWalletBridge />}
