@@ -142,20 +142,6 @@ export function __resetPlacedAmounts(): void {
   placedFetchedFor = null;
 }
 
-/**
- * Surface a self-trade-prevention notice.
- *
- * Kept behind a tiny indirection so the shim does not import a toast library
- * directly — the demo wires this at startup, and tests leave it unset.
- */
-let selfTradeNotifier: ((msg: string) => void) | null = null;
-export function setSelfTradeNotifier(fn: ((msg: string) => void) | null): void {
-  selfTradeNotifier = fn;
-}
-function toastSelfTrade(msg: string): void {
-  selfTradeNotifier?.(msg);
-}
-
 /** USDC base units (1e6) -> WAD (1e18), the scale upstream formatters use. */
 const BASE_TO_WAD = 1_000_000_000_000n;
 
@@ -1381,42 +1367,17 @@ async function dispatchBookPlace(
   });
   // Submit directly rather than through `submitAndSynth`, because that returns
   // a SYNTHESISED 32-byte hex hash for upstream's EVM typing — not a signature
-  // any RPC can look up. The real one is needed to read the program's logs.
+  // any RPC can look up, and callers of this path want the real one.
+  //
+  // No self-trade toast: the matcher steps over a trader's own crossing
+  // resting orders and cancels/refunds them rather than trading against
+  // itself, and that is silent by design now — asked for directly, after the
+  // wording proved confusing across the cases it actually fires in. The
+  // program still logs it (`msg!("self-trade prevention: ...")`), so it is
+  // recoverable from a transaction's logs for debugging without surfacing a
+  // toast on every order that happens to replace one of the trader's own.
   const receipt = await ctx.adapter.submit(req, signer);
   const realSignature = receipt.txId.replace(/^sol:/, "");
-
-  // Say when self-trade prevention ate the order.
-  //
-  // The matcher never trades a trader against themselves: it steps over their
-  // own resting orders, fills everyone else, and CANCELS whatever is left
-  // rather than resting it into a book crossed against them. The transaction
-  // succeeds either way, so an order that was entirely self-crossing simply
-  // vanishes — no fill, no resting order, no error. "It does not place
-  // anything" with nothing to explain why.
-  //
-  // The program already says so in its logs; this surfaces it rather than
-  // duplicating the matcher's reasoning off-chain, which is what the removed
-  // pre-check got wrong.
-  try {
-    const tx = await ctx.connection.getTransaction(realSignature, {
-      maxSupportedTransactionVersion: 0,
-      commitment: "confirmed",
-    });
-    const line = (tx?.meta?.logMessages ?? []).find((l) =>
-      l.includes("self-trade prevention"),
-    );
-    if (line) {
-      const m = line.match(/cancelled (\d+) of your own/);
-      const shares = (v: string) => Number(BigInt(v)) / 1_000_000;
-      toastSelfTrade(
-        m
-          ? `Your order was placed. ${shares(m[1]!)} shares of your own resting orders were cancelled and refunded to make way.`
-          : "Your order was placed; some of your own resting orders were cancelled and refunded to make way.",
-      );
-    }
-  } catch {
-    // Diagnostics only. Never fail a landed transaction over a missing log.
-  }
   return synthHashFromSignature(realSignature);
 }
 
