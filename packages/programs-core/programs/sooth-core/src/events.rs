@@ -121,7 +121,8 @@ pub struct MarketCreated {
     pub market: Pubkey,
     pub creator: Pubkey,
     pub adjudicator: Pubkey,
-    pub vault: Pubkey,
+    pub vault_book: Pubkey,
+    pub vault_amm: Pubkey,
     /// Initial LMSR liquidity `b` in WAD. Stored on `AmmState` after ix4.
     pub initial_b: u128,
     pub start_time: i64,

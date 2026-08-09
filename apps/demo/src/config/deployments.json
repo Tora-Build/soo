@@ -7,8 +7,9 @@
       "coreVersion": "0.2.1",
       "contracts": {
         "MockUSDC": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX",
+        "AmmToken": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu",
         "baseTokenDecimals": 6,
-        "_comment": "Synthetic 0x… placeholders for upstream EVM hooks that gate on !!engineAddress. The Solana chain-shim ignores `address` for AMM reads (routes by functionName), so any non-empty hex unblocks the gate. Real PDAs live in @sooth/sdk-solana. SoothBook is a placeholder that satisfies SoothBookTerminal's `!contracts.SoothBook` gate; the chain-shim resolves the real sooth_book program-id from the SDK adapter (DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X).",
+        "_comment": "Synthetic 0x\u2026 placeholders for upstream EVM hooks that gate on !!engineAddress. The Solana chain-shim ignores `address` for AMM reads (routes by functionName), so any non-empty hex unblocks the gate. Real PDAs live in @sooth/sdk-solana. SoothBook is a placeholder that satisfies SoothBookTerminal's `!contracts.SoothBook` gate; the chain-shim resolves the real sooth_book program-id from the SDK adapter (DKxaVqA38Y2zvtM2fqoAJJQUPCefSoCL41dCjeACgo5X).",
         "AMMEngine": "0x0000000000000000000000000000000000000a01",
         "LaunchpadEngine": "0x0000000000000000000000000000000000000a02",
         "OrderEngine": "0x0000000000000000000000000000000000000a04",
@@ -26,8 +27,9 @@
       "coreVersion": "0.2.1",
       "contracts": {
         "MockUSDC": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX",
+        "AmmToken": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu",
         "baseTokenDecimals": 6,
-        "_comment": "Same placeholder pattern as solanaLocalnet — see comment there.",
+        "_comment": "Same placeholder pattern as solanaLocalnet \u2014 see comment there.",
         "AMMEngine": "0x0000000000000000000000000000000000000a01",
         "LaunchpadEngine": "0x0000000000000000000000000000000000000a02",
         "OrderEngine": "0x0000000000000000000000000000000000000a04",

@@ -7,7 +7,7 @@ use crate::constants::{
     POSITION_LOCKED_COST_USDC_OFFSET, POSITION_MARKET_OFFSET,
     POSITION_TOTAL_LEN as POSITION_MIN_LEN, POSITION_USER_OFFSET,
 };
-use crate::constants::BASE_TOKEN_MINT;
+use crate::constants::AMM_TOKEN_MINT;
 
 use crate::error::SoothCoreError;
 use crate::events::RefundClaimed;
@@ -42,26 +42,26 @@ pub struct ClaimRefund<'info> {
 
     #[account(
         mut,
-        address = market.vault @ SoothCoreError::VaultAuthorityMismatch,
-        constraint = market_vault.mint == BASE_TOKEN_MINT
+        address = market.vault_amm @ SoothCoreError::VaultAuthorityMismatch,
+        constraint = market_vault.mint == AMM_TOKEN_MINT
             @ SoothCoreError::VaultAuthorityMismatch,
     )]
     pub market_vault: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
-        token::mint = usdc_mint,
+        token::mint = amm_mint,
         token::authority = user,
     )]
-    pub user_usdc_ata: Box<Account<'info, TokenAccount>>,
+    pub user_amm_ata: Box<Account<'info, TokenAccount>>,
 
     /// AMM Position account — closed by the inline `close_dismissed_position`.
     /// CHECK: validated in handler body.
     #[account(mut)]
     pub position: UncheckedAccount<'info>,
 
-    #[account(address = BASE_TOKEN_MINT)]
-    pub usdc_mint: Box<Account<'info, Mint>>,
+    #[account(address = AMM_TOKEN_MINT)]
+    pub amm_mint: Box<Account<'info, Mint>>,
 
     pub token_program: Program<'info, Token>,
 }
@@ -88,7 +88,7 @@ pub fn handler(ctx: Context<ClaimRefund>) -> Result<()> {
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.market_vault.to_account_info(),
-                    to: ctx.accounts.user_usdc_ata.to_account_info(),
+                    to: ctx.accounts.user_amm_ata.to_account_info(),
                     authority: ctx.accounts.vault_authority.to_account_info(),
                 },
                 signer_seeds,

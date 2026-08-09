@@ -43,7 +43,8 @@ describe("AMM claim_unlocked flow", () => {
         rpcUrl: "http://localhost:8899",
       },
       programIds: smoke.programs,
-      usdcMint: smoke.usdcMint,
+      bookMint: smoke.usdcMint,
+      ammMint: smoke.ammMint,
       connection: conn,
     });
 
@@ -96,12 +97,10 @@ describe("AMM claim_unlocked flow", () => {
       0n, // first sell → nonce 0
       smoke.programs,
     );
-    const lockVaultAta = deriveLockVaultAta(
-      smoke.marketId,
-      smoke.usdcMint,
+    const lockVaultAta = deriveLockVaultAta(smoke.marketId, smoke.ammMint,
       smoke.programs,
     );
-    const userAta = deriveUserUsdcAta(smoke.user.publicKey, smoke.usdcMint);
+    const userAta = deriveUserUsdcAta(smoke.user.publicKey, smoke.ammMint);
 
     const lockEntryAcc = await conn.getAccountInfo(lockEntryPda);
     expect(lockEntryAcc).not.toBeNull();

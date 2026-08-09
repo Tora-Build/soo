@@ -41,7 +41,8 @@ function adapterFor(smoke: SmokeContext): SolanaChainAdapter {
       rpcUrl: "http://localhost:8899",
     },
     programIds: smoke.programs,
-    usdcMint: smoke.usdcMint,
+    bookMint: smoke.usdcMint,
+    ammMint: smoke.ammMint,
     connection: new LiteSvmConnection(smoke.ctx),
   } as never);
 }

@@ -21,9 +21,18 @@ pub struct Market {
     /// designated adjudicator identity.
     pub adjudicator: Pubkey,
     pub question_hash: [u8; 32],
-    /// USDC vault ATA — populated by `initialize_market_vaults`.
-    pub vault: Pubkey,
-    /// AMM lock-on-sell escrow vault — populated by `initialize_market_vaults`.
+    /// Book-venue collateral vault (`BOOK_TOKEN_MINT`).
+    ///
+    /// Renamed from `vault` when the venues split tokens, deliberately: a
+    /// rename makes the compiler visit every use, and picking the wrong vault
+    /// is the one mistake in this change that fails silently rather than
+    /// loudly. An SPL token account holds exactly one mint, so these cannot be
+    /// merged even if someone wanted to.
+    pub vault_book: Pubkey,
+    /// AMM-venue collateral vault (`AMM_TOKEN_MINT`).
+    pub vault_amm: Pubkey,
+    /// AMM lock-on-sell escrow vault (`AMM_TOKEN_MINT`) — the sell path's
+    /// cooldown holds proceeds here, so it follows the AMM's token.
     pub lock_vault: Pubkey,
     pub start_time: i64,
     pub deadline: i64,
@@ -57,7 +66,7 @@ pub struct Market {
     ///
     /// When you add a field, shrink this by exactly its serialized size and
     /// leave `SPACE` unchanged.
-    pub _reserved: [u8; 129],
+    pub _reserved: [u8; 97],
 }
 
 impl Market {
@@ -67,7 +76,8 @@ impl Market {
         + 32                         // creator
         + 32                         // adjudicator
         + 32                         // question_hash
-        + 32                         // vault
+        + 32                         // vault_book
+        + 32                         // vault_amm
         + 32                         // lock_vault
         + 8                          // start_time
         + 8                          // deadline
@@ -77,7 +87,7 @@ impl Market {
         + 1                          // vault_authority_bump
         + 1                          // lock_authority_bump
         + 1                          // book_enabled
-        + 129; // _reserved
+        + 97; // _reserved
 
     pub fn is_open(&self) -> bool {
         matches!(self.lifecycle, MarketLifecycle::Open)

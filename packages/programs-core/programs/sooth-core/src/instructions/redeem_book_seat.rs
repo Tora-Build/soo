@@ -47,7 +47,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 use crate::book::account::load_book;
-use crate::constants::BASE_TOKEN_MINT;
+use crate::constants::BOOK_TOKEN_MINT;
 use crate::error::SoothCoreError;
 use crate::events::Redeemed;
 use crate::state::Market;
@@ -74,13 +74,13 @@ pub struct RedeemBookSeat<'info> {
 
     #[account(
         mut,
-        address = market.vault @ SoothCoreError::VaultAuthorityMismatch,
-        constraint = vault.mint == BASE_TOKEN_MINT
+        address = market.vault_book @ SoothCoreError::VaultAuthorityMismatch,
+        constraint = vault_book.mint == BOOK_TOKEN_MINT
             @ SoothCoreError::VaultAuthorityMismatch,
     )]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault_book: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = vault.mint, token::authority = user)]
+    #[account(mut, token::mint = vault_book.mint, token::authority = user)]
     pub user_usdc_ata: Box<Account<'info, TokenAccount>>,
 
     #[account(mut)]
@@ -119,7 +119,7 @@ pub fn handler(ctx: Context<RedeemBookSeat>) -> Result<()> {
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.vault.to_account_info(),
+                    from: ctx.accounts.vault_book.to_account_info(),
                     to: ctx.accounts.user_usdc_ata.to_account_info(),
                     authority: ctx.accounts.vault_authority.to_account_info(),
                 },

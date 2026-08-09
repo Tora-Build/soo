@@ -38,7 +38,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
-use crate::constants::BASE_TOKEN_MINT;
+use crate::constants::AMM_TOKEN_MINT;
 use crate::error::SoothCoreError;
 use crate::events::Redeemed;
 use crate::math::wad_to_base;
@@ -72,14 +72,14 @@ pub struct RedeemAmmPosition<'info> {
 
     #[account(
         mut,
-        address = market.vault @ SoothCoreError::VaultAuthorityMismatch,
-        constraint = vault.mint == BASE_TOKEN_MINT
+        address = market.vault_amm @ SoothCoreError::VaultAuthorityMismatch,
+        constraint = vault.mint == AMM_TOKEN_MINT
             @ SoothCoreError::VaultAuthorityMismatch,
     )]
     pub vault: Box<Account<'info, TokenAccount>>,
 
     #[account(mut, token::mint = vault.mint, token::authority = user)]
-    pub user_usdc_ata: Box<Account<'info, TokenAccount>>,
+    pub user_amm_ata: Box<Account<'info, TokenAccount>>,
 
     #[account(mut)]
     pub user: Signer<'info>,
@@ -133,7 +133,7 @@ pub fn handler(ctx: Context<RedeemAmmPosition>) -> Result<()> {
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.vault.to_account_info(),
-                    to: ctx.accounts.user_usdc_ata.to_account_info(),
+                    to: ctx.accounts.user_amm_ata.to_account_info(),
                     authority: ctx.accounts.vault_authority.to_account_info(),
                 },
                 signer_seeds,

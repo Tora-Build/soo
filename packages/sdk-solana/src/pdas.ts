@@ -44,7 +44,8 @@ const SEED_LP_YIELD_AUTHORITY = enc.encode("lp_yield_authority");
 const SEED_MARKET_BOOK = enc.encode("market_book");
 const SEED_BOOK_SIDE = enc.encode("book_side");
 const SEED_ORDERBOOK_POSITION = enc.encode("orderbook_position");
-const SEED_MARKET_FEE_POOL = enc.encode("market_fee_pool");
+const SEED_FEE_POOL_BOOK = enc.encode("fee_pool_book");
+const SEED_FEE_POOL_AMM = enc.encode("fee_pool_amm");
 const SEED_ADJUDICATOR = enc.encode("adjudicator");
 
 export const SOOTH_CORE_PROGRAM_ID = new PublicKey(
@@ -387,14 +388,30 @@ export function orderbookPositionPda(
   );
 }
 
-// MarketFeePool: one TokenAccount per market, owned by sooth_core.
-export function marketFeePoolPda(
+// Fee pools: one TokenAccount per market PER VENUE, owned by sooth_core.
+//
+// Two, because an SPL token account holds exactly one mint and the venues are
+// denominated differently. Distinct seed literals rather than one seed plus
+// the mint, so the venue is fixed by the derivation and a caller cannot hand
+// an instruction the other venue's pool.
+export function feePoolBookPda(
   marketId: Uint8Array,
   programs?: Partial<Pick<ProgramIds, "soothCore">>,
 ): [PublicKey, number] {
   const id = assertMarketId(marketId);
   return PublicKey.findProgramAddressSync(
-    [Buffer.from(SEED_MARKET_FEE_POOL), id],
+    [Buffer.from(SEED_FEE_POOL_BOOK), id],
+    orderbookProgramId(programs),
+  );
+}
+
+export function feePoolAmmPda(
+  marketId: Uint8Array,
+  programs?: Partial<Pick<ProgramIds, "soothCore">>,
+): [PublicKey, number] {
+  const id = assertMarketId(marketId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_FEE_POOL_AMM), id],
     orderbookProgramId(programs),
   );
 }

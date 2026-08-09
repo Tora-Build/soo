@@ -3,7 +3,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};
 
-use crate::constants::BASE_TOKEN_MINT;
+use crate::constants::AMM_TOKEN_MINT;
 use crate::error::SoothCoreError;
 use crate::events::LpRedeemed;
 use crate::state::{AmmState, Market};
@@ -52,7 +52,7 @@ pub struct RedeemLp<'info> {
     #[account(
         mut,
         token::authority = lp_yield_authority,
-        constraint = lp_yield_vault.mint == BASE_TOKEN_MINT
+        constraint = lp_yield_vault.mint == AMM_TOKEN_MINT
             @ SoothCoreError::VaultAuthorityMismatch,
     )]
     pub lp_yield_vault: Box<Account<'info, TokenAccount>>,
@@ -69,7 +69,7 @@ pub struct RedeemLp<'info> {
         token::mint = lp_yield_vault.mint,
         token::authority = user,
     )]
-    pub user_usdc_ata: Box<Account<'info, TokenAccount>>,
+    pub user_amm_ata: Box<Account<'info, TokenAccount>>,
 
     pub user: Signer<'info>,
 
@@ -114,7 +114,7 @@ pub fn handler(ctx: Context<RedeemLp>, lp_amount: u64) -> Result<()> {
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.lp_yield_vault.to_account_info(),
-                    to: ctx.accounts.user_usdc_ata.to_account_info(),
+                    to: ctx.accounts.user_amm_ata.to_account_info(),
                     authority: ctx.accounts.lp_yield_authority.to_account_info(),
                 },
                 signer_seeds,

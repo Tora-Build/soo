@@ -438,7 +438,7 @@
           }
         },
         {
-          "name": "vault",
+          "name": "vault_book",
           "writable": true
         },
         {
@@ -446,20 +446,13 @@
           "writable": true
         },
         {
-          "name": "market_fee_pool",
+          "name": "fee_pool_book",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  95,
                   102,
                   101,
                   101,
@@ -467,7 +460,12 @@
                   112,
                   111,
                   111,
-                  108
+                  108,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
                 ]
               },
               {
@@ -653,7 +651,7 @@
           }
         },
         {
-          "name": "vault",
+          "name": "vault_book",
           "writable": true
         },
         {
@@ -765,7 +763,7 @@
           "writable": true
         },
         {
-          "name": "user_usdc_ata",
+          "name": "user_amm_ata",
           "writable": true
         },
         {
@@ -776,8 +774,8 @@
           "writable": true
         },
         {
-          "name": "usdc_mint",
-          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
+          "name": "amm_mint",
+          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
         },
         {
           "name": "token_program",
@@ -912,12 +910,12 @@
           "writable": true
         },
         {
-          "name": "user_usdc_ata",
+          "name": "user_amm_ata",
           "writable": true
         },
         {
-          "name": "usdc_mint",
-          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
+          "name": "amm_mint",
+          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
         },
         {
           "name": "user",
@@ -1043,11 +1041,24 @@
           }
         },
         {
-          "name": "usdc_mint",
+          "name": "book_mint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "vault",
+          "name": "amm_mint",
+          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
+        },
+        {
+          "name": "vault_book",
+          "writable": true
+        },
+        {
+          "name": "vault_amm",
+          "docs": [
+            "",
+            "Same authority as the book vault — a signer-only PDA can own one ATA",
+            "per mint, so the split needs no new authority and no new seeds."
+          ],
           "writable": true
         },
         {
@@ -1258,16 +1269,16 @@
       ]
     },
     {
-      "name": "distribute_fees",
+      "name": "distribute_fees_amm",
       "discriminator": [
-        120,
-        56,
-        27,
-        7,
-        53,
-        176,
-        113,
-        186
+        109,
+        158,
+        217,
+        144,
+        163,
+        159,
+        28,
+        145
       ],
       "accounts": [
         {
@@ -1354,24 +1365,17 @@
           }
         },
         {
-          "name": "usdc_mint",
-          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
+          "name": "venue_mint",
+          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
         },
         {
-          "name": "market_fee_pool",
+          "name": "fee_pool",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  95,
                   102,
                   101,
                   101,
@@ -1379,7 +1383,11 @@
                   112,
                   111,
                   111,
-                  108
+                  108,
+                  95,
+                  97,
+                  109,
+                  109
                 ]
               },
               {
@@ -1418,54 +1426,18 @@
       "args": []
     },
     {
-      "name": "distribute_fees_legacy",
+      "name": "distribute_fees_book",
       "discriminator": [
-        50,
-        179,
-        149,
-        32,
-        120,
-        79,
-        13,
-        181
+        84,
+        180,
+        94,
+        218,
+        48,
+        55,
+        103,
+        77
       ],
       "accounts": [
-        {
-          "name": "legacy_marker",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  101,
-                  103,
-                  97,
-                  99,
-                  121,
-                  95,
-                  102,
-                  101,
-                  101,
-                  95,
-                  100,
-                  114,
-                  97,
-                  105,
-                  110,
-                  95,
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  114
-                ]
-              }
-            ]
-          }
-        },
         {
           "name": "config",
           "pda": {
@@ -1494,7 +1466,33 @@
           }
         },
         {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
           "name": "fee_pool_authority",
+          "docs": [
+            "account."
+          ],
           "pda": {
             "seeds": [
               {
@@ -1524,16 +1522,39 @@
           }
         },
         {
-          "name": "usdc_mint",
+          "name": "venue_mint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "fee_pool_vault",
-          "writable": true
-        },
-        {
-          "name": "b_base_yield_vault",
-          "writable": true
+          "name": "fee_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
         },
         {
           "name": "lp_yield_vault",
@@ -1549,16 +1570,11 @@
         },
         {
           "name": "cranker",
-          "writable": true,
           "signer": true
         },
         {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
@@ -1630,24 +1646,21 @@
           }
         },
         {
-          "name": "usdc_mint",
+          "name": "book_mint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "market_fee_pool",
+          "name": "amm_mint",
+          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
+        },
+        {
+          "name": "fee_pool_book",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  95,
                   102,
                   101,
                   101,
@@ -1655,7 +1668,42 @@
                   112,
                   111,
                   111,
-                  108
+                  108,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_pool_amm",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  97,
+                  109,
+                  109
                 ]
               },
               {
@@ -2051,30 +2099,6 @@
           }
         },
         {
-          "name": "book",
-          "docs": [
-            "to this market. Read-only here."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  98,
-                  111,
-                  111,
-                  107
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market.market_id",
-                "account": "Market"
-              }
-            ]
-          }
-        },
-        {
           "name": "vault_authority",
           "pda": {
             "seeds": [
@@ -2097,11 +2121,19 @@
           }
         },
         {
-          "name": "vault",
+          "name": "vault_amm",
+          "docs": [
+            "The AMM vault, and only the AMM vault.",
+            "",
+            "The subsidy was posted in the AMM token by `seed_lp`, so it is returned",
+            "from the same pot. The book's vault holds a different mint and cannot",
+            "be touched here even by mistake — an SPL token account holds one mint,",
+            "and `address` pins which account this is."
+          ],
           "writable": true
         },
         {
-          "name": "creator_usdc_ata",
+          "name": "creator_amm_ata",
           "writable": true
         },
         {
@@ -2213,7 +2245,7 @@
           "writable": true
         },
         {
-          "name": "user_usdc_ata",
+          "name": "user_amm_ata",
           "writable": true
         },
         {
@@ -2322,7 +2354,7 @@
           }
         },
         {
-          "name": "vault",
+          "name": "vault_book",
           "writable": true
         },
         {
@@ -2542,7 +2574,7 @@
           }
         },
         {
-          "name": "user_usdc_ata",
+          "name": "user_amm_ata",
           "writable": true
         },
         {
@@ -2922,12 +2954,12 @@
           "writable": true
         },
         {
-          "name": "creator_usdc_ata",
+          "name": "creator_amm_ata",
           "writable": true
         },
         {
-          "name": "usdc_mint",
-          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
+          "name": "amm_mint",
+          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
         },
         {
           "name": "creator",
@@ -3141,8 +3173,8 @@
           }
         },
         {
-          "name": "usdc_mint",
-          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
+          "name": "amm_mint",
+          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
         },
         {
           "name": "protocol_config",
@@ -3172,20 +3204,13 @@
           }
         },
         {
-          "name": "market_fee_pool",
+          "name": "fee_pool_amm",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  95,
                   102,
                   101,
                   101,
@@ -3193,7 +3218,11 @@
                   112,
                   111,
                   111,
-                  108
+                  108,
+                  95,
+                  97,
+                  109,
+                  109
                 ]
               },
               {
@@ -3463,7 +3492,7 @@
           }
         },
         {
-          "name": "user_usdc_ata",
+          "name": "user_amm_ata",
           "writable": true
         },
         {
@@ -3471,8 +3500,8 @@
           "writable": true
         },
         {
-          "name": "usdc_mint",
-          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
+          "name": "amm_mint",
+          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
         },
         {
           "name": "protocol_config",
@@ -3502,20 +3531,13 @@
           }
         },
         {
-          "name": "market_fee_pool",
+          "name": "fee_pool_amm",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  95,
                   102,
                   101,
                   101,
@@ -3523,7 +3545,11 @@
                   112,
                   111,
                   111,
-                  108
+                  108,
+                  95,
+                  97,
+                  109,
+                  109
                 ]
               },
               {
@@ -3699,19 +3725,6 @@
         12,
         95,
         2
-      ]
-    },
-    {
-      "name": "LegacyFeeDrainMarker",
-      "discriminator": [
-        154,
-        144,
-        83,
-        192,
-        62,
-        167,
-        182,
-        197
       ]
     },
     {
@@ -5101,26 +5114,6 @@
       }
     },
     {
-      "name": "LegacyFeeDrainMarker",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "drained_at",
-            "docs": [
-              "Unix seconds when the legacy global fee pool was drained.",
-              "`0` means the one-shot drain has not executed."
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "bump",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
       "name": "LockClaimed",
       "docs": [
         "Emitted by `claim_unlocked` after a successful payout. Mirrors the EVM",
@@ -5385,16 +5378,30 @@
             }
           },
           {
-            "name": "vault",
+            "name": "vault_book",
             "docs": [
-              "USDC vault ATA — populated by `initialize_market_vaults`."
+              "Book-venue collateral vault (`BOOK_TOKEN_MINT`).",
+              "",
+              "Renamed from `vault` when the venues split tokens, deliberately: a",
+              "rename makes the compiler visit every use, and picking the wrong vault",
+              "is the one mistake in this change that fails silently rather than",
+              "loudly. An SPL token account holds exactly one mint, so these cannot be",
+              "merged even if someone wanted to."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_amm",
+            "docs": [
+              "AMM-venue collateral vault (`AMM_TOKEN_MINT`)."
             ],
             "type": "pubkey"
           },
           {
             "name": "lock_vault",
             "docs": [
-              "AMM lock-on-sell escrow vault — populated by `initialize_market_vaults`."
+              "AMM lock-on-sell escrow vault (`AMM_TOKEN_MINT`) — the sell path's",
+              "cooldown holds proceeds here, so it follows the AMM's token."
             ],
             "type": "pubkey"
           },
@@ -5470,7 +5477,7 @@
             "type": {
               "array": [
                 "u8",
-                129
+                97
               ]
             }
           }
@@ -5499,7 +5506,11 @@
             "type": "pubkey"
           },
           {
-            "name": "vault",
+            "name": "vault_book",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_amm",
             "type": "pubkey"
           },
           {

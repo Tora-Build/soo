@@ -57,7 +57,7 @@ import {
   deriveUserLpAta,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
-  marketFeePoolPda,
+  feePoolAmmPda,
 } from "../src/pdas.js";
 import { WAD } from "../src/math/lmsr.js";
 import { bootSmoke, warpClockTo, type SmokeContext } from "./fixtures/setup.js";
@@ -88,7 +88,7 @@ const ANCHOR_CONSTRAINT_SEEDS = 2006;
 const ANCHOR_ACCOUNT_NOT_INITIALIZED = 3012;
 
 function accountsFor(smoke: SmokeContext, user: PublicKey) {
-  const { marketId, programs, usdcMint } = smoke;
+  const { marketId, programs, usdcMint, ammMint } = smoke;
   const [position] = derivePositionPda(marketId, user, programs);
   return {
     position,
@@ -97,10 +97,10 @@ function accountsFor(smoke: SmokeContext, user: PublicKey) {
     userLpAta: deriveUserLpAta(user, deriveLpMintPda(marketId, programs)[0]),
     vaultAuthority: deriveVaultAuthorityPda(marketId, programs)[0],
     lockAuthority: deriveLockAuthorityPda(marketId, programs)[0],
-    marketVault: deriveMarketVaultAta(marketId, usdcMint, programs),
-    lockVault: deriveLockVaultAta(marketId, usdcMint, programs),
-    userUsdcAta: deriveUserUsdcAta(user, usdcMint),
-    marketFeePool: marketFeePoolPda(marketId, programs)[0],
+    marketVault: deriveMarketVaultAta(marketId, ammMint, programs),
+    lockVault: deriveLockVaultAta(marketId, ammMint, programs),
+    userUsdcAta: deriveUserUsdcAta(user, ammMint),
+    marketFeePool: feePoolAmmPda(marketId, programs)[0],
     protocolConfig: deriveProtocolConfigPda(programs)[0],
     ammState: deriveAmmStatePda(marketId, programs)[0],
   };
@@ -138,9 +138,9 @@ async function buyYes(
             ammState: a.ammState,
             position: a.position,
             vaultAuthority: a.vaultAuthority,
-            userUsdcAta: a.userUsdcAta,
+            userAmmAta: a.userUsdcAta,
             marketVault: a.marketVault,
-            usdcMint: smoke.usdcMint,
+            ammMint: smoke.ammMint,
             protocolConfig: a.protocolConfig,
             marketFeePool: a.marketFeePool,
             lpMint: a.lpMint,
@@ -185,7 +185,7 @@ async function sellYes(
           marketVault: a.marketVault,
           lockVault: a.lockVault,
           lockEntry,
-          usdcMint: smoke.usdcMint,
+          ammMint: smoke.ammMint,
           protocolConfig: a.protocolConfig,
           marketFeePool: a.marketFeePool,
           user: user.publicKey,
@@ -215,8 +215,8 @@ async function claimTx(
         lockEntry,
         lockAuthority: a.lockAuthority,
         lockVault: a.lockVault,
-        userUsdcAta: a.userUsdcAta,
-        usdcMint: smoke.usdcMint,
+        userAmmAta: a.userUsdcAta,
+        ammMint: smoke.ammMint,
         user,
         tokenProgram: TOKEN_PROGRAM_ID,
       })

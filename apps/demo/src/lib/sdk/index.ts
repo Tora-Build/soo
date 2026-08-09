@@ -170,7 +170,7 @@ export class SoothSDK {
     const userPk = new PublicKey(userBase58);
     const conn = demo.adapter.connection;
     const sol = await conn.getBalance(userPk);
-    const usdcMint = demo.adapter.usdcMint;
+    const usdcMint = demo.adapter.bookMint;
     const usdcAta = getAssociatedTokenAddressSync(usdcMint, userPk);
     let usdcBaseUnits = 0n;
     try {

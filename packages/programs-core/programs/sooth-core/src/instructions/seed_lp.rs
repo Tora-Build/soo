@@ -9,7 +9,7 @@ use anchor_lang::Discriminator;
 use anchor_spl::associated_token::{self, AssociatedToken, Create};
 use anchor_spl::token::{self, InitializeMint, Mint, MintTo, Token, TokenAccount, Transfer};
 
-use crate::constants::BASE_TOKEN_MINT;
+use crate::constants::AMM_TOKEN_MINT;
 use crate::error::SoothCoreError;
 use crate::events::LpSeeded;
 use crate::math::{wad_mul, wad_to_usdc_ceil, LN2_WAD};
@@ -81,21 +81,21 @@ pub struct SeedLp<'info> {
 
     #[account(
         mut,
-        address = market.vault @ SoothCoreError::VaultAuthorityMismatch,
-        constraint = market_vault.mint == BASE_TOKEN_MINT
+        address = market.vault_amm @ SoothCoreError::VaultAuthorityMismatch,
+        constraint = market_vault.mint == AMM_TOKEN_MINT
             @ SoothCoreError::VaultAuthorityMismatch,
     )]
     pub market_vault: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
-        token::mint = usdc_mint,
+        token::mint = amm_mint,
         token::authority = creator,
     )]
-    pub creator_usdc_ata: Box<Account<'info, TokenAccount>>,
+    pub creator_amm_ata: Box<Account<'info, TokenAccount>>,
 
-    #[account(address = BASE_TOKEN_MINT)]
-    pub usdc_mint: Box<Account<'info, Mint>>,
+    #[account(address = AMM_TOKEN_MINT)]
+    pub amm_mint: Box<Account<'info, Mint>>,
 
     #[account(mut)]
     pub creator: Signer<'info>,
@@ -146,7 +146,7 @@ pub fn handler(ctx: Context<SeedLp>, args: SeedLpArgs) -> Result<()> {
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.creator_usdc_ata.to_account_info(),
+                    from: ctx.accounts.creator_amm_ata.to_account_info(),
                     to: ctx.accounts.market_vault.to_account_info(),
                     authority: ctx.accounts.creator.to_account_info(),
                 },

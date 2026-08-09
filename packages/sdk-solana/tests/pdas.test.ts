@@ -17,7 +17,8 @@ import { PublicKey } from "@solana/web3.js";
 import {
   bookSidePda,
   marketBookPda,
-  marketFeePoolPda,
+  feePoolAmmPda,
+  feePoolBookPda,
   orderbookPositionPda,
 } from "../src/pdas.js";
 
@@ -53,8 +54,15 @@ describe("SoothBook PDA derivation parity", () => {
     expect(pda.toBase58()).toBe("GfWyc3KRrNSfkfSX5Ld1fVzNcSRaaj4kU19gt2xov6zA");
   });
 
-  it("market_fee_pool_pda_derives_correctly", () => {
-    const [pda] = marketFeePoolPda(MARKET_ID, PROGRAM);
-    expect(pda.toBase58()).toBe("G1KpTbfvm1U9njdQ22AHJBRBWtbkh2DFXrGtrQT2bbiQ");
+  it("the two fee pools derive to different addresses", () => {
+    // One pool per venue. If these ever collided, the AMM's fees and the
+    // book's would land in one account holding one mint — which the SPL token
+    // program would reject, but only at the first fill of whichever venue lost
+    // the race. Asserting the addresses differ catches a seed typo here.
+    const [amm] = feePoolAmmPda(MARKET_ID, PROGRAM);
+    const [book] = feePoolBookPda(MARKET_ID, PROGRAM);
+    expect(amm.toBase58()).toBe("GCxYYGJrmXwDMErE3pLiH5qHcAXQXM4AXWcB5UE1m7Di");
+    expect(book.toBase58()).toBe("6k4tyMXRFP2DidUchqeWVLn4aYLXXiWqeGSuWSzPWCzn");
+    expect(amm.toBase58()).not.toBe(book.toBase58());
   });
 });

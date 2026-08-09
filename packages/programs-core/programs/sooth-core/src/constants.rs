@@ -35,10 +35,45 @@ pub const USDC_MINT_MAINNET: Pubkey =
 pub const USDC_MINT_DEVNET: Pubkey =
     anchor_lang::pubkey!("ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX");
 
+// ── The two venue tokens ─────────────────────────────────────────────────
+//
+// One deployment, two currencies: the AMM (incubation) trades in the
+// deployment's own token, the orderbook (mature venue) in USDC. See
+// `docs/design/dual-token-venues.md`.
+//
+// Both are compile-time constants, which is the strongest form of "set once at
+// deployment" — not storage, not governance-writable. Changing either means
+// recompiling and redeploying, and every market on a deployment shares the
+// pair. The consequence, accepted deliberately: **one program deployment per
+// instance**. Two instances with different AMM tokens are two program IDs.
+//
+// The names are ROLES, never tickers. Which token fills the AMM role is a
+// per-deployment decision and not the program's business.
+
+/// Mock AMM-venue token on devnet, standing in for a real instance token.
+///
+/// Created by `apps/demo/scripts/seed-localnet.mjs` (localnet, preloaded via
+/// `--account`) and by a one-off `spl-token create-token` on devnet. Its mint
+/// authority is backed up alongside the USDC one — losing it means minting
+/// stops and this constant has to change again.
+pub const AMM_TOKEN_MINT_DEVNET: Pubkey =
+    anchor_lang::pubkey!("CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu");
+
+/// The AMM venue's token. Pinned by `address = AMM_TOKEN_MINT` constraints on
+/// every AMM path, so a mismatch is a hard transaction failure rather than a
+/// UI inconsistency.
 #[cfg(feature = "mainnet")]
-pub const BASE_TOKEN_MINT: Pubkey = USDC_MINT_MAINNET;
+pub const AMM_TOKEN_MINT: Pubkey =
+    compile_error!("set AMM_TOKEN_MINT for mainnet before building with --features mainnet");
 #[cfg(not(feature = "mainnet"))]
-pub const BASE_TOKEN_MINT: Pubkey = USDC_MINT_DEVNET;
+pub const AMM_TOKEN_MINT: Pubkey = AMM_TOKEN_MINT_DEVNET;
+
+/// The orderbook venue's token: real USDC on mainnet, the project mock on
+/// devnet. Unchanged from the single-token `BASE_TOKEN_MINT` it replaces.
+#[cfg(feature = "mainnet")]
+pub const BOOK_TOKEN_MINT: Pubkey = USDC_MINT_MAINNET;
+#[cfg(not(feature = "mainnet"))]
+pub const BOOK_TOKEN_MINT: Pubkey = USDC_MINT_DEVNET;
 
 /// Default guardian-veto window: how long an attested outcome stays open to
 /// `dispute` before `settle` may finalize it.

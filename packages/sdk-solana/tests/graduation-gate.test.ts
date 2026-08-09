@@ -40,7 +40,7 @@ import {
   deriveUserLpAta,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
-  marketFeePoolPda,
+  feePoolAmmPda,
 } from "../src/pdas.js";
 import { WAD } from "../src/math/lmsr.js";
 import { bootSmoke, type SmokeContext } from "./fixtures/setup.js";
@@ -61,16 +61,16 @@ const OUTCOME_YES = 1;
 const NOT_GRADUATED = /0x1791|NotGraduated/;
 
 function ammAccounts(smoke: SmokeContext, user: PublicKey) {
-  const { marketId, programs, usdcMint } = smoke;
+  const { marketId, programs, usdcMint, ammMint } = smoke;
   const [lpMint] = deriveLpMintPda(marketId, programs);
   return {
     ammState: deriveAmmStatePda(marketId, programs)[0],
     position: derivePositionPda(marketId, user, programs)[0],
     vaultAuthority: deriveVaultAuthorityPda(marketId, programs)[0],
-    marketVault: deriveMarketVaultAta(marketId, usdcMint, programs),
-    userUsdcAta: deriveUserUsdcAta(user, usdcMint),
+    marketVault: deriveMarketVaultAta(marketId, ammMint, programs),
+    userUsdcAta: deriveUserUsdcAta(user, ammMint),
     protocolConfig: deriveProtocolConfigPda(programs)[0],
-    marketFeePool: marketFeePoolPda(marketId, programs)[0],
+    marketFeePool: feePoolAmmPda(marketId, programs)[0],
     lpMint,
     lpMintAuthority: deriveLpMintAuthorityPda(marketId, programs)[0],
     userLpAta: deriveUserLpAta(user, lpMint),
@@ -109,9 +109,9 @@ async function ammBuy(
             ammState: a.ammState,
             position: a.position,
             vaultAuthority: a.vaultAuthority,
-            userUsdcAta: a.userUsdcAta,
+            userAmmAta: a.userUsdcAta,
             marketVault: a.marketVault,
-            usdcMint: smoke.usdcMint,
+            ammMint: smoke.ammMint,
             protocolConfig: a.protocolConfig,
             marketFeePool: a.marketFeePool,
             lpMint: a.lpMint,
@@ -215,7 +215,7 @@ describe("the book opens at graduation", () => {
                 smoke.marketId,
                 smoke.programs,
               )[0],
-              vault: deriveMarketVaultAta(
+              vaultBook: deriveMarketVaultAta(
                 smoke.marketId,
                 smoke.usdcMint,
                 smoke.programs,

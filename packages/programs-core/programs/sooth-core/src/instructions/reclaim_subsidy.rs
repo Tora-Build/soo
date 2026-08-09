@@ -10,18 +10,21 @@
 //! sat in the vault forever.
 //!
 //! Paying it out safely means knowing everything the vault still owes, and an
-//! UNDER-count is an over-payment taken out of traders' collateral. Two
-//! ledgers hold obligations:
+//! UNDER-count is an over-payment taken out of traders' collateral.
 //!
-//!   1. AMM positions — aggregated in `AmmState.q_yes` / `q_no`;
-//!   2. the book — seats and resting escrow, all in one account.
+//! Since the venues split tokens there is exactly **one** ledger to count:
+//! AMM positions, aggregated in `AmmState.q_yes` / `q_no`. The subsidy was
+//! posted in the AMM token and is returned from the AMM vault, so the book —
+//! a different vault holding a different mint — is not this instruction's
+//! business. Counting its seats here would subtract book obligations from the
+//! AMM residual and strand the creator's capital, which is the bug this
+//! instruction exists to fix, inverted.
 //!
-//! There were two more, both since deleted. The legacy `OrderbookPosition` was
-//! one PDA per (market, user) with no way to enumerate them, so the sum was
-//! unknowable; deleting the legacy book removed it. SPL outcome tokens were a
-//! third, removed with the complete-set instructions — see
-//! `docs/design/dual-token-venues.md` §4. Both remaining sources are a single
-//! account away.
+//! Two other ledgers were counted historically and are gone. The legacy
+//! `OrderbookPosition` was one PDA per (market, user) with no way to enumerate
+//! them, so the sum was unknowable; deleting the legacy book removed it. SPL
+//! outcome tokens went with the complete-set instructions — see
+//! `docs/design/dual-token-venues.md` §4.
 //!
 //! ## The two guards
 //!
@@ -42,8 +45,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
-use crate::book::account::load_book;
-use crate::constants::BASE_TOKEN_MINT;
+use crate::constants::AMM_TOKEN_MINT;
 use crate::error::SoothCoreError;
 use crate::math::wad_to_base;
 use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
@@ -73,11 +75,6 @@ pub struct ReclaimSubsidy<'info> {
     )]
     pub lp_position: Box<Account<'info, LpPosition>>,
 
-    /// CHECK: raw zero-copy book; `load_book` verifies it and the seeds bind it
-    /// to this market. Read-only here.
-    #[account(seeds = [b"book", market.market_id.as_ref()], bump)]
-    pub book: UncheckedAccount<'info>,
-
     /// CHECK: derived via seeds; signs the vault outflow.
     #[account(
         seeds = [b"vault", market.market_id.as_ref()],
@@ -85,16 +82,22 @@ pub struct ReclaimSubsidy<'info> {
     )]
     pub vault_authority: UncheckedAccount<'info>,
 
+    /// The AMM vault, and only the AMM vault.
+    ///
+    /// The subsidy was posted in the AMM token by `seed_lp`, so it is returned
+    /// from the same pot. The book's vault holds a different mint and cannot
+    /// be touched here even by mistake — an SPL token account holds one mint,
+    /// and `address` pins which account this is.
     #[account(
         mut,
-        address = market.vault @ SoothCoreError::VaultAuthorityMismatch,
-        constraint = vault.mint == BASE_TOKEN_MINT
+        address = market.vault_amm @ SoothCoreError::VaultAuthorityMismatch,
+        constraint = vault_amm.mint == AMM_TOKEN_MINT
             @ SoothCoreError::VaultAuthorityMismatch,
     )]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault_amm: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = vault.mint, token::authority = creator)]
-    pub creator_usdc_ata: Box<Account<'info, TokenAccount>>,
+    #[account(mut, token::mint = vault_amm.mint, token::authority = creator)]
+    pub creator_amm_ata: Box<Account<'info, TokenAccount>>,
 
     #[account(mut)]
     pub creator: Signer<'info>,
@@ -133,24 +136,19 @@ pub fn handler(ctx: Context<ReclaimSubsidy>) -> Result<()> {
 
     let winning_outcome = ctx.accounts.market.winning_outcome;
 
-    let book_owed = {
-        let info = ctx.accounts.book.to_account_info();
-        let mut data = info.try_borrow_mut_data()?;
-        let book =
-            load_book(&mut data).map_err(|_| error!(SoothCoreError::InvalidBookAccount))?;
-        book.total_obligations(winning_outcome)
-            .map_err(|_| error!(SoothCoreError::InvalidBookAccount))?
-    };
-
     let ledger_owed = ledger_obligations(&ctx.accounts.amm_state, winning_outcome)?;
 
-    let obligations = book_owed
-        .checked_add(ledger_owed)
-        .ok_or(error!(SoothCoreError::MathOverflow))?;
+    // AMM obligations only. The book's seats are owed from the BOOK vault,
+    // which holds a different token — subtracting them here would understate
+    // the AMM residual and strand the creator's own capital, which is the bug
+    // this instruction exists to fix. The book needs no equivalent: every fill
+    // escrows both legs to exactly 1.00, so its vault is fully collateralised
+    // by construction and the creator posted nothing into it.
+    let obligations = ledger_owed;
 
     // Everything above what is owed. Saturating: a vault below its obligations
     // means there is nothing free, not a negative to invert.
-    let residual = ctx.accounts.vault.amount.saturating_sub(obligations);
+    let residual = ctx.accounts.vault_amm.amount.saturating_sub(obligations);
 
     // The cap. Whatever the residual says, never return more than was posted.
     let posted = wad_to_base(ctx.accounts.lp_position.seed_deposit_wad)?;
@@ -176,8 +174,8 @@ pub fn handler(ctx: Context<ReclaimSubsidy>) -> Result<()> {
         CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             Transfer {
-                from: ctx.accounts.vault.to_account_info(),
-                to: ctx.accounts.creator_usdc_ata.to_account_info(),
+                from: ctx.accounts.vault_amm.to_account_info(),
+                to: ctx.accounts.creator_amm_ata.to_account_info(),
                 authority: ctx.accounts.vault_authority.to_account_info(),
             },
             seeds,

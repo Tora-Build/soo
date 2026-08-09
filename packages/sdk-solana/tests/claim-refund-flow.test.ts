@@ -69,7 +69,7 @@ describe("dismissed-market refund flow", () => {
 
     await warpClock(smoke.ctx, trialEndAt + 2n);
 
-    const userAta = deriveUserUsdcAta(smoke.user.publicKey, smoke.usdcMint);
+    const userAta = deriveUserUsdcAta(smoke.user.publicKey, smoke.ammMint);
     const userBalanceBeforeClaim = (await getAccount(conn, userAta)).amount;
     const marketVaultBeforeClaim = await adapter.getMarketVaultUsdcRaw(
       marketRef,
@@ -116,7 +116,8 @@ function buildAdapter(
       rpcUrl: "http://localhost:8899",
     },
     programIds: smoke.programs,
-    usdcMint: smoke.usdcMint,
+    bookMint: smoke.usdcMint,
+    ammMint: smoke.ammMint,
     connection: conn,
   });
 }

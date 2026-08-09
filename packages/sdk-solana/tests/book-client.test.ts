@@ -325,7 +325,8 @@ describe("adapter book surface", () => {
         rpcUrl: "http://localhost:8899",
       },
       programIds: smoke.programs,
-      usdcMint: smoke.usdcMint,
+      bookMint: smoke.usdcMint,
+      ammMint: smoke.ammMint,
       connection: new LiteSvmConnection(smoke.ctx),
     });
   }

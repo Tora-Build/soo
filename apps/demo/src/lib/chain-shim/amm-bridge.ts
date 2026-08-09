@@ -383,8 +383,18 @@ export async function dispatchAmmRead(
       } catch {
         return 0n;
       }
+      // WHICH token's balance. Upstream passes the ERC20 address in
+      // `call.address`; here that is a mint, and the two venues have
+      // different ones. Defaulting to the book's would report a USDC balance
+      // for an AMM trade priced in the AMM's token — the panel would then
+      // refuse a trade the user can afford, or allow one they cannot.
+      const requested = toAddressRef(call.address)?.replace(/^sol:/, "");
+      const mint =
+        requested && requested === ctx.adapter.ammMint.toBase58()
+          ? ctx.adapter.ammMint
+          : ctx.adapter.bookMint;
       try {
-        const ata = deriveUserUsdcAta(userPk, ctx.adapter.usdcMint);
+        const ata = deriveUserUsdcAta(userPk, mint);
         const acc = await getAccount(ctx.connection, ata);
         return acc.amount;
       } catch {
@@ -956,7 +966,7 @@ async function dispatchMint(
   }
 
   const recipient = new PublicKey(ctx.userBase58);
-  const usdcMint = ctx.adapter.usdcMint;
+  const usdcMint = ctx.adapter.bookMint;
   const recipientAta = getAssociatedTokenAddressSync(usdcMint, recipient);
 
   const tx = new Transaction();

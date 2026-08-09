@@ -42,7 +42,7 @@ import {
   deriveUserLpAta,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
-  marketFeePoolPda,
+  feePoolAmmPda,
 } from "../src/pdas.js";
 import { WAD } from "../src/math/lmsr.js";
 import { bootSmoke, warpClockTo, type SmokeContext } from "./fixtures/setup.js";
@@ -66,7 +66,7 @@ const ERR = { MarketNotSettled: 6001 } as const;
 const SHARES = 10n * WAD;
 
 function accountsFor(smoke: SmokeContext, user: PublicKey) {
-  const { marketId, programs, usdcMint } = smoke;
+  const { marketId, programs, usdcMint, ammMint } = smoke;
   const lpMint = deriveLpMintPda(marketId, programs)[0];
   return {
     position: derivePositionPda(marketId, user, programs)[0],
@@ -74,9 +74,9 @@ function accountsFor(smoke: SmokeContext, user: PublicKey) {
     lpMintAuthority: deriveLpMintAuthorityPda(marketId, programs)[0],
     userLpAta: deriveUserLpAta(user, lpMint),
     vaultAuthority: deriveVaultAuthorityPda(marketId, programs)[0],
-    marketVault: deriveMarketVaultAta(marketId, usdcMint, programs),
-    userUsdcAta: deriveUserUsdcAta(user, usdcMint),
-    marketFeePool: marketFeePoolPda(marketId, programs)[0],
+    marketVault: deriveMarketVaultAta(marketId, ammMint, programs),
+    userUsdcAta: deriveUserUsdcAta(user, ammMint),
+    marketFeePool: feePoolAmmPda(marketId, programs)[0],
     protocolConfig: deriveProtocolConfigPda(programs)[0],
     ammState: deriveAmmStatePda(marketId, programs)[0],
     adjudicatorEntry: deriveAdjudicatorEntryPda(smoke.marketPda, programs)[0],
@@ -115,9 +115,9 @@ async function buy(
             ammState: a.ammState,
             position: a.position,
             vaultAuthority: a.vaultAuthority,
-            userUsdcAta: a.userUsdcAta,
+            userAmmAta: a.userUsdcAta,
             marketVault: a.marketVault,
-            usdcMint: smoke.usdcMint,
+            ammMint: smoke.ammMint,
             protocolConfig: a.protocolConfig,
             marketFeePool: a.marketFeePool,
             lpMint: a.lpMint,
@@ -143,7 +143,7 @@ async function redeemTx(smoke: SmokeContext, program: any, user: PublicKey) {
         vaultAuthority: a.vaultAuthority,
         position: a.position,
         vault: a.marketVault,
-        userUsdcAta: a.userUsdcAta,
+        userAmmAta: a.userUsdcAta,
         user,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
@@ -384,7 +384,7 @@ describe("AMM position redemption after settlement", () => {
         rpcUrl: "http://localhost:8899",
       },
       programIds: smoke.programs,
-      usdcMint: smoke.usdcMint,
+      ammMint: smoke.ammMint,
       connection: conn,
     } as never);
 

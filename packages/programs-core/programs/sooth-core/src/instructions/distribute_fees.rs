@@ -1,5 +1,16 @@
-//! `distribute_fees` — drain one market's fee-pool USDC vault and split the
-//! proceeds across the four destinations per architecture §8 / SoothBook §9.5.
+//! `distribute_fees_amm` — drain a market's AMM fee pool and split it four
+//! ways per architecture §8 / SoothBook §9.5.
+//!
+//! One instruction per venue rather than one with a venue argument. The pool's
+//! seed and mint are then fixed by the account struct, so an instruction
+//! cannot be handed the other venue's pool — which matters because the two
+//! hold different tokens and the destinations are caller-supplied.
+//!
+//! The book's counterpart is `distribute_fees_book`. It is deliberately NOT a
+//! copy with a different constant: the `b_base` share does not exist there.
+//! That slice grows the AMM's liquidity, and feeding it book-denominated fees
+//! is exactly the cross-currency mixing the token split exists to prevent —
+//! see `docs/design/dual-token-venues.md` §6.4.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -9,7 +20,7 @@ use crate::events::MarketFeesDistributed;
 use crate::state::{Market, ProtocolConfig};
 
 #[derive(Accounts)]
-pub struct DistributeFees<'info> {
+pub struct DistributeFeesAmm<'info> {
     #[account(
         seeds = [b"protocol_config"],
         bump = config.bump,
@@ -30,28 +41,28 @@ pub struct DistributeFees<'info> {
     )]
     pub fee_pool_authority: UncheckedAccount<'info>,
 
-    #[account(address = crate::constants::BASE_TOKEN_MINT)]
-    pub usdc_mint: Box<Account<'info, Mint>>,
+    #[account(address = crate::constants::AMM_TOKEN_MINT)]
+    pub venue_mint: Box<Account<'info, Mint>>,
 
     #[account(
         mut,
-        seeds = [b"market_fee_pool", market.market_id.as_ref()],
+        seeds = [b"fee_pool_amm", market.market_id.as_ref()],
         bump,
-        token::mint = usdc_mint,
+        token::mint = venue_mint,
         token::authority = fee_pool_authority,
     )]
-    pub market_fee_pool: Box<Account<'info, TokenAccount>>,
+    pub fee_pool: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = usdc_mint)]
+    #[account(mut, token::mint = venue_mint)]
     pub b_base_yield_vault: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = usdc_mint)]
+    #[account(mut, token::mint = venue_mint)]
     pub lp_yield_vault: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = usdc_mint)]
+    #[account(mut, token::mint = venue_mint)]
     pub adjudicator_fee_vault: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, address = config.treasury, token::mint = usdc_mint)]
+    #[account(mut, address = config.treasury, token::mint = venue_mint)]
     pub protocol_treasury_vault: Box<Account<'info, TokenAccount>>,
 
     pub cranker: Signer<'info>,
@@ -105,8 +116,8 @@ pub(crate) fn compute_fee_split(total: u64, cfg: &ProtocolConfig) -> Result<FeeS
     })
 }
 
-pub fn handler(ctx: Context<DistributeFees>) -> Result<()> {
-    let total: u64 = ctx.accounts.market_fee_pool.amount;
+pub fn handler(ctx: Context<DistributeFeesAmm>) -> Result<()> {
+    let total: u64 = ctx.accounts.fee_pool.amount;
     require!(total > 0, SoothCoreError::NothingToDistribute);
 
     let split = compute_fee_split(total, &ctx.accounts.config)?;
@@ -119,7 +130,7 @@ pub fn handler(ctx: Context<DistributeFees>) -> Result<()> {
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.market_fee_pool.to_account_info(),
+                    from: ctx.accounts.fee_pool.to_account_info(),
                     to: ctx.accounts.b_base_yield_vault.to_account_info(),
                     authority: ctx.accounts.fee_pool_authority.to_account_info(),
                 },
@@ -133,7 +144,7 @@ pub fn handler(ctx: Context<DistributeFees>) -> Result<()> {
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.market_fee_pool.to_account_info(),
+                    from: ctx.accounts.fee_pool.to_account_info(),
                     to: ctx.accounts.lp_yield_vault.to_account_info(),
                     authority: ctx.accounts.fee_pool_authority.to_account_info(),
                 },
@@ -147,7 +158,7 @@ pub fn handler(ctx: Context<DistributeFees>) -> Result<()> {
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.market_fee_pool.to_account_info(),
+                    from: ctx.accounts.fee_pool.to_account_info(),
                     to: ctx.accounts.adjudicator_fee_vault.to_account_info(),
                     authority: ctx.accounts.fee_pool_authority.to_account_info(),
                 },
@@ -161,7 +172,7 @@ pub fn handler(ctx: Context<DistributeFees>) -> Result<()> {
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.market_fee_pool.to_account_info(),
+                    from: ctx.accounts.fee_pool.to_account_info(),
                     to: ctx.accounts.protocol_treasury_vault.to_account_info(),
                     authority: ctx.accounts.fee_pool_authority.to_account_info(),
                 },

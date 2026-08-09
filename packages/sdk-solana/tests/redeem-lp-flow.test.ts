@@ -41,7 +41,8 @@ describe("LP redemption flow", () => {
         rpcUrl: "http://localhost:8899",
       },
       programIds: smoke.programs,
-      usdcMint: smoke.usdcMint,
+      bookMint: smoke.usdcMint,
+      ammMint: smoke.ammMint,
       connection: conn,
     });
 
@@ -52,29 +53,31 @@ describe("LP redemption flow", () => {
     const lpSupply = (await getAccount(conn, creatorLpAta)).amount;
     expect(lpSupply).toBeGreaterThan(0n);
 
+    // LP is AMM-side equity, so its yield vault and the creator's payout ATA
+    // hold the AMM's token — `redeem_lp` pins them to `AMM_TOKEN_MINT`.
     const [lpYieldAuthority] = deriveLpYieldAuthority(smoke.programs);
     const lpYieldVault = getAssociatedTokenAddressSync(
-      smoke.usdcMint,
+      smoke.ammMint,
       lpYieldAuthority,
       true,
     );
     const creatorUsdcAta = deriveUserUsdcAta(
       smoke.creator.publicKey,
-      smoke.usdcMint,
+      smoke.ammMint,
     );
 
     const yieldVaultAmount = 2_000_000n;
     await writeTokenAccount(
       smoke,
       lpYieldVault,
-      smoke.usdcMint,
+      smoke.ammMint,
       lpYieldAuthority,
       yieldVaultAmount,
     );
     await writeTokenAccount(
       smoke,
       creatorUsdcAta,
-      smoke.usdcMint,
+      smoke.ammMint,
       smoke.creator.publicKey,
       0n,
     );
@@ -125,7 +128,7 @@ describe("LP redemption flow", () => {
     const program = anchorProgram(smoke.ctx, smoke.creator);
     const [lpYieldAuthority] = deriveLpYieldAuthority(smoke.programs);
     const lpYieldVault = getAssociatedTokenAddressSync(
-      smoke.usdcMint,
+      smoke.ammMint,
       lpYieldAuthority,
       true,
     );
@@ -134,7 +137,7 @@ describe("LP redemption flow", () => {
     await writeTokenAccount(
       smoke,
       lpYieldVault,
-      smoke.usdcMint,
+      smoke.ammMint,
       lpYieldAuthority,
       yieldAmount,
     );
@@ -145,14 +148,14 @@ describe("LP redemption flow", () => {
     const [marketPda] = deriveMarketPda(smoke.marketId, smoke.programs);
     const attackerUsdc = deriveUserUsdcAta(
       smoke.creator.publicKey,
-      smoke.usdcMint,
+      smoke.ammMint,
     );
     // Give the attacker a real USDC account, so the call fails on the binding
     // we are testing rather than on a missing account.
     await writeTokenAccount(
       smoke,
       attackerUsdc,
-      smoke.usdcMint,
+      smoke.ammMint,
       smoke.creator.publicKey,
       1_000_000n,
     );
@@ -167,11 +170,11 @@ describe("LP redemption flow", () => {
             .accounts({
               market: marketPda,
               ammState,
-              lpMint: smoke.usdcMint, // <- the substitution
+              lpMint: smoke.ammMint, // <- the substitution
               userLpAta: attackerUsdc,
               lpYieldVault,
               lpYieldAuthority,
-              userUsdcAta: attackerUsdc,
+              userAmmAta: attackerUsdc,
               user: smoke.creator.publicKey,
               tokenProgram: TOKEN_PROGRAM_ID,
             })

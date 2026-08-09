@@ -80,9 +80,16 @@ describe("sooth_core::create_market end-to-end", () => {
       soDir,
     );
 
-    // ─── 1. USDC mint ─────────────────────────────────────────────────────
+    // ─── 1. Both venue mints ──────────────────────────────────────────────
+    // `create_market` now creates a vault per venue, and each is constrained
+    // `address = <venue>_TOKEN_MINT`, so both mints must exist at exactly
+    // those keys or the instruction fails before doing anything.
+    const AMM_MINT_DEVNET = new PublicKey(
+      "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu",
+    );
     const mintAuthority = Keypair.generate();
     await writeMint(ctx, USDC_MINT_DEVNET, mintAuthority.publicKey);
+    await writeMint(ctx, AMM_MINT_DEVNET, mintAuthority.publicKey);
 
     // ─── 2. Funded creator ────────────────────────────────────────────────
     const creator = Keypair.generate();
@@ -168,7 +175,8 @@ describe("sooth_core::create_market end-to-end", () => {
         rpcUrl: "http://localhost:8899",
       },
       programIds: PROGRAMS,
-      usdcMint: USDC_MINT_DEVNET,
+      bookMint: USDC_MINT_DEVNET,
+      ammMint: AMM_MINT_DEVNET,
       connection: conn,
     });
 
@@ -212,17 +220,32 @@ describe("sooth_core::create_market end-to-end", () => {
     const [marketPda] = deriveMarketPda(marketId, PROGRAMS);
     const [vaultAuthority] = deriveVaultAuthorityPda(marketId, PROGRAMS);
     const [lockAuthority] = deriveLockAuthorityPda(marketId, PROGRAMS);
-    const vault = deriveMarketVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
-    const lockVault = deriveLockVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
+    const vaultBook = deriveMarketVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
+    const vaultAmm = deriveMarketVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);
+    // The sell-lock escrow follows the AMM's token: only the AMM has a
+    // sell-with-cooldown path.
+    const lockVault = deriveLockVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);
     const [ammStatePda] = deriveAmmStatePda(marketId, PROGRAMS);
 
     const marketAcc = await ctx.banksClient.getAccount(marketPda);
     expect(marketAcc).toBeTruthy();
     expect(marketAcc!.owner.toBase58()).toBe(SOOTH_CORE_ID.toBase58());
 
-    const vaultAcc = await ctx.banksClient.getAccount(vault);
-    expect(vaultAcc).toBeTruthy();
-    expect(vaultAcc!.owner.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
+    // Both vaults, and each holding its own venue's mint — the assertion that
+    // would catch a swapped constant.
+    for (const [label, ata, mint] of [
+      ["book", vaultBook, USDC_MINT_DEVNET],
+      ["amm", vaultAmm, AMM_MINT_DEVNET],
+    ] as const) {
+      const acc = await ctx.banksClient.getAccount(ata);
+      expect(acc, `${label} vault missing`).toBeTruthy();
+      expect(acc!.owner.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
+      // SPL token account: mint at offset 0.
+      expect(
+        new PublicKey(Buffer.from(acc!.data).subarray(0, 32)).toBase58(),
+        `${label} vault holds the wrong mint`,
+      ).toBe(mint.toBase58());
+    }
 
     const lockVaultAcc = await ctx.banksClient.getAccount(lockVault);
     expect(lockVaultAcc).toBeTruthy();
@@ -254,7 +277,8 @@ describe("sooth_core::create_market end-to-end", () => {
     expect(marketState.adjudicator.toBase58()).toBe(
       creator.publicKey.toBase58(),
     );
-    expect(marketState.vault.toBase58()).toBe(vault.toBase58());
+    expect(marketState.vaultBook.toBase58()).toBe(vaultBook.toBase58());
+    expect(marketState.vaultAmm.toBase58()).toBe(vaultAmm.toBase58());
     expect(marketState.lockVault.toBase58()).toBe(lockVault.toBase58());
     expect(Object.keys(marketState.lifecycle)[0]).toBe("open");
 

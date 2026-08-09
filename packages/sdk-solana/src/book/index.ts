@@ -37,7 +37,7 @@ import {
   deriveMarketVaultAta,
   deriveProtocolConfigPda,
   deriveVaultAuthorityPda,
-  marketFeePoolPda,
+  feePoolBookPda,
   type MarketId,
   type ProgramIds,
 } from "../pdas.js";
@@ -315,7 +315,7 @@ export function buildBookPlace(
       key(deriveVaultAuthorityPda(marketId, programs)[0], false),
       key(deriveMarketVaultAta(marketId, usdcMint, programs), true),
       key(getAssociatedTokenAddressSync(usdcMint, taker), true),
-      key(marketFeePoolPda(marketId, programs)[0], true),
+      key(feePoolBookPda(marketId, programs)[0], true),
       key(deriveProtocolConfigPda(programs)[0], false),
       key(taker, false, true),
       key(TOKEN_PROGRAM_ID, false),

@@ -88,7 +88,8 @@ test("Markets page renders the seeded market with bridged metadata", async () =>
       rpcUrl: "http://localhost:8899",
     },
     programIds: smoke.programs,
-    usdcMint: smoke.usdcMint,
+    bookMint: smoke.usdcMint,
+    ammMint: smoke.ammMint,
     connection: conn as unknown as Connection,
   });
 

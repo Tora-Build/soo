@@ -81,6 +81,13 @@ export const SimpleTradingPanel = ({
     truth?.isSettled === true || truth?.isFinalized === true || isSettled;
   const { contracts } = useDeployments();
   const ammEngineAddress = contracts.AMMEngine as `0x${string}` | undefined;
+  // This panel trades the AMM, which is denominated in the AMM venue's token.
+  // Reading `MockUSDC` here would check the book's balance against an AMM
+  // cost — the panel would refuse trades the user can afford. Falls back to
+  // MockUSDC so a single-token deployment still works unchanged.
+  const ammTokenAddress = (contracts.AmmToken ?? contracts.MockUSDC) as
+    | `0x${string}`
+    | undefined;
   const { available: spendableProceeds } =
     useAvailableBalance(ammEngineAddress);
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
@@ -211,25 +218,25 @@ export const SimpleTradingPanel = ({
 
   // Get USDC balance and allowance
   const { data: usdcBalance } = useReadContract({
-    address: contracts.MockUSDC as `0x${string}`,
+    address: ammTokenAddress as `0x${string}`,
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: [userAddress!],
     chainId,
     query: {
-      enabled: !!userAddress && !!contracts.MockUSDC,
+      enabled: !!userAddress && !!ammTokenAddress,
       refetchInterval: 15000,
     },
   });
 
   const { data: usdcAllowance, refetch: refetchAllowance } = useReadContract({
-    address: contracts.MockUSDC as `0x${string}`,
+    address: ammTokenAddress as `0x${string}`,
     abi: ERC20_ABI,
     functionName: "allowance",
     args: [userAddress!, contracts.AMMEngine as `0x${string}`],
     chainId,
     query: {
-      enabled: !!userAddress && !!contracts.MockUSDC && !!contracts.AMMEngine,
+      enabled: !!userAddress && !!ammTokenAddress && !!contracts.AMMEngine,
       refetchInterval: 30000,
     },
   });
@@ -454,7 +461,7 @@ export const SimpleTradingPanel = ({
 
   // Approve USDC for AMMEngine (tradePositions pulls from wallet via transferFrom)
   const handleApprove = () => {
-    if (!contracts.MockUSDC || !contracts.AMMEngine) return;
+    if (!ammTokenAddress || !contracts.AMMEngine) return;
 
     // Approve a large amount in the token's actual decimals
     const approvalAmount = parseUnits("1000000", decimals);
@@ -467,7 +474,7 @@ export const SimpleTradingPanel = ({
 
     approve(
       {
-        address: contracts.MockUSDC as `0x${string}`,
+        address: ammTokenAddress as `0x${string}`,
         abi: ERC20_ABI,
         functionName: "approve",
         args: [contracts.AMMEngine as `0x${string}`, approvalAmount],

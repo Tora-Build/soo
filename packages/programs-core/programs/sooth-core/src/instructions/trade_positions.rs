@@ -48,21 +48,21 @@ pub struct TradePositions<'info> {
 
     #[account(
         mut,
-        token::mint = usdc_mint,
+        token::mint = amm_mint,
         token::authority = user,
     )]
-    pub user_usdc_ata: Box<Account<'info, TokenAccount>>,
+    pub user_amm_ata: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
-        token::mint = usdc_mint,
+        token::mint = amm_mint,
         token::authority = vault_authority,
-        constraint = market_vault.key() == market.vault @ SoothCoreError::MarketNotOpen,
+        constraint = market_vault.key() == market.vault_amm @ SoothCoreError::MarketNotOpen,
     )]
     pub market_vault: Box<Account<'info, TokenAccount>>,
 
-    #[account(address = crate::constants::BASE_TOKEN_MINT)]
-    pub usdc_mint: Box<Account<'info, Mint>>,
+    #[account(address = crate::constants::AMM_TOKEN_MINT)]
+    pub amm_mint: Box<Account<'info, Mint>>,
 
     #[account(
         seeds = [b"protocol_config"],
@@ -72,11 +72,11 @@ pub struct TradePositions<'info> {
 
     #[account(
         mut,
-        seeds = [b"market_fee_pool", market.market_id.as_ref()],
+        seeds = [b"fee_pool_amm", market.market_id.as_ref()],
         bump,
-        token::mint = usdc_mint,
+        token::mint = amm_mint,
     )]
-    pub market_fee_pool: Box<Account<'info, TokenAccount>>,
+    pub fee_pool_amm: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -215,7 +215,7 @@ pub fn handler(
     let cost_cpi = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         Transfer {
-            from: ctx.accounts.user_usdc_ata.to_account_info(),
+            from: ctx.accounts.user_amm_ata.to_account_info(),
             to: ctx.accounts.market_vault.to_account_info(),
             authority: ctx.accounts.user.to_account_info(),
         },
@@ -232,8 +232,8 @@ pub fn handler(
         let fee_cpi = CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
             Transfer {
-                from: ctx.accounts.user_usdc_ata.to_account_info(),
-                to: ctx.accounts.market_fee_pool.to_account_info(),
+                from: ctx.accounts.user_amm_ata.to_account_info(),
+                to: ctx.accounts.fee_pool_amm.to_account_info(),
                 authority: ctx.accounts.user.to_account_info(),
             },
         );

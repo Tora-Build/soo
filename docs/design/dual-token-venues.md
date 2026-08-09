@@ -1,6 +1,6 @@
 # Dual-token venues: the AMM in an instance token, the book in USDC
 
-Status: design, 2026-08-09. No code yet.
+Status: Phases 0-2 implemented, 2026-08-10. Phase 3 (deploy) outstanding.
 
 Companion to the EVM initiative (`Tora-Build/sooth-alpha@7da01a7f`,
 `docs/research/initiatives/EASTBOARD_DUAL_TOKEN_VENUES_2026-08-07.md`). This is
@@ -367,16 +367,36 @@ diff stays purely about tokens.
 2. `graduation_bps` (§6.2) — inert at 10 000
 3. `amm_fee_bps` / `book_fee_bps` (§6.3), and correct the UI's hardcoded label
 
-### Phase 2 — the token split
+### Phase 2 — the token split ✅
 
-Must land as one unit; a half-split vault is not a valid state.
+Landed as one unit; a half-split vault is not a valid state.
 
-1. `AMM_TOKEN_MINT` / `BOOK_TOKEN_MINT` + a devnet mock instance token
-2. `Market`: `vault_book`, `vault_amm` (into the space Phase 0 freed)
-3. `create_market` creates both vaults; `init_market_fee_pool` both pools
-4. The ~30 remaining constraint sites pick a side, per the §5 table
-5. `reclaim_subsidy` rework (§7)
-6. `distribute_fees` per pool, with the `b_base` guard (§6.4)
+1. `AMM_TOKEN_MINT` / `BOOK_TOKEN_MINT`, with a devnet mock AMM mint
+   (`CUsiEVc2…`, keypair backed up outside the repo). A `mainnet` build
+   `compile_error!`s until its AMM token is set, rather than silently shipping
+   a placeholder.
+2. `Market.vault` **renamed** to `vault_book`, plus a new `vault_amm`. Renamed
+   rather than added: the compiler then has to be satisfied at all 17 use
+   sites, and a wrong-vault reference is the one mistake here that compiles
+   and fails silently.
+3. `create_market` creates three vaults across two mints (the sell-lock escrow
+   follows the AMM's token); `init_market_fee_pool` creates both pools in one
+   instruction, so a market cannot end up with half its fee plumbing.
+4. Every constraint site assigned per §5, verified by
+   `venue-separation.test.ts` rather than by review — it parses each
+   instruction's source and fails if one names both venues' symbols.
+5. `reclaim_subsidy` is AMM-only (§7).
+6. `distribute_fees_amm` / `distribute_fees_book`, the latter with no
+   `b_base` slice (§6.4).
+
+Also removed on the way: `distribute_fees_legacy` (drains a pre-W5 pool that
+cannot exist on a fresh deployment) and four SDK builders targeting
+instructions deleted with the legacy book.
+
+**Found while doing it, and fixed:** the demo's trading panel read the USDC
+balance for a trade priced in the AMM's token, so it refused trades the user
+could afford. `deployments.json` now names both tokens and the panel asks for
+its own venue's.
 
 ### Phase 3 — off-chain and deploy
 

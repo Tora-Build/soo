@@ -110,7 +110,7 @@ const { soothCoreIdl } = await import(sdkUrl("anchor/index.js"));
 const {
   deriveAmmStatePda,
   deriveFeePoolAuthorityPda,
-  marketFeePoolPda,
+  feePoolAmmPda,
   deriveFeePoolVaultAta,
   deriveLockAuthorityPda,
   deriveLockVaultAta,
@@ -844,15 +844,15 @@ async function init() {
   // takes it as an account, so without it `buy`, `book_place` and
   // `trade_positions` all fail with AccountNotInitialized — the seed script
   // was creating a market nobody could trade on.
-  const [marketFeePoolPdaAddr] = marketFeePoolPda(marketId, PROGRAMS);
-  if (!(await connection.getAccountInfo(marketFeePoolPdaAddr))) {
+  const [feePoolAmmPdaAddr] = feePoolAmmPda(marketId, PROGRAMS);
+  if (!(await connection.getAccountInfo(feePoolAmmPdaAddr))) {
     await launchpadProgram.methods
       .initMarketFeePool()
       .accounts({
         market: marketPda,
         feePoolAuthority: feePoolAuthorityPda,
         usdcMint: USDC_MINT_DEVNET,
-        marketFeePool: marketFeePoolPdaAddr,
+        marketFeePool: feePoolAmmPdaAddr,
         signer: creator.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -861,7 +861,7 @@ async function init() {
       .signers([creator])
       .preInstructions([heapFrameIx()])
       .rpc();
-    log(`  initMarketFeePool OK (${marketFeePoolPdaAddr.toBase58()})`);
+    log(`  initMarketFeePool OK (${feePoolAmmPdaAddr.toBase58()})`);
   } else {
     log(`  market_fee_pool already present, skipping`);
   }

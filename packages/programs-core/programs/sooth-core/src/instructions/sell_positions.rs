@@ -1,7 +1,7 @@
 //! `sell_positions` — sell YES/NO shares against the LMSR with lock-on-sell.
 //!
 //! Uses PDA-signed token transfers:
-//!   - `token::transfer(market_vault → market_fee_pool)`.
+//!   - `token::transfer(market_vault → fee_pool_amm)`.
 //!   - `token::transfer(market_vault → lock_vault)`.
 
 use anchor_lang::prelude::*;
@@ -63,15 +63,15 @@ pub struct SellPositions<'info> {
 
     #[account(
         mut,
-        token::mint = usdc_mint,
+        token::mint = amm_mint,
         token::authority = vault_authority,
-        constraint = market_vault.key() == market.vault @ SoothCoreError::MarketNotOpen,
+        constraint = market_vault.key() == market.vault_amm @ SoothCoreError::MarketNotOpen,
     )]
     pub market_vault: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
-        token::mint = usdc_mint,
+        token::mint = amm_mint,
         token::authority = lock_authority,
         constraint = lock_vault.key() == market.lock_vault @ SoothCoreError::LockVaultMismatch,
     )]
@@ -92,8 +92,8 @@ pub struct SellPositions<'info> {
     )]
     pub lock_entry: Box<Account<'info, LockEntry>>,
 
-    #[account(address = crate::constants::BASE_TOKEN_MINT)]
-    pub usdc_mint: Box<Account<'info, Mint>>,
+    #[account(address = crate::constants::AMM_TOKEN_MINT)]
+    pub amm_mint: Box<Account<'info, Mint>>,
 
     #[account(
         seeds = [b"protocol_config"],
@@ -103,11 +103,11 @@ pub struct SellPositions<'info> {
 
     #[account(
         mut,
-        seeds = [b"market_fee_pool", market.market_id.as_ref()],
+        seeds = [b"fee_pool_amm", market.market_id.as_ref()],
         bump,
-        token::mint = usdc_mint,
+        token::mint = amm_mint,
     )]
-    pub market_fee_pool: Box<Account<'info, TokenAccount>>,
+    pub fee_pool_amm: Box<Account<'info, TokenAccount>>,
 
     #[account(mut)]
     pub user: Signer<'info>,
@@ -228,7 +228,7 @@ pub fn handler(
         }
     }
 
-    // ── 6. PDA-signed fee transfer: market_vault → market_fee_pool ────────
+    // ── 6. PDA-signed fee transfer: market_vault → fee_pool_amm ────────
     let vault_authority_bump = ctx.accounts.market.vault_authority_bump;
     let vault_signer_seeds: &[&[&[u8]]] =
         &[&[b"vault", market_id.as_ref(), &[vault_authority_bump]]];
@@ -239,7 +239,7 @@ pub fn handler(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.market_vault.to_account_info(),
-                    to: ctx.accounts.market_fee_pool.to_account_info(),
+                    to: ctx.accounts.fee_pool_amm.to_account_info(),
                     authority: ctx.accounts.vault_authority.to_account_info(),
                 },
                 vault_signer_seeds,

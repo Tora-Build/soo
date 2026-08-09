@@ -18,7 +18,7 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 use crate::book::account::load_book;
 use crate::book::arena::{SIDE_ASK, SIDE_BID};
-use crate::constants::BASE_TOKEN_MINT;
+use crate::constants::BOOK_TOKEN_MINT;
 use crate::error::SoothCoreError;
 use crate::events::{BookFill, BookFilled, BookOrderPlaced, BOOK_EVENT_VERSION};
 use crate::state::{require_not_paused, Market, ProtocolConfig};
@@ -55,21 +55,21 @@ pub struct BookPlace<'info> {
 
     #[account(
         mut,
-        address = market.vault @ SoothCoreError::VaultAuthorityMismatch,
-        constraint = vault.mint == BASE_TOKEN_MINT @ SoothCoreError::VaultAuthorityMismatch,
+        address = market.vault_book @ SoothCoreError::VaultAuthorityMismatch,
+        constraint = vault_book.mint == BOOK_TOKEN_MINT @ SoothCoreError::VaultAuthorityMismatch,
     )]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault_book: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = vault.mint, token::authority = taker)]
+    #[account(mut, token::mint = vault_book.mint, token::authority = taker)]
     pub taker_usdc_ata: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
-        seeds = [b"market_fee_pool", market.market_id.as_ref()],
+        seeds = [b"fee_pool_book", market.market_id.as_ref()],
         bump,
-        token::mint = vault.mint,
+        token::mint = vault_book.mint,
     )]
-    pub market_fee_pool: Box<Account<'info, TokenAccount>>,
+    pub fee_pool_book: Box<Account<'info, TokenAccount>>,
 
     #[account(seeds = [b"protocol_config"], bump = protocol_config.bump)]
     pub protocol_config: Box<Account<'info, ProtocolConfig>>,
@@ -168,7 +168,7 @@ pub fn handler(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.taker_usdc_ata.to_account_info(),
-                    to: ctx.accounts.vault.to_account_info(),
+                    to: ctx.accounts.vault_book.to_account_info(),
                     authority: ctx.accounts.taker.to_account_info(),
                 },
             ),
@@ -183,7 +183,7 @@ pub fn handler(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.vault.to_account_info(),
+                    from: ctx.accounts.vault_book.to_account_info(),
                     to: ctx.accounts.taker_usdc_ata.to_account_info(),
                     authority: ctx.accounts.vault_authority.to_account_info(),
                 },
@@ -202,8 +202,8 @@ pub fn handler(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.vault.to_account_info(),
-                    to: ctx.accounts.market_fee_pool.to_account_info(),
+                    from: ctx.accounts.vault_book.to_account_info(),
+                    to: ctx.accounts.fee_pool_book.to_account_info(),
                     authority: ctx.accounts.vault_authority.to_account_info(),
                 },
                 seeds,

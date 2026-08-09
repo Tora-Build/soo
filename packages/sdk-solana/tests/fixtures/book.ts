@@ -24,7 +24,7 @@ import {
   deriveMarketVaultAta,
   deriveProtocolConfigPda,
   deriveVaultAuthorityPda,
-  marketFeePoolPda,
+  feePoolBookPda,
 } from "../../src/pdas.js";
 import { SOOTH_CORE_ID, type SmokeContext } from "./setup.js";
 import { countWritableAccounts, heapFrameIx } from "./orderbook.js";
@@ -130,7 +130,7 @@ export function bookPlaceIx(
       key(deriveVaultAuthorityPda(marketId, programs)[0], false),
       key(deriveMarketVaultAta(marketId, usdcMint, programs), true),
       key(getAssociatedTokenAddressSync(usdcMint, taker), true),
-      key(marketFeePoolPda(marketId, programs)[0], true),
+      key(feePoolBookPda(marketId, programs)[0], true),
       key(deriveProtocolConfigPda(programs)[0], false),
       key(taker, false, true),
       key(TOKEN_PROGRAM_ID, false),

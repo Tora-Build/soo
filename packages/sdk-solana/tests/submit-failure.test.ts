@@ -52,7 +52,7 @@ import {
   deriveUserLpAta,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
-  marketFeePoolPda,
+  feePoolAmmPda,
   type ProgramIds,
 } from "../src/pdas.js";
 import { soothCoreIdl } from "../src/anchor/index.js";
@@ -76,7 +76,8 @@ describe("submit failure surfacing", () => {
         rpcUrl: "http://localhost:8899",
       },
       programIds: smoke.programs,
-      usdcMint: smoke.usdcMint,
+      bookMint: smoke.usdcMint,
+      ammMint: smoke.ammMint,
       connection: conn,
     });
 
@@ -93,10 +94,10 @@ describe("submit failure surfacing", () => {
       smoke.marketId,
       smoke.programs,
     );
-    const userUsdcAta = deriveUserUsdcAta(smoke.user.publicKey, smoke.usdcMint);
+    const userUsdcAta = deriveUserUsdcAta(smoke.user.publicKey, smoke.ammMint);
     const marketVault = deriveMarketVaultAta(
       smoke.marketId,
-      smoke.usdcMint,
+      smoke.ammMint,
       smoke.programs,
     );
 
@@ -145,14 +146,14 @@ describe("submit failure surfacing", () => {
         ammState: ammPda,
         position: positionPda,
         vaultAuthority,
-        userUsdcAta,
+        userAmmAta: userUsdcAta,
         marketVault,
-        usdcMint: smoke.usdcMint,
+        ammMint: smoke.ammMint,
         // Fee path: trade_positions reads the singleton ProtocolConfig PDA
         // and credits the per-market fee pool owned by sooth_launchpad.
         // bootSmoke initialises both before this test fires the bad ix.
         protocolConfig: deriveProtocolConfigPda(smoke.programs)[0],
-        marketFeePool: marketFeePoolPda(smoke.marketId, smoke.programs)[0],
+        feePoolAmm: feePoolAmmPda(smoke.marketId, smoke.programs)[0],
         lpMint,
         lpMintAuthority,
         userLpAta,
@@ -172,13 +173,13 @@ describe("submit failure surfacing", () => {
     // pool exists when the bad ix runs. The whole tx rolls back on the 6003
     // failure, so the fee pool is not persisted — that is the correct outcome.
     const [feePoolAuthority] = deriveFeePoolAuthorityPda(smoke.programs);
-    const [feePoolPda] = marketFeePoolPda(smoke.marketId, smoke.programs);
+    const [feePoolPda] = feePoolAmmPda(smoke.marketId, smoke.programs);
     const initFeePoolIx: TransactionInstruction = await (program.methods as any)
       .initMarketFeePool()
       .accounts({
         market: smoke.marketPda,
         feePoolAuthority,
-        usdcMint: smoke.usdcMint,
+        ammMint: smoke.ammMint,
         marketFeePool: feePoolPda,
         signer: smoke.user.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,

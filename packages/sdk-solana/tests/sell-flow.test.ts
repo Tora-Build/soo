@@ -52,7 +52,8 @@ describe("AMM sell flow", () => {
         rpcUrl: "http://localhost:8899",
       },
       programIds: smoke.programs,
-      usdcMint: smoke.usdcMint,
+      bookMint: smoke.usdcMint,
+      ammMint: smoke.ammMint,
       connection: conn,
     });
 
@@ -154,9 +155,7 @@ describe("AMM sell flow", () => {
     expect(unlockAt).toBe(1_000_001n + 86_400n);
 
     // ─── 5. lock_vault USDC matches LockEntry.amount_usdc ───────────────
-    const lockVaultAta = deriveLockVaultAta(
-      smoke.marketId,
-      smoke.usdcMint,
+    const lockVaultAta = deriveLockVaultAta(smoke.marketId, smoke.ammMint,
       smoke.programs,
     );
     const lockVaultAcc = await getAccount(conn, lockVaultAta);
@@ -183,7 +182,8 @@ describe("AMM sell flow", () => {
         rpcUrl: "http://localhost:8899",
       },
       programIds: smoke.programs,
-      usdcMint: smoke.usdcMint,
+      bookMint: smoke.usdcMint,
+      ammMint: smoke.ammMint,
       connection: conn,
     });
     const marketRef = encodePubkeyRef(smoke.marketPda);
@@ -213,7 +213,8 @@ describe("AMM sell flow", () => {
         rpcUrl: "http://localhost:8899",
       },
       programIds: smoke.programs,
-      usdcMint: smoke.usdcMint,
+      bookMint: smoke.usdcMint,
+      ammMint: smoke.ammMint,
       connection: conn,
     });
     const marketRef = encodePubkeyRef(smoke.marketPda);

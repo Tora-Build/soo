@@ -11,7 +11,7 @@ use anchor_lang::{emit_cpi, event_cpi};
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 use crate::book::account::load_book;
-use crate::constants::BASE_TOKEN_MINT;
+use crate::constants::BOOK_TOKEN_MINT;
 use crate::error::SoothCoreError;
 use crate::events::{BookOrderCancelled, BOOK_EVENT_VERSION};
 use crate::state::Market;
@@ -81,12 +81,12 @@ pub struct BookWithdraw<'info> {
 
     #[account(
         mut,
-        address = market.vault @ SoothCoreError::VaultAuthorityMismatch,
-        constraint = vault.mint == BASE_TOKEN_MINT @ SoothCoreError::VaultAuthorityMismatch,
+        address = market.vault_book @ SoothCoreError::VaultAuthorityMismatch,
+        constraint = vault_book.mint == BOOK_TOKEN_MINT @ SoothCoreError::VaultAuthorityMismatch,
     )]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault_book: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = vault.mint, token::authority = user)]
+    #[account(mut, token::mint = vault_book.mint, token::authority = user)]
     pub user_usdc_ata: Box<Account<'info, TokenAccount>>,
 
     pub user: Signer<'info>,
@@ -118,7 +118,7 @@ pub fn withdraw_handler(ctx: Context<BookWithdraw>) -> Result<()> {
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.vault.to_account_info(),
+                    from: ctx.accounts.vault_book.to_account_info(),
                     to: ctx.accounts.user_usdc_ata.to_account_info(),
                     authority: ctx.accounts.vault_authority.to_account_info(),
                 },

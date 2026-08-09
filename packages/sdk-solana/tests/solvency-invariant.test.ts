@@ -11,13 +11,17 @@
 // assertion vacuous. Both are recorded here because the shape of the mistake
 // is easy to reintroduce.)
 //
-// Two ledgers are counted: AMM `Position` and book seats. A third — SPL
-// outcome-token supply — was removed with the complete-set instructions, see
-// `docs/design/dual-token-venues.md` §4.
+// Since the venues split tokens the check is PER VAULT, and that is the point:
+// the AMM's vault holds one mint and the book's another, so an obligation from
+// one venue can never be covered by the other's collateral. Reading them as a
+// single pool would hide exactly the mixing the split exists to prevent — a
+// book vault could look solvent on the strength of AMM collateral it has no
+// claim to.
 //
-// When the venues split tokens (Phase 2 of that doc) this becomes two
-// independent checks, each vault against its own venue's obligations, and no
-// instruction may read one vault to satisfy the other.
+// So `checkCollateralBacking` takes the venue's mint and counts only that
+// venue's ledger. Each is independently collateralised by construction: the
+// LMSR is bounded by the creator's `b·ln(2)` deposit, and every book fill
+// escrows both legs to exactly 1.00.
 
 import { describe, expect, it } from "vitest";
 import { PublicKey, Transaction } from "@solana/web3.js";
@@ -99,7 +103,9 @@ export async function checkCollateralBacking(
   conn: any,
   marketId: Uint8Array,
   programs: any,
-  usdcMint: PublicKey,
+  /** The venue's mint — its vault is an ATA of that mint under the shared
+   *  `vault_authority` PDA, so this selects which pot is being checked. */
+  venueMint: PublicKey,
   opts: {
     program?: any;
     ammPositions?: PublicKey[];
@@ -115,7 +121,7 @@ export async function checkCollateralBacking(
     book?: PublicKey;
   } = {},
 ): Promise<SolvencyReport> {
-  const vaultAta = deriveMarketVaultAta(marketId, usdcMint, programs);
+  const vaultAta = deriveMarketVaultAta(marketId, venueMint, programs);
   const vault = await getAccount(conn, vaultAta);
 
   let yesTotal = 0n;

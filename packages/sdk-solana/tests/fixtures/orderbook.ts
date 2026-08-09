@@ -40,7 +40,8 @@ import {
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
   marketBookPda,
-  marketFeePoolPda,
+  feePoolAmmPda,
+  feePoolBookPda,
   orderbookPositionPda,
 } from "../../src/pdas.js";
 
@@ -109,7 +110,7 @@ export async function createFundedMaker(
   smoke: SmokeContext,
   usdcBaseUnits: bigint,
 ): Promise<Keypair> {
-  const { ctx, creator, user, usdcMint } = smoke;
+  const { ctx, creator, user, usdcMint, ammMint } = smoke;
   const maker = Keypair.generate();
 
   const acc = await ctx.banksClient.getAccount(maker.publicKey);
@@ -121,31 +122,36 @@ export async function createFundedMaker(
     rentEpoch: 0n as unknown as number,
   });
 
-  const makerAta = deriveUserUsdcAta(maker.publicKey, usdcMint);
-  await sendTx(
-    ctx,
-    [creator],
-    new Transaction().add(
-      createAssociatedTokenAccountInstruction(
-        creator.publicKey,
-        makerAta,
-        maker.publicKey,
-        usdcMint,
+  // Funded in BOTH venue tokens. A maker who only holds USDC can quote the
+  // book and cannot touch the AMM, so a test that funds one and trades the
+  // other fails on balance rather than on what it meant to assert.
+  for (const mint of [usdcMint, ammMint]) {
+    const makerAta = deriveUserUsdcAta(maker.publicKey, mint);
+    await sendTx(
+      ctx,
+      [creator],
+      new Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          creator.publicKey,
+          makerAta,
+          maker.publicKey,
+          mint,
+        ),
       ),
-    ),
-  );
-  await sendTx(
-    ctx,
-    [user],
-    new Transaction().add(
-      createTransferInstruction(
-        deriveUserUsdcAta(user.publicKey, usdcMint),
-        makerAta,
-        user.publicKey,
-        usdcBaseUnits,
+    );
+    await sendTx(
+      ctx,
+      [user],
+      new Transaction().add(
+        createTransferInstruction(
+          deriveUserUsdcAta(user.publicKey, mint),
+          makerAta,
+          user.publicKey,
+          usdcBaseUnits,
+        ),
       ),
-    ),
-  );
+    );
+  }
   return maker;
 }
 
@@ -157,7 +163,10 @@ export async function initMarketFeePool(
   payer: Keypair,
 ): Promise<void> {
   const [feePoolAuthority] = deriveFeePoolAuthorityPda(smoke.programs);
-  const [marketFeePool] = marketFeePoolPda(smoke.marketId, smoke.programs);
+  // One instruction, both pools — an SPL token account holds one mint, so the
+  // venues cannot share one.
+  const [feePoolBook] = feePoolBookPda(smoke.marketId, smoke.programs);
+  const [feePoolAmm] = feePoolAmmPda(smoke.marketId, smoke.programs);
   await sendTx(
     ctx,
     [payer],
@@ -167,8 +176,10 @@ export async function initMarketFeePool(
         .accounts({
           market: smoke.marketPda,
           feePoolAuthority,
-          usdcMint: smoke.usdcMint,
-          marketFeePool,
+          bookMint: smoke.usdcMint,
+          ammMint: smoke.ammMint,
+          feePoolBook,
+          feePoolAmm,
           signer: payer.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -207,7 +218,7 @@ export async function buyTx(
     programs,
   );
   const [vaultAuthority] = deriveVaultAuthorityPda(marketId, programs);
-  const [marketFeePool] = marketFeePoolPda(marketId, programs);
+  const [marketFeePool] = feePoolAmmPda(marketId, programs);
   const [protocolConfig] = deriveProtocolConfigPda(programs);
   const [takerOrderbookPosition] = orderbookPositionPda(
     marketId,
@@ -265,8 +276,14 @@ export async function buyTx(
  * book tests are about the book, so they flip the bit directly rather than
  * paying for an incubation they are not testing.
  *
- * `graduation_gate.test.ts` covers the real transition, so nothing here is
- * asserting against a state the program cannot actually reach.
+ * Decoded and re-encoded through Anchor's coder rather than poked at a byte
+ * offset. The offset version was correct when written and silently wrong two
+ * commits later, when a new field shifted the layout — it wrote into
+ * `lock_authority_bump` instead, and every book test failed with
+ * `NotGraduated` for a reason that had nothing to do with the gate.
+ *
+ * `graduation-gate.test.ts` covers the real transition, so nothing here is
+ * asserting against a state the program cannot reach.
  */
 export async function enableBook(
   ctx: SvmContext,
@@ -274,12 +291,13 @@ export async function enableBook(
 ): Promise<void> {
   const raw = await ctx.banksClient.getAccount(smoke.marketPda);
   if (!raw) throw new Error("enableBook: market account not found");
+  const program = anchorProgram(ctx, smoke.creator);
+  const coder = (program as unknown as { coder: any }).coder;
+  const market = coder.accounts.decode("market", Buffer.from(raw.data));
+  market.bookEnabled = true;
+  const encoded: Buffer = await coder.accounts.encode("market", market);
   const data = Buffer.from(raw.data);
-  // Offset 205: 8 discriminator + market_id(16) + creator(32) + adjudicator(32)
-  // + question_hash(32) + vault(32) + lock_vault(32) + start_time(8)
-  // + deadline(8) + lifecycle(1) + winning_outcome(1) + bump(1)
-  // + vault_authority_bump(1) + lock_authority_bump(1).
-  data.writeUInt8(1, 205);
+  encoded.copy(data, 0);
   ctx.setAccount(smoke.marketPda, {
     executable: false,
     owner: raw.owner,

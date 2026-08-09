@@ -96,7 +96,7 @@ pub mod sooth_core {
     use crate::instructions::dismiss_market;
     use crate::instructions::dispute;
     use crate::instructions::distribute_fees;
-    use crate::instructions::distribute_fees_legacy;
+    use crate::instructions::distribute_fees_book;
     use crate::instructions::init_market_fee_pool;
     use crate::instructions::initialize_amm_state;
     use crate::instructions::lock_for_resolution;
@@ -153,15 +153,14 @@ pub mod sooth_core {
         init_market_fee_pool::handler(ctx)
     }
 
-    pub fn distribute_fees(ctx: Context<DistributeFees>) -> Result<()> {
+    pub fn distribute_fees_amm(ctx: Context<DistributeFeesAmm>) -> Result<()> {
         distribute_fees::handler(ctx)
     }
 
-    pub fn distribute_fees_legacy(
-        ctx: Context<DistributeFeesLegacy>,
-    ) -> Result<()> {
-        distribute_fees_legacy::handler(ctx)
+    pub fn distribute_fees_book(ctx: Context<DistributeFeesBook>) -> Result<()> {
+        distribute_fees_book::handler(ctx)
     }
+
 
     // ── LP lifecycle ──────────────────────────────────────────────────────────
 

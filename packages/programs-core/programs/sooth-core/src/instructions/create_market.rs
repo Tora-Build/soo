@@ -65,14 +65,24 @@ pub struct CreateMarket<'info> {
     )]
     pub lock_authority: UncheckedAccount<'info>,
 
-    #[account(address = crate::constants::BASE_TOKEN_MINT)]
-    pub usdc_mint: Box<Account<'info, Mint>>,
+    #[account(address = crate::constants::BOOK_TOKEN_MINT)]
+    pub book_mint: Box<Account<'info, Mint>>,
 
-    /// CHECK: USDC ATA owned by `vault_authority`; init'd in handler.
+    #[account(address = crate::constants::AMM_TOKEN_MINT)]
+    pub amm_mint: Box<Account<'info, Mint>>,
+
+    /// CHECK: book-token ATA owned by `vault_authority`; init'd in handler.
     #[account(mut)]
-    pub vault: UncheckedAccount<'info>,
+    pub vault_book: UncheckedAccount<'info>,
 
-    /// CHECK: USDC ATA owned by `lock_authority`; init'd in handler.
+    /// CHECK: AMM-token ATA owned by `vault_authority`; init'd in handler.
+    ///
+    /// Same authority as the book vault — a signer-only PDA can own one ATA
+    /// per mint, so the split needs no new authority and no new seeds.
+    #[account(mut)]
+    pub vault_amm: UncheckedAccount<'info>,
+
+    /// CHECK: AMM-token ATA owned by `lock_authority`; init'd in handler.
     #[account(mut)]
     pub lock_vault: UncheckedAccount<'info>,
 
@@ -144,12 +154,13 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
             // A new market is ungraduated, so the book stays shut until
             // `trade_positions` opens it.
             book_enabled: false,
-            _reserved: [0u8; 129],
+            _reserved: [0u8; 97],
             market_id,
             creator: creator_key,
             adjudicator: args.adjudicator,
             question_hash: args.question_hash,
-            vault: Pubkey::default(),       // filled after leg 3
+            vault_book: Pubkey::default(),  // all three filled after leg 2
+            vault_amm: Pubkey::default(),
             lock_vault: Pubkey::default(),
             start_time: args.start_time,
             deadline: args.deadline,
@@ -171,9 +182,20 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
             ctx.accounts.associated_token_program.to_account_info(),
             Create {
                 payer: ctx.accounts.creator.to_account_info(),
-                associated_token: ctx.accounts.vault.to_account_info(),
+                associated_token: ctx.accounts.vault_book.to_account_info(),
                 authority: ctx.accounts.vault_authority.to_account_info(),
-                mint: ctx.accounts.usdc_mint.to_account_info(),
+                mint: ctx.accounts.book_mint.to_account_info(),
+                system_program: ctx.accounts.system_program.to_account_info(),
+                token_program: ctx.accounts.token_program.to_account_info(),
+            },
+        ))?;
+        associated_token::create(CpiContext::new(
+            ctx.accounts.associated_token_program.to_account_info(),
+            Create {
+                payer: ctx.accounts.creator.to_account_info(),
+                associated_token: ctx.accounts.vault_amm.to_account_info(),
+                authority: ctx.accounts.vault_authority.to_account_info(),
+                mint: ctx.accounts.amm_mint.to_account_info(),
                 system_program: ctx.accounts.system_program.to_account_info(),
                 token_program: ctx.accounts.token_program.to_account_info(),
             },
@@ -184,20 +206,22 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
                 payer: ctx.accounts.creator.to_account_info(),
                 associated_token: ctx.accounts.lock_vault.to_account_info(),
                 authority: ctx.accounts.lock_authority.to_account_info(),
-                mint: ctx.accounts.usdc_mint.to_account_info(),
+                mint: ctx.accounts.amm_mint.to_account_info(),
                 system_program: ctx.accounts.system_program.to_account_info(),
                 token_program: ctx.accounts.token_program.to_account_info(),
             },
         ))?;
 
         // Update market with vault addresses and transition lifecycle → Open.
-        let vault_key = ctx.accounts.vault.key();
+        let vault_book_key = ctx.accounts.vault_book.key();
+        let vault_amm_key = ctx.accounts.vault_amm.key();
         let lock_vault_key = ctx.accounts.lock_vault.key();
         let mut data = ctx.accounts.market.try_borrow_mut_data()?;
         use anchor_lang::{AccountDeserialize, AccountSerialize};
         let mut slice: &[u8] = &data;
         let mut m = Market::try_deserialize(&mut slice)?;
-        m.vault = vault_key;
+        m.vault_book = vault_book_key;
+        m.vault_amm = vault_amm_key;
         m.lock_vault = lock_vault_key;
         m.lifecycle = MarketLifecycle::Open;
         m.try_serialize(&mut &mut data[..])?;
@@ -253,7 +277,8 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
         market: ctx.accounts.market.key(),
         creator: creator_key,
         adjudicator: args.adjudicator,
-        vault: ctx.accounts.vault.key(),
+        vault_book: ctx.accounts.vault_book.key(),
+        vault_amm: ctx.accounts.vault_amm.key(),
         initial_b: args.initial_b,
         start_time: args.start_time,
         deadline: args.deadline,

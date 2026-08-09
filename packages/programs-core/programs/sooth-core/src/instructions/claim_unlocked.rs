@@ -1,6 +1,6 @@
 //! `claim_unlocked` — drain a single `LockEntry` after its 24h lock elapses.
 //!
-//! Transfers from `lock_vault → user_usdc_ata` via a PDA-signed
+//! Transfers from `lock_vault → user_amm_ata` via a PDA-signed
 //! `token::transfer`, signed by the `lock_authority` PDA.
 
 use anchor_lang::prelude::*;
@@ -51,7 +51,7 @@ pub struct ClaimUnlocked<'info> {
 
     #[account(
         mut,
-        token::mint = usdc_mint,
+        token::mint = amm_mint,
         token::authority = lock_authority,
         constraint = lock_vault.key() == market.lock_vault @ SoothCoreError::LockVaultMismatch,
     )]
@@ -59,13 +59,13 @@ pub struct ClaimUnlocked<'info> {
 
     #[account(
         mut,
-        token::mint = usdc_mint,
+        token::mint = amm_mint,
         token::authority = user,
     )]
-    pub user_usdc_ata: Box<Account<'info, TokenAccount>>,
+    pub user_amm_ata: Box<Account<'info, TokenAccount>>,
 
-    #[account(address = crate::constants::BASE_TOKEN_MINT)]
-    pub usdc_mint: Box<Account<'info, Mint>>,
+    #[account(address = crate::constants::AMM_TOKEN_MINT)]
+    pub amm_mint: Box<Account<'info, Mint>>,
 
     #[account(mut)]
     pub user: Signer<'info>,
@@ -95,7 +95,7 @@ pub fn handler(ctx: Context<ClaimUnlocked>) -> Result<()> {
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.lock_vault.to_account_info(),
-                    to: ctx.accounts.user_usdc_ata.to_account_info(),
+                    to: ctx.accounts.user_amm_ata.to_account_info(),
                     authority: ctx.accounts.lock_authority.to_account_info(),
                 },
                 signer_seeds,

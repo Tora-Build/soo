@@ -67,7 +67,7 @@ import {
   deriveUserLpAta,
   deriveVaultAuthorityPda,
   deriveYesMintPda,
-  marketFeePoolPda,
+  feePoolAmmPda,
   SOOTH_CORE_PROGRAM_ID,
   type ProgramIds,
 } from "../../src/pdas.js";
@@ -89,7 +89,10 @@ export const PROGRAMS: ProgramIds = {
 export interface SmokeContext {
   ctx: SvmContext;
   programs: ProgramIds;
+  /** Book-venue token. Named `usdcMint` for continuity with existing tests. */
   usdcMint: PublicKey;
+  /** AMM-venue token — a second mock mint, matching `AMM_TOKEN_MINT`. */
+  ammMint: PublicKey;
   user: Keypair;
   creator: Keypair;
   marketId: Uint8Array;
@@ -154,8 +157,16 @@ export async function bootSmoke(
   const USDC_MINT_DEVNET = new PublicKey(
     "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX",
   );
+  // The AMM venue's token. A second hand-written mint at the address the
+  // program pins as `AMM_TOKEN_MINT` — same sleight-of-hand as USDC above, and
+  // required for the same reason: the constraint is `address = …`, so the
+  // account must exist at exactly that key.
+  const AMM_MINT_DEVNET = new PublicKey(
+    "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu",
+  );
   const mintAuthority = Keypair.generate();
   await writeMint(ctx, USDC_MINT_DEVNET, mintAuthority.publicKey);
+  await writeMint(ctx, AMM_MINT_DEVNET, mintAuthority.publicKey);
 
   // ─── Test users ─────────────────────────────────────────────────────────
   const creator = Keypair.generate();
@@ -224,6 +235,41 @@ export async function bootSmoke(
     ),
   );
 
+  // The same two accounts again in the AMM's token. Every AMM path — trading,
+  // seeding the LMSR subsidy — moves that mint now, so a fixture that funds
+  // only USDC leaves the AMM untradeable and every AMM test fails on balance
+  // rather than on what it meant to assert.
+  for (const [owner, amount] of [
+    [user, userUsdc],
+    [creator, 10_000_000_000n],
+  ] as const) {
+    const ata = deriveUserUsdcAta(owner.publicKey, AMM_MINT_DEVNET);
+    await sendTx(
+      ctx,
+      [creator],
+      new Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          creator.publicKey,
+          ata,
+          owner.publicKey,
+          AMM_MINT_DEVNET,
+        ),
+      ),
+    );
+    await sendTx(
+      ctx,
+      [mintAuthority],
+      new Transaction().add(
+        createMintToInstruction(
+          AMM_MINT_DEVNET,
+          ata,
+          mintAuthority.publicKey,
+          amount,
+        ),
+      ),
+    );
+  }
+
   // ─── Build Anchor `Program` handle bound to LiteSVM ────────────────────
   // Anchor needs a Provider; the LiteSvmConnection forwards getAccountInfo /
   // sendRawTransaction / etc. to the LiteSVM client.
@@ -287,10 +333,9 @@ export async function bootSmoke(
   const [marketPda] = deriveMarketPda(marketId, PROGRAMS);
   const [vaultAuthority] = deriveVaultAuthorityPda(marketId, PROGRAMS);
   const [lockAuthority] = deriveLockAuthorityPda(marketId, PROGRAMS);
-  const [yesMint] = deriveYesMintPda(marketId, PROGRAMS);
-  const [noMint] = deriveNoMintPda(marketId, PROGRAMS);
-  const vault = deriveMarketVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
-  const lockVault = deriveLockVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
+  const vaultBook = deriveMarketVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
+  const vaultAmm = deriveMarketVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);
+  const lockVault = deriveLockVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);
   const [ammStatePda] = deriveAmmStatePda(marketId, PROGRAMS);
 
   const startTime = 1_000_000;
@@ -327,11 +372,11 @@ export async function bootSmoke(
             config: protocolConfigPda,
             market: marketPda,
             vaultAuthority,
-            yesMint,
-            noMint,
             lockAuthority,
-            usdcMint: USDC_MINT_DEVNET,
-            vault,
+            bookMint: USDC_MINT_DEVNET,
+            ammMint: AMM_MINT_DEVNET,
+            vaultBook,
+            vaultAmm,
             lockVault,
             ammState: ammStatePda,
             creator: creator.publicKey,
@@ -410,9 +455,9 @@ export async function bootSmoke(
             lpMintAuthority,
             creatorLpAta,
             lpPosition,
-            marketVault: vault,
-            creatorUsdcAta: creatorAta,
-            usdcMint: USDC_MINT_DEVNET,
+            marketVault: vaultAmm,
+            creatorAmmAta: deriveUserUsdcAta(creator.publicKey, AMM_MINT_DEVNET),
+            ammMint: AMM_MINT_DEVNET,
             creator: creator.publicKey,
             tokenProgram: TOKEN_PROGRAM_ID,
             associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -429,6 +474,7 @@ export async function bootSmoke(
     ctx,
     programs: PROGRAMS,
     usdcMint: USDC_MINT_DEVNET,
+    ammMint: AMM_MINT_DEVNET,
     user,
     creator,
     marketId,
