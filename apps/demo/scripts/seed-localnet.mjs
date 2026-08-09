@@ -576,10 +576,8 @@ async function init() {
   if (!configInfo) {
     await launchpadProgram.methods
       .initializeProtocol({
-        // Both 1% until the AMM sell quote is fixed — a higher AMM rate
-        // currently breaks selling. See docs/design/dual-token-venues.md §6.3.
-        ammFeeBps: 100,
-        bookFeeBps: 100,
+        ammFeeBps: 500,  // 5% — the incubation venue
+        bookFeeBps: 100, // 1% — the mature venue
         treasury: creatorTreasuryAta,
         bBaseShareBps: 5_000,
         lpYieldShareBps: 3_000,

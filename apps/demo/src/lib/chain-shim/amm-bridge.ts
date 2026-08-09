@@ -246,13 +246,21 @@ export async function dispatchAmmRead(
           ? deltaRaw
           : BigInt((deltaRaw as any) ?? 0);
       try {
-        // adapter.readQuote takes |delta| and an outcome — sign of delta
-        // encodes buy/sell at the EVM contract layer; the adapter side has
-        // separate helpers. We pass abs(delta) and assume buy here; sells
-        // route through a different write path (still throws via adapter).
-        const abs = delta < 0n ? -delta : delta;
-        const q = await ctx.adapter.readQuote(marketRef, outcome, abs);
-        return [q.cost, q.fee, q.netCost, q.newYesPrice] as const;
+        // Pass the SIGNED delta. `readQuote` feeds it straight to `costDelta`,
+        // which is direction-aware, so a sell quotes the curve in the
+        // direction it will actually move.
+        //
+        // This used to send `abs(delta)` with the note "assume buy here" — so
+        // a sell was priced as the cost of buying MORE, which differs from the
+        // proceeds of selling out by the price impact. The demo's slippage
+        // buffer hid that until the fee grew large enough to consume it.
+        const q = await ctx.adapter.readQuote(marketRef, outcome, delta);
+        // Upstream's tuple is EVM-shaped and unsigned. `readQuote` is signed
+        // (negative = proceeds), so hand back magnitudes: for a sell that is
+        // (gross proceeds, fee, NET proceeds) — which is exactly what the
+        // consuming hook documents `netAmount` to be.
+        const mag = (v: bigint) => (v < 0n ? -v : v);
+        return [mag(q.cost), q.fee, mag(q.netCost), q.newYesPrice] as const;
       } catch {
         return [0n, 0n, 0n, 5n * 10n ** 17n] as const;
       }

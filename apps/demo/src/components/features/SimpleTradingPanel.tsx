@@ -614,20 +614,19 @@ export const SimpleTradingPanel = ({
     // failed with SlippageExceeded on a market that had not moved at all.
     // The fee is a known, quoted cost; slippage headroom should sit on top of
     // it rather than share it.
-    // Both sides measure the buffer against the FEE-INCLUSIVE figure the
-    // program compares to, not the raw LMSR cost:
-    //   buy  — `trade_positions` checks `cost + fee <= max_cost_wad`
-    //   sell — `sell_positions` checks `net_proceeds >= min_proceeds_wad`,
-    //          where net proceeds are already `cost - fee`
-    // Using the raw cost meant the fee came out of the slippage buffer rather
-    // than sitting under it: at a 1% fee a nominal 5% buffer was really ~4%,
-    // and at 5% it was ~0%, so trades failed with SlippageExceeded on a market
-    // that had not moved at all.
-    const fee = quote.fee ?? 0n;
+    // Slippage buffer, measured against the fee-inclusive figure the program
+    // actually compares to — `quote.netCost`, which the quote layer returns as
+    // the amount paid on a buy and the NET proceeds on a sell.
+    //
+    // Measuring against the raw LMSR cost meant the fee came out of the buffer
+    // instead of sitting under it: at a 1% fee a nominal 5% buffer was really
+    // ~4%, and at 5% it was ~0%, so trades failed with SlippageExceeded on a
+    // market that had not moved.
+    const netQuote = quote.netCost ?? quote.cost;
     const limitCost =
       tradeMode === "buy"
-        ? ((quote.netCost ?? quote.cost + fee) * 105n) / 100n
-        : ((quote.cost - fee) * 95n) / 100n;
+        ? (netQuote * 105n) / 100n
+        : (netQuote * 95n) / 100n;
 
     logger.trade.log("Executing (V9):", {
       market: address,

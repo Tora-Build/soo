@@ -223,8 +223,8 @@ const configInfo = await connection.getAccountInfo(configPda);
 if (!configInfo) {
   await launchpadProgram.methods
     .initializeProtocol({
-      ammFeeBps: 100,
-      bookFeeBps: 100,
+      ammFeeBps: 500,  // 5% — the incubation venue
+      bookFeeBps: 100, // 1% — the mature venue
       treasury: signer.publicKey,
       bBaseShareBps: 5_000,
       lpYieldShareBps: 3_000,

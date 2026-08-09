@@ -660,7 +660,21 @@ export class SolanaChainAdapter implements ChainAdapter {
     // `FeeRouter._quoteFee:421`. Pre/post-graduation collapse to one bps
     // (architecture §8) so no graduation branch on this side either.
     const feeBps = await this.readProtocolFeeBps();
-    const fee = cost > 0n ? (cost * BigInt(feeBps)) / 10_000n : 0n;
+    // Fee is charged on the MAGNITUDE, both directions. `sell_positions`
+    // takes `proceeds_wad = cost_wad.unsigned_abs()` and charges the same bps
+    // on it, so a sell is fee-bearing exactly like a buy.
+    //
+    // This used to be `cost > 0n ? ... : 0n`, which reported a zero fee on
+    // every sell. The quote then overstated what a seller would receive by
+    // the whole fee, and the demo's slippage buffer silently absorbed the
+    // error — until the fee grew past the buffer and every sell failed with
+    // SlippageExceeded on a market that had not moved.
+    const magnitude = cost < 0n ? -cost : cost;
+    const fee = (magnitude * BigInt(feeBps)) / 10_000n;
+    // Signed, and correct in both directions because `fee` is positive:
+    //   buy  cost=+5, fee=+0.25 -> +5.25, what the taker pays
+    //   sell cost=-5, fee=+0.25 -> -4.75, what the seller receives
+    // matching the program's `cost + fee` and `proceeds - fee` respectively.
     const netCost = cost + fee;
     const oldPrice = yesPriceWad(qYes, qNo, b);
     const newPrice = yesPriceWad(qYes + dYes, qNo + dNo, b);
