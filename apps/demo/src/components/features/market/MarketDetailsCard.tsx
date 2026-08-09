@@ -25,6 +25,8 @@ interface MarketDetailsCardProps {
   deadline?: number;
   stage: "bonding" | "live" | "settled" | "finalized" | "dismissed" | string;
   isGraduated?: boolean;
+  /** Taker fee for this market's ACTIVE venue, in bps, read from the chain. */
+  currentFeeBps?: bigint | number;
   isInTrialPeriod?: boolean;
   trialTimeRemaining?: number;
   chainId: number;
@@ -62,9 +64,24 @@ function truncate(addr?: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-function getFeeLabel(stage: string, isGraduated?: boolean): string {
-  if (stage === "settled" || stage === "finalized" || isGraduated) return "1%";
-  return "5%";
+/**
+ * The fee this market actually charges, not a guess from its stage.
+ *
+ * This used to return a hardcoded "1%" or "5%" based on `stage` alone, while
+ * the program charged whatever `ProtocolConfig` said — so the rate displayed
+ * was not the rate charged, and the two only agreed by coincidence. The venues
+ * have separate rates now (`amm_fee_bps` / `book_fee_bps`), which makes a
+ * stage-derived guess wrong more often rather than less.
+ *
+ * Falls back to an em dash rather than a plausible number: showing no fee is
+ * honest about not knowing, showing "5%" is not.
+ */
+function getFeeLabel(currentFeeBps?: bigint | number): string {
+  if (currentFeeBps === undefined || currentFeeBps === null) return "—";
+  const bps = Number(currentFeeBps);
+  if (!Number.isFinite(bps)) return "—";
+  const pct = bps / 100;
+  return `${Number.isInteger(pct) ? pct : pct.toFixed(2)}%`;
 }
 
 // ─── Rule field extraction (type-aware, returns inline label/value pairs) ──
@@ -127,6 +144,7 @@ export const MarketDetailsCard = ({
   deadline,
   stage,
   isGraduated,
+  currentFeeBps,
   isInTrialPeriod: _isInTrialPeriod,
   trialTimeRemaining: _trialTimeRemaining,
   chainId,
@@ -140,7 +158,7 @@ export const MarketDetailsCard = ({
 
   const type = adjOption?.type;
   const typeLabel = type ? t(TYPE_LABEL_KEYS[type]) : null;
-  const feeLabel = getFeeLabel(stage, isGraduated);
+  const feeLabel = getFeeLabel(currentFeeBps);
   const displaySymbol = symbol || truncate(address);
   const deadlineStr =
     deadline && deadline > 0

@@ -163,7 +163,8 @@ pub struct MarketFeesDistributed {
 pub struct ProtocolInitialized {
     pub authority: Pubkey,
     pub treasury: Pubkey,
-    pub fee_bps: u16,
+    pub amm_fee_bps: u16,
+    pub book_fee_bps: u16,
     pub ts: i64,
 }
 

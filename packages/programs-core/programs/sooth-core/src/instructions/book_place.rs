@@ -105,13 +105,29 @@ pub fn handler(
         SoothCoreError::MarketNotOpen
     );
 
+    // The book opens at graduation, and not before.
+    //
+    // This was a UI convention until now: the program accepted orders on an
+    // ungraduated market and only the front end declined to show the panel.
+    // A market's incubation happens on the AMM — that is what graduation
+    // measures and what the creator's subsidy pays for — so a book that trades
+    // alongside it splits liquidity out of the venue being incubated.
+    //
+    // Read from `Market`, not `AmmState`: this instruction already loads the
+    // former and does not load the latter, so checking the real flag would
+    // cost an account and 32 bytes on every order. See `Market::book_enabled`.
+    require!(
+        ctx.accounts.market.book_enabled,
+        SoothCoreError::NotGraduated
+    );
+
     require!(
         side == SIDE_BID || side == SIDE_ASK,
         SoothCoreError::InvalidOutcome
     );
 
     // The fee rate comes from config, never from the caller.
-    let fee_bps = ctx.accounts.protocol_config.fee_bps;
+    let fee_bps = ctx.accounts.protocol_config.book_fee_bps;
     let taker = ctx.accounts.taker.key();
 
     // Scoped so the book's borrow is released before any CPI. A token program

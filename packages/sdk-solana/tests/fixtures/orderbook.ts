@@ -257,6 +257,37 @@ export async function buyTx(
 
 /** Engage or release the protocol circuit-breaker. `authority` must be the
  *  ProtocolConfig authority (bootSmoke sets this to `creator`). */
+/**
+ * Open the book without driving a real graduation.
+ *
+ * `book_place` requires `Market.book_enabled`, which the program sets only when
+ * graduation fires in `trade_positions` — thousands of USDC of AMM volume. The
+ * book tests are about the book, so they flip the bit directly rather than
+ * paying for an incubation they are not testing.
+ *
+ * `graduation_gate.test.ts` covers the real transition, so nothing here is
+ * asserting against a state the program cannot actually reach.
+ */
+export async function enableBook(
+  ctx: SvmContext,
+  smoke: SmokeContext,
+): Promise<void> {
+  const raw = await ctx.banksClient.getAccount(smoke.marketPda);
+  if (!raw) throw new Error("enableBook: market account not found");
+  const data = Buffer.from(raw.data);
+  // Offset 205: 8 discriminator + market_id(16) + creator(32) + adjudicator(32)
+  // + question_hash(32) + vault(32) + lock_vault(32) + start_time(8)
+  // + deadline(8) + lifecycle(1) + winning_outcome(1) + bump(1)
+  // + vault_authority_bump(1) + lock_authority_bump(1).
+  data.writeUInt8(1, 205);
+  ctx.setAccount(smoke.marketPda, {
+    executable: false,
+    owner: raw.owner,
+    lamports: raw.lamports,
+    data,
+  });
+}
+
 export async function setPaused(
   ctx: SvmContext,
   program: Program,

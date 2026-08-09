@@ -576,7 +576,10 @@ async function init() {
   if (!configInfo) {
     await launchpadProgram.methods
       .initializeProtocol({
-        feeBps: 100, // 1%
+        // Both 1% until the AMM sell quote is fixed — a higher AMM rate
+        // currently breaks selling. See docs/design/dual-token-venues.md §6.3.
+        ammFeeBps: 100,
+        bookFeeBps: 100,
         treasury: creatorTreasuryAta,
         bBaseShareBps: 5_000,
         lpYieldShareBps: 3_000,

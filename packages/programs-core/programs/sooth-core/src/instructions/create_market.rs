@@ -141,7 +141,10 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
             signer_seeds,
         )?;
         let market_state = Market {
-            _reserved: [0u8; 130],
+            // A new market is ungraduated, so the book stays shut until
+            // `trade_positions` opens it.
+            book_enabled: false,
+            _reserved: [0u8; 129],
             market_id,
             creator: creator_key,
             adjudicator: args.adjudicator,

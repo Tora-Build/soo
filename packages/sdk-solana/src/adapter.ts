@@ -979,7 +979,32 @@ export class SolanaChainAdapter implements ChainAdapter {
    * graceful 0 here means `readQuote` previews zero fee on a fresh
    * cluster instead of throwing during the read path.
    */
+  /**
+   * Both venues' taker fee rates, in bps, as the program has them.
+   *
+   * Public because the UI needs to DISPLAY a rate and the only honest source
+   * is the config the program charges from. The demo used to hardcode
+   * "5% bonding / 1% live", which was a guess that happened to be wrong.
+   *
+   * Zeroes on an uninitialised config, matching `readProtocolFeeBps`.
+   */
+  async readVenueFeeBps(): Promise<{ amm: number; book: number }> {
+    const [cfgPda] = deriveProtocolConfigPda(this.programIds);
+    const raw = await (
+      this.program.account as any
+    ).protocolConfig.fetchNullable(cfgPda);
+    if (!raw) return { amm: 0, book: 0 };
+    return {
+      amm: Number(raw.ammFeeBps ?? raw.amm_fee_bps ?? 0),
+      book: Number(raw.bookFeeBps ?? raw.book_fee_bps ?? 0),
+    };
+  }
+
   private async readProtocolFeeBps(): Promise<number> {
+    // The AMM's rate specifically. `readQuote` prices an AMM trade, and the
+    // two venues charge different rates since the fee split — reading the
+    // wrong one makes a quote disagree with what the program charges, which
+    // shows up as a slippage failure rather than as a wrong number.
     const [cfgPda] = deriveProtocolConfigPda(this.programIds);
     const raw = await (
       this.program.account as any
@@ -987,9 +1012,9 @@ export class SolanaChainAdapter implements ChainAdapter {
     if (!raw) {
       return 0;
     }
-    // `fee_bps` is `u16` on-chain; Anchor's coder returns it as a JS
-    // number directly (not BN, not bigint) — keep that type through.
-    return Number(raw.feeBps ?? raw.fee_bps ?? 0);
+    // `u16` on-chain; Anchor's coder returns it as a JS number directly (not
+    // BN, not bigint) — keep that type through.
+    return Number(raw.ammFeeBps ?? raw.amm_fee_bps ?? 0);
   }
 
   // ─── Writes ──────────────────────────────────────────────────────────────

@@ -123,6 +123,7 @@ export const OrderbookPageBody = ({
         deadline={truth?.deadline}
         stage={stage}
         isGraduated={launchpad?.isGraduated}
+        currentFeeBps={launchpad?.currentFeeBps}
         isInTrialPeriod={launchpad?.isInTrialPeriod}
         trialTimeRemaining={launchpad?.trialTimeRemaining}
         chainId={chainId}

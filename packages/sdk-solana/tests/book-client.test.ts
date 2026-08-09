@@ -26,7 +26,7 @@ import {
   seatOf,
 } from "../src/book/index.js";
 import { bootSmoke, type SmokeContext } from "./fixtures/setup.js";
-import { anchorProgram, initMarketFeePool } from "./fixtures/orderbook.js";
+import { anchorProgram, enableBook, initMarketFeePool } from "./fixtures/orderbook.js";
 import { sendBookTx, trader } from "./fixtures/book.js";
 
 function refs(smoke: SmokeContext) {
@@ -57,6 +57,7 @@ async function boot(capacity = 64): Promise<SmokeContext> {
     smoke.creator,
     buildBookInit(refs(smoke), smoke.creator.publicKey, capacity),
   );
+  await enableBook(smoke.ctx, smoke);
   return smoke;
 }
 

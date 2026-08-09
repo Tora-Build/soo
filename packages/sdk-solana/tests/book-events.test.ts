@@ -33,7 +33,7 @@ import {
   decodeBook,
 } from "../src/book/index.js";
 import { bootSmoke, SOOTH_CORE_ID, type SmokeContext } from "./fixtures/setup.js";
-import { anchorProgram, initMarketFeePool } from "./fixtures/orderbook.js";
+import { anchorProgram, enableBook, initMarketFeePool } from "./fixtures/orderbook.js";
 import { sendBookTx, trader } from "./fixtures/book.js";
 
 function refs(smoke: SmokeContext) {
@@ -58,6 +58,7 @@ async function boot(): Promise<SmokeContext> {
     smoke.creator,
     buildBookInit(refs(smoke), smoke.creator.publicKey, 64),
   );
+  await enableBook(smoke.ctx, smoke);
   return smoke;
 }
 

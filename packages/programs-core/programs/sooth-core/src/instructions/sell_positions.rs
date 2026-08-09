@@ -176,7 +176,7 @@ pub fn handler(
     require!(cost_wad <= 0, SoothCoreError::MathOverflow);
     let proceeds_wad: u128 = cost_wad.unsigned_abs();
 
-    let fee_bps = ctx.accounts.protocol_config.fee_bps;
+    let fee_bps = ctx.accounts.protocol_config.amm_fee_bps;
     let fee_wad: u128 = proceeds_wad
         .checked_mul(fee_bps as u128)
         .map(|v| v / 10_000)

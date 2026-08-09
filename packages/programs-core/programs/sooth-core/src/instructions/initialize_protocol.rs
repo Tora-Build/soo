@@ -10,7 +10,8 @@ use crate::state::{protocol_config::MAX_FEE_BPS, ProtocolConfig};
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct InitializeProtocolArgs {
-    pub fee_bps: u16,
+    pub amm_fee_bps: u16,
+    pub book_fee_bps: u16,
     pub treasury: Pubkey,
     pub b_base_share_bps: u16,
     pub lp_yield_share_bps: u16,
@@ -43,7 +44,11 @@ pub struct InitializeProtocol<'info> {
 
 pub fn handler(ctx: Context<InitializeProtocol>, args: InitializeProtocolArgs) -> Result<()> {
     require!(
-        args.fee_bps <= MAX_FEE_BPS,
+        args.amm_fee_bps <= MAX_FEE_BPS,
+        SoothCoreError::FeeBpsOutOfRange
+    );
+    require!(
+        args.book_fee_bps <= MAX_FEE_BPS,
         SoothCoreError::FeeBpsOutOfRange
     );
     require!(
@@ -82,7 +87,8 @@ pub fn handler(ctx: Context<InitializeProtocol>, args: InitializeProtocolArgs) -
     let cfg = &mut ctx.accounts.config;
     cfg.authority = ctx.accounts.authority.key();
     cfg.treasury = args.treasury;
-    cfg.fee_bps = args.fee_bps;
+    cfg.amm_fee_bps = args.amm_fee_bps;
+    cfg.book_fee_bps = args.book_fee_bps;
     cfg.b_base_share_bps = args.b_base_share_bps;
     cfg.lp_yield_share_bps = args.lp_yield_share_bps;
     cfg.adjudicator_share_bps = args.adjudicator_share_bps;
@@ -102,7 +108,8 @@ pub fn handler(ctx: Context<InitializeProtocol>, args: InitializeProtocolArgs) -
     emit!(ProtocolInitialized {
         authority: cfg.authority,
         treasury: cfg.treasury,
-        fee_bps: cfg.fee_bps,
+        amm_fee_bps: cfg.amm_fee_bps,
+        book_fee_bps: cfg.book_fee_bps,
         ts: now,
     });
 

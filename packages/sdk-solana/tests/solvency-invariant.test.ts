@@ -54,6 +54,7 @@ import {
   buyTx,
   createFundedMaker,
   fillBundle,
+  enableBook,
   initMarketFeePool,
   sendTx,
 } from "./fixtures/orderbook.js";
@@ -187,6 +188,7 @@ const LMSR_SUBSIDY = 693_147_181n;
       smoke.creator,
       bookInitIx(smoke, smoke.creator.publicKey, 32),
     );
+    await enableBook(smoke.ctx, smoke);
 
     const maker = await trader(smoke);
     const taker = await trader(smoke);
@@ -229,6 +231,7 @@ const LMSR_SUBSIDY = 693_147_181n;
       smoke.creator,
       bookInitIx(smoke, smoke.creator.publicKey, 32),
     );
+    await enableBook(smoke.ctx, smoke);
 
     const maker = await trader(smoke);
     const taker = await trader(smoke);

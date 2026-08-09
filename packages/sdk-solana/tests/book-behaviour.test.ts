@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import { bootSmoke, type SmokeContext } from "./fixtures/setup.js";
 import {
   anchorProgram,
+  enableBook,
   initMarketFeePool,
   setPaused,
 } from "./fixtures/orderbook.js";
@@ -48,6 +49,7 @@ async function boot(capacity = 64): Promise<SmokeContext> {
     smoke.creator,
     bookInitIx(smoke, smoke.creator.publicKey, capacity),
   );
+  await enableBook(smoke.ctx, smoke);
   return smoke;
 }
 

@@ -137,7 +137,8 @@ describe("sooth_core::create_market end-to-end", () => {
         [
           await (coreProgram.methods as any)
             .initializeProtocol({
-              feeBps: 100, // 1%
+              ammFeeBps: 100, // 1%
+              bookFeeBps: 100, // 1%
               treasury: creator.publicKey,
               bBaseShareBps: 5_000,
               lpYieldShareBps: 3_000,

@@ -28,7 +28,26 @@ pub struct ProtocolConfig {
     pub treasury: Pubkey,
 
     /// Total per-trade fee in basis points (1 bp = 0.01 %).
-    pub fee_bps: u16,
+    /// Taker fee on the AMM, in bps. The incubation venue.
+    ///
+    /// Split from the book's rate because the two are different products at
+    /// different stages — and, once they are denominated in different tokens,
+    /// cannot share a rate at all. Before the split a single `fee_bps` served
+    /// both while the UI displayed "5% bonding / 1% live", so the rate shown
+    /// was not the rate charged.
+    pub amm_fee_bps: u16,
+    /// Taker fee on the orderbook, in bps. The mature venue.
+    pub book_fee_bps: u16,
+    /// Graduation threshold as a fraction of the creator's deposit, in bps.
+    ///
+    /// The threshold was `b · ln(2)` — the LMSR's maximum loss, and therefore
+    /// exactly what the creator posted. That is the same as `deposit × 100%`,
+    /// so this generalises it to "earn back N% of capital at risk" without
+    /// changing the meaning at 10 000.
+    ///
+    /// Zero is read as 10 000, so a config written before this field existed
+    /// keeps today's behaviour rather than graduating every market instantly.
+    pub graduation_bps: u16,
 
     /// 4-way fee-destination split bps — must sum to 10_000.
     pub b_base_share_bps: u16,
@@ -76,7 +95,7 @@ pub struct ProtocolConfig {
     ///
     /// When you add a field, shrink this by exactly its serialized size and
     /// leave `SPACE` unchanged.
-    pub _reserved: [u8; 64],
+    pub _reserved: [u8; 60],
 }
 
 /// Reject the call if the protocol circuit-breaker is engaged.
@@ -111,14 +130,16 @@ impl ProtocolConfig {
     pub const SPACE: usize = 8     // discriminator
         + 32                       // authority
         + 32                       // treasury
-        + 2                        // fee_bps
+        + 2                        // amm_fee_bps
+        + 2                        // book_fee_bps
+        + 2                        // graduation_bps
         + 2 + 2 + 2 + 2            // 4 share bps
         + 8                        // default_trial_period
         + 1                        // bump
         + 1                        // paused
         + 1                        // permissionless_adjudicators
         + 8                        // veto_period_secs
-        + 64; // _reserved
+        + 60; // _reserved
 
     pub fn split_total(&self) -> u32 {
         self.b_base_share_bps as u32

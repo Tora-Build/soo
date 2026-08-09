@@ -35,6 +35,19 @@ pub struct Market {
     pub bump: u8,
     pub vault_authority_bump: u8,
     pub lock_authority_bump: u8,
+    /// Is the orderbook open for this market?
+    ///
+    /// Mirrors `AmmState.is_graduated`, set once when graduation fires in
+    /// `trade_positions`. It lives here rather than being read from
+    /// `AmmState` because `book_place` already loads `Market` and does NOT
+    /// load `AmmState` — checking the real flag would mean adding an account
+    /// and 32 bytes to every order, permanently, to read one bit. The book
+    /// redesign's headline property is that a fill costs zero extra accounts;
+    /// this keeps it.
+    ///
+    /// The cost of mirroring is that two places now hold the same fact. They
+    /// cannot drift: graduation is one-way and set at exactly one site.
+    pub book_enabled: bool,
 
     /// Forward-compat padding. Adding a field consumes bytes from here
     /// instead of changing the account's length, so no migration is needed:
@@ -44,7 +57,7 @@ pub struct Market {
     ///
     /// When you add a field, shrink this by exactly its serialized size and
     /// leave `SPACE` unchanged.
-    pub _reserved: [u8; 130],
+    pub _reserved: [u8; 129],
 }
 
 impl Market {
@@ -63,7 +76,8 @@ impl Market {
         + 1                          // bump
         + 1                          // vault_authority_bump
         + 1                          // lock_authority_bump
-        + 130; // _reserved
+        + 1                          // book_enabled
+        + 129; // _reserved
 
     pub fn is_open(&self) -> bool {
         matches!(self.lifecycle, MarketLifecycle::Open)

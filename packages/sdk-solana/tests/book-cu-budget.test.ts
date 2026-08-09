@@ -43,6 +43,7 @@ import {
   anchorProgram,
   countWritableAccounts,
   heapFrameIx,
+  enableBook,
   initMarketFeePool,
 } from "./fixtures/orderbook.js";
 import { buildBookInit, buildBookPlace } from "../src/book/index.js";
@@ -117,6 +118,7 @@ async function boot(capacity: number) {
     smoke.creator,
     buildBookInit(refs, smoke.creator.publicKey, Math.min(capacity, 150)),
   );
+  await enableBook(smoke.ctx, smoke);
   return { smoke, book: bookPda(smoke.marketId) };
 }
 

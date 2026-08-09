@@ -31,6 +31,7 @@ import {
   SHARES,
   anchorProgram,
   buyTx,
+  enableBook,
   initMarketFeePool,
   sendTx,
 } from "./fixtures/orderbook.js";
@@ -54,6 +55,7 @@ async function boot() {
     smoke.creator,
   );
   await sendBookTx(smoke, smoke.creator, bookInitIx(smoke, smoke.creator.publicKey, 32));
+  await enableBook(smoke.ctx, smoke);
   return smoke;
 }
 

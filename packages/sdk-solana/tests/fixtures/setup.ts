@@ -260,7 +260,10 @@ export async function bootSmoke(
       [
         await (coreProgram.methods as any)
           .initializeProtocol({
-            feeBps: 100, // 1%
+            // Both 1% for now: the split is inert until the AMM sell quote
+            // is fixed. See docs/design/dual-token-venues.md §6.3.
+            ammFeeBps: 100,
+            bookFeeBps: 100,
             treasury: creator.publicKey,
             bBaseShareBps: 5_000,
             lpYieldShareBps: 3_000,

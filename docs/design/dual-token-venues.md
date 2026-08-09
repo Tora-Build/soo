@@ -256,6 +256,28 @@ Under two tokens the venues cannot share a rate anyway — they are the incubati
 engine and the mature venue, in different currencies. Split into
 `amm_fee_bps` and `book_fee_bps`, both from reserved space.
 
+**Blocker on actually using differentiated rates.** The fields exist and the
+program honours them, but every deployment is currently configured 1%/1%,
+because setting the AMM rate meaningfully higher breaks selling. Two defects
+compound:
+
+1. `amm-bridge.ts::getPositionQuote` quotes a SELL as a BUY — it passes
+   `abs(delta)` and says so in a comment. `readQuote` already handles a signed
+   delta correctly (`costDelta` takes the sign), so the shim is discarding
+   information it has. The quoted proceeds are therefore the cost of buying
+   *more*, not of selling out, and they differ by price impact.
+2. `SolanaChainAdapter.readQuote` computes `fee` only when `cost > 0`, so the
+   sell branch reports a zero fee even once (1) is fixed.
+
+The demo's ±5% slippage buffer absorbed error (1) while the fee was 1%. At 5%
+the fee consumes the buffer and the approximation surfaces as `SlippageExceeded`
+on a market that has not moved — which is how this was found.
+
+This must be fixed before a deployment sets an AMM rate above roughly 4%, and
+that is the entire point of the split. It is a demo/SDK defect, not a program
+one: the program's `sell_positions` compares `net_proceeds >= min_proceeds`
+correctly.
+
 ### 6.4 Two fee pools
 
 `market_fee_pool` seeds go from `[b"market_fee_pool", market_id]` to

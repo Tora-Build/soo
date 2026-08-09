@@ -29,6 +29,7 @@ import {
   customError,
   fetchBookSide,
   fillBundle,
+  enableBook,
   initMarketFeePool,
   liveAmount,
   sendTx,
@@ -57,6 +58,7 @@ describe("protocol pause (circuit-breaker)", () => {
     const program = anchorProgram(ctx, creator);
     await initMarketFeePool(ctx, program, smoke, creator);
     await sendBookTx(smoke, creator, bookInitIx(smoke, creator.publicKey, 32));
+    await enableBook(smoke.ctx, smoke);
 
     const user = await trader(smoke);
     const order = () =>
@@ -135,6 +137,7 @@ describe("protocol pause (circuit-breaker)", () => {
     const program = anchorProgram(ctx, creator);
     await initMarketFeePool(ctx, program, smoke, creator);
     await sendBookTx(smoke, creator, bookInitIx(smoke, creator.publicKey, 32));
+    await enableBook(smoke.ctx, smoke);
 
     const user = await trader(smoke);
     await sendBookTx(

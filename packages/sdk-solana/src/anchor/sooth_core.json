@@ -3368,6 +3368,11 @@
       "accounts": [
         {
           "name": "market",
+          "docs": [
+            "`mut` for exactly one write: `book_enabled` is flipped here when",
+            "graduation fires. Nothing else in this instruction touches `Market`."
+          ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -5048,7 +5053,11 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "fee_bps",
+            "name": "amm_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "book_fee_bps",
             "type": "u16"
           },
           {
@@ -5429,6 +5438,24 @@
             "type": "u8"
           },
           {
+            "name": "book_enabled",
+            "docs": [
+              "Is the orderbook open for this market?",
+              "",
+              "Mirrors `AmmState.is_graduated`, set once when graduation fires in",
+              "`trade_positions`. It lives here rather than being read from",
+              "`AmmState` because `book_place` already loads `Market` and does NOT",
+              "load `AmmState` — checking the real flag would mean adding an account",
+              "and 32 bytes to every order, permanently, to read one bit. The book",
+              "redesign's headline property is that a fill costs zero extra accounts;",
+              "this keeps it.",
+              "",
+              "The cost of mirroring is that two places now hold the same fact. They",
+              "cannot drift: graduation is one-way and set at exactly one site."
+            ],
+            "type": "bool"
+          },
+          {
             "name": "_reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
@@ -5443,7 +5470,7 @@
             "type": {
               "array": [
                 "u8",
-                130
+                129
               ]
             }
           }
@@ -5978,9 +6005,38 @@
             "type": "pubkey"
           },
           {
-            "name": "fee_bps",
+            "name": "amm_fee_bps",
             "docs": [
-              "Total per-trade fee in basis points (1 bp = 0.01 %)."
+              "Total per-trade fee in basis points (1 bp = 0.01 %).",
+              "Taker fee on the AMM, in bps. The incubation venue.",
+              "",
+              "Split from the book's rate because the two are different products at",
+              "different stages — and, once they are denominated in different tokens,",
+              "cannot share a rate at all. Before the split a single `fee_bps` served",
+              "both while the UI displayed \"5% bonding / 1% live\", so the rate shown",
+              "was not the rate charged."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "book_fee_bps",
+            "docs": [
+              "Taker fee on the orderbook, in bps. The mature venue."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "graduation_bps",
+            "docs": [
+              "Graduation threshold as a fraction of the creator's deposit, in bps.",
+              "",
+              "The threshold was `b · ln(2)` — the LMSR's maximum loss, and therefore",
+              "exactly what the creator posted. That is the same as `deposit × 100%`,",
+              "so this generalises it to \"earn back N% of capital at risk\" without",
+              "changing the meaning at 10 000.",
+              "",
+              "Zero is read as 10 000, so a config written before this field existed",
+              "keeps today's behaviour rather than graduating every market instantly."
             ],
             "type": "u16"
           },
@@ -6070,7 +6126,7 @@
             "type": {
               "array": [
                 "u8",
-                64
+                60
               ]
             }
           }
@@ -6095,7 +6151,11 @@
             "type": "pubkey"
           },
           {
-            "name": "fee_bps",
+            "name": "amm_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "book_fee_bps",
             "type": "u16"
           },
           {

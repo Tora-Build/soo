@@ -325,11 +325,25 @@ export async function dispatchAmmRead(
 
     case "preGradFeeBps":
     case "postGradFeeBps": {
-      // FeeRouter fee bps. The on-chain fee router is stubbed
-      // (`trade_positions.rs §3`), so quotes round-trip with fee=0.
-      // Return EVM defaults so upstream's UI shows the canonical
-      // pre/post-graduation rates.
-      return call.functionName === "preGradFeeBps" ? 500n : 100n;
+      // The rates the program actually charges, not the EVM defaults this
+      // used to return.
+      //
+      // Upstream names these pre/post-graduation because on EVM the venue and
+      // the phase coincide. Here they are per-VENUE — `amm_fee_bps` and
+      // `book_fee_bps` — and the mapping holds because the AMM is the
+      // pre-graduation venue and the book opens at graduation.
+      //
+      // Hardcoding them meant the displayed fee was independent of the
+      // charged one; they agreed only by coincidence, and stopped agreeing
+      // the moment the venues got separate rates.
+      try {
+        const { amm, book } = await ctx.adapter.readVenueFeeBps();
+        return BigInt(call.functionName === "preGradFeeBps" ? amm : book);
+      } catch {
+        // An unreadable config is not a rate. Zero renders as "—" upstream
+        // rather than as a confident wrong number.
+        return 0n;
+      }
     }
 
     case "lpYieldShareBps": {

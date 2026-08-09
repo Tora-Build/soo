@@ -202,7 +202,9 @@ mod tests {
         ProtocolConfig {
             authority: Pubkey::default(),
             treasury: Pubkey::default(),
-            fee_bps: 100,
+            amm_fee_bps: 500,
+            book_fee_bps: 100,
+            graduation_bps: 10_000,
             b_base_share_bps: b_base,
             lp_yield_share_bps: lp,
             adjudicator_share_bps: adj,
@@ -212,7 +214,7 @@ mod tests {
             paused: false,
             permissionless_adjudicators: true,
             veto_period_secs: crate::constants::DEFAULT_VETO_PERIOD_SECS,
-            _reserved: [0u8; 64],
+            _reserved: [0u8; 60],
         }
     }
 

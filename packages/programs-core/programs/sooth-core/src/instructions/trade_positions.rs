@@ -13,7 +13,10 @@ const OUTCOME_YES: u8 = 1;
 
 #[derive(Accounts)]
 pub struct TradePositions<'info> {
+    /// `mut` for exactly one write: `book_enabled` is flipped here when
+    /// graduation fires. Nothing else in this instruction touches `Market`.
     #[account(
+        mut,
         seeds = [b"market", market.market_id.as_ref()],
         bump = market.bump,
     )]
@@ -104,6 +107,29 @@ pub struct TradePositions<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
+/// The fee total at which a market graduates, in WAD.
+///
+/// `b · ln(2)` is the LMSR's maximum possible loss and therefore exactly what
+/// the creator deposited, so the old hardcoded rule was "earn back 100% of
+/// capital at risk". This generalises the 100% without changing it:
+/// `deposit × graduation_bps / 10_000`, identical at 10 000 bps.
+///
+/// `graduation_bps == 0` means 10 000, not "graduate immediately". A zeroed
+/// field is what a config written before this existed deserialises to, and
+/// reading that as zero would graduate every market on its first trade.
+fn graduation_threshold_wad(b: i128, graduation_bps: u16) -> Result<u128> {
+    let deposit_wad: u128 = wad_mul(b, LN2_WAD)
+        .map_err(map_math_err)?
+        .try_into()
+        .map_err(|_| error!(SoothCoreError::MathOverflow))?;
+    let bps = if graduation_bps == 0 { 10_000u128 } else { graduation_bps as u128 };
+    deposit_wad
+        .checked_mul(bps)
+        .ok_or(error!(SoothCoreError::MathOverflow))?
+        .checked_div(10_000)
+        .ok_or(error!(SoothCoreError::MathOverflow))
+}
+
 pub fn handler(
     ctx: Context<TradePositions>,
     outcome: u8,
@@ -167,7 +193,8 @@ pub fn handler(
     let cost_wad: i128 =
         cost_delta(amm_q_yes, amm_q_no, amm_b, d_yes, d_no).map_err(map_math_err)?;
 
-    let fee_bps = ctx.accounts.protocol_config.fee_bps;
+    let fee_bps = ctx.accounts.protocol_config.amm_fee_bps;
+    let cfg_graduation_bps = ctx.accounts.protocol_config.graduation_bps;
     require!(cost_wad > 0, SoothCoreError::MathOverflow);
     let fee_wad: u128 = (cost_wad as u128)
         .checked_mul(fee_bps as u128)
@@ -221,20 +248,26 @@ pub fn handler(
         .ok_or(error!(SoothCoreError::MathOverflow))?;
 
     {
-        let amm = &mut ctx.accounts.amm_state;
-        if !amm.is_graduated {
-            let threshold_wad = wad_mul(amm.b, LN2_WAD)
-                .map_err(map_math_err)?
-                .try_into()
-                .map_err(|_| error!(SoothCoreError::MathOverflow))?;
-            if amm.fee_b_base_wad >= threshold_wad {
-                amm.is_graduated = true;
-                emit!(MarketGraduated {
-                    market: amm.market,
-                    fees_accumulated_wad: amm.fee_b_base_wad,
-                    threshold_wad,
-                });
+        let mut just_graduated = false;
+        {
+            let amm = &mut ctx.accounts.amm_state;
+            if !amm.is_graduated {
+                let threshold_wad = graduation_threshold_wad(amm.b, cfg_graduation_bps)?;
+                if amm.fee_b_base_wad >= threshold_wad {
+                    amm.is_graduated = true;
+                    just_graduated = true;
+                    emit!(MarketGraduated {
+                        market: amm.market,
+                        fees_accumulated_wad: amm.fee_b_base_wad,
+                        threshold_wad,
+                    });
+                }
             }
+        }
+        // Open the book. Mirrored onto `Market` because `book_place` loads
+        // `Market` and not `AmmState` — see `Market::book_enabled`.
+        if just_graduated {
+            ctx.accounts.market.book_enabled = true;
         }
     }
 
