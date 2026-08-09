@@ -10,17 +10,18 @@
 //! sat in the vault forever.
 //!
 //! Paying it out safely means knowing everything the vault still owes, and an
-//! UNDER-count is an over-payment taken out of traders' collateral. Three
+//! UNDER-count is an over-payment taken out of traders' collateral. Two
 //! ledgers hold obligations:
 //!
-//!   1. SPL outcome tokens — `yes_mint.supply` / `no_mint.supply`;
-//!   2. AMM positions — aggregated in `AmmState.q_yes` / `q_no`;
-//!   3. the book — seats and resting escrow, all in one account.
+//!   1. AMM positions — aggregated in `AmmState.q_yes` / `q_no`;
+//!   2. the book — seats and resting escrow, all in one account.
 //!
-//! The blocker was a *fourth*: the legacy `OrderbookPosition` was one PDA per
-//! (market, user) and no instruction could enumerate them, so the sum was
-//! unknowable. Deleting the legacy book removed that ledger, and every
-//! remaining source is a single account away.
+//! There were two more, both since deleted. The legacy `OrderbookPosition` was
+//! one PDA per (market, user) with no way to enumerate them, so the sum was
+//! unknowable; deleting the legacy book removed it. SPL outcome tokens were a
+//! third, removed with the complete-set instructions — see
+//! `docs/design/dual-token-venues.md` §4. Both remaining sources are a single
+//! account away.
 //!
 //! ## The two guards
 //!
@@ -77,19 +78,6 @@ pub struct ReclaimSubsidy<'info> {
     #[account(seeds = [b"book", market.market_id.as_ref()], bump)]
     pub book: UncheckedAccount<'info>,
 
-    // Bound by ADDRESS, not by re-derived seeds.
-    //
-    // The market already stores both mints, and every other instruction binds
-    // them this way. Deriving them here invented a seed layout — the real one
-    // is `[b"mint", market_id, b"Y"]`, not `[b"yes_mint", market_id]` — and
-    // Anchor rejected the whole instruction with a bare ConstraintSeeds (2006)
-    // that named the constraint, not the mistake.
-    #[account(address = market.yes_mint @ SoothCoreError::VaultAuthorityMismatch)]
-    pub yes_mint: Box<Account<'info, Mint>>,
-
-    #[account(address = market.no_mint @ SoothCoreError::VaultAuthorityMismatch)]
-    pub no_mint: Box<Account<'info, Mint>>,
-
     /// CHECK: derived via seeds; signs the vault outflow.
     #[account(
         seeds = [b"vault", market.market_id.as_ref()],
@@ -114,33 +102,18 @@ pub struct ReclaimSubsidy<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-/// Shares still owed one unit each, from the AMM and the SPL token supply.
+/// Shares still owed one unit each, from the AMM.
 ///
 /// `q_yes` includes `seed_q_yes`, the virtual inventory the subsidy bought.
 /// Nobody holds those, so counting them would understate the residual — the
 /// safe direction, but it would strand the creator's money, which is the whole
 /// bug. Subtract them, saturating: a negative would mean state corruption, and
 /// treating it as zero over-counts obligations rather than under-counting.
-fn ledger_obligations(
-    amm: &AmmState,
-    yes_supply: u64,
-    no_supply: u64,
-    winning_outcome: u8,
-) -> Result<u64> {
+fn ledger_obligations(amm: &AmmState, winning_outcome: u8) -> Result<u64> {
     let user_q_yes = amm.q_yes.saturating_sub(amm.seed_q_yes).max(0) as u128;
     let user_q_no = amm.q_no.saturating_sub(amm.seed_q_no).max(0) as u128;
 
-    let amm_yes = wad_to_base(user_q_yes)?;
-    let amm_no = wad_to_base(user_q_no)?;
-
-    let (yes_total, no_total) = (
-        amm_yes
-            .checked_add(yes_supply)
-            .ok_or(error!(SoothCoreError::MathOverflow))?,
-        amm_no
-            .checked_add(no_supply)
-            .ok_or(error!(SoothCoreError::MathOverflow))?,
-    );
+    let (yes_total, no_total) = (wad_to_base(user_q_yes)?, wad_to_base(user_q_no)?);
 
     Ok(match winning_outcome {
         OUTCOME_YES => yes_total,
@@ -169,12 +142,7 @@ pub fn handler(ctx: Context<ReclaimSubsidy>) -> Result<()> {
             .map_err(|_| error!(SoothCoreError::InvalidBookAccount))?
     };
 
-    let ledger_owed = ledger_obligations(
-        &ctx.accounts.amm_state,
-        ctx.accounts.yes_mint.supply,
-        ctx.accounts.no_mint.supply,
-        winning_outcome,
-    )?;
+    let ledger_owed = ledger_obligations(&ctx.accounts.amm_state, winning_outcome)?;
 
     let obligations = book_owed
         .checked_add(ledger_owed)

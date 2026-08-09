@@ -100,7 +100,6 @@ import type {
   ChainAdapter,
   ClaimArgs,
   ClaimRequest,
-  CompleteSetArgs,
   CreateMarketArgs,
   CreateMarketRequest,
   MarketEvent,
@@ -134,25 +133,6 @@ export interface SolanaAdapterOptions {
   // Pre-built `Connection` to reuse (e.g. when running under the test SVM where
   // the connection is replaced by a custom client).
   connection?: Connection;
-}
-
-export interface MintCompleteSetToProgramOwnedArgs {
-  market: MarketRef;
-  payer: AddressRef;
-  destinationAuthority: AddressRef;
-  destinationYesAta: AddressRef;
-  destinationNoAta: AddressRef;
-  amount: bigint;
-}
-
-export interface RedeemFromProgramOwnedArgs {
-  market: MarketRef;
-  burnAuthority: AddressRef;
-  sourceYesAta: AddressRef;
-  sourceNoAta: AddressRef;
-  usdcDestination: AddressRef;
-  amountYes: bigint;
-  amountNo: bigint;
 }
 
 export interface MintIntoBookArgs {
@@ -256,11 +236,6 @@ type AnchorIxBuilder = {
     instruction(): Promise<TransactionInstruction>;
   };
 };
-
-interface SoothMarketProgramOwnedMethods {
-  mintCompleteSetToProgramOwned(amount: BN): AnchorIxBuilder;
-  redeemFromProgramOwned(): AnchorIxBuilder;
-}
 
 type BookMarketOrderBehaviourWire =
   | { none: Record<string, never> }
@@ -1391,20 +1366,14 @@ export class SolanaChainAdapter implements ChainAdapter {
   //      `claimUnlocked(maxClaims)` analogue. One LockEntry per call mirrors
   //      the on-chain handler (see `claim_unlocked.rs`).
   //
-  //   2. `kind: 'redeem'` — post-settlement redemption against the resolved
-  //      outcome (`sooth_market::redeem`). EVM `OrderEngine.settlePosition`
-  //      analogue; pays out per `TruthMarket.getRedemptionValue`.
-  //
-  // The discriminator dispatches between them. Default = `'unlock'` to
-  // preserve the Wave 4 call shape (existing tests don't pass `kind`).
-  // Both paths return a `ClaimRequest` with `kind: 'claim'` at the wire
-  // level so `client.submit` is unchanged.
+  // The `kind: 'redeem'` variant is gone with the complete-set instructions
+  // (`docs/design/dual-token-venues.md` §4). Post-settlement payouts now go
+  // through `buildRedeemBookSeat` / `buildRedeemAmmPosition`, one per ledger.
   async buildClaim(
     market: MarketRef,
     args: ClaimArgs & {
       user?: AddressRef;
       lockEntry?: AddressRef;
-      kind?: "unlock" | "redeem";
     },
   ): Promise<ClaimRequest> {
     const user = args.user;
@@ -1418,61 +1387,6 @@ export class SolanaChainAdapter implements ChainAdapter {
     const userPk = decodePubkeyRef(user);
     const marketPda = decodePubkeyRef(market);
     const resolved = await this.fetchMarket(marketPda);
-
-    const dispatchKind = args.kind ?? "unlock";
-
-    if (dispatchKind === "redeem") {
-      // ── Post-settlement redemption — sooth_market::redeem ────────────
-      //
-      // No CPI fan-out: `redeem` owns its own vault transfer + outcome-
-      // token burns directly (the vault_authority PDA is `sooth_market`-
-      // owned). The user signs the burn (their ATA is the burn source).
-      const [vaultAuthority] = deriveVaultAuthorityPda(
-        resolved.marketId,
-        this.programIds,
-      );
-      const userUsdcAta = deriveUserUsdcAta(userPk, this.usdcMint);
-      const marketVault = deriveMarketVaultAta(
-        resolved.marketId,
-        this.usdcMint,
-        this.programIds,
-      );
-      const userYesAta = getAssociatedTokenAddressSync(
-        resolved.yesMint,
-        userPk,
-      );
-      const userNoAta = getAssociatedTokenAddressSync(resolved.noMint, userPk);
-
-      const ix: TransactionInstruction = await (this.program.methods as any)
-        .redeem()
-        .accounts({
-          market: marketPda,
-          vaultAuthority,
-          yesMint: resolved.yesMint,
-          noMint: resolved.noMint,
-          vault: marketVault,
-          userUsdcAta,
-          userYesAta,
-          userNoAta,
-          user: userPk,
-          tokenProgram: TOKEN_PROGRAM_ID,
-        })
-        .instruction();
-
-      const accounts = ixKeysToShim(ix.keys);
-
-      return {
-        kind: "claim",
-        serializedTx: undefined,
-        accounts,
-        meta: {
-          marketPda: marketPda.toBase58(),
-          ...buildIxMeta(ix, userPk),
-          operation: "redeem",
-          winningOutcome: resolved.winningOutcome,
-        },
-      };
-    }
 
     // ── Default: AMM lock-claim — sooth_amm::claim_unlocked ────────────
     const lockEntryRef = args.lockEntry;
@@ -1697,310 +1611,6 @@ export class SolanaChainAdapter implements ChainAdapter {
       },
     };
   }
-
-  async buildRedeemFromProgramOwned(
-    args: RedeemFromProgramOwnedArgs,
-  ): Promise<ClaimRequest> {
-    if (args.amountYes < 0n || args.amountNo < 0n) {
-      throw new SoothError({
-        kind: "ProgramError",
-        msg: "buildRedeemFromProgramOwned: amounts must be non-negative",
-      });
-    }
-    if (args.amountYes === 0n && args.amountNo === 0n) {
-      throw new SoothError({
-        kind: "ProgramError",
-        msg: "buildRedeemFromProgramOwned: at least one amount must be positive",
-      });
-    }
-
-    const burnAuthorityPk = decodePubkeyRef(args.burnAuthority);
-    const marketPda = decodePubkeyRef(args.market);
-    const sourceYesAta = decodePubkeyRef(args.sourceYesAta);
-    const sourceNoAta = decodePubkeyRef(args.sourceNoAta);
-    const usdcDestination = decodePubkeyRef(args.usdcDestination);
-    const resolved = await this.fetchMarket(marketPda);
-
-    const [vaultAuthority] = deriveVaultAuthorityPda(
-      resolved.marketId,
-      this.programIds,
-    );
-    const marketVault = deriveMarketVaultAta(
-      resolved.marketId,
-      this.usdcMint,
-      this.programIds,
-    );
-
-    const methods = this.program
-      .methods as unknown as SoothMarketProgramOwnedMethods;
-    const ix: TransactionInstruction = await methods
-      .redeemFromProgramOwned()
-      .accounts({
-        market: marketPda,
-        vaultAuthority,
-        yesMint: resolved.yesMint,
-        noMint: resolved.noMint,
-        vault: marketVault,
-        recipientUsdcAta: usdcDestination,
-        sourceYesAta,
-        sourceNoAta,
-        sourceAuthority: burnAuthorityPk,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .instruction();
-
-    const accounts = ixKeysToShim(ix.keys);
-    return {
-      kind: "claim",
-      serializedTx: undefined,
-      accounts,
-      meta: {
-        marketPda: marketPda.toBase58(),
-        ...buildIxMeta(ix, burnAuthorityPk),
-        operation: "redeemFromProgramOwned",
-        amountYesStr: args.amountYes.toString(),
-        amountNoStr: args.amountNo.toString(),
-      },
-    };
-  }
-
-  // ─── Mint / merge complete-set ─────────────────────────────────────────
-  //
-  // 1 USDC ↔ 1·WAD YES + 1·WAD NO at parity. No price impact, no fee.
-  // mint   : N USDC in   → N·WAD YES + N·WAD NO out
-  // merge  : N·WAD YES + N·WAD NO in → N USDC out
-  //
-  // Both routes lower into `sooth_market::{mint,merge}_complete_set`
-  // (architecture §4.5). `amount` is the USDC base-unit (u64) value the
-  // on-chain ix expects.
-  //
-  // The mint path includes idempotent-ATA-create preIxs for the user's
-  // YES/NO outcome ATAs so first-time mints don't require a separate
-  // account-bootstrap tx. The merge path can assume those ATAs already
-  // exist (you can only merge tokens you already hold).
-  async buildMintCompleteSet(
-    market: MarketRef,
-    args: CompleteSetArgs,
-  ): Promise<TradeRequest> {
-    return this.buildCompleteSetInner(market, args, "mint");
-  }
-
-  async buildMintCompleteSetToProgramOwned(
-    args: MintCompleteSetToProgramOwnedArgs,
-  ): Promise<TradeRequest> {
-    if (args.amount <= 0n) {
-      throw new SoothError({
-        kind: "ProgramError",
-        msg: "buildMintCompleteSetToProgramOwned: amount must be positive",
-      });
-    }
-
-    const payerPk = decodePubkeyRef(args.payer);
-    const destinationAuthority = decodePubkeyRef(args.destinationAuthority);
-    const destinationYesAta = decodePubkeyRef(args.destinationYesAta);
-    const destinationNoAta = decodePubkeyRef(args.destinationNoAta);
-    const marketPda = decodePubkeyRef(args.market);
-    const resolved = await this.fetchMarket(marketPda);
-
-    const [vaultAuthority] = deriveVaultAuthorityPda(
-      resolved.marketId,
-      this.programIds,
-    );
-    const marketVault = deriveMarketVaultAta(
-      resolved.marketId,
-      this.usdcMint,
-      this.programIds,
-    );
-    const payerUsdcAta = deriveUserUsdcAta(payerPk, this.usdcMint);
-
-    const methods = this.program
-      .methods as unknown as SoothMarketProgramOwnedMethods;
-    const ix: TransactionInstruction = await methods
-      .mintCompleteSetToProgramOwned(bigIntToBn(args.amount))
-      .accounts({
-        market: marketPda,
-        vaultAuthority,
-        yesMint: resolved.yesMint,
-        noMint: resolved.noMint,
-        usdcMint: this.usdcMint,
-        marketVault,
-        payerUsdcAta,
-        destinationAuthority,
-        destinationYesAta,
-        destinationNoAta,
-        payer: payerPk,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .instruction();
-
-    const yesAtaIx = createAssociatedTokenAccountIdempotentInstruction(
-      payerPk,
-      destinationYesAta,
-      destinationAuthority,
-      resolved.yesMint,
-    );
-    const noAtaIx = createAssociatedTokenAccountIdempotentInstruction(
-      payerPk,
-      destinationNoAta,
-      destinationAuthority,
-      resolved.noMint,
-    );
-    const preIxs = [serializeIx(yesAtaIx), serializeIx(noAtaIx)];
-
-    const accounts = ixKeysToShim(ix.keys);
-    return {
-      kind: "trade",
-      serializedTx: undefined,
-      costEstimateWad: args.amount * 1_000_000_000_000n,
-      accounts,
-      meta: {
-        marketPda: marketPda.toBase58(),
-        ...buildIxMeta(ix, payerPk),
-        operation: "mintCompleteSetToProgramOwned",
-        amountStr: args.amount.toString(),
-        preIxs,
-      },
-    };
-  }
-
-  async buildMergeCompleteSet(
-    market: MarketRef,
-    args: CompleteSetArgs,
-  ): Promise<TradeRequest> {
-    return this.buildCompleteSetInner(market, args, "merge");
-  }
-
-  /**
-   * Split USDC into a YES+NO pair, or recombine one.
-   *
-   * These used to route to `mint_complete_set_for_orderbook` /
-   * `merge_complete_set_for_orderbook`, which credited the legacy
-   * `OrderbookPosition` ledger — a per-(market, user) PDA that the redesigned
-   * book replaced with in-arena seats. Those instructions are gone, so both
-   * now go to the plain complete-set path, which mints real SPL outcome
-   * tokens.
-   *
-   * That is a better fit as well as the only option: tokens are what `redeem`
-   * pays out on, so a minted pair now settles through the same route as every
-   * other token holding rather than through a ledger of its own.
-   */
-  async buildOrderbookMint(
-    market: MarketRef,
-    args: CompleteSetArgs,
-  ): Promise<TradeRequest> {
-    return this.buildCompleteSetInner(market, args, "mint");
-  }
-
-  async buildOrderbookMerge(
-    market: MarketRef,
-    args: CompleteSetArgs,
-  ): Promise<TradeRequest> {
-    return this.buildCompleteSetInner(market, args, "merge");
-  }
-
-  private async buildCompleteSetInner(
-    market: MarketRef,
-    args: CompleteSetArgs,
-    kind: "mint" | "merge",
-  ): Promise<TradeRequest> {
-    if (!args.user) {
-      throw new SoothError({
-        kind: "NotImplemented",
-        method: `build${kind === "mint" ? "Mint" : "Merge"}CompleteSet — args.user (Solana-only meta) is required at build time`,
-      });
-    }
-    if (args.amount <= 0n) {
-      throw new SoothError({
-        kind: "ProgramError",
-        msg: `build${kind === "mint" ? "Mint" : "Merge"}CompleteSet: amount must be positive`,
-      });
-    }
-    const userPk = decodePubkeyRef(args.user);
-    const marketPda = decodePubkeyRef(market);
-    const resolved = await this.fetchMarket(marketPda);
-
-    const [vaultAuthority] = deriveVaultAuthorityPda(
-      resolved.marketId,
-      this.programIds,
-    );
-    const [yesMint] = deriveYesMintPda(resolved.marketId, this.programIds);
-    const [noMint] = deriveNoMintPda(resolved.marketId, this.programIds);
-    const marketVault = deriveMarketVaultAta(
-      resolved.marketId,
-      this.usdcMint,
-      this.programIds,
-    );
-    const userUsdcAta = getAssociatedTokenAddressSync(this.usdcMint, userPk);
-    const userYesAta = getAssociatedTokenAddressSync(yesMint, userPk);
-    const userNoAta = getAssociatedTokenAddressSync(noMint, userPk);
-
-    const methodName = kind === "mint" ? "mintCompleteSet" : "mergeCompleteSet";
-    const ix: TransactionInstruction = await (this.program.methods as any)
-      [methodName](bigIntToBn(args.amount))
-      .accounts({
-        market: marketPda,
-        vaultAuthority,
-        yesMint,
-        noMint,
-        vault: marketVault,
-        userUsdcAta,
-        userYesAta,
-        userNoAta,
-        user: userPk,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .instruction();
-
-    // Idempotent ATA creates for the outcome tokens. Mint must have these
-    // present (they receive the new tokens); merge must have these present
-    // with non-zero balance (the ix burns from them). Either way, prepending
-    // the idempotent create is safe — it's a no-op when the ATA exists.
-    const preIxs: Array<{
-      programId: string;
-      keys: Array<{
-        pubkey: string;
-        isSigner: boolean;
-        isWritable: boolean;
-      }>;
-      data: string;
-    }> = [];
-    if (kind === "mint") {
-      const yesAtaIx = createAssociatedTokenAccountIdempotentInstruction(
-        userPk,
-        userYesAta,
-        userPk,
-        yesMint,
-      );
-      const noAtaIx = createAssociatedTokenAccountIdempotentInstruction(
-        userPk,
-        userNoAta,
-        userPk,
-        noMint,
-      );
-      for (const p of [yesAtaIx, noAtaIx]) {
-        preIxs.push(serializeIx(p));
-      }
-    }
-
-    const accounts = ixKeysToShim(ix.keys);
-
-    return {
-      kind: "trade",
-      serializedTx: undefined,
-      // Cost estimate: 1 USDC = 1·WAD shares, so the WAD-side estimate is
-      // amount * 1e12 (USDC base units → WAD).
-      costEstimateWad: args.amount * 1_000_000_000_000n,
-      accounts,
-      meta: {
-        marketPda: marketPda.toBase58(),
-        ...buildIxMeta(ix, userPk),
-        operation: kind === "mint" ? "mintCompleteSet" : "mergeCompleteSet",
-        amountStr: args.amount.toString(),
-        preIxs,
-      },
-    };
-  }
-
   async buildRequestLock(
     market: MarketRef,
     args: { user: AddressRef },

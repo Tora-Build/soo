@@ -1,30 +1,23 @@
 // Market solvency: can the vault cover everything it owes?
 //
-// This is the one piece of main's `soothcli-sol` worth keeping. The CLI is a
-// REPL — the browser-side Geek page already covers that role — but its
-// `checkCollateralBacking` assertion has no equivalent anywhere in the test
-// suite, and vault solvency is the single property whose violation means real
-// user funds are unbacked.
+// Vault solvency is the single property whose violation means real user funds
+// are unbacked, so it gets a test that can actually fail — the last case
+// deliberately breaks it to prove the assertion fires.
 //
-// ⚠️ MAIN'S VERSION DOES NOT WORK. It computes
+// Obligations are `max(yesTotal, noTotal)`, not the sum: only the winning side
+// ever redeems, so summing both legs reports a correctly-backed market as
+// insolvent. (That was one of two bugs in main's `soothcli-sol` version, which
+// also rescaled 6-decimal values by 1e12 and so floored to zero — making the
+// assertion vacuous. Both are recorded here because the shape of the mistake
+// is easy to reintroduce.)
 //
-//     obligations = (yesMint.supply + noMint.supply) / WAD_TO_USDC_SCALAR
-//     passed      = vault.amount >= obligations
+// Two ledgers are counted: AMM `Position` and book seats. A third — SPL
+// outcome-token supply — was removed with the complete-set instructions, see
+// `docs/design/dual-token-venues.md` §4.
 //
-// Two independent bugs, verified against a live LiteSVM market:
-//
-//   1. It SUMS both legs. Minting a complete set of 10 USDC creates 10 YES and
-//      10 NO, so the sum is 20 — but only the winning side ever redeems, so
-//      the true obligation is 10. A correctly-backed market reads as insolvent.
-//
-//   2. It divides by WAD_TO_USDC_SCALAR (1e12). The outcome mints are already
-//      6-decimal, matching USDC, so no rescale is needed. 20_000_000 / 1e12
-//      floors to ZERO — which means `vault >= 0` is always true and the whole
-//      assertion is VACUOUS. Bug 2 masks bug 1; the check has never failed
-//      because it can never fail.
-//
-// Corrected here: obligations = max(yesSupply, noSupply), no rescale. The last
-// test deliberately breaks solvency to prove the assertion actually fires.
+// When the venues split tokens (Phase 2 of that doc) this becomes two
+// independent checks, each vault against its own venue's obligations, and no
+// instruction may read one vault to satisfy the other.
 
 import { describe, expect, it } from "vitest";
 import { PublicKey, Transaction } from "@solana/web3.js";
@@ -33,16 +26,13 @@ import {
   createAssociatedTokenAccountIdempotentInstruction,
   getAccount,
   getAssociatedTokenAddressSync,
-  getMint,
 } from "@solana/spl-token";
 import anchorPkg from "@coral-xyz/anchor";
 
 import {
   deriveMarketVaultAta,
-  deriveNoMintPda,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
-  deriveYesMintPda,
   orderbookPositionPda,
 } from "../src/pdas.js";
 import { decodeBook } from "../src/book/index.js";
@@ -76,8 +66,6 @@ const WAD_TO_BASE = 1_000_000_000_000n;
 export interface SolvencyReport {
   vault: bigint;
   /** SPL mint supply only — what main's version looked at. */
-  yesSupply: bigint;
-  noSupply: bigint;
   /** Mint supply + share ledgers, in USDC base units. */
   yesTotal: bigint;
   noTotal: bigint;
@@ -126,18 +114,11 @@ export async function checkCollateralBacking(
     book?: PublicKey;
   } = {},
 ): Promise<SolvencyReport> {
-  const [yesMintPda] = deriveYesMintPda(marketId, programs);
-  const [noMintPda] = deriveNoMintPda(marketId, programs);
   const vaultAta = deriveMarketVaultAta(marketId, usdcMint, programs);
+  const vault = await getAccount(conn, vaultAta);
 
-  const [vault, yesMint, noMint] = await Promise.all([
-    getAccount(conn, vaultAta),
-    getMint(conn, yesMintPda),
-    getMint(conn, noMintPda),
-  ]);
-
-  let yesTotal = yesMint.supply;
-  let noTotal = noMint.supply;
+  let yesTotal = 0n;
+  let noTotal = 0n;
 
   const walk = async (addrs: PublicKey[] | undefined, kind: string) => {
     for (const addr of addrs ?? []) {
@@ -169,65 +150,11 @@ export async function checkCollateralBacking(
   const obligations = yesTotal > noTotal ? yesTotal : noTotal;
   return {
     vault: vault.amount,
-    yesSupply: yesMint.supply,
-    noSupply: noMint.supply,
     yesTotal,
     noTotal,
     obligations,
     solvent: vault.amount >= obligations,
   };
-}
-
-async function mintCompleteSet(
-  smoke: any,
-  program: any,
-  amountBaseUnits: bigint,
-) {
-  const { ctx, marketId, programs, usdcMint, user } = smoke;
-  const [yesMint] = deriveYesMintPda(marketId, programs);
-  const [noMint] = deriveNoMintPda(marketId, programs);
-  const [vaultAuthority] = deriveVaultAuthorityPda(marketId, programs);
-  const userYes = getAssociatedTokenAddressSync(yesMint, user.publicKey);
-  const userNo = getAssociatedTokenAddressSync(noMint, user.publicKey);
-
-  await sendTx(
-    ctx,
-    [user],
-    new Transaction()
-      .add(
-        createAssociatedTokenAccountIdempotentInstruction(
-          user.publicKey,
-          userYes,
-          user.publicKey,
-          yesMint,
-        ),
-      )
-      .add(
-        createAssociatedTokenAccountIdempotentInstruction(
-          user.publicKey,
-          userNo,
-          user.publicKey,
-          noMint,
-        ),
-      )
-      .add(
-        await (program.methods as any)
-          .mintCompleteSet(new BN(amountBaseUnits.toString()))
-          .accounts({
-            market: smoke.marketPda,
-            vaultAuthority,
-            yesMint,
-            noMint,
-            vault: deriveMarketVaultAta(marketId, usdcMint, programs),
-            userUsdcAta: deriveUserUsdcAta(user.publicKey, usdcMint),
-            userYesAta: userYes,
-            userNoAta: userNo,
-            user: user.publicKey,
-            tokenProgram: TOKEN_PROGRAM_ID,
-          })
-          .instruction(),
-      ),
-  );
 }
 
 describe("market solvency invariant", () => {
@@ -247,65 +174,10 @@ const LMSR_SUBSIDY = 693_147_181n;
     expect(r.solvent).toBe(true);
   }, 60_000);
 
-  it("minting a complete set keeps the vault exactly covering obligations", async () => {
-    const smoke = await bootSmoke();
-    const program = anchorProgram(smoke.ctx, smoke.user);
-    const MINT = 10_000_000n; // 10 USDC
-    await mintCompleteSet(smoke, program, MINT);
-
-    const conn = new LiteSvmConnection(smoke.ctx);
-    const r = await checkCollateralBacking(
-      conn,
-      smoke.marketId,
-      smoke.programs,
-      smoke.usdcMint,
-    );
-
-    // 10 USDC in ⇒ 10 YES + 10 NO out. Both legs equal, one redeems.
-    expect(r.yesSupply).toBe(MINT);
-    expect(r.noSupply).toBe(MINT);
-    expect(r.obligations).toBe(MINT);
-    // The complete set is backed 1:1, ON TOP of the LMSR subsidy seed_lp
-    // posted. The market is over-collateralised, which is the point of the
-    // subsidy — see amm-redeem.test.ts.
-    expect(r.vault).toBe(LMSR_SUBSIDY + MINT);
-    expect(r.solvent).toBe(true);
-  }, 60_000);
-
-  it("main's formula would call this exact state insolvent — and is vacuous anyway", async () => {
-    // Pins BOTH bugs so the corrected version cannot silently regress into the
-    // old one. If someone reinstates the sum, the first assertion fails; if
-    // they reinstate the rescale, the second shows the check is meaningless.
-    const smoke = await bootSmoke();
-    const program = anchorProgram(smoke.ctx, smoke.user);
-    const MINT = 10_000_000n;
-    await mintCompleteSet(smoke, program, MINT);
-
-    const conn = new LiteSvmConnection(smoke.ctx);
-    const r = await checkCollateralBacking(
-      conn,
-      smoke.marketId,
-      smoke.programs,
-      smoke.usdcMint,
-    );
-
-    // Bug 1: summing both legs double-counts. Only the winning side redeems,
-    // so the true exposure is 10 USDC, not 20. Asserted on the numbers rather
-    // than on the solvent/insolvent verdict, because the LMSR subsidy now
-    // leaves enough headroom that even the wrong figure happens to pass here —
-    // which is exactly how an overstated obligation hides until it doesn't.
-    const summedLegs = r.yesSupply + r.noSupply;
-    expect(summedLegs).toBe(2n * r.obligations);
-
-    // Bug 2: the 1e12 rescale floors a 20 USDC figure to zero, so main's check
-    // reduces to `vault >= 0` and can never fail.
-    expect(summedLegs / 1_000_000_000_000n).toBe(0n);
-  }, 60_000);
-
-  it("holds after a real book cross — and mint supply alone would miss it", async () => {
-    // The case main's version cannot see. A crossing order moves USDC into the
-    // vault and moves two seats; no SPL token is minted, so a mint-supply-only
-    // view reports zero obligations against a non-zero vault.
+  it("holds after a real book cross", async () => {
+    // A crossing order moves USDC into the vault and moves two seats. The
+    // whole position lives in the seat ledger, which is why that ledger has to
+    // be counted rather than inferred from anything else.
     const smoke = await bootSmoke();
     const { ctx, marketId, programs } = smoke;
     const program = anchorProgram(ctx, smoke.creator);
@@ -338,9 +210,6 @@ const LMSR_SUBSIDY = 693_147_181n;
       { program, book: bookPda(marketId) },
     );
 
-    // Mint supply saw nothing; the seat ledger carries the whole position.
-    expect(r.yesSupply).toBe(0n);
-    expect(r.noSupply).toBe(0n);
     expect(r.yesTotal).toBeGreaterThan(0n);
     expect(r.noTotal).toBeGreaterThan(0n);
     expect(r.solvent).toBe(true);
@@ -348,30 +217,55 @@ const LMSR_SUBSIDY = 693_147_181n;
   }, 120_000);
 
   it("the invariant actually fires when the vault is drained", async () => {
-    // A test that can never fail is worse than no test — that is precisely how
-    // main's version shipped. Break solvency directly and confirm detection.
+    // A test that can never fail is worse than no test. Build a real
+    // obligation with a book cross, then break solvency directly and confirm
+    // detection.
     const smoke = await bootSmoke();
-    const program = anchorProgram(smoke.ctx, smoke.user);
-    const MINT = 10_000_000n;
-    await mintCompleteSet(smoke, program, MINT);
-
-    const vaultAta = deriveMarketVaultAta(
-      smoke.marketId,
-      smoke.usdcMint,
-      smoke.programs,
+    const { ctx, marketId, programs } = smoke;
+    const program = anchorProgram(ctx, smoke.creator);
+    await initMarketFeePool(ctx, program, smoke, smoke.creator);
+    await sendBookTx(
+      smoke,
+      smoke.creator,
+      bookInitIx(smoke, smoke.creator.publicKey, 32),
     );
-    const conn = new LiteSvmConnection(smoke.ctx);
-    const before = await getAccount(conn, vaultAta);
 
-    // Drop the vault one base unit below what is owed — simulating a leak no
-    // instruction should ever produce. Halving is no longer enough: the LMSR
-    // subsidy leaves so much headroom that a market can lose most of its vault
-    // and still cover its obligations.
-    const raw = await smoke.ctx.banksClient.getAccount(vaultAta);
+    const maker = await trader(smoke);
+    const taker = await trader(smoke);
+    await sendBookTx(
+      smoke,
+      maker,
+      bookPlaceIx(smoke, maker.publicKey, SIDE_ASK, 400, 10n * ONE_SHARE, 8, true),
+    );
+    await sendBookTx(
+      smoke,
+      taker,
+      bookPlaceIx(smoke, taker.publicKey, SIDE_BID, 400, 10n * ONE_SHARE, 8, false),
+    );
+
+    const vaultAta = deriveMarketVaultAta(marketId, smoke.usdcMint, programs);
+    const conn = new LiteSvmConnection(ctx);
+    const opts = { program, book: bookPda(marketId) };
+
+    const healthy = await checkCollateralBacking(
+      conn,
+      marketId,
+      programs,
+      smoke.usdcMint,
+      opts,
+    );
+    expect(healthy.solvent).toBe(true);
+    expect(healthy.obligations).toBeGreaterThan(0n);
+
+    // Drop the vault one base unit below what is owed — a leak no instruction
+    // should ever produce. One unit, not a fraction: the LMSR subsidy leaves
+    // so much headroom that a market can lose most of its vault and still
+    // cover its obligations, so halving would not prove anything.
+    const raw = await ctx.banksClient.getAccount(vaultAta);
     const data = Buffer.from(raw!.data);
-    const drained = MINT - 1n;
+    const drained = healthy.obligations - 1n;
     data.writeBigUInt64LE(drained, 64); // SPL token account: amount @ 64
-    smoke.ctx.setAccount(vaultAta, {
+    ctx.setAccount(vaultAta, {
       executable: false,
       owner: new PublicKey(TOKEN_PROGRAM_ID),
       lamports: raw!.lamports,
@@ -380,12 +274,13 @@ const LMSR_SUBSIDY = 693_147_181n;
 
     const r = await checkCollateralBacking(
       conn,
-      smoke.marketId,
-      smoke.programs,
+      marketId,
+      programs,
       smoke.usdcMint,
+      opts,
     );
-    expect(r.vault).toBe(MINT - 1n);
-    expect(r.obligations).toBe(MINT);
+    expect(r.vault).toBe(drained);
+    expect(r.obligations).toBe(healthy.obligations);
     expect(r.solvent).toBe(false);
-  }, 60_000);
+  }, 120_000);
 });

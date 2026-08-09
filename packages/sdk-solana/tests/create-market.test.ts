@@ -1,5 +1,5 @@
 // End-to-end test for `sooth_core::create_market` — the one-shot
-// market-creation ix that creates Market PDA, outcome mints, vaults,
+// market-creation ix that creates Market PDA, vaults,
 // and AmmState in a single transaction.
 //
 // Flow:
@@ -8,7 +8,7 @@
 //   3. Initialize the singleton `ProtocolConfig` PDA.
 //   4. Build a `create_market` request via `adapter.buildCreateMarket(...)`
 //      and submit it.
-//   5. Assert: market PDA, yes_mint, no_mint, vault, lock_vault, and
+//   5. Assert: market PDA, vault, lock_vault, and
 //      amm_state PDAs all exist with expected field values.
 
 import { describe, expect, it } from "vitest";
@@ -42,10 +42,8 @@ import {
   deriveLockVaultAta,
   deriveMarketPda,
   deriveMarketVaultAta,
-  deriveNoMintPda,
   deriveProtocolConfigPda,
   deriveVaultAuthorityPda,
-  deriveYesMintPda,
   SOOTH_CORE_PROGRAM_ID,
   type ProgramIds,
 } from "../src/pdas.js";
@@ -66,7 +64,7 @@ const PROGRAMS: ProgramIds = {
 };
 
 describe("sooth_core::create_market end-to-end", () => {
-  it("creates Market + outcome mints + vaults + AmmState in one tx", async () => {
+  it("creates Market + vaults + AmmState in one tx", async () => {
     // ─── 0. Boot LiteSVM with sooth_core ──────────────────────────────────
     const soDir = resolveDeployDir();
     process.env.BPF_OUT_DIR = soDir;
@@ -211,8 +209,6 @@ describe("sooth_core::create_market end-to-end", () => {
 
     // ─── 6. Assert all PDAs exist with right field values ─────────────────
     const [marketPda] = deriveMarketPda(marketId, PROGRAMS);
-    const [yesMint] = deriveYesMintPda(marketId, PROGRAMS);
-    const [noMint] = deriveNoMintPda(marketId, PROGRAMS);
     const [vaultAuthority] = deriveVaultAuthorityPda(marketId, PROGRAMS);
     const [lockAuthority] = deriveLockAuthorityPda(marketId, PROGRAMS);
     const vault = deriveMarketVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
@@ -222,14 +218,6 @@ describe("sooth_core::create_market end-to-end", () => {
     const marketAcc = await ctx.banksClient.getAccount(marketPda);
     expect(marketAcc).toBeTruthy();
     expect(marketAcc!.owner.toBase58()).toBe(SOOTH_CORE_ID.toBase58());
-
-    const yesMintAcc = await ctx.banksClient.getAccount(yesMint);
-    expect(yesMintAcc).toBeTruthy();
-    expect(yesMintAcc!.owner.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
-
-    const noMintAcc = await ctx.banksClient.getAccount(noMint);
-    expect(noMintAcc).toBeTruthy();
-    expect(noMintAcc!.owner.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
 
     const vaultAcc = await ctx.banksClient.getAccount(vault);
     expect(vaultAcc).toBeTruthy();
@@ -259,15 +247,12 @@ describe("sooth_core::create_market end-to-end", () => {
     const trialEndAt = Number(ammState.trialEndAt.toString());
     expect(Math.abs(trialEndAt - expectedTrialEnd)).toBeLessThanOrEqual(60);
 
-    // Decode Market to verify lifecycle = Open and outcome mints/vault are
-    // populated.
+    // Decode Market to verify lifecycle = Open and the vaults are populated.
     const marketState = await (coreProgram.account as any).market.fetch(marketPda);
     expect(marketState.creator.toBase58()).toBe(creator.publicKey.toBase58());
     expect(marketState.adjudicator.toBase58()).toBe(
       creator.publicKey.toBase58(),
     );
-    expect(marketState.yesMint.toBase58()).toBe(yesMint.toBase58());
-    expect(marketState.noMint.toBase58()).toBe(noMint.toBase58());
     expect(marketState.vault.toBase58()).toBe(vault.toBase58());
     expect(marketState.lockVault.toBase58()).toBe(lockVault.toBase58());
     expect(Object.keys(marketState.lifecycle)[0]).toBe("open");

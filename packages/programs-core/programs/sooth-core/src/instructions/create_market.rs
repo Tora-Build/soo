@@ -2,10 +2,9 @@
 //!
 //! Sets up, in order:
 //!
-//! 1. Init `Market` PDA (lifecycle = Initializing → Open after step 3)
-//! 2. Init `yes_mint` and `no_mint` SPL mints
-//! 3. Init `market_vault` and `lock_vault` ATAs (lifecycle → Open)
-//! 4. Init `AmmState` PDA
+//! 1. Init `Market` PDA (lifecycle = Initializing → Open after step 2)
+//! 2. Init `market_vault` and `lock_vault` ATAs (lifecycle → Open)
+//! 3. Init `AmmState` PDA
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program::invoke_signed;
@@ -57,22 +56,6 @@ pub struct CreateMarket<'info> {
         bump,
     )]
     pub vault_authority: UncheckedAccount<'info>,
-
-    /// CHECK: PDA-derived SPL mint; hand-rolled init in handler.
-    #[account(
-        mut,
-        seeds = [b"mint", args.market_id.as_ref(), b"y"],
-        bump,
-    )]
-    pub yes_mint: UncheckedAccount<'info>,
-
-    /// CHECK: PDA-derived SPL mint; hand-rolled init in handler.
-    #[account(
-        mut,
-        seeds = [b"mint", args.market_id.as_ref(), b"n"],
-        bump,
-    )]
-    pub no_mint: UncheckedAccount<'info>,
 
     // ── Market vaults ────────────────────────────────────────────────────
     /// CHECK: signer-only PDA; lock-vault authority.
@@ -131,8 +114,6 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
     let market_bump = ctx.bumps.market;
     let vault_authority_bump = ctx.bumps.vault_authority;
     let lock_authority_bump = ctx.bumps.lock_authority;
-    let yes_mint_bump = ctx.bumps.yes_mint;
-    let no_mint_bump = ctx.bumps.no_mint;
     let amm_bump = ctx.bumps.amm_state;
 
     let creator_key = ctx.accounts.creator.key();
@@ -160,13 +141,11 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
             signer_seeds,
         )?;
         let market_state = Market {
-            _reserved: [0u8; 64],
+            _reserved: [0u8; 130],
             market_id,
             creator: creator_key,
             adjudicator: args.adjudicator,
             question_hash: args.question_hash,
-            yes_mint: Pubkey::default(), // filled after leg 2
-            no_mint: Pubkey::default(),
             vault: Pubkey::default(),       // filled after leg 3
             lock_vault: Pubkey::default(),
             start_time: args.start_time,
@@ -176,8 +155,6 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
             bump: market_bump,
             vault_authority_bump,
             lock_authority_bump,
-            yes_mint_bump,
-            no_mint_bump,
         };
         let mut data = ctx.accounts.market.try_borrow_mut_data()?;
         data[..8].copy_from_slice(&Market::DISCRIMINATOR);
@@ -185,84 +162,7 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
         market_state.serialize(&mut &mut data[8..])?;
     }
 
-    // ── Leg 2: Init outcome mints ─────────────────────────────────────────
-    {
-        let mint_space = Mint::LEN;
-        let lamports = ctx.accounts.rent.minimum_balance(mint_space);
-
-        let yes_signer: &[&[&[u8]]] =
-            &[&[b"mint", market_id.as_ref(), b"y", &[yes_mint_bump]]];
-        let no_signer: &[&[&[u8]]] =
-            &[&[b"mint", market_id.as_ref(), b"n", &[no_mint_bump]]];
-
-        invoke_signed(
-            &system_instruction::create_account(
-                &creator_key,
-                &ctx.accounts.yes_mint.key(),
-                lamports,
-                mint_space as u64,
-                &token::ID,
-            ),
-            &[
-                ctx.accounts.creator.to_account_info(),
-                ctx.accounts.yes_mint.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            yes_signer,
-        )?;
-        invoke_signed(
-            &system_instruction::create_account(
-                &creator_key,
-                &ctx.accounts.no_mint.key(),
-                lamports,
-                mint_space as u64,
-                &token::ID,
-            ),
-            &[
-                ctx.accounts.creator.to_account_info(),
-                ctx.accounts.no_mint.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            no_signer,
-        )?;
-        token::initialize_mint(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                InitializeMint {
-                    mint: ctx.accounts.yes_mint.to_account_info(),
-                    rent: ctx.accounts.rent.to_account_info(),
-                },
-            ),
-            0,
-            &vault_authority_key,
-            None,
-        )?;
-        token::initialize_mint(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                InitializeMint {
-                    mint: ctx.accounts.no_mint.to_account_info(),
-                    rent: ctx.accounts.rent.to_account_info(),
-                },
-            ),
-            0,
-            &vault_authority_key,
-            None,
-        )?;
-
-        // Update market with mint addresses.
-        let yes_mint_key = ctx.accounts.yes_mint.key();
-        let no_mint_key = ctx.accounts.no_mint.key();
-        let mut data = ctx.accounts.market.try_borrow_mut_data()?;
-        use anchor_lang::{AccountDeserialize, AccountSerialize};
-        let mut slice: &[u8] = &data;
-        let mut m = Market::try_deserialize(&mut slice)?;
-        m.yes_mint = yes_mint_key;
-        m.no_mint = no_mint_key;
-        m.try_serialize(&mut &mut data[..])?;
-    }
-
-    // ── Leg 3: Init market vaults (lifecycle → Open) ──────────────────────
+    // ── Leg 2: Init market vaults (lifecycle → Open) ──────────────────────
     {
         associated_token::create(CpiContext::new(
             ctx.accounts.associated_token_program.to_account_info(),
@@ -300,7 +200,7 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
         m.try_serialize(&mut &mut data[..])?;
     }
 
-    // ── Leg 4: Init AmmState ──────────────────────────────────────────────
+    // ── Leg 3: Init AmmState ──────────────────────────────────────────────
     {
         let now = Clock::get()?.unix_timestamp;
         let trial_end_at =
@@ -350,8 +250,6 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
         market: ctx.accounts.market.key(),
         creator: creator_key,
         adjudicator: args.adjudicator,
-        yes_mint: ctx.accounts.yes_mint.key(),
-        no_mint: ctx.accounts.no_mint.key(),
         vault: ctx.accounts.vault.key(),
         initial_b: args.initial_b,
         start_time: args.start_time,

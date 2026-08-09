@@ -7,7 +7,6 @@ import { Card } from "../components/ui/Card";
 import { useActivePositions, useLPPositions } from "../hooks";
 import { TradingAccountCard } from "../components/features/portfolio/TradingAccountCard";
 import { ActiveOrdersCard } from "../components/features/portfolio/ActiveOrdersCard";
-import { CompleteSetPanel } from "../components/features/portfolio/CompleteSetPanel";
 import { ClaimUnlockedPanel } from "../components/features/portfolio/ClaimUnlockedPanel";
 import { OperatorActionsPanel } from "../components/features/portfolio/OperatorActionsPanel";
 import { DismissMarketPanel } from "../components/features/portfolio/DismissMarketPanel";
@@ -110,7 +109,6 @@ export const Portfolio = () => {
 
       <TradingAccountCard />
 
-      <CompleteSetPanel />
 
       <ClaimUnlockedPanel />
 

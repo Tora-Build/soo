@@ -603,36 +603,3 @@ export function countWritableAccounts(tx: Transaction): number {
     total - numRequiredSignatures - numReadonlyUnsignedAccounts;
   return writableSigners + writableNonSigners;
 }
-
-/** Credit `amountBaseUnits` of BOTH outcomes to the user's OrderbookPosition
- *  by depositing collateral. Escrowed resting orders settle against these
- *  shares, so a maker must hold them before resting with `escrow: true`. */
-export async function mintCompleteSetForOrderbook(
-  ctx: SvmContext,
-  program: Program,
-  smoke: SmokeContext,
-  user: Keypair,
-  amountBaseUnits: bigint,
-): Promise<void> {
-  const { marketId, programs, usdcMint, marketPda } = smoke;
-  const [position] = orderbookPositionPda(marketId, user.publicKey, programs);
-  await sendTx(
-    ctx,
-    [user],
-    new Transaction().add(
-      await (program.methods as any)
-        .mintCompleteSetForOrderbook(new BN(amountBaseUnits.toString()))
-        .accounts({
-          market: marketPda,
-          position,
-          vault: deriveMarketVaultAta(marketId, usdcMint, programs),
-          userUsdcAta: deriveUserUsdcAta(user.publicKey, usdcMint),
-          user: user.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-          rent: SYSVAR_RENT_PUBKEY,
-        })
-        .instruction(),
-    ),
-  );
-}

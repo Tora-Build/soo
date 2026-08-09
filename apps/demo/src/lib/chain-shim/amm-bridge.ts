@@ -745,15 +745,6 @@ export async function dispatchAmmWrite(
   if (call.functionName === "addAdjudicator") {
     return dispatchAddAdjudicator(call, ctx);
   }
-  if (call.functionName === "mintCompleteSet") {
-    return dispatchCompleteSet(call, ctx, "mint");
-  }
-  if (call.functionName === "mergeCompleteSet") {
-    return dispatchCompleteSet(call, ctx, "merge");
-  }
-  if (call.functionName === "redeem") {
-    return dispatchRedeem(call, ctx);
-  }
   if (call.functionName === "requestLock") {
     return dispatchRequestLock(call, ctx);
   }
@@ -1119,83 +1110,6 @@ async function dispatchAddAdjudicator(
   // market argument it does not currently receive.
   void adjudicatorPk;
   return synthHashFromSignature("1".repeat(64));
-}
-
-/**
- * Mint or merge an orderbook complete set.
- *
- *   mint:  N USDC in → N·WAD YES + N·WAD NO on OrderbookPosition
- *   merge: N·WAD YES + N·WAD NO from OrderbookPosition → N USDC out
- *
- * Routes through `adapter.buildOrderbookMint` /
- * `adapter.buildOrderbookMerge` for ix construction and `adapter.submit`
- * for sign/send/confirm — same machinery the trade path uses.
- *
- * Args:
- *   args[0]: market reference — `0x<base58>` or `sol:<base58>`
- *   args[1]: amount in USDC base units (u64). For merge this is also the
- *            count of YES + NO shares burned (1 USDC = 1·WAD YES = 1·WAD NO).
- */
-async function dispatchCompleteSet(
-  call: WriteCallShape,
-  ctx: AmmBridgeCtx,
-  kind: "mint" | "merge",
-): Promise<string> {
-  const op = `${kind}CompleteSet`;
-  const { signer, userBase58 } = requireWallet(ctx, op);
-  const args = call.args ?? [];
-  const marketRef = toMarketRef(args[0]);
-  if (!marketRef) {
-    throw new Error(`${op}: invalid market reference`);
-  }
-  const amount =
-    typeof args[1] === "bigint" ? args[1] : BigInt((args[1] as any) ?? 0);
-  if (amount <= 0n) {
-    throw new Error(`${op}: amount must be positive`);
-  }
-
-  const userArgs = { user: `sol:${userBase58}`, amount };
-  const req =
-    kind === "mint"
-      ? await ctx.adapter.buildOrderbookMint(marketRef, userArgs)
-      : await ctx.adapter.buildOrderbookMerge(marketRef, userArgs);
-  return submitAndSynth(ctx.adapter, req, signer);
-}
-
-/**
- * Post-settlement redemption — `sooth_market::redeem`.
- *
- * Per the EVM `TruthMarket.getRedemptionValue` payout table:
- *   YES wins:  burn user's YES, pay 1 USDC per share
- *   NO  wins:  burn user's NO,  pay 1 USDC per share
- *   INVALID:   burn both,        pay 0.5 USDC per share, summed
- *
- * The on-chain handler (sooth_market/src/instructions/redeem.rs) reads the
- * user's outcome ATA balances and resolves the math directly — no per-call
- * arg beyond the market reference. Builds via the SDK's existing
- * `buildClaim({kind: "redeem"})` branch and submits through the same
- * pipeline trade/claim use.
- *
- * Args:
- *   args[0]: market reference — `0x<base58>` or `sol:<base58>`
- */
-async function dispatchRedeem(
-  call: WriteCallShape,
-  ctx: AmmBridgeCtx,
-): Promise<string> {
-  const { signer, userBase58 } = requireWallet(ctx, "redeem");
-  const args = call.args ?? [];
-  const marketRef = toMarketRef(args[0]);
-  if (!marketRef) {
-    throw new Error("redeem: invalid market reference");
-  }
-
-  const req = await ctx.adapter.buildClaim(marketRef, {
-    outcome: 0, // unused on Solana redeem path; placeholder for ClaimArgs shape
-    user: `sol:${userBase58}`,
-    kind: "redeem",
-  });
-  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /**

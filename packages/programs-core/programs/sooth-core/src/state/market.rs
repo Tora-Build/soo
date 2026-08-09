@@ -21,8 +21,6 @@ pub struct Market {
     /// designated adjudicator identity.
     pub adjudicator: Pubkey,
     pub question_hash: [u8; 32],
-    pub yes_mint: Pubkey,
-    pub no_mint: Pubkey,
     /// USDC vault ATA — populated by `initialize_market_vaults`.
     pub vault: Pubkey,
     /// AMM lock-on-sell escrow vault — populated by `initialize_market_vaults`.
@@ -37,8 +35,6 @@ pub struct Market {
     pub bump: u8,
     pub vault_authority_bump: u8,
     pub lock_authority_bump: u8,
-    pub yes_mint_bump: u8,
-    pub no_mint_bump: u8,
 
     /// Forward-compat padding. Adding a field consumes bytes from here
     /// instead of changing the account's length, so no migration is needed:
@@ -48,7 +44,7 @@ pub struct Market {
     ///
     /// When you add a field, shrink this by exactly its serialized size and
     /// leave `SPACE` unchanged.
-    pub _reserved: [u8; 64],
+    pub _reserved: [u8; 130],
 }
 
 impl Market {
@@ -58,8 +54,6 @@ impl Market {
         + 32                         // creator
         + 32                         // adjudicator
         + 32                         // question_hash
-        + 32                         // yes_mint
-        + 32                         // no_mint
         + 32                         // vault
         + 32                         // lock_vault
         + 8                          // start_time
@@ -69,9 +63,7 @@ impl Market {
         + 1                          // bump
         + 1                          // vault_authority_bump
         + 1                          // lock_authority_bump
-        + 1                          // yes_mint_bump
-        + 1                      // no_mint_bump
-        + 64; // _reserved
+        + 130; // _reserved
 
     pub fn is_open(&self) -> bool {
         matches!(self.lifecycle, MarketLifecycle::Open)

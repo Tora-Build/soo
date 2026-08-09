@@ -5,26 +5,6 @@
 
 use anchor_lang::prelude::*;
 
-/// Mirror of EVM `OrderEngine.Minted` (`OrderEngine.sol:124`).
-#[event]
-pub struct CompleteSetMinted {
-    pub market: Pubkey,
-    pub user: Pubkey,
-    /// USDC base units pulled from user.
-    pub amount_usdc: u64,
-    pub ts: i64,
-}
-
-/// Mirror of EVM `OrderEngine.Merged` (`OrderEngine.sol:125`).
-#[event]
-pub struct CompleteSetMerged {
-    pub market: Pubkey,
-    pub user: Pubkey,
-    /// USDC base units returned to user.
-    pub amount_usdc: u64,
-    pub ts: i64,
-}
-
 /// Mirror of EVM `TruthMarket.MarketResolved` (LIVE → RESOLVING). Renamed to
 /// "Locked" to match Solana lifecycle names — the semantic intent is the same:
 /// trading halts pending adjudicator outcome. See `state/lifecycle.rs`.
@@ -141,8 +121,6 @@ pub struct MarketCreated {
     pub market: Pubkey,
     pub creator: Pubkey,
     pub adjudicator: Pubkey,
-    pub yes_mint: Pubkey,
-    pub no_mint: Pubkey,
     pub vault: Pubkey,
     /// Initial LMSR liquidity `b` in WAD. Stored on `AmmState` after ix4.
     pub initial_b: u128,

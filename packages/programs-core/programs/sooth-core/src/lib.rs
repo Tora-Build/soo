@@ -100,12 +100,7 @@ pub mod sooth_core {
     use crate::instructions::init_market_fee_pool;
     use crate::instructions::initialize_amm_state;
     use crate::instructions::lock_for_resolution;
-    use crate::instructions::merge_complete_set;
-    use crate::instructions::mint_complete_set;
-    use crate::instructions::mint_complete_set_to_program_owned;
     use crate::instructions::pause;
-    use crate::instructions::redeem;
-    use crate::instructions::redeem_from_program_owned;
     use crate::instructions::redeem_lp;
     use crate::instructions::reclaim_subsidy;
     use crate::instructions::redeem_amm_position;
@@ -211,31 +206,6 @@ pub mod sooth_core {
         settle::handler(ctx)
     }
 
-    // ── Complete sets ─────────────────────────────────────────────────────────
-
-    pub fn mint_complete_set(
-        ctx: Context<MintCompleteSet>,
-        amount: u64,
-    ) -> Result<()> {
-        mint_complete_set::handler(ctx, amount)
-    }
-
-
-    pub fn mint_complete_set_to_program_owned(
-        ctx: Context<MintCompleteSetToProgramOwned>,
-        amount: u64,
-    ) -> Result<()> {
-        mint_complete_set_to_program_owned::handler(ctx, amount)
-    }
-
-    pub fn merge_complete_set(
-        ctx: Context<MergeCompleteSet>,
-        amount: u64,
-    ) -> Result<()> {
-        merge_complete_set::handler(ctx, amount)
-    }
-
-
     // ── AMM ───────────────────────────────────────────────────────────────────
 
     pub fn trade_positions(
@@ -277,10 +247,6 @@ pub mod sooth_core {
         lock_for_resolution::handler(ctx)
     }
 
-    pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
-        redeem::handler(ctx)
-    }
-
     /// Pay out an AMM `Position` after settlement. Before this existed the
     /// AMM had no post-settlement exit at all — see the module docs.
     /// Return the unspent LMSR subsidy to the creator after settlement.
@@ -302,12 +268,6 @@ pub mod sooth_core {
         redeem_book_seat::handler(ctx)
     }
 
-
-    pub fn redeem_from_program_owned(
-        ctx: Context<RedeemFromProgramOwned>,
-    ) -> Result<()> {
-        redeem_from_program_owned::handler(ctx)
-    }
 
     // ── CLOB ──────────────────────────────────────────────────────────────────
 

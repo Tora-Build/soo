@@ -238,10 +238,6 @@ export interface BuyArgs {
 // tokens at parity (1 USDC = 1·WAD YES = 1·WAD NO).
 //
 // `user` is a Solana-only meta channel — same convention as TradeArgs.user.
-export interface CompleteSetArgs {
-  user?: AddressRef;
-  amount: bigint;
-}
 export interface SellArgs extends BuyArgs {}
 
 export interface OrderbookCancelOptions {

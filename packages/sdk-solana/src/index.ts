@@ -5,8 +5,6 @@
 
 export {
   SolanaChainAdapter,
-  type MintCompleteSetToProgramOwnedArgs,
-  type RedeemFromProgramOwnedArgs,
   type SolanaAdapterOptions,
 } from "./adapter.js";
 export { SoothError, notImplemented } from "./errors.js";
