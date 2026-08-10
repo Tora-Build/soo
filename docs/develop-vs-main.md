@@ -447,11 +447,24 @@ upgrade over `main`'s, so no account written by the old layout is reachable at
 the address the app uses.
 
 ```
-sooth_core   DHnXeCJThuejPHkpRwg8QrmS6GCMJWPUefGKU74ZHGPD
-USDC (mock)  ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX
+sooth_core   EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw
+AMM token    CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu   (AMM venue)
+USDC (mock)  ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX   (book venue)
 ```
 
-`main`'s deployment (`BgcooFgT…`) has been closed and its rent reclaimed.
+Both `main`'s deployment (`BgcooFgT…`) and the pre-venue-split one
+(`DHnXeCJT…`) have been closed and their rent reclaimed.
+
+The second closure is why the id moved again. The venue split changed field
+OFFSETS inside `ProtocolConfig` without changing its size — `fee_bps` became
+`amm_fee_bps` + `book_fee_bps` + `graduation_bps`, and `_reserved` shrank to
+match. An in-place upgrade therefore left a 165-byte account that still
+deserialized, but with every field after the treasury shifted: the new program
+read `config.bump` off the wrong byte and `create_market` failed its seeds
+check. Nothing warned, because nothing was corrupt — the bytes were simply
+being read against a different struct. A fresh id makes every PDA derive anew,
+which is the only migration that does not require carrying a privileged
+"overwrite protocol config" instruction in the program forever.
 
 **Every transaction must request a 256 KB heap frame.** `sooth_core` installs a
 custom `#[global_allocator]` that addresses from the top of a region the

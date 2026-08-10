@@ -31,7 +31,7 @@
 # To rehearse against a real Agave runtime without spending devnet SOL:
 #
 #   solana-test-validator --reset \
-#     --bpf-program DHnXeCJThuejPHkpRwg8QrmS6GCMJWPUefGKU74ZHGPD target/deploy/sooth_core.so \
+#     --bpf-program EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw target/deploy/sooth_core.so \
 #
 # That is how the 256 KB allocator was verified outside the test harness: with
 # requestHeapFrame the program runs, without it every instruction faults with

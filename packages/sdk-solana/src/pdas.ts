@@ -49,7 +49,7 @@ const SEED_FEE_POOL_AMM = enc.encode("fee_pool_amm");
 const SEED_ADJUDICATOR = enc.encode("adjudicator");
 
 export const SOOTH_CORE_PROGRAM_ID = new PublicKey(
-  "DHnXeCJThuejPHkpRwg8QrmS6GCMJWPUefGKU74ZHGPD",
+  "EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw",
 );
 
 

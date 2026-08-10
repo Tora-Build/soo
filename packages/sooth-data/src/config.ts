@@ -105,7 +105,7 @@ export type ChainId = keyof typeof CHAIN_NAMES;
 /// adjudicator with a single `sooth_core`. `sooth_log` is gone too — events
 /// self-CPI via Anchor's `emit_cpi!`, so no second program is needed.
 export const PROGRAM_IDS = {
-  SOOTH_CORE: "DHnXeCJThuejPHkpRwg8QrmS6GCMJWPUefGKU74ZHGPD",
+  SOOTH_CORE: "EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw",
 } as const;
 
 /// Anchor discriminator for `sooth_core::buy` — sha256("global:buy")[..8].

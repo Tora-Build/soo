@@ -1,5 +1,5 @@
 {
-  "address": "DHnXeCJThuejPHkpRwg8QrmS6GCMJWPUefGKU74ZHGPD",
+  "address": "EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw",
   "metadata": {
     "name": "sooth_core",
     "version": "0.0.0",
@@ -1400,18 +1400,77 @@
         },
         {
           "name": "b_base_yield_vault",
+          "docs": [
+            "The venue's own collateral vault: the `b_base` share stays with the",
+            "market rather than leaving it.",
+            "",
+            "NOTE this deepens the vault; it does NOT raise `AmmState.b`. Growing",
+            "`b` from fees is the EVM design's mechanism and is not implemented",
+            "here, so the honest behaviour is to return the share to the collateral",
+            "it came from. `reclaim_subsidy` cannot hand it to the creator — that is",
+            "capped at what they actually posted."
+          ],
           "writable": true
         },
         {
+          "name": "lp_yield_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "lp_yield_vault",
+          "docs": [
+            "Same account `redeem_lp` pays LP holders from — so the share lands",
+            "where the claim path expects it."
+          ],
           "writable": true
         },
         {
           "name": "adjudicator_fee_vault",
+          "docs": [
+            "The market's own adjudicator, from `Market`. Not a caller-supplied",
+            "address."
+          ],
           "writable": true
         },
         {
           "name": "protocol_treasury_vault",
+          "docs": [
+            "`config.treasury` is the treasury's OWNER, not one token account.",
+            "",
+            "It was `address = config.treasury`, which cannot work once there are two",
+            "venues: that pins one account, and the same account cannot also satisfy",
+            "`token::mint = venue_mint` for two different mints. Whichever venue the",
+            "treasury account did not hold could never distribute — its pool would",
+            "fill and never drain. Binding the authority instead pins the",
+            "destination just as tightly (the caller still cannot choose an owner)",
+            "while letting the treasury hold one account per venue."
+          ],
           "writable": true
         },
         {
@@ -1557,15 +1616,61 @@
           }
         },
         {
+          "name": "lp_yield_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "lp_yield_vault",
+          "docs": [
+            "The book's LP yield accrues here, in the BOOK's token.",
+            "",
+            "KNOWN GAP: `redeem_lp` pays only in the AMM's token, so this balance",
+            "has no claim path yet — the incubation cohort earning a share of book",
+            "revenue needs a second, book-denominated claim. The money is safe (a",
+            "PDA owns it) but is not yet withdrawable. Tracked in",
+            "`docs/design/dual-token-venues.md`."
+          ],
           "writable": true
         },
         {
           "name": "adjudicator_fee_vault",
+          "docs": [
+            "The market's own adjudicator, from `Market`."
+          ],
           "writable": true
         },
         {
           "name": "protocol_treasury_vault",
+          "docs": [
+            "The treasury's OWNER — see the AMM's counterpart. `address =` here",
+            "would have made this venue and the AMM's mutually exclusive."
+          ],
           "writable": true
         },
         {

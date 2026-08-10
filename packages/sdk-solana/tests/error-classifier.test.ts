@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { __testing } from "../src/adapter.js";
 
-const CORE_ID = "DHnXeCJThuejPHkpRwg8QrmS6GCMJWPUefGKU74ZHGPD";
+const CORE_ID = "EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw";
 
 const lookup = new Map([
   [CORE_ID, __testing.SOOTH_CORE_ERROR_TABLE],
