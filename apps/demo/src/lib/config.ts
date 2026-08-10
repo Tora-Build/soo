@@ -17,6 +17,7 @@ const USDC_MINT_DEVNET = "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX";
 // instance token chosen at deploy, the book in USDC. Must match
 // `AMM_TOKEN_MINT` in the program's `constants.rs` and the SDK's default.
 const AMM_MINT_DEVNET = "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu";
+
 // Sourced from the IDL `address` field, which mirrors the program's
 // `declare_id!`. Keeps the config in lockstep with deploy keypair rotations
 // without a second hand-pinned constant.
@@ -69,6 +70,20 @@ function resolveWsUrl(rpcUrl: string): string {
 }
 
 const rpcUrl = env?.VITE_SOLANA_RPC_URL ?? DEFAULT_DEVNET_RPC;
+
+/**
+ * Display names for the two venue tokens.
+ *
+ * The AMM's token is chosen per deployment, so its name cannot be a constant
+ * in shared code — this deployment's is EAST, the next one's will not be.
+ * `VITE_AMM_TOKEN_LABEL` overrides it without a code change; the ROLE ("AMM
+ * venue") stays on screen beside the name, so a stale label degrades to
+ * cosmetic rather than misleading someone about which venue they are funding.
+ */
+export const tokenLabels = {
+  amm: env?.VITE_AMM_TOKEN_LABEL ?? "Mock EAST",
+  book: env?.VITE_BOOK_TOKEN_LABEL ?? "Mock USDC",
+} as const;
 
 export const demoConfig: DemoConfig = {
   wsUrl: resolveWsUrl(rpcUrl),

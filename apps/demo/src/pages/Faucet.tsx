@@ -7,7 +7,7 @@ import {
   usePublicClient,
 } from "@/lib/chain-shim";
 import { parseUnits, formatUnits, parseAbi } from "@/lib/chain-shim";
-import { demoConfig } from "../lib/config";
+import { demoConfig, tokenLabels } from "../lib/config";
 import { useBaseTokenDecimals } from "../hooks/useBaseTokenDecimals";
 import { Coins, ExternalLink, Info, Wallet } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -29,15 +29,17 @@ const MOCK_ERC20_ABI = parseAbi([
  * graduates — so a single-token faucet leaves a new user unable to make their
  * first trade.
  *
- * Labelled by ROLE, not ticker. The AMM's token is chosen per deployment; the
- * name on the card would be wrong the moment the protocol is deployed with a
- * different one.
+ * Each card shows a NAME and a ROLE. The name comes from config because the
+ * AMM's token is chosen per deployment — hardcoding "EAST" here would be wrong
+ * for the next deployment. The role is the part that never changes, and it is
+ * what the user actually needs: which venue this token can trade. Keeping both
+ * means a stale name is cosmetic instead of misleading.
  */
 const VENUES = [
   {
     key: "amm",
     role: "AMM",
-    title: "AMM Token",
+    title: tokenLabels.amm,
     blurb:
       "Collateral for the bonding-curve venue. Every market trades here until it graduates, so this is the token you need first.",
     mintKey: "ammMint",
@@ -45,12 +47,42 @@ const VENUES = [
   {
     key: "book",
     role: "Book",
-    title: "Mock USDC",
+    title: tokenLabels.book,
     blurb:
       "Collateral for the order book. Only usable on markets that have already graduated.",
     mintKey: "usdcMint",
   },
 ] as const;
+
+/**
+ * Say what actually went wrong.
+ *
+ * This used to read `err.shortMessage` — a wagmi/viem field that a plain
+ * `Error` from the Solana bridge never has — and fall back to "Failed to mint
+ * tokens" for everything else. So the one message users saw was the one
+ * carrying no information, and the commonest cause by far is not a broken
+ * faucet at all: the public devnet RPC rate-limits a browser that has already
+ * loaded a market page, and `getLatestBlockhash` throws 429 before anything is
+ * even sent. That is a fixable environment problem, but only if it is named.
+ */
+function faucetErrorMessage(err: unknown): string {
+  const short =
+    err && typeof err === "object" && "shortMessage" in err
+      ? String((err as { shortMessage: unknown }).shortMessage)
+      : "";
+  const raw = short || (err instanceof Error ? err.message : String(err ?? ""));
+
+  if (/\b429\b|too many requests|rate.?limit/i.test(raw)) {
+    return "RPC rate-limited (429). The public devnet endpoint cannot serve the demo — set VITE_SOLANA_RPC_URL to a dedicated RPC and restart.";
+  }
+  if (/VITE_TEST_MINT_AUTHORITY_BYTES/.test(raw)) {
+    return "Faucet key missing — re-run the seed to regenerate .env.local.";
+  }
+  if (/connect a wallet/i.test(raw)) {
+    return "Connect a wallet first.";
+  }
+  return raw ? `Mint failed: ${raw}` : "Failed to mint tokens";
+}
 
 function VenueFaucetCard({
   venue,
@@ -175,11 +207,7 @@ export const Faucet = () => {
       }
     } catch (err: unknown) {
       logger.rpc.error("Faucet error:", err);
-      const message =
-        err instanceof Error && "shortMessage" in err
-          ? (err as { shortMessage: string }).shortMessage
-          : "Failed to mint tokens";
-      toast.error(message, { id: tid });
+      toast.error(faucetErrorMessage(err), { id: tid });
     } finally {
       setMintingKey(null);
     }

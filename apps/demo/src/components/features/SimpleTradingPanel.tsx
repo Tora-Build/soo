@@ -47,6 +47,7 @@ import { cn, formatCurrencyCompact } from "../../lib/utils";
 import { useChainStore } from "../../store/useChainStore";
 import { marketConfigs } from "../../config";
 import { getChainById } from "../../lib/chains";
+import { tokenLabels } from "../../lib/config";
 import { logger } from "../../lib/logger";
 
 interface SimpleTradingPanelProps {
@@ -1301,7 +1302,7 @@ export const SimpleTradingPanel = ({
               >
                 {/* This panel spends the AMM's token, not the book's — a
                     "get USDC" prompt would send the user for the wrong one. */}
-                Get AMM tokens →
+                Get {tokenLabels.amm} →
               </a>
             </div>
           )}
