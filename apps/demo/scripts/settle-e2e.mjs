@@ -73,6 +73,11 @@ const RPC = process.env.SOLANA_RPC_URL ?? "http://127.0.0.1:8899";
 const log = (...a) => console.log("[settle-e2e]", ...a);
 const step = (n, t) => console.log(`\n[settle-e2e] ${n}. ${t}`);
 
+// Paths that never ran. Kept separate from `failures`: a failure is a payout
+// that came out wrong, a skip is a payout that was never tested. Both make the
+// run untrustworthy, and neither may print a success line.
+const skips = [];
+
 const marketArg = process.argv[2];
 const outcomeArg = (process.argv[3] ?? "yes").toLowerCase();
 if (!marketArg) {
@@ -87,7 +92,17 @@ const ev = (k) => env.match(new RegExp(`^${k}=(.*)$`, "m"))?.[1]?.trim();
 
 const connection = connect(RPC);
 const soothCore = new PublicKey(ev("VITE_SOOTH_CORE_ID"));
+// The BOOK venue's token. Named USDC because that is what it is on every
+// deployment so far; the book's collateral is USDC by design.
 const USDC = new PublicKey(ev("VITE_USDC_MINT"));
+// The AMM venue's token — a DIFFERENT mint. An actor funded only in USDC can
+// quote the book and cannot touch the AMM, which is how the AMM half of this
+// script silently skipped: the buy failed on balance, the catch logged a skip,
+// and the run still printed success.
+const AMM_MINT = new PublicKey(
+  process.env.VITE_AMM_MINT ??
+    "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu",
+);
 const marketRef = `sol:${marketArg}`;
 const marketPda = new PublicKey(marketArg);
 
@@ -107,7 +122,11 @@ const adapter = new SolanaChainAdapter({
     chainId: "solana:localnet",
     cluster: "localnet",
     rpcUrl: RPC,
-    programs: { soothCore: soothCore.toBase58(), usdcMint: USDC.toBase58() },
+    programs: {
+      soothCore: soothCore.toBase58(),
+      usdcMint: USDC.toBase58(),
+      ammMint: AMM_MINT.toBase58(),
+    },
   },
   connection,
 });
@@ -143,15 +162,34 @@ async function fundedTrader(label) {
     await connection.requestAirdrop(kp.publicKey, 2 * LAMPORTS_PER_SOL),
     "confirmed",
   );
-  const ata = await createAssociatedTokenAccountIdempotent(
-    connection, kp, USDC, kp.publicKey,
-  );
-  await mintTo(connection, mintAuthority, USDC, ata, mintAuthority, 100_000_000);
-  log(`${label} = ${kp.publicKey.toBase58().slice(0, 8)}…  (100 USDC)`);
-  return { kp, ata, signer: signerFor(kp), ref: `sol:${kp.publicKey.toBase58()}` };
+  // Funded in BOTH venue tokens. Which one an actor needs depends on the
+  // venue they trade, and funding one while trading the other fails on
+  // balance — an error that reads like a bug in the instruction rather than
+  // in the fixture.
+  const atas = {};
+  for (const [venue, mint] of [["book", USDC], ["amm", AMM_MINT]]) {
+    atas[venue] = await createAssociatedTokenAccountIdempotent(
+      connection, kp, mint, kp.publicKey,
+    );
+    await mintTo(
+      connection, mintAuthority, mint, atas[venue], mintAuthority, 100_000_000,
+    );
+  }
+  log(`${label} = ${kp.publicKey.toBase58().slice(0, 8)}…  (100 book + 100 AMM)`);
+  return {
+    kp,
+    ata: atas.book,
+    ataBook: atas.book,
+    ataAmm: atas.amm,
+    signer: signerFor(kp),
+    ref: `sol:${kp.publicKey.toBase58()}`,
+  };
 }
 const usdcOf = async (t) =>
-  Number((await getAccount(connection, t.ata)).amount) / 1e6;
+  Number((await getAccount(connection, t.ataBook)).amount) / 1e6;
+/** AMM-venue balance. The AMM's payouts land here, not in the book's ATA. */
+const ammOf = async (t) =>
+  Number((await getAccount(connection, t.ataAmm)).amount) / 1e6;
 
 const coder = new anchor.BorshAccountsCoder(soothCoreIdl);
 const marketInfo = await connection.getAccountInfo(marketPda);
@@ -218,8 +256,14 @@ try {
     ammBuyer.signer,
   );
   ammBought = true;
-  log(`  ammBuyer bought 5 YES via AMM; wallet ${await usdcOf(ammBuyer)}`);
+  log(`  ammBuyer bought 5 YES via AMM; AMM wallet ${await ammOf(ammBuyer)}`);
 } catch (e) {
+  // A skip is NOT a pass. Everything downstream of this — redeem_amm_position,
+  // the creator's reclaim_subsidy, and the AMM half of the solvency check —
+  // becomes vacuous when the buy does not happen, and the script used to end
+  // with "all payouts matched" having exercised none of it. Record it so the
+  // run reports what it actually proved.
+  skips.push(`AMM buy: ${String(e).slice(0, 200)}`);
   log(`  SKIPPED — AMM buy failed: ${String(e).slice(0, 160)}`);
 }
 
@@ -316,28 +360,29 @@ if (ammBought) {
   // 5 YES via the AMM. YES pays the 5; NO pays nothing; INVALID splits
   // (yes + no) / 2, which with no NO shares is 2.5.
   const wantAmm = OUTCOME === 1 ? 5 : OUTCOME === 0 ? 0 : 2.5;
-  const was = await usdcOf(ammBuyer);
+  const was = await ammOf(ammBuyer);
   try {
     await adapter.submit(
       await adapter.buildRedeemAmmPosition(marketRef, { user: ammBuyer.ref }),
       ammBuyer.signer,
     );
-    check("ammBuyer", (await usdcOf(ammBuyer)) - was, wantAmm);
+    check("ammBuyer", (await ammOf(ammBuyer)) - was, wantAmm);
 
     // Zeroed legs, not a closed account — so a replay must pay nothing. This
     // is the double-claim guard, and it is only observable against a real
     // validator because the account survives the first call.
-    const beforeReplay = await usdcOf(ammBuyer);
+    const beforeReplay = await ammOf(ammBuyer);
     await adapter.submit(
       await adapter.buildRedeemAmmPosition(marketRef, { user: ammBuyer.ref }),
       ammBuyer.signer,
     );
-    check("ammBuyer replay pays nothing", (await usdcOf(ammBuyer)) - beforeReplay, 0);
+    check("ammBuyer replay pays nothing", (await ammOf(ammBuyer)) - beforeReplay, 0);
   } catch (e) {
     failures.push(`redeem_amm_position: ${String(e).slice(0, 200)}`);
     log(`  FAILED: ${String(e).slice(0, 200)}`);
   }
 } else {
+  skips.push("redeem_amm_position: no AMM position to claim");
   log("  skipped (no AMM position)");
 }
 
@@ -354,8 +399,11 @@ for (const [label, t] of [["maker", maker], ["taker", taker]]) {
 }
 
 step(7, "reclaim_subsidy (creator)");
+// The AMM's mint: `seed_lp` took the subsidy in AMM tokens and
+// `reclaim_subsidy` returns it from `vault_amm`, so reading the creator's USDC
+// ATA here would show +0.000000 on a refund that actually arrived.
 const creatorAta = await createAssociatedTokenAccountIdempotent(
-  connection, creator, USDC, creator.publicKey,
+  connection, creator, AMM_MINT, creator.publicKey,
 );
 const creatorBefore = Number((await getAccount(connection, creatorAta)).amount) / 1e6;
 try {
@@ -369,13 +417,95 @@ try {
   log(`  FAILED: ${String(e).slice(0, 200)}`);
 }
 
-// ── 8. solvency ─────────────────────────────────────────────────────────────
-step(8, "vault vs remaining obligations (all three ledgers)");
-const vaultAta = decoded.vault ? new PublicKey(decoded.vault) : null;
-if (vaultAta) {
-  const vault = Number((await getAccount(connection, vaultAta)).amount) / 1e6;
+// ── 7b. the LP exit ─────────────────────────────────────────────────────────
+step("7b", "distribute AMM fees, then redeem LP against the yield vault");
 
-  // Book seats.
+// The creator's two claims are different money and different instructions:
+//
+//   reclaim_subsidy  the LMSR subsidy they POSTED, capped at what they put in
+//   redeem_lp        their share of fees the market EARNED, pro-rata by LP
+//
+// The second only pays if fees have been distributed first — `redeem_lp`
+// divides `lp_yield_vault`, and nothing fills that vault except
+// `distribute_fees_amm`. Running the two together is what proves the fee
+// pipeline actually reaches a human.
+try {
+  await adapter.submit(
+    await adapter.buildDistributeFees(marketRef, {
+      venue: "amm",
+      // Deliberately not the creator or the authority: distribution is
+      // permissionless, and a keeper nobody appointed must be able to run it.
+      cranker: `sol:${maker.kp.publicKey.toBase58()}`,
+    }),
+    maker.signer,
+  );
+  log("  fees distributed (cranked by a non-privileged wallet)");
+} catch (e) {
+  const msg = String(e);
+  if (/NothingToDistribute/i.test(msg)) {
+    log("  no fees to distribute");
+  } else {
+    failures.push(`distribute_fees_amm: ${msg.slice(0, 200)}`);
+    log(`  FAILED: ${msg.slice(0, 200)}`);
+  }
+}
+
+try {
+  const [lpMint] = PublicKey.findProgramAddressSync(
+    [Buffer.from("lp"), marketId],
+    soothCore,
+  );
+  const creatorLpAta = getAssociatedTokenAddressSync(lpMint, creator.publicKey);
+  const lpBal = (await getAccount(connection, creatorLpAta)).amount;
+  if (lpBal === 0n) {
+    skips.push("redeem_lp: creator holds no LP tokens");
+    log("  skipped (creator holds no LP)");
+  } else {
+    const was = Number((await getAccount(connection, creatorAta)).amount) / 1e6;
+    await adapter.submit(
+      await adapter.buildRedeemLp(marketRef, {
+        user: `sol:${creator.publicKey.toBase58()}`,
+        lpAmount: lpBal,
+      }),
+      signerFor(creator),
+    );
+    const now = Number((await getAccount(connection, creatorAta)).amount) / 1e6;
+    const lpAfter = (await getAccount(connection, creatorLpAta)).amount;
+    log(`  redeemed ${lpBal} LP -> +${(now - was).toFixed(6)} AMM tokens`);
+    if (lpAfter !== 0n) {
+      failures.push(`redeem_lp burned only part of the LP: ${lpAfter} left`);
+    }
+  }
+} catch (e) {
+  failures.push(`redeem_lp: ${String(e).slice(0, 200)}`);
+  log(`  FAILED: ${String(e).slice(0, 200)}`);
+}
+
+// ── 8. solvency ─────────────────────────────────────────────────────────────
+step(8, "each venue's vault vs the obligations denominated in its token");
+
+// One vault per venue, checked against its OWN ledger. They cannot be summed:
+// the balances are in different tokens, so a book surplus cannot cover an AMM
+// shortfall — the protocol has no path to convert one into the other.
+//
+// This block used to read `decoded.vault`, a field that stopped existing when
+// the vault was split into `vault_book` / `vault_amm`. `undefined` made the
+// guard below fall through, so the whole solvency check silently did nothing
+// while the script still printed "all payouts matched". Reading both fields
+// explicitly is what stops that recurring.
+const vaultBookAta = decoded.vaultBook ?? decoded.vault_book;
+const vaultAmmAta = decoded.vaultAmm ?? decoded.vault_amm;
+if (!vaultBookAta || !vaultAmmAta) {
+  failures.push(
+    `Market is missing a venue vault field (book=${vaultBookAta}, amm=${vaultAmmAta}) — ` +
+      `the solvency check cannot run, and a silent skip here is how an ` +
+      `insolvent market ships.`,
+  );
+} else {
+  const balOf = async (k) =>
+    Number((await getAccount(connection, new PublicKey(k))).amount) / 1e6;
+
+  // Book seats — denominated in the book's token.
   const after = await adapter.readBook(marketRef);
   const owedBook = after.seats.reduce((acc, s) => {
     const mag = Number(s.net < 0n ? -s.net : s.net) / 1e6;
@@ -400,14 +530,18 @@ if (vaultAta) {
     }
   }
 
-  const owed = owedBook + owedAmm;
-  log(`  vault ${vault.toFixed(6)}`);
-  log(`  owed  book ${owedBook.toFixed(6)} + amm ${owedAmm.toFixed(6)} = ${owed.toFixed(6)}`);
-  if (vault + 1e-6 >= owed) {
-    log("  SOLVENT");
-  } else {
-    log("  *** SHORT ***");
-    failures.push(`vault short: ${vault} < ${owed}`);
+  for (const [venue, vaultKey, owed] of [
+    ["book", vaultBookAta, owedBook],
+    ["amm", vaultAmmAta, owedAmm],
+  ]) {
+    const bal = await balOf(vaultKey);
+    log(`  ${venue}: vault ${bal.toFixed(6)}  owed ${owed.toFixed(6)}`);
+    if (bal + 1e-6 >= owed) {
+      log(`    SOLVENT`);
+    } else {
+      log(`    *** SHORT ***`);
+      failures.push(`${venue} vault short: ${bal} < ${owed}`);
+    }
   }
 }
 
@@ -416,4 +550,18 @@ if (failures.length > 0) {
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
-log("\ndone — all payouts matched");
+if (skips.length > 0) {
+  // Exit non-zero. A run that skipped the AMM ledger has not shown that a
+  // settled market pays what it owes — it has shown that the half it ran does.
+  // Reporting that as success is how an unclaimable ledger reaches a deploy.
+  console.error(
+    `\n[settle-e2e] INCOMPLETE — ${skips.length} path(s) never ran:`,
+  );
+  for (const s of skips) console.error(`  - ${s}`);
+  console.error(
+    "\nThe usual cause is a deadline that passed before the trade: raise\n" +
+      "SEED_DEADLINE_SECS so the AMM buy lands inside the trading window.",
+  );
+  process.exit(1);
+}
+log("\ndone — all payouts matched, every path exercised");

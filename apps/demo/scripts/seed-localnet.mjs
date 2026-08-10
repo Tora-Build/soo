@@ -73,10 +73,37 @@ import {
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
   Transaction,
-  sendAndConfirmTransaction,
+  sendAndConfirmTransaction as sendAndConfirmRaw,
 } from "@solana/web3.js";
 
 import { connect } from "./lib/rpc.mjs";
+
+/**
+ * `sendAndConfirmTransaction`, but "already been processed" counts as success.
+ *
+ * `seed-fixture.sh` runs the seed repeatedly against one ledger. A setup step
+ * that produces a BYTE-IDENTICAL transaction on the second run — same
+ * instructions, same signers, and a blockhash still inside the dedup window —
+ * gets the same signature, and the validator refuses it. But that error means
+ * the effect is already on chain, which is precisely what the caller asked
+ * for; re-running a seed step that is already done is not a failure.
+ *
+ * This only makes REPETITION safe, not idempotence. Anything that moves value
+ * must still be guarded on its own terms (see `mintUpTo`) — otherwise a second
+ * mint that legitimately differs by one lamport would sail through here and
+ * double the balance.
+ */
+async function sendAndConfirmTransaction(connection, tx, signers, opts) {
+  try {
+    return await sendAndConfirmRaw(connection, tx, signers, opts);
+  } catch (err) {
+    const msg = String(err?.transactionMessage ?? err?.message ?? err);
+    if (/already been processed/i.test(msg)) {
+      return null;
+    }
+    throw err;
+  }
+}
 
 // We can't `import` from the `@sooth/sdk-solana` package root: its index
 // re-exports `SolanaChainAdapter`, which transitively imports
@@ -384,6 +411,39 @@ async function prepare() {
 }
 
 // ─── Phase 2 ──────────────────────────────────────────────────────────────
+/**
+ * Mint only what's missing to bring `ata` up to `target`.
+ *
+ * `seed-fixture.sh` runs `init()` more than once against the same ledger, and
+ * an unconditional mint replays a BYTE-IDENTICAL transaction: same amount,
+ * same signer, and a blockhash that has not aged out of the dedup window. The
+ * validator rejects it as "already processed" and the whole seed dies partway
+ * through — after market 1 exists and before market 2 does, which is the worst
+ * place to stop because the ledger then looks half-seeded rather than empty.
+ *
+ * Topping up to a target (rather than skipping when non-zero) also keeps the
+ * balance right when an earlier run spent some, which a plain existence check
+ * would not.
+ */
+async function mintUpTo(connection, mint, ata, mintAuthority, target) {
+  let current = 0n;
+  const info = await connection.getAccountInfo(ata);
+  // SPL TokenAccount: mint(32) owner(32) amount(8 LE).
+  if (info?.data?.length >= 72) {
+    current = Buffer.from(info.data).readBigUInt64LE(64);
+  }
+  if (current >= target) return 0n;
+  const delta = target - current;
+  await sendAndConfirmTransaction(
+    connection,
+    new Transaction().add(
+      createMintToInstruction(mint, ata, mintAuthority.publicKey, delta),
+    ),
+    [mintAuthority],
+  );
+  return delta;
+}
+
 async function init() {
   ensureLocalnetDir();
 
@@ -472,16 +532,18 @@ async function init() {
   }
 
   const userUsdc = 1_000_000_000n; // 1000 USDC (6 decimals)
-  const mintTx = new Transaction().add(
-    createMintToInstruction(
-      USDC_MINT_DEVNET,
-      userAta,
-      mintAuthority.publicKey,
-      userUsdc,
-    ),
+  const mintedUser = await mintUpTo(
+    connection,
+    USDC_MINT_DEVNET,
+    userAta,
+    mintAuthority,
+    userUsdc,
   );
-  await sendAndConfirmTransaction(connection, mintTx, [mintAuthority]);
-  log(`minted 1000 USDC to user`);
+  log(
+    mintedUser > 0n
+      ? `minted ${Number(mintedUser) / 1e6} USDC to user`
+      : `user USDC already at target, skip mint`,
+  );
 
   // The creator now funds the LMSR subsidy in seed_lp (bug B0), so they need
   // real USDC of their own. b*ln(2) at b = 1000 is ~693.15 USDC.
@@ -503,19 +565,18 @@ async function init() {
       [creator],
     );
   }
-  await sendAndConfirmTransaction(
+  const mintedCreator = await mintUpTo(
     connection,
-    new Transaction().add(
-      createMintToInstruction(
-        USDC_MINT_DEVNET,
-        creatorUsdcAta,
-        mintAuthority.publicKey,
-        10_000_000_000n, // 10,000 USDC
-      ),
-    ),
-    [mintAuthority],
+    USDC_MINT_DEVNET,
+    creatorUsdcAta,
+    mintAuthority,
+    10_000_000_000n, // 10,000 USDC
   );
-  log(`minted 10,000 USDC to creator (LMSR subsidy funding)`);
+  log(
+    mintedCreator > 0n
+      ? `minted ${Number(mintedCreator) / 1e6} USDC to creator (LMSR subsidy funding)`
+      : `creator USDC already at target, skip mint`,
+  );
 
   const creatorTreasuryAta = getAssociatedTokenAddressSync(
     USDC_MINT_DEVNET,
@@ -554,19 +615,18 @@ async function init() {
       ),
       [creator],
     );
-    await sendAndConfirmTransaction(
+    const minted = await mintUpTo(
       connection,
-      new Transaction().add(
-        createMintToInstruction(
-          AMM_MINT_DEVNET,
-          ata,
-          mintAuthority.publicKey,
-          amount,
-        ),
-      ),
-      [mintAuthority],
+      AMM_MINT_DEVNET,
+      ata,
+      mintAuthority,
+      amount,
     );
-    log(`minted ${Number(amount) / 1e6} AMM tokens to ${who}`);
+    log(
+      minted > 0n
+        ? `minted ${Number(minted) / 1e6} AMM tokens to ${who}`
+        : `${who} AMM tokens already at target, skip mint`,
+    );
   }
 
   // ─── Build Anchor providers + create market ───────────────────────────
