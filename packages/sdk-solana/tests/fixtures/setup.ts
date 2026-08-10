@@ -118,6 +118,12 @@ export interface SmokeOptions {
   // devnet/mainnet config. Tests that need to cross the window use
   // `warpClockTo`; set 0 here only to assert the no-window behaviour.
   vetoPeriodSecs?: number;
+  // `ProtocolConfig.treasury` — the OWNER of the protocol's fee vaults, not a
+  // token account (there is one vault per venue, and one token account cannot
+  // hold two mints). Defaults to `creator`, which also happens to be the
+  // market's adjudicator; pass a distinct key when a test needs to tell the
+  // adjudicator's share apart from the protocol's.
+  treasury?: PublicKey;
 }
 
 // Boot LiteSVM with sooth_core deployed. Returns a context
@@ -308,7 +314,7 @@ export async function bootSmoke(
           .initializeProtocol({
             ammFeeBps: 500,  // 5% — the incubation venue
             bookFeeBps: 100, // 1% — the mature venue
-            treasury: creator.publicKey,
+            treasury: opts.treasury ?? creator.publicKey,
             bBaseShareBps: 5_000,
             lpYieldShareBps: 3_000,
             adjudicatorShareBps: 1_000,

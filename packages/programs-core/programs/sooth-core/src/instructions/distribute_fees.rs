@@ -53,16 +53,66 @@ pub struct DistributeFeesAmm<'info> {
     )]
     pub fee_pool: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = venue_mint)]
+    // ── Destinations ─────────────────────────────────────────────────────
+    //
+    // Every one is pinned. They used to carry `token::mint` and nothing else,
+    // while `cranker` is any signer — so anyone could call this and route the
+    // b_base, LP and adjudicator shares (90% of the pool at the shipped split)
+    // into accounts they controlled. Only the treasury was bound. It was
+    // unreachable in practice because no client built the instruction, which
+    // is not a security property.
+    //
+    /// The venue's own collateral vault: the `b_base` share stays with the
+    /// market rather than leaving it.
+    ///
+    /// NOTE this deepens the vault; it does NOT raise `AmmState.b`. Growing
+    /// `b` from fees is the EVM design's mechanism and is not implemented
+    /// here, so the honest behaviour is to return the share to the collateral
+    /// it came from. `reclaim_subsidy` cannot hand it to the creator — that is
+    /// capped at what they actually posted.
+    #[account(
+        mut,
+        address = market.vault_amm @ SoothCoreError::VaultAuthorityMismatch,
+        token::mint = venue_mint,
+    )]
     pub b_base_yield_vault: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = venue_mint)]
+    /// CHECK: signer-only PDA; authority on the LP yield vault.
+    #[account(seeds = [b"lp_yield_authority"], bump)]
+    pub lp_yield_authority: UncheckedAccount<'info>,
+
+    /// Same account `redeem_lp` pays LP holders from — so the share lands
+    /// where the claim path expects it.
+    #[account(
+        mut,
+        token::authority = lp_yield_authority,
+        token::mint = venue_mint,
+    )]
     pub lp_yield_vault: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = venue_mint)]
+    /// The market's own adjudicator, from `Market`. Not a caller-supplied
+    /// address.
+    #[account(
+        mut,
+        token::authority = market.adjudicator,
+        token::mint = venue_mint,
+    )]
     pub adjudicator_fee_vault: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, address = config.treasury, token::mint = venue_mint)]
+    /// `config.treasury` is the treasury's OWNER, not one token account.
+    ///
+    /// It was `address = config.treasury`, which cannot work once there are two
+    /// venues: that pins one account, and the same account cannot also satisfy
+    /// `token::mint = venue_mint` for two different mints. Whichever venue the
+    /// treasury account did not hold could never distribute — its pool would
+    /// fill and never drain. Binding the authority instead pins the
+    /// destination just as tightly (the caller still cannot choose an owner)
+    /// while letting the treasury hold one account per venue.
+    #[account(
+        mut,
+        token::authority = config.treasury,
+        token::mint = venue_mint,
+    )]
     pub protocol_treasury_vault: Box<Account<'info, TokenAccount>>,
 
     pub cranker: Signer<'info>,

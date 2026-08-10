@@ -61,13 +61,42 @@ pub struct DistributeFeesBook<'info> {
     )]
     pub fee_pool: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = venue_mint)]
+    // Pinned for the same reason as the AMM's — see that module. `cranker` is
+    // any signer, so an unpinned destination is a caller-chosen destination.
+    //
+    /// CHECK: signer-only PDA; authority on the LP yield vault.
+    #[account(seeds = [b"lp_yield_authority"], bump)]
+    pub lp_yield_authority: UncheckedAccount<'info>,
+
+    /// The book's LP yield accrues here, in the BOOK's token.
+    ///
+    /// KNOWN GAP: `redeem_lp` pays only in the AMM's token, so this balance
+    /// has no claim path yet — the incubation cohort earning a share of book
+    /// revenue needs a second, book-denominated claim. The money is safe (a
+    /// PDA owns it) but is not yet withdrawable. Tracked in
+    /// `docs/design/dual-token-venues.md`.
+    #[account(
+        mut,
+        token::authority = lp_yield_authority,
+        token::mint = venue_mint,
+    )]
     pub lp_yield_vault: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = venue_mint)]
+    /// The market's own adjudicator, from `Market`.
+    #[account(
+        mut,
+        token::authority = market.adjudicator,
+        token::mint = venue_mint,
+    )]
     pub adjudicator_fee_vault: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, address = config.treasury, token::mint = venue_mint)]
+    /// The treasury's OWNER — see the AMM's counterpart. `address =` here
+    /// would have made this venue and the AMM's mutually exclusive.
+    #[account(
+        mut,
+        token::authority = config.treasury,
+        token::mint = venue_mint,
+    )]
     pub protocol_treasury_vault: Box<Account<'info, TokenAccount>>,
 
     pub cranker: Signer<'info>,

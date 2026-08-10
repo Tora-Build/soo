@@ -47,7 +47,17 @@ export interface SoothNode {
   // silent no-op rather than an error.
   programs?: {
     soothCore?: string;
+    /**
+     * The BOOK venue's token. The name predates the venue split, when there
+     * was only one collateral token; it is kept because node descriptors in
+     * the wild already set it.
+     */
     usdcMint?: string;
+    /**
+     * The AMM venue's token — a different mint, fixed at deploy time. Omit to
+     * take the adapter's default, which mirrors the program's `AMM_TOKEN_MINT`.
+     */
+    ammMint?: string;
     /** @deprecated merged into `soothCore`; ignored by the adapter. */
     soothAmm?: string;
     /** @deprecated merged into `soothCore`; ignored by the adapter. */

@@ -539,8 +539,8 @@ export class SolanaChainAdapter implements ChainAdapter {
         : new PublicKey("ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"));
     this.ammMint =
       opts.ammMint ??
-      ((opts.node.programs as { ammMint?: string } | undefined)?.ammMint
-        ? new PublicKey((opts.node.programs as { ammMint: string }).ammMint)
+      (opts.node.programs?.ammMint
+        ? new PublicKey(opts.node.programs.ammMint)
         : new PublicKey("CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"));
 
     this.connection =
@@ -1655,6 +1655,34 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, userPk),
+        // Both destinations must exist or the call fails with
+        // AccountNotInitialized (3012). The user's AMM ATA is the likelier
+        // gap: an LP who only ever supplied liquidity has never held the AMM's
+        // token, so the account they are owed INTO does not exist yet. The
+        // yield vault is covered too, for the LP who redeems before any fees
+        // have been distributed.
+        preIxs: [
+          serializeIx(
+            createAssociatedTokenAccountIdempotentInstruction(
+              userPk,
+              userUsdcAta,
+              userPk,
+              this.ammMint,
+              TOKEN_PROGRAM_ID,
+              ASSOCIATED_TOKEN_PROGRAM_ID,
+            ),
+          ),
+          serializeIx(
+            createAssociatedTokenAccountIdempotentInstruction(
+              userPk,
+              lpYieldVault,
+              lpYieldAuthority,
+              this.ammMint,
+              TOKEN_PROGRAM_ID,
+              ASSOCIATED_TOKEN_PROGRAM_ID,
+            ),
+          ),
+        ],
         operation: "redeemLp",
         lpAmountStr: args.lpAmount.toString(),
         lpYieldVault: lpYieldVault.toBase58(),
@@ -1990,6 +2018,134 @@ export class SolanaChainAdapter implements ChainAdapter {
    * aggregate, and the book's seats — so it needs all three accounts even
    * though it only moves USDC.
    */
+  /**
+   * Drain a market's fee pool and split it (`distribute_fees_amm` /
+   * `distribute_fees_book`).
+   *
+   * Permissionless — `cranker` is any signer, and every destination is pinned
+   * on-chain, so who calls it cannot change where the money goes. That
+   * pinning is load-bearing: before it, three of the four destinations were
+   * constrained only by mint, and anyone could have routed 90% of a market's
+   * fees to themselves. It was unreachable only because no client built the
+   * instruction, which is not a security property — hence this builder and
+   * that fix landing together.
+   *
+   * The two venues are separate instructions because their splits differ: the
+   * book has no `b_base` share (that grows AMM liquidity, denominated in the
+   * AMM's token), so routing book fees into it would mix currencies.
+   */
+  async buildDistributeFees(
+    market: MarketRef,
+    args: { venue: "amm" | "book"; cranker: AddressRef },
+  ): Promise<TradeRequest> {
+    const crankerPk = decodePubkeyRef(args.cranker);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const isAmm = args.venue === "amm";
+    const venueMint = isAmm ? this.ammMint : this.bookMint;
+
+    const [configPda] = deriveProtocolConfigPda(this.programIds);
+    const [feePoolAuthority] = deriveFeePoolAuthorityPda(this.programIds);
+    const [lpYieldAuthority] = deriveLpYieldAuthority(this.programIds);
+    const [feePool] = isAmm
+      ? feePoolAmmPda(resolved.marketId, this.programIds)
+      : feePoolBookPda(resolved.marketId, this.programIds);
+
+    const config = await (this.program.account as any).protocolConfig.fetch(
+      configPda,
+    );
+
+    // Every destination is an ATA of the venue's mint, derived from the OWNER
+    // the program pins. The treasury included: `config.treasury` is an owner,
+    // not a token account — passing it directly fails with AccountNotInitialized
+    // (3012), because a wallet is not an SPL token account. It cannot be one
+    // account either way, since the two venues hold different mints.
+    const lpYieldVault = getAssociatedTokenAddressSync(
+      venueMint,
+      lpYieldAuthority,
+      true,
+    );
+    const adjudicatorFeeVault = getAssociatedTokenAddressSync(
+      venueMint,
+      resolved.adjudicator,
+      true,
+    );
+    const protocolTreasuryVault = getAssociatedTokenAddressSync(
+      venueMint,
+      config.treasury as PublicKey,
+      true,
+    );
+
+    const common = {
+      config: configPda,
+      market: marketPda,
+      feePoolAuthority,
+      venueMint,
+      feePool,
+      lpYieldAuthority,
+      lpYieldVault,
+      adjudicatorFeeVault,
+      protocolTreasuryVault,
+      cranker: crankerPk,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    };
+
+    // Create any destination that does not exist yet, paid for by the cranker.
+    //
+    // Distribution is permissionless so that fees are never hostage to one
+    // keeper — but that only holds if a cranker can complete the call alone.
+    // Requiring the adjudicator or the treasury to have pre-created their ATA
+    // would hand exactly those parties a veto over everyone else's fees, on a
+    // venue they may never have traded. Idempotent, so it costs nothing once
+    // the accounts exist.
+    const preIxs = [
+      [lpYieldVault, lpYieldAuthority],
+      [adjudicatorFeeVault, resolved.adjudicator],
+      [protocolTreasuryVault, config.treasury as PublicKey],
+    ].map(([ata, owner]) =>
+      serializeIx(
+        createAssociatedTokenAccountIdempotentInstruction(
+          crankerPk, // payer
+          ata,
+          owner,
+          venueMint,
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID,
+        ),
+      ),
+    );
+
+    const ix: TransactionInstruction = isAmm
+      ? await (this.program.methods as any)
+          .distributeFeesAmm()
+          .accounts({
+            ...common,
+            // The b_base share returns to the venue's own collateral vault.
+            bBaseYieldVault: deriveMarketVaultAta(
+              resolved.marketId,
+              this.ammMint,
+              this.programIds,
+            ),
+          })
+          .instruction()
+      : await (this.program.methods as any)
+          .distributeFeesBook()
+          .accounts(common)
+          .instruction();
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, crankerPk),
+        preIxs,
+        operation: `distributeFees:${args.venue}`,
+      },
+    };
+  }
+
   async buildReclaimSubsidy(
     market: MarketRef,
     args: { creator: AddressRef },
