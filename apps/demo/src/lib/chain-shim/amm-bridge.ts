@@ -188,6 +188,17 @@ function resolveVenueMint(
   address: unknown,
   ctx: AmmBridgeCtx,
 ): PublicKey {
+  // `ammMint` is younger than the rest of the adapter, so a `dist/` built
+  // before the venue split still satisfies every import and simply lacks it.
+  // Reading `.toBase58()` off that gives "Cannot read properties of undefined",
+  // which points at this line and not at the actual problem — a stale build
+  // that a workspace happily keeps serving. Say which it is.
+  if (!ctx.adapter.ammMint || !ctx.adapter.bookMint) {
+    throw new Error(
+      "@sooth/sdk-solana is missing the venue mints — its dist/ predates the " +
+        "venue split. Rebuild it: pnpm -F @sooth/sdk-solana build",
+    );
+  }
   const requested = toAddressRef(address)?.replace(/^sol:/, "");
   return requested === ctx.adapter.ammMint.toBase58()
     ? ctx.adapter.ammMint

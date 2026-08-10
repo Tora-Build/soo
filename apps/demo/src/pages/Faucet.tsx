@@ -78,6 +78,9 @@ function faucetErrorMessage(err: unknown): string {
   if (/VITE_TEST_MINT_AUTHORITY_BYTES/.test(raw)) {
     return "Faucet key missing — re-run the seed to regenerate .env.local.";
   }
+  if (/predates the venue split|missing the venue mints/.test(raw)) {
+    return "SDK build is stale — run: pnpm -F @sooth/sdk-solana build, then restart the dev server.";
+  }
   if (/connect a wallet/i.test(raw)) {
     return "Connect a wallet first.";
   }
