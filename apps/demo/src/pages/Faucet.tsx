@@ -21,49 +21,146 @@ const MOCK_ERC20_ABI = parseAbi([
   "function decimals() view returns (uint8)",
 ]);
 
+/**
+ * The two venues price in different tokens, so the faucet dispenses both.
+ *
+ * One faucet is not enough under the split: a wallet holding only the book's
+ * token cannot trade the AMM, and every market trades on the AMM until it
+ * graduates — so a single-token faucet leaves a new user unable to make their
+ * first trade.
+ *
+ * Labelled by ROLE, not ticker. The AMM's token is chosen per deployment; the
+ * name on the card would be wrong the moment the protocol is deployed with a
+ * different one.
+ */
+const VENUES = [
+  {
+    key: "amm",
+    role: "AMM",
+    title: "AMM Token",
+    blurb:
+      "Collateral for the bonding-curve venue. Every market trades here until it graduates, so this is the token you need first.",
+    mintKey: "ammMint",
+  },
+  {
+    key: "book",
+    role: "Book",
+    title: "Mock USDC",
+    blurb:
+      "Collateral for the order book. Only usable on markets that have already graduated.",
+    mintKey: "usdcMint",
+  },
+] as const;
+
+function VenueFaucetCard({
+  venue,
+  mintAddress,
+  address,
+  isConnected,
+  decimals,
+  isMinting,
+  balanceLabel,
+  onMint,
+}: {
+  venue: (typeof VENUES)[number];
+  mintAddress: string | undefined;
+  address: string | undefined;
+  isConnected: boolean;
+  decimals: number;
+  isMinting: boolean;
+  balanceLabel: string;
+  onMint: (
+    venue: (typeof VENUES)[number],
+    mintAddress: string | undefined,
+    refetch: () => void,
+  ) => void;
+}) {
+  const { data: balance, refetch } = useReadContract({
+    address: mintAddress as `0x${string}` | undefined,
+    abi: MOCK_ERC20_ABI,
+    functionName: "balanceOf",
+    args: [address || "0x0"],
+    query: { enabled: !!address && !!mintAddress },
+  });
+
+  return (
+    <div className="panel p-6">
+      <h3 className="text-xl font-bold text-ink mb-1 flex items-center gap-2">
+        <Coins className="text-muted w-5 h-5" />
+        {venue.title}
+      </h3>
+      <div className="text-xs font-mono uppercase tracking-wide text-faint mb-4">
+        {venue.role} venue
+      </div>
+
+      <p className="text-muted text-sm mb-6">{venue.blurb}</p>
+
+      <div className="bg-inset p-4 mb-6 border border-rule">
+        <div className="flex justify-between items-center text-sm mb-1">
+          <span className="text-muted">{balanceLabel}</span>
+          <span className="text-ink font-mono font-bold">
+            {balance !== undefined
+              ? Number(
+                  formatUnits(balance as bigint, decimals),
+                ).toLocaleString()
+              : "0"}
+          </span>
+        </div>
+        <div className="text-xs text-faint font-mono truncate">
+          {mintAddress || "Not configured"}
+        </div>
+      </div>
+
+      <Button
+        data-testid={`faucet-mint-button-${venue.key}`}
+        className="btn btn-primary w-full"
+        onClick={() => onMint(venue, mintAddress, refetch)}
+        isLoading={isMinting}
+        disabled={!isConnected}
+      >
+        {isConnected ? `Request 100,000` : "Connect Wallet to Mint"}
+      </Button>
+    </div>
+  );
+}
+
 export const Faucet = () => {
   const { t } = useTranslation();
   const { address, isConnected } = useAccount();
-  // Solana fork: use the configured USDC mint from demoConfig instead of
-  // the upstream EVM deployments.json lookup (which carries an EVM hex
-  // address that's meaningless on Solana). The mint address is the same
-  // SPL mint that all on-chain trades use.
-  const usdcMintAddress = demoConfig.node.programs?.usdcMint as
-    | string
-    | undefined;
 
-  const [isMinting, setIsMinting] = useState(false);
+  const [mintingKey, setMintingKey] = useState<string | null>(null);
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient();
   const decimals = useBaseTokenDecimals();
 
-  // Read current USDC balance
-  const { data: balance, refetch: refetchBalance } = useReadContract({
-    address: usdcMintAddress as `0x${string}` | undefined,
-    abi: MOCK_ERC20_ABI,
-    functionName: "balanceOf",
-    args: [address || "0x0"],
-    query: { enabled: !!address && !!usdcMintAddress },
-  });
+  const programs = demoConfig.node.programs as
+    | Record<string, string | undefined>
+    | undefined;
 
-  const handleMint = async () => {
+  const handleMint = async (
+    venue: (typeof VENUES)[number],
+    mintAddress: string | undefined,
+    refetch: () => void,
+  ) => {
     if (!address) {
       toast.error("Please connect your wallet first");
       return;
     }
-    if (!usdcMintAddress) {
-      toast.error("USDC mint not configured for this cluster");
+    if (!mintAddress) {
+      toast.error(`${venue.title} mint not configured for this cluster`);
       return;
     }
 
-    setIsMinting(true);
-    const tid = toast.loading("Requesting 100,000 mUSDC...");
+    setMintingKey(venue.key);
+    const tid = toast.loading(`Requesting 100,000 ${venue.title}...`);
 
     try {
       const amount = parseUnits("100000", decimals);
 
+      // `address` selects WHICH mint — the bridge resolves it the same way it
+      // resolves a balance read, so the faucet and the balance always agree.
       const hash = await writeContractAsync({
-        address: usdcMintAddress as `0x${string}`,
+        address: mintAddress as `0x${string}`,
         abi: MOCK_ERC20_ABI,
         functionName: "mint",
         args: [address, amount],
@@ -71,8 +168,8 @@ export const Faucet = () => {
 
       if (publicClient) {
         await publicClient.waitForTransactionReceipt({ hash });
-        toast.success("100,000 mUSDC received!", { id: tid });
-        refetchBalance();
+        toast.success(`100,000 ${venue.title} received!`, { id: tid });
+        refetch();
       } else {
         toast.success("Transaction sent!", { id: tid });
       }
@@ -84,7 +181,7 @@ export const Faucet = () => {
           : "Failed to mint tokens";
       toast.error(message, { id: tid });
     } finally {
-      setIsMinting(false);
+      setMintingKey(null);
     }
   };
 
@@ -96,42 +193,19 @@ export const Faucet = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* mUSDC Faucet */}
-        <div className="panel p-6">
-          <h3 className="text-xl font-bold text-ink mb-4 flex items-center gap-2">
-            <Coins className="text-muted w-5 h-5" />
-            Mock USDC
-          </h3>
-
-          <p className="text-muted text-sm mb-6">
-            Mint 100,000 mUSDC to your wallet. This token is used as collateral
-            for all trading on Sooth.
-          </p>
-
-          <div className="bg-inset p-4 mb-6 border border-rule">
-            <div className="flex justify-between items-center text-sm mb-1">
-              <span className="text-muted">{t("faucet.yourBalance")}</span>
-              <span className="text-ink font-mono font-bold">
-                {balance !== undefined
-                  ? `${Number(formatUnits(balance as bigint, decimals)).toLocaleString()} mUSDC`
-                  : "0 mUSDC"}
-              </span>
-            </div>
-            <div className="text-xs text-faint font-mono truncate">
-              {usdcMintAddress || "Not configured"}
-            </div>
-          </div>
-
-          <Button
-            data-testid="faucet-mint-button"
-            className="btn btn-primary w-full"
-            onClick={handleMint}
-            isLoading={isMinting}
-            disabled={!isConnected}
-          >
-            {isConnected ? "Request 100,000 mUSDC" : "Connect Wallet to Mint"}
-          </Button>
-        </div>
+        {VENUES.map((venue) => (
+          <VenueFaucetCard
+            key={venue.key}
+            venue={venue}
+            mintAddress={programs?.[venue.mintKey]}
+            address={address}
+            isConnected={isConnected}
+            decimals={decimals}
+            isMinting={mintingKey === venue.key}
+            balanceLabel={t("faucet.yourBalance")}
+            onMint={handleMint}
+          />
+        ))}
 
         {/* Native SOL Info */}
         <div className="panel p-6">
@@ -180,7 +254,7 @@ export const Faucet = () => {
         <Info className="text-faint w-4 h-4 shrink-0 mt-0.5" />
         <div className="text-faint font-mono text-xs space-y-1">
           <p>
-            Note: Mock USDC (mUSDC) has no real value and is for protocol
+            Note: both faucet tokens are mocks with no real value, for protocol
             testing only.
           </p>
           <p>

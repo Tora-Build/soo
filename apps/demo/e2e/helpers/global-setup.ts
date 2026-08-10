@@ -93,6 +93,10 @@ export default async function globalSetup(): Promise<void> {
 
   const env = readEnvLocal();
   const usdcMintStr = env.VITE_USDC_MINT ?? requireEnv("USDC_MINT");
+  // The AMM's token. Falls back to the SDK/program default rather than dying:
+  // .env.local files written before the venue split do not carry the key.
+  const ammMintStr =
+    env.VITE_AMM_MINT ?? "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu";
   // The app reads VITE_SOOTH_CORE_ID; the AMM alias is still written by the
   // seed for this assertion's benefit and points at the same program.
   const ammIdStr =
@@ -110,7 +114,8 @@ export default async function globalSetup(): Promise<void> {
   log(`rpc=${rpcUrl}`);
   log(`test wallet=${testPubkeyStr}`);
   log(`market PDA=${marketPdaStr}`);
-  log(`USDC mint=${usdcMintStr}`);
+  log(`book mint=${usdcMintStr}`);
+  log(`amm mint=${ammMintStr}`);
 
   const conn = new Connection(rpcUrl, "confirmed");
 
@@ -204,6 +209,7 @@ export default async function globalSetup(): Promise<void> {
         marketIdHex,
         soothAmmId: ammIdStr,
         usdcMint: usdcMintStr,
+        ammMint: ammMintStr,
         rpcUrl,
       },
       null,

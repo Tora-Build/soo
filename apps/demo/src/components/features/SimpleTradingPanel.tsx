@@ -1299,7 +1299,9 @@ export const SimpleTradingPanel = ({
                 href="/faucet"
                 className="font-mono text-[10px] uppercase tracking-[0.12em] text-accent hover:underline shrink-0"
               >
-                Get test USDC →
+                {/* This panel spends the AMM's token, not the book's — a
+                    "get USDC" prompt would send the user for the wrong one. */}
+                Get AMM tokens →
               </a>
             </div>
           )}

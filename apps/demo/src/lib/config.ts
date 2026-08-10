@@ -13,6 +13,10 @@ import { type SoothNode, soothCoreIdl } from "@sooth/sdk-solana";
 
 const DEFAULT_DEVNET_RPC = "https://api.devnet.solana.com";
 const USDC_MINT_DEVNET = "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX";
+// The AMM's token. Distinct from the book's on purpose: the AMM prices in the
+// instance token chosen at deploy, the book in USDC. Must match
+// `AMM_TOKEN_MINT` in the program's `constants.rs` and the SDK's default.
+const AMM_MINT_DEVNET = "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu";
 // Sourced from the IDL `address` field, which mirrors the program's
 // `declare_id!`. Keeps the config in lockstep with deploy keypair rotations
 // without a second hand-pinned constant.
@@ -80,7 +84,10 @@ export const demoConfig: DemoConfig = {
       // the merge, which meant VITE_SOOTH_*_ID overrides did nothing and the
       // demo always fell back to the SDK's compiled-in default id.
       soothCore: env?.VITE_SOOTH_CORE_ID ?? SOOTH_CORE_ID,
+      // `usdcMint` is the BOOK venue's token (the name predates the split and
+      // is what the adapter still reads). `ammMint` is the AMM's.
       usdcMint: env?.VITE_USDC_MINT ?? USDC_MINT_DEVNET,
+      ammMint: env?.VITE_AMM_MINT ?? AMM_MINT_DEVNET,
     },
   },
   marketRef: env?.VITE_DEMO_MARKET_REF ?? null,

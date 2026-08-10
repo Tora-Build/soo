@@ -17,7 +17,10 @@ export interface E2eFixture {
   marketPda: string;
   marketIdHex: string;
   soothAmmId: string;
+  /** BOOK venue token (the name predates the split). */
   usdcMint: string;
+  /** AMM venue token. */
+  ammMint: string;
   rpcUrl: string;
 }
 

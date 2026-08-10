@@ -172,6 +172,28 @@ export interface AmmBridgeCtx {
 // adapter.usdcMint queries.
 const USDC_DECIMALS = 6;
 
+/**
+ * Which venue's token an EVM-shaped call is talking about.
+ *
+ * Upstream passes an ERC20 contract address; here that slot carries a mint,
+ * and the two venues have different ones. Reads and the faucet MUST agree —
+ * if `balanceOf` reported the book's balance while the faucet topped up the
+ * AMM's, the panel would refuse trades the user can afford and offer trades
+ * they cannot fund. So both go through here.
+ *
+ * The book is the fallback: it is the mint every legacy call site meant back
+ * when there was only one.
+ */
+function resolveVenueMint(
+  address: unknown,
+  ctx: AmmBridgeCtx,
+): PublicKey {
+  const requested = toAddressRef(address)?.replace(/^sol:/, "");
+  return requested === ctx.adapter.ammMint.toBase58()
+    ? ctx.adapter.ammMint
+    : ctx.adapter.bookMint;
+}
+
 // ─── Read dispatcher ────────────────────────────────────────────────────────
 
 /**
@@ -388,11 +410,7 @@ export async function dispatchAmmRead(
       // different ones. Defaulting to the book's would report a USDC balance
       // for an AMM trade priced in the AMM's token — the panel would then
       // refuse a trade the user can afford, or allow one they cannot.
-      const requested = toAddressRef(call.address)?.replace(/^sol:/, "");
-      const mint =
-        requested && requested === ctx.adapter.ammMint.toBase58()
-          ? ctx.adapter.ammMint
-          : ctx.adapter.bookMint;
+      const mint = resolveVenueMint(call.address, ctx);
       try {
         const ata = deriveUserUsdcAta(userPk, mint);
         const acc = await getAccount(ctx.connection, ata);
@@ -931,6 +949,13 @@ async function dispatchClaim(
  * address slot and is intentionally ignored. This prevents the in-browser
  * faucet from minting to arbitrary wallets even if the upstream UI passes
  * a different `to` field.
+ *
+ * WHICH token, though, does come from the caller. The two venues price in
+ * different mints, and a faucet that only ever dispensed the book's would
+ * leave every wallet unable to trade the AMM — which is every market before
+ * graduation. `call.address` carries the requested mint, resolved the same
+ * way `balanceOf` resolves it, so the two always agree about what a wallet
+ * holds.
  */
 async function dispatchMint(
   _call: WriteCallShape,
@@ -966,8 +991,8 @@ async function dispatchMint(
   }
 
   const recipient = new PublicKey(ctx.userBase58);
-  const usdcMint = ctx.adapter.bookMint;
-  const recipientAta = getAssociatedTokenAddressSync(usdcMint, recipient);
+  const venueMint = resolveVenueMint(_call.address, ctx);
+  const recipientAta = getAssociatedTokenAddressSync(venueMint, recipient);
 
   const tx = new Transaction();
   tx.add(
@@ -975,12 +1000,12 @@ async function dispatchMint(
       mintAuthority.publicKey,
       recipientAta,
       recipient,
-      usdcMint,
+      venueMint,
     ),
   );
   tx.add(
     createMintToInstruction(
-      usdcMint,
+      venueMint,
       recipientAta,
       mintAuthority.publicKey,
       amount,
