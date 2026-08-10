@@ -1,6 +1,6 @@
 # `develop` vs `main` — what changed and why
 
-As of 2026-08-07. `develop` is 86 commits ahead of `main`.
+As of 2026-08-10. `develop` is 110 commits ahead of `main`.
 
 This document exists because the two branches are no longer variations on the
 same design. `main` is the six-program port of the EVM contracts; `develop` is
@@ -11,7 +11,7 @@ tell you that, so this explains the shape first and the details after.
 
 ## 1. The short version
 
-Three things happened, in order of how much they matter.
+Four things happened, in order of how much they matter.
 
 **The six programs became one.** `main` splits the protocol across
 `sooth_market`, `sooth_amm`, `sooth_book`, `sooth_launchpad`,
@@ -25,6 +25,13 @@ market with orders at forty ticks is forty accounts, and a trade that sweeps
 five levels needs all five passed in by the caller — who has to know which
 five before sending. `develop` holds the whole book in one account and walks it
 on chain. This is the change everything else follows from.
+
+**The two venues got separate tokens.** This is the newest change and the one
+that most alters what the protocol *is*. On `main` there is one collateral
+token: USDC funds the AMM and the book alike. On `develop` the AMM prices in an
+instance token fixed at deploy, the book stays in USDC, and a market cannot
+trade on the book until it graduates. Two vaults, two fee pools, two fee rates.
+§4a explains why this is not a cosmetic relabelling.
 
 **A class of bug was closed.** Not a rewrite — specific, found defects, each of
 which could take or strand real money. They are listed in §6 because they are
@@ -42,6 +49,9 @@ The other trade-off: `develop` is younger. `main` has had more eyes and more
 calendar time. What `develop` has instead is a settlement path verified end to
 end on a validator, which `main` never had.
 
+If you only want the verdict, skip to §11 — it states where each branch is
+actually better and which one scales.
+
 ---
 
 ## 2. The numbers
@@ -49,26 +59,31 @@ end on a validator, which `main` never had.
 ```
                               main          develop
 Programs                      6             1
-Rust (packages/programs-core) 24,914        10,176
-TypeScript test files         65            85
-Rust #[test]                  247           111
+Rust (packages/programs-core) 24,442        9,956
+Instructions                  51            27
+Collateral tokens             1             2 (one per venue)
+Fee rates                     1 (fee_bps)   2 (amm / book) + graduation_bps
+Vaults per market             1             2 (vault_amm, vault_book)
+Outcome SPL mints             2 (YES/NO)    0
+TypeScript test files         65            36 (SDK) + e2e
+Rust #[test]                  247           120
 ```
 
-Overall: **372 files changed, +39,724 / −46,243**.
+Overall: **507 files changed, +41,680 / −65,936**.
 
 By area:
 
 | Area | Files | Added | Removed |
 |---|---:|---:|---:|
-| `packages/programs-core` | 192 | 8,856 | 23,355 |
-| `packages/sdk-solana` | 56 | 17,408 | 19,400 |
-| `apps/demo` | 83 | 6,709 | 3,386 |
-| `packages/sooth-data` | 34 | 4,031 | 0 |
-| `docs` | 4 | 1,342 | 42 |
+| `packages/programs-core` | 198 | 9,483 | 24,722 |
+| `packages/sdk-solana` | 88 | 18,467 | 22,049 |
+| `apps/demo` | 162 | 8,755 | 12,063 |
+| `packages/sooth-data` | 24 | 2,793 | 70 |
+| `docs` | 25 | 2,321 | 3,469 |
 
 Two of these need a caveat, because the raw figure misleads:
 
-- **Rust tests fell from 247 to 111.** No test was deleted from surviving code.
+- **Rust tests fell from 247 to 120.** No test was deleted from surviving code.
   Five programs and the legacy orderbook were removed and their tests went with
   them. Coverage per surviving line is higher, not lower — but the headline
   number is down and it would be dishonest to present it otherwise.
@@ -165,6 +180,76 @@ If your order would match your own resting order, the resting one is cancelled
 and yours is placed. Not an error, and not a silent no-op — both of which were
 tried and both of which blocked legitimate trades where the crossing order was
 incidental to a fill against someone else.
+
+---
+
+## 4a. Two venues, two tokens
+
+The largest architectural difference, and the newest. `main` has one
+collateral token; `develop` has one per venue.
+
+```
+                    main                     develop
+AMM collateral      USDC                     instance token (EAST on devnet)
+Book collateral     USDC                     USDC
+Book before grad.   open                     refused by the program
+Fee rate            fee_bps                  amm_fee_bps / book_fee_bps
+Fee pool            one per market           one per market PER VENUE
+Vault               market.vault             market.vault_amm / vault_book
+Outcome tokens      YES/NO SPL mints         none — internal accounting
+```
+
+### Why it is not a relabelling
+
+**An SPL token account holds exactly one mint.** That single fact forces every
+other change here. Two collateral tokens cannot share a vault, so `vault`
+became `vault_amm` + `vault_book`. They cannot share a fee pool, so
+`fee_pool` split by seed. They cannot share a treasury account, which is why
+`protocol_treasury_vault` is now bound by `token::authority` rather than
+`address` — one pubkey can own two accounts, but cannot *be* two accounts.
+
+The rename from `vault` to `vault_book` was deliberate rather than
+conservative: it makes the compiler visit all 17 call sites, because the
+failure mode of getting one wrong is silent. The wrong vault still exists,
+still deserializes, still has a balance — it just holds the other currency.
+
+### What it buys
+
+A market can be incubated in a token the protocol controls, then graduate to
+USDC once it has proven demand. The bonding-curve phase and the mature phase
+are economically distinct, and they now have distinct fee rates to match
+(5% AMM, 1% book on the current config). The book being *program-refused*
+before graduation rather than UI-hidden is what makes that a guarantee.
+
+### What it costs
+
+- **Two balances to fund.** A wallet holding only USDC cannot trade any market
+  before graduation. Every client and fixture has to know which venue it is
+  touching — which is exactly the bug class §6 records under the faucet, the
+  launchpad and the settlement harness.
+- **Cross-venue mixing is a silent failure.** The `venue-separation` test
+  exists because reviewing ~30 constraint lines once proves nothing about the
+  next edit; it asserts from the Rust source that no instruction names both
+  venues' symbols.
+- **A stranded ledger.** Book LP yield accrues in USDC but `redeem_lp` pays
+  only the AMM token, so that balance has no claim path yet (§9).
+
+### Complete sets are gone
+
+`main` mints YES/NO SPL tokens and carries eight instructions to manage them
+(`mint_complete_set`, `merge_complete_set`, the `_for_orderbook` and
+`_to_program_owned` variants, `redeem_from_program_owned`, …). `develop`
+deleted all of it in favour of internal accounting.
+
+The trade: those tokens were transferable, so a third party could in principle
+have integrated them — an external AMM, a lending market. Nothing was planned,
+nothing consumed them, and under two collateral tokens they would have become
+genuinely ambiguous (redeemable against *which* vault?). What was gained is 66
+bytes of `Market`, two mints and two ATAs of rent per market, eight
+instructions of surface area, and the CPI cost of minting on every trade.
+
+If external composability becomes a requirement, this is the decision to
+revisit, and it is easier to add later than to remove.
 
 ---
 
@@ -398,6 +483,30 @@ market's book seats now convert to USDC.
 **A settled market still accepted orders.** `book_place` now requires
 `market.is_open()`.
 
+**90% of every market's fee pool was withdrawable by anyone.**
+`distribute_fees` takes `cranker: Signer` — deliberately permissionless, so
+fees are never hostage to one keeper. But three of its four destinations
+carried `token::mint` and nothing else, which means the *caller* chose them:
+the b_base, LP and adjudicator shares could be routed into accounts the cranker
+owned. Nothing prevented it except that no client had built the instruction,
+which is not a security property — it is a gap waiting for someone to write the
+builder. All four are now pinned by address or authority. `main` has the same
+shape in `distribute_fees.rs` and should be checked against this.
+
+**Neither venue's fees could be distributed.** `protocol_treasury_vault` was
+`address = config.treasury` *and* `token::mint = venue_mint`. One pubkey, two
+different mints: no account satisfies both, so whichever venue the treasury
+account did not hold could never drain. Found only by driving a distribution on
+a validator. Now bound by `token::authority`.
+
+**The e2e settlement harness reported skipped paths as success.** Two of them:
+the solvency check read `decoded.vault`, a field the vault split removed, so
+`undefined` fell through the guard and the check silently did nothing; and
+actors were funded in book tokens only, so the AMM buy failed on balance, was
+caught, and the run still printed "all payouts matched". Both are fixed and
+skips now exit non-zero. Recorded here because the same shape — *the failure
+mode is a passing test* — has now appeared three times in this codebase.
+
 ### Verified, not just written
 
 Settlement is driven end to end on a validator across YES / NO / INVALID:
@@ -494,6 +603,23 @@ not useful for deciding anything.
 - **No parallelism within a market.** Every trade write-locks the book, so one
   market's throughput is capped by Solana's 12M CU per-account budget however
   many validators are free. `main` has the same limit for a different reason.
+- **Book LP yield has no claim path.** `distribute_fees_book` credits the LP
+  share in USDC, but `redeem_lp` pays only the AMM token. The money is safe — a
+  PDA owns it — but it is not withdrawable. Needs a second, book-denominated
+  claim.
+- **Two balances to fund.** A wallet holding only USDC cannot trade any market
+  before graduation (§4a). Every client, fixture and script has to know which
+  venue it is touching, and getting it wrong fails on balance rather than on
+  anything that names the cause.
+- **`AMM_TOKEN_MINT` is a compile-time constant.** Immutable at deploy by
+  design, and `--features mainnet` is a deliberate `compile_error!` so shipping
+  to mainnet forces someone to choose the token. Changing it later means a
+  redeploy at a new program id.
+- **A layout change forced a new program id.** The venue split moved field
+  offsets inside `ProtocolConfig` without changing its size, so the old account
+  still deserialized — against a different struct. Every PDA written by the
+  pre-split program is stale in the same way. Worth knowing before any future
+  in-place upgrade: same-size does not mean same-layout.
 - **Younger code.** Fewer calendar-weeks of review than `main`.
 - **No mainnet deployment**, and no audit yet.
 - **The indexer polls.** Fine for devnet and a handful of markets; a busy
@@ -514,7 +640,22 @@ cd apps/demo && pnpm dev        # http://localhost:5175
 ```
 
 `.env.local` already points at devnet. Import `.localnet/user-keypair.json`
-into Phantom for a wallet preloaded with mock USDC.
+into Phantom for a wallet preloaded with **both** venue tokens — the faucet
+dispenses one card per venue, and the AMM's is the one needed first, since
+every market trades there until it graduates.
+
+No indexer is required. State lives in accounts, so current prices, orders,
+balances and status are direct reads refreshed by polling; an indexer is only
+needed for history and charts, and is a performance layer rather than a
+correctness one.
+
+After pulling changes that touch the SDK, rebuild it before starting the demo —
+`dist/` is untracked and per-worktree, and a stale one fails in ways that do
+not name the cause:
+
+```bash
+pnpm -F @sooth/sdk-solana build
+```
 
 To reseed devnet markets:
 
@@ -532,3 +673,83 @@ endpoint rate-limits); a plain validator handles subscriptions.
 
 Never put a keyed URL in a `VITE_`-prefixed variable — Vite inlines those into
 the browser bundle.
+
+---
+
+## 11. Which branch is better, and at what
+
+A comparison that only lists changes does not answer the question anyone
+actually has. This section does, including where `main` wins.
+
+### Where `main` is better
+
+- **Maturity.** More calendar time, more eyes, more Rust unit tests in absolute
+  terms (247 vs 120). Nothing in `develop` compensates for review time that has
+  not happened yet.
+- **Independent upgrades.** Six programs can be upgraded, paused or
+  authority-rotated separately. `develop` has one upgrade authority and one
+  deploy — a blast radius decision that goes the wrong way if you ever want to
+  ship a fix to the book without touching settlement.
+- **Composable outcome tokens.** YES/NO are real SPL mints, so a third party
+  could integrate them without asking. `develop` deleted that surface. Nothing
+  used it, but "nothing uses it yet" and "nothing can" are different positions.
+- **One collateral token.** Simpler in every client: one balance, one faucet,
+  one approval, no venue to get wrong. Most of the demo bugs found this month
+  would not exist under `main`'s model.
+- **Smaller per-market rent for the book**, since `main` allocates price-level
+  accounts on demand rather than one large book account up front. A market that
+  never trades costs `main` less.
+
+### Where `develop` is better
+
+- **Density.** ~5 fills per transaction to several hundred; ~29,510 CU per fill
+  to ~1,448. This is the change that decides whether a market can clear a
+  queue.
+- **No caller-side account discovery.** On `main` the caller must know which
+  price-level accounts a sweep will touch *before* sending. That is impossible
+  to do reliably against a moving book, and it is the source of the failure
+  mode where a trade simulates fine and fails on landing.
+- **Correctness.** §6 is a list of live defects, several of which take or
+  strand funds, and the arithmetic ones (`wad_mul`, the fee/quote direction
+  bugs) apply to shared logic `main` still carries.
+- **Verified settlement.** Driven end to end on a validator across
+  YES/NO/INVALID, with every claim path exercised and per-venue solvency
+  asserted. `main` has never had this run.
+- **Economic staging.** Incubate in an instance token, graduate to USDC, with
+  the book gated in the program rather than the UI. `main` cannot express this
+  at all.
+- **Half the Rust**, one deploy, one audit artifact.
+
+### Which is more scalable
+
+**`develop`, decisively — but along one axis, and it is worth being precise
+about which.**
+
+Neither branch parallelizes *within* a market: every trade write-locks the
+book, so a single market is capped by Solana's ~12M CU per-account budget no
+matter how many validators are idle. That ceiling is identical on both.
+
+What differs is how much work fits under it. `develop` does ~20× more fills per
+CU and ~60× more per transaction, so the same ceiling clears far more volume.
+For the question "can one hot market absorb a burst", `develop` wins by roughly
+the ratio in §5.
+
+Both scale the same way *across* markets — different markets are different
+accounts and run concurrently on both branches.
+
+The honest counterweight: `develop` trades a soft limit for a hard one.
+`main`'s per-level accounts grow until rent runs out, which is unbounded and
+slow. `develop`'s 4,096 blocks is a real ceiling shared between live orders and
+seated traders (~4,096 holders or ~2,048 makers), and raising it costs CU on
+the insert walk rather than being free. For the depth public Polymarket books
+show, that is comfortable. For a market an order of magnitude busier than
+anything either branch has served, `main`'s model degrades gradually where
+`develop`'s stops.
+
+### The recommendation
+
+`develop`, with the caveat that its advantage is *unaudited*. The correct next
+step is not more features; it is review of `packages/programs-core` and
+`packages/sdk-solana`, with §6 and §4a read first — the fee-distribution
+constraints and the venue-separation invariant are where a reviewer's time pays
+best, because both failure modes are silent.
