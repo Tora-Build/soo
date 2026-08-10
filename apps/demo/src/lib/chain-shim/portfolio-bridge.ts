@@ -248,20 +248,32 @@ function allKnownMarketRefs(ctx: PortfolioBridgeCtx): string[] {
   // globals, so the in-memory list is empty for navigations away from
   // the page that did createMarket. The amm-bridge persists every
   // created PDA there.
-  try {
-    if (typeof sessionStorage !== "undefined") {
-      const raw = sessionStorage.getItem("__soothCreatedMarketPdas");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          for (const pda of parsed) {
-            if (typeof pda === "string" && pda) refs.add(`sol:${pda}`);
-          }
+  // Both stores: sessionStorage survives navigation within a tab,
+  // localStorage survives the tab closing. Without the second, a market you
+  // created yesterday is unreachable — there is no on-chain registry to
+  // rediscover it from, so a forgotten PDA is a lost market.
+  for (const store of ["sessionStorage", "localStorage"] as const) {
+    try {
+      const s =
+        store === "sessionStorage"
+          ? typeof sessionStorage !== "undefined"
+            ? sessionStorage
+            : null
+          : typeof localStorage !== "undefined"
+            ? localStorage
+            : null;
+      if (!s) continue;
+      const raw = s.getItem("__soothCreatedMarketPdas");
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        for (const pda of parsed) {
+          if (typeof pda === "string" && pda) refs.add(`sol:${pda}`);
         }
       }
+    } catch {
+      // Storage parse / access errors are non-fatal — fall through.
     }
-  } catch {
-    // sessionStorage parse / access errors are non-fatal — fall through.
   }
   return [...refs];
 }

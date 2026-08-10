@@ -1,3 +1,4 @@
+import { lookupMarketQuestion } from "../lib/market-questions";
 import { useChainStore } from "../store/useChainStore";
 import { useDeployments } from "./useDeployments";
 import { ABIS } from "../config/abis";
@@ -199,7 +200,14 @@ export function useOnChainMarkets() {
               const symbol = shortenAddress(marketAddress);
 
               // Fetch question, isSettled, isFinalized, and trial state in parallel
-              let question = indexerMarket?.name || symbol;
+              // Order matters. The indexer is authoritative when present but
+              // is off by default here; the local store then covers markets
+              // this browser created; `symbol` (a shortened address) is the
+              // last resort and is what every market showed before.
+              let question =
+                indexerMarket?.name ||
+                lookupMarketQuestion(marketAddress) ||
+                symbol;
               let isSettled = false;
               let isFinalized = false;
               const isDismissed = false; // dismiss removed in v0.1.2

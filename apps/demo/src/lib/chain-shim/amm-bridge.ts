@@ -32,6 +32,7 @@
 //   allowance       → bigint (large constant; Solana has no approvals)
 //   decimals        → 6 (USDC)
 
+import { rememberMarketQuestion } from "../market-questions";
 import {
   ComputeBudgetProgram,
   Keypair,
@@ -1106,12 +1107,25 @@ async function dispatchCreateMarket(
       ...new Set([...(g.__soothCreatedMarketPdas ?? []), meta.marketPda]),
     ];
     g.__soothCreatedMarketPdas = merged;
+    // The question text dies here otherwise: the program stores only its
+    // hash, so this is the last point at which the words still exist.
+    rememberMarketQuestion(meta.marketPda, question);
     // Mirror to sessionStorage so the side channel survives page.goto
     // navigations (window-scoped globals get wiped between routes in
     // Playwright). markets-bridge / portfolio-bridge read both.
     try {
       if (typeof sessionStorage !== "undefined") {
         sessionStorage.setItem(
+          "__soothCreatedMarketPdas",
+          JSON.stringify(merged),
+        );
+      }
+      // localStorage too: a market outlives the tab that created it, and
+      // with sessionStorage alone a created market vanished from the list
+      // the moment the tab closed — the demo has no on-chain registry to
+      // rediscover it from.
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(
           "__soothCreatedMarketPdas",
           JSON.stringify(merged),
         );
