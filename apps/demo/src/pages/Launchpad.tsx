@@ -48,6 +48,7 @@ import {
 } from "../config/registries";
 import { useDeployments } from "../hooks/useDeployments";
 import { cn } from "../lib/utils";
+import { tokenSymbols } from "../lib/config";
 import { useTranslation } from "react-i18next";
 
 import { LaunchpadHeader } from "../components/features/launchpad/LaunchpadHeader";
@@ -407,7 +408,14 @@ export const Launchpad = () => {
   const launchpadEngineAddress = deployments?.contracts[
     "LaunchpadEngine"
   ] as Address;
-  const usdcAddress = deployments?.contracts["MockUSDC"] as Address;
+  // Creating a market posts the LMSR subsidy through `seed_lp`, which takes
+  // the AMM venue's token — not USDC. Reading MockUSDC here showed the creator
+  // a balance in a token this flow never spends: someone holding plenty of the
+  // AMM token but no USDC was told they could not afford a market they could,
+  // and the reverse failed on-chain after passing the UI's check. Falls back to
+  // MockUSDC so a single-token deployment still works unchanged.
+  const usdcAddress = (deployments?.contracts["AmmToken"] ??
+    deployments?.contracts["MockUSDC"]) as Address;
   const { data: usdcDecimals } = useReadContract({
     address: usdcAddress,
     abi: ERC20_ABI,
@@ -1128,7 +1136,7 @@ export const Launchpad = () => {
                     {t("launchpad.depositLabel")}
                   </label>
                   <span className="text-ink font-mono font-bold tabular-nums">
-                    ${depositAmount.toLocaleString()}
+                    {depositAmount.toLocaleString()} {tokenSymbols.amm}
                   </span>
                 </div>
                 <input
@@ -1158,7 +1166,7 @@ export const Launchpad = () => {
                         {t("launchpad.graduationFee")}
                       </span>
                       <span className="text-accent font-mono font-bold">
-                        ${depositAmount.toLocaleString()}
+                        {depositAmount.toLocaleString()} {tokenSymbols.amm}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
@@ -1166,7 +1174,7 @@ export const Launchpad = () => {
                         {t("launchpad.graduationVol")}
                       </span>
                       <span className="text-ink font-mono font-bold">
-                        ${(depositAmount * 20).toLocaleString()}
+                        {(depositAmount * 20).toLocaleString()} {tokenSymbols.amm}
                       </span>
                     </div>
 
@@ -1261,7 +1269,8 @@ export const Launchpad = () => {
                     {formattedBalance.toLocaleString(undefined, {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
-                    })}
+                    })}{" "}
+                    {tokenSymbols.amm}
                   </span>
                   <a
                     href="/faucet"

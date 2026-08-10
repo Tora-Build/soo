@@ -1,3 +1,4 @@
+import { tokenSymbols } from "./config";
 /**
  * P&L Calculation Utilities for Launchpad Simulator
  * 
@@ -312,11 +313,16 @@ export function calculatePvPTraderPnL(
 //                           HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Amounts in this simulator are AMM-venue money — creator subsidy, LP
+ * redemption, fee yield, trade PnL — all denominated in the AMM's token, not
+ * dollars. A `$` here would misstate the unit of every figure on the page.
+ */
 export function formatCurrency(value: number, showSign: boolean = false): string {
     const absValue = Math.abs(value);
     const formatted = absValue >= 1000 
-        ? `$${(absValue / 1000).toFixed(1)}k`
-        : `$${absValue.toLocaleString()}`;
+        ? `${(absValue / 1000).toFixed(1)}k ${tokenSymbols.amm}`
+        : `${absValue.toLocaleString()} ${tokenSymbols.amm}`;
     
     if (value < 0) {
         return `(${formatted})`;

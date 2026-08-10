@@ -594,8 +594,8 @@
     "return": "Return",
     "usingUpTo": "Using up to",
     "fromSpendableProceeds": "from spendable proceeds.",
-    "walletUsdc": "Wallet USDC",
-    "needTestUsdc": "Need test USDC? Get from faucet →",
+    "walletUsdc": "Wallet balance: ",
+    "needTestUsdc": "Need test tokens? Get from faucet →",
     "buyOutcome": "Buy {{outcome}} with {{cost}}",
     "sellOutcome": "Sell {{outcome}} for {{cost}}",
     "enterAmount": "Enter Amount",
@@ -649,8 +649,8 @@
     "initialProbabilityHint": "% seeded by the bonding curve — anything other than 50 skews the LMSR inventory from block 0.",
     "expirationLabel": "Expiration",
     "adjudicatorLabel": "Adjudicator",
-    "depositLabel": "Deposit (USDC)",
-    "balancePrefix": "Balance: $",
+    "depositLabel": "Deposit",
+    "balancePrefix": "Balance: ",
     "openUntilResolved": "Open until resolved",
     "dateLabel": "Date",
     "timeLabel": "Time (local)",
@@ -663,8 +663,8 @@
     "approving": "Approving...",
     "approveUsdc": "Approve USDC",
     "completeFormToContinue": "Complete Form to Continue",
-    "walletUsdc": "Wallet USDC: $",
-    "needTestUsdc": "Need test USDC? Get from faucet →",
+    "walletUsdc": "Wallet balance: ",
+    "needTestUsdc": "Need test tokens? Get from faucet →",
     "liquidityB": "Liquidity (b)",
     "graduationFee": "Graduation Fee",
     "graduationVol": "Graduation Vol",
@@ -852,7 +852,7 @@
       "wizard": {
         "l": {
           "description": "Choose how much USDC to seed the market with. This determines trading depth.",
-          "maxLoss": "Max potential loss: $"
+          "maxLoss": "Max potential loss: "
         },
         "q": {
           "deadline": "Resolution Deadline",
@@ -939,14 +939,14 @@
       "creator": {
         "example": {
           "pnlLabel": "Estimated Net P&L",
-          "pnlValue": "+$807",
-          "text": "Carol creates a 50/50 market with a **$693 deposit** (b=$1,000). Volume generates **$150 in fees**. As the 50% LP holder, she earns from every trade. Skewed odds would require a higher deposit.",
+          "pnlValue": "+807 EAST",
+          "text": "Carol creates a 50/50 market with a **693 EAST deposit** (b=1,000 EAST). Volume generates **150 EAST in fees**. As the 50% LP holder, she earns from every trade. Skewed odds would require a higher deposit.",
           "title": "Creator Example"
         },
         "plItems": {
           "0": {
             "event": "Market Created",
-            "impact": "-$693 Deposit",
+            "impact": "-693 EAST Deposit",
             "pos": "False"
           },
           "1": {
@@ -968,23 +968,23 @@
         "plTitle": "Creator P&L Analysis",
         "tiers": {
           "0": {
-            "b": "$100",
-            "dep": "$69",
+            "b": "100 EAST",
+            "dep": "69 EAST",
             "tier": "Micro"
           },
           "1": {
-            "b": "$1k",
-            "dep": "$693",
+            "b": "1k EAST",
+            "dep": "693 EAST",
             "tier": "Small"
           },
           "2": {
-            "b": "$10k",
-            "dep": "$6.9k",
+            "b": "10k EAST",
+            "dep": "6.9k EAST",
             "tier": "Med"
           },
           "3": {
-            "b": "$100k",
-            "dep": "$69k",
+            "b": "100k EAST",
+            "dep": "69k EAST",
             "tier": "Large"
           }
         },

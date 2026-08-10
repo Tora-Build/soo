@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { tokenSymbols } from "../../../lib/config";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Palette,
@@ -239,7 +240,7 @@ const CreatorPanel = () => {
           min={100}
           max={10000}
           step={100}
-          format={(v) => `$${v.toLocaleString()}`}
+          format={(v) => `${v.toLocaleString()} ${tokenSymbols.amm}`}
           icon={DollarSign}
         />
 
@@ -264,8 +265,8 @@ const CreatorPanel = () => {
           step={1000}
           format={(v) =>
             v >= 1000000
-              ? `$${(v / 1000000).toFixed(1)}M`
-              : `$${(v / 1000).toFixed(0)}k`
+              ? `${(v / 1000000).toFixed(1)}M ${tokenSymbols.amm}`
+              : `${(v / 1000).toFixed(0)}k ${tokenSymbols.amm}`
           }
           icon={TrendingUp}
         />
@@ -437,7 +438,7 @@ const GamingTraderPanel = () => {
           min={50}
           max={2000}
           step={50}
-          format={(v) => `$${v}`}
+          format={(v) => `${v} ${tokenSymbols.amm}`}
           icon={DollarSign}
         />
 
@@ -518,8 +519,8 @@ const GamingTraderPanel = () => {
               step={1000}
               format={(v) =>
                 v >= 1000000
-                  ? `$${(v / 1000000).toFixed(1)}M`
-                  : `$${(v / 1000).toFixed(0)}k`
+                  ? `${(v / 1000000).toFixed(1)}M ${tokenSymbols.amm}`
+                  : `${(v / 1000).toFixed(0)}k ${tokenSymbols.amm}`
               }
               icon={TrendingUp}
             />
@@ -563,7 +564,7 @@ const GamingTraderPanel = () => {
                   </span>
                 </h4>
                 <span className="text-xs text-faint italic">
-                  *$2k graduation
+                  *2k {tokenSymbols.amm} graduation
                 </span>
               </div>
               <Equation
@@ -674,7 +675,7 @@ const ArbitrageurPanel = () => {
           min={500}
           max={50000}
           step={500}
-          format={(v) => `$${(v / 1000).toFixed(1)}k`}
+          format={(v) => `${(v / 1000).toFixed(1)}k ${tokenSymbols.amm}`}
           icon={DollarSign}
         />
 
@@ -809,7 +810,7 @@ const PvPTraderPanel = () => {
           min={100}
           max={10000}
           step={100}
-          format={(v) => `$${v.toLocaleString()}`}
+          format={(v) => `${v.toLocaleString()} ${tokenSymbols.amm}`}
           icon={DollarSign}
         />
 

@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { tokenSymbols } from "./config";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -37,4 +38,25 @@ export function formatCurrencyCompact(
     }
   }
   return `${currencySymbol}${value.toFixed(2)}`;
+}
+
+/**
+ * Money in the AMM venue's token.
+ *
+ * NOT dollars. The AMM prices in an instance token chosen at deploy — EAST on
+ * this deployment — so a `$` prefix here states the wrong unit: it tells a
+ * trader their position is worth some number of dollars when it is worth that
+ * number of a token with its own price. The book keeps `$` because its
+ * collateral really is USDC.
+ *
+ * Probabilities are a separate thing and stay as ¢ or %: a share price of 50¢
+ * is the market's odds, not an amount of any token.
+ */
+export function formatAmmAmount(value: number): string {
+  return `${formatCurrencyCompact(value, "")} ${tokenSymbols.amm}`;
+}
+
+/** Money in the book venue's token (USDC), rendered with the usual `$`. */
+export function formatBookAmount(value: number): string {
+  return formatCurrencyCompact(value, "$");
 }

@@ -1,6 +1,7 @@
 // GraduationProgress.tsx - Bonding curve progress card for Launchpad markets
 // Graduation is based on FEES ACCRUED, not initial liquidity.
 
+import { tokenSymbols } from "../../lib/config";
 import React from "react";
 import { formatUnits } from "@/lib/chain-shim";
 import { TrendingUp, Trophy, Loader2, Clock } from "lucide-react";
@@ -93,7 +94,8 @@ export const GraduationProgress: React.FC<GraduationProgressProps> = ({
             {t("bonding.feesAccrued")}
           </div>
           <div className="font-mono text-sm font-semibold text-ink tabular-nums">
-            ${feesVal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            {feesVal.toLocaleString(undefined, { maximumFractionDigits: 2 })}{" "}
+            {tokenSymbols.amm}
           </div>
         </div>
         <div className="flex-1 bg-raised px-3 py-2 text-center">
@@ -101,8 +103,9 @@ export const GraduationProgress: React.FC<GraduationProgressProps> = ({
             {t("bonding.toGraduation")}
           </div>
           <div className="font-mono text-sm font-semibold text-ink tabular-nums flex items-center justify-center gap-1">
-            <TrendingUp size={11} className="text-faint" />$
-            {remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            <TrendingUp size={11} className="text-faint" />
+            {remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}{" "}
+            {tokenSymbols.amm}
           </div>
         </div>
         <div className="flex-1 bg-raised px-3 py-2 text-right">
@@ -110,10 +113,10 @@ export const GraduationProgress: React.FC<GraduationProgressProps> = ({
             {t("bonding.target")}
           </div>
           <div className="font-mono text-sm font-semibold text-ink tabular-nums">
-            $
             {thresholdVal.toLocaleString(undefined, {
               maximumFractionDigits: 0,
-            })}
+            })}{" "}
+            {tokenSymbols.amm}
           </div>
         </div>
       </div>

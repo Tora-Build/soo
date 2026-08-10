@@ -1,3 +1,4 @@
+import { tokenSymbols } from "../../lib/config";
 import React, { useMemo } from "react";
 import {
   useDirectRead,
@@ -81,15 +82,17 @@ export const MarketStats: React.FC<MarketStatsProps> = ({ marketAddress }) => {
   if (!stats) return null;
 
   // Formatting helpers
-  const fmtUsd = (val: bigint) => {
+  // Every figure on this card is AMM-venue money — the vault's cash, the LMSR
+  // max loss, the LP yield pool, the market's PnL. All held in the AMM's
+  // token, none of it dollars, so the name is `fmtAmm` and the unit is shown.
+  const fmtAmm = (val: bigint) => {
     const num = Number(formatUnits(val, decimals));
-    if (num > 1_000_000_000) return `$${(num / 1_000_000_000).toFixed(2)}B`;
-    if (num > 1_000_000) return `$${(num / 1_000_000).toFixed(2)}M`;
-    return num.toLocaleString("en-US", {
-      style: "currency",
-      currency: "USD",
+    const sym = tokenSymbols.amm;
+    if (num > 1_000_000_000) return `${(num / 1_000_000_000).toFixed(2)}B ${sym}`;
+    if (num > 1_000_000) return `${(num / 1_000_000).toFixed(2)}M ${sym}`;
+    return `${num.toLocaleString("en-US", {
       maximumFractionDigits: 0,
-    });
+    })} ${sym}`;
   };
   const fmtNum = (val: bigint | number) =>
     Number(typeof val === "bigint" ? formatUnits(val, 18) : val).toLocaleString(
@@ -133,21 +136,21 @@ export const MarketStats: React.FC<MarketStatsProps> = ({ marketAddress }) => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 font-mono text-xs">
               <span className="text-ink" title="Max Loss (b × ln(2))">
-                {fmtUsd(stats.maxLoss)}
+                {fmtAmm(stats.maxLoss)}
               </span>
               <span className="text-faint">+</span>
               <span className="text-ink" title="LP Yield Pool">
-                {fmtUsd(stats.lpYieldPool)}
+                {fmtAmm(stats.lpYieldPool)}
               </span>
               <span className="text-faint">+</span>
               <span className="text-ink" title="Swap P&L (LMSR Cost)">
                 {stats.pnl >= 0n ? "+" : "-"}
-                {fmtUsd(stats.pnl < 0n ? -stats.pnl : stats.pnl)}
+                {fmtAmm(stats.pnl < 0n ? -stats.pnl : stats.pnl)}
               </span>
               <span className="text-faint">=</span>
             </div>
             <div className="text-lg font-bold text-accent font-mono ml-auto">
-              {fmtUsd(stats.cash)}
+              {fmtAmm(stats.cash)}
             </div>
           </div>
         </div>
@@ -164,15 +167,15 @@ export const MarketStats: React.FC<MarketStatsProps> = ({ marketAddress }) => {
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 font-mono text-xs">
-              <span className="text-ink">{fmtUsd(stats.cash)}</span>
+              <span className="text-ink">{fmtAmm(stats.cash)}</span>
               <span className="text-faint">−</span>
               <span className="text-ink" title="Max Liability (max(qY, qN))">
-                {fmtUsd(stats.liability)}
+                {fmtAmm(stats.liability)}
               </span>
               <span className="text-faint">=</span>
             </div>
             <div className="text-lg font-bold text-accent font-mono ml-auto">
-              {fmtUsd(stats.floor)}
+              {fmtAmm(stats.floor)}
             </div>
           </div>
         </div>
@@ -189,7 +192,7 @@ export const MarketStats: React.FC<MarketStatsProps> = ({ marketAddress }) => {
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 font-mono text-xs">
-              <span className="text-ink">{fmtUsd(stats.floor)}</span>
+              <span className="text-ink">{fmtAmm(stats.floor)}</span>
               <span className="text-faint">/</span>
               <span className="text-ink" title="LP Supply">
                 {fmtNum(stats.supply)}
@@ -215,16 +218,16 @@ export const MarketStats: React.FC<MarketStatsProps> = ({ marketAddress }) => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 font-mono text-xs">
               <span className="text-ink" title="Cash (MaxLoss + Yield + P&L)">
-                {fmtUsd(stats.cash)}
+                {fmtAmm(stats.cash)}
               </span>
               <span className="text-faint">+</span>
               <span className="text-ink" title="Locked (Spendable Proceeds)">
-                {fmtUsd(stats.lockedProceeds)}
+                {fmtAmm(stats.lockedProceeds)}
               </span>
               <span className="text-faint">=</span>
             </div>
             <div className="text-lg font-bold text-accent font-mono ml-auto">
-              {fmtUsd(stats.tvl)}
+              {fmtAmm(stats.tvl)}
             </div>
           </div>
         </div>

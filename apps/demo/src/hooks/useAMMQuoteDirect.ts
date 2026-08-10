@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { tokenSymbols } from "../lib/config";
 import { useChainStore } from "../store/useChainStore";
 import { useDeployments } from "./useDeployments";
 import { ABIS } from "../config/abis";
@@ -147,8 +148,8 @@ export function useAMMQuoteDirect(
         priceImpact: 0,
         willGraduate: false,
         nearGradAfterTrade: false,
-        costFormatted: "$0.00",
-        feeFormatted: "$0.00",
+        costFormatted: `0.00 ${tokenSymbols.amm}`,
+        feeFormatted: `0.00 ${tokenSymbols.amm}`,
         sharesFormatted,
         isLoading: false,
         error: new Error(
@@ -171,8 +172,8 @@ export function useAMMQuoteDirect(
         priceImpact: 0,
         willGraduate: false,
         nearGradAfterTrade: false,
-        costFormatted: "$0.00",
-        feeFormatted: "$0.00",
+        costFormatted: `0.00 ${tokenSymbols.amm}`,
+        feeFormatted: `0.00 ${tokenSymbols.amm}`,
         sharesFormatted,
         isLoading: loading,
         error: (error as Error | null) ?? null,
@@ -217,9 +218,12 @@ export function useAMMQuoteDirect(
       const d4 = (d + "0000").slice(0, 4);
       const d2 = d4.slice(0, 2);
       const asNumber = Number(raw);
+      // AMM costs are in the AMM venue's token, not dollars. Extra precision
+      // below a cent is kept — a share can cost a fraction of one unit, and
+      // rounding that to 0.00 hides the whole trade.
       if (!Number.isFinite(asNumber) || asNumber >= 0.01)
-        return `$${iComma}.${d2}`;
-      return `$${iComma}.${d4}`;
+        return `${iComma}.${d2} ${tokenSymbols.amm}`;
+      return `${iComma}.${d4} ${tokenSymbols.amm}`;
     };
 
     // Graduation impact (per-trade), using Launchpad's fee/threshold view

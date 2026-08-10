@@ -43,11 +43,11 @@ import { useBaseTokenDecimals } from "../../hooks/useBaseTokenDecimals";
 import { ABIS, ERC20_ABI } from "../../config/abis";
 import { parseUnits, formatUnits } from "@/lib/chain-shim";
 import toast from "react-hot-toast";
-import { cn, formatCurrencyCompact } from "../../lib/utils";
+import { cn, formatAmmAmount, formatCurrencyCompact } from "../../lib/utils";
 import { useChainStore } from "../../store/useChainStore";
 import { marketConfigs } from "../../config";
 import { getChainById } from "../../lib/chains";
-import { tokenLabels } from "../../lib/config";
+import { tokenLabels, tokenSymbols } from "../../lib/config";
 import { logger } from "../../lib/logger";
 
 interface SimpleTradingPanelProps {
@@ -482,7 +482,7 @@ export const SimpleTradingPanel = ({
       },
       {
         onSuccess: () => {
-          toast.success("USDC approved!");
+          toast.success(`${tokenSymbols.amm} approved!`);
         },
         onError: (error) => {
           toast.error(`Approval failed: ${error.message}`);
@@ -1098,7 +1098,7 @@ export const SimpleTradingPanel = ({
             <div className="mt-2 flex justify-between text-xs text-muted">
               <span>{t("amm.buyingPower")}</span>
               <span className="font-mono text-ink">
-                {formatCurrencyCompact(Number(buyingPowerWad) / 1e18)}
+                {formatAmmAmount(Number(buyingPowerWad) / 1e18)}
               </span>
             </div>
           )}
@@ -1237,7 +1237,7 @@ export const SimpleTradingPanel = ({
                 <span>
                   {t("trading.usingUpTo")}{" "}
                   <strong>
-                    {formatCurrencyCompact(Number(spendableProceeds) / 1e18)}
+                    {formatAmmAmount(Number(spendableProceeds) / 1e18)}
                   </strong>{" "}
                   {t("trading.fromSpendableProceeds")}
                 </span>
@@ -1359,13 +1359,13 @@ export const SimpleTradingPanel = ({
               {formatCurrencyCompact(
                 Number(walletUsdcToken) / 10 ** decimals,
                 "",
-              )}
+              )}{" "}
+              {tokenSymbols.amm}
             </span>
             <a
               href="/faucet"
               className="text-xs text-muted hover:text-accent transition-colors inline-flex items-center gap-1"
             >
-              <span className="text-xs">$</span>
               {t("trading.needTestUsdc")}
             </a>
           </div>

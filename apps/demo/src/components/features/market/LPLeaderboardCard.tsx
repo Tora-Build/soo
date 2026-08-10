@@ -5,7 +5,9 @@ import { Card } from "../../ui/Card";
 import { Badge } from "../../ui/Badge";
 import { Button } from "../../ui/Button";
 import { formatUnits } from "@/lib/chain-shim";
-import { formatCurrency } from "../../../utils/format";
+// LP stakes and yields are paid in the AMM venue's token by `redeem_lp`,
+// so they are not dollars.
+import { formatAmmAmount as formatCurrency } from "../../../lib/utils";
 import { useLPHolders } from "../../../hooks/useLPHolders";
 import { useBaseTokenDecimals } from "../../../hooks/useBaseTokenDecimals";
 import { useTranslation } from "react-i18next";

@@ -85,6 +85,19 @@ export const tokenLabels = {
   book: env?.VITE_BOOK_TOKEN_LABEL ?? "Mock USDC",
 } as const;
 
+/**
+ * Short tickers for inline amounts, where the full label is too long.
+ *
+ * The book's is rendered as a leading `$` by convention — it is USDC on every
+ * deployment, and a prediction market quoted in dollars reads naturally. The
+ * AMM's cannot be: its token is not a dollar and not even the same token twice
+ * across deployments, so its amounts carry a trailing ticker instead.
+ */
+export const tokenSymbols = {
+  amm: env?.VITE_AMM_TOKEN_SYMBOL ?? "EAST",
+  book: env?.VITE_BOOK_TOKEN_SYMBOL ?? "USDC",
+} as const;
+
 export const demoConfig: DemoConfig = {
   wsUrl: resolveWsUrl(rpcUrl),
   node: {

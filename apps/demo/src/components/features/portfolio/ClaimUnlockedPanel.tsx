@@ -14,7 +14,7 @@ import toast from "react-hot-toast";
 import { useDemo } from "../../../lib/DemoContext";
 import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
-import { demoConfig } from "../../../lib/config";
+import { demoConfig, tokenSymbols } from "../../../lib/config";
 
 interface PendingUnlock {
   lockEntry: string;
@@ -103,7 +103,7 @@ export function ClaimUnlockedPanel() {
     async (entry: PendingUnlock) => {
       if (!marketRef) return;
       const tid = toast.loading(
-        `Claiming ${(Number(entry.amountUsdc) / 1_000_000).toFixed(2)} USDC…`,
+        `Claiming ${(Number(entry.amountUsdc) / 1_000_000).toFixed(2)} ${tokenSymbols.amm}…`,
       );
       setPendingNonce(entry.nonce);
       try {
@@ -137,7 +137,7 @@ export function ClaimUnlockedPanel() {
       </div>
       <p className="text-xs text-muted mb-4">
         Sell proceeds are locked for 24h before they can be claimed back to your
-        USDC ATA. Each row below corresponds to one lock entry — once the
+        {tokenSymbols.amm} ATA. Each row below corresponds to one lock entry — once the
         countdown hits zero the CLAIM button enables.
       </p>
       <div className="space-y-2" data-testid="pending-unlocks-panel">
@@ -147,7 +147,8 @@ export function ClaimUnlockedPanel() {
           const hh = Math.floor(remainingS / 3600);
           const mm = Math.floor((remainingS % 3600) / 60);
           const ss = remainingS % 60;
-          const usdc = (Number(e.amountUsdc) / 1_000_000).toFixed(2);
+          // Paid from `lock_vault` in the AMM mint — see claim_unlocked.rs.
+          const amount = (Number(e.amountUsdc) / 1_000_000).toFixed(2);
           return (
             <div
               key={String(e.nonce)}
@@ -155,7 +156,9 @@ export function ClaimUnlockedPanel() {
               data-testid={`pending-unlocks-row-${String(e.nonce)}`}
             >
               <div className="font-mono text-sm">
-                <span className="text-ink">${usdc}</span>{" "}
+                <span className="text-ink">
+                  {amount} {tokenSymbols.amm}
+                </span>{" "}
                 <span className="text-muted text-xs">
                   · nonce {String(e.nonce)} ·{" "}
                   {ready ? "READY" : `unlocks in ${hh}h ${mm}m ${ss}s`}

@@ -594,8 +594,8 @@
     "return": "回报",
     "usingUpTo": "最多使用",
     "fromSpendableProceeds": "来自可用收益。",
-    "walletUsdc": "钱包 USDC: $",
-    "needTestUsdc": "需要测试 USDC？去水龙头领取 →",
+    "walletUsdc": "钱包余额: ",
+    "needTestUsdc": "需要测试代币？去水龙头领取 →",
     "buyOutcome": "用 {{cost}} 买入 {{outcome}}",
     "sellOutcome": "以 {{cost}} 卖出 {{outcome}}",
     "enterAmount": "输入数量",
@@ -649,8 +649,8 @@
     "initialProbabilityHint": "绑定曲线的初始 YES 概率百分比，非 50 会使 LMSR 从第一区块就有倾斜库存。",
     "expirationLabel": "到期时间",
     "adjudicatorLabel": "裁判",
-    "depositLabel": "存款 (USDC)",
-    "balancePrefix": "余额: $",
+    "depositLabel": "保证金",
+    "balancePrefix": "余额: ",
     "openUntilResolved": "开放至结算",
     "dateLabel": "日期",
     "timeLabel": "时间（本地）",
@@ -663,8 +663,8 @@
     "approving": "授权中...",
     "approveUsdc": "授权 USDC",
     "completeFormToContinue": "请完善表单后继续",
-    "walletUsdc": "钱包 USDC: $",
-    "needTestUsdc": "需要测试 USDC？去水龙头领取 →",
+    "walletUsdc": "钱包余额: ",
+    "needTestUsdc": "需要测试代币？去水龙头领取 →",
     "liquidityB": "流动性 (b)",
     "graduationFee": "毕业费用",
     "graduationVol": "毕业交易量",
@@ -939,14 +939,14 @@
       "creator": {
         "example": {
           "pnlLabel": "预计净盈亏",
-          "pnlValue": "+$807",
-          "text": "Carol 以 **$693 的存款** (b=$1,000) 创建了一个 50/50 市场。交易量产生了 **$150 的手续费**。作为 50% 的 LP 持有者，她从每笔交易中获利。非对称赔率需要更高的存款。",
+          "pnlValue": "+807 EAST",
+          "text": "Carol 以 **693 EAST 的存款** (b=1,000 EAST) 创建了一个 50/50 市场。交易量产生了 **150 EAST 的手续费**。作为 50% 的 LP 持有者，她从每笔交易中获利。非对称赔率需要更高的存款。",
           "title": "创建者示例"
         },
         "plItems": {
           "0": {
             "event": "市场创建",
-            "impact": "-$693 存款",
+            "impact": "-693 EAST 存款",
             "pos": "False"
           },
           "1": {
@@ -968,23 +968,23 @@
         "plTitle": "创建者盈亏分析",
         "tiers": {
           "0": {
-            "b": "$100",
-            "dep": "$69",
+            "b": "100 EAST",
+            "dep": "69 EAST",
             "tier": "微型"
           },
           "1": {
-            "b": "$1k",
-            "dep": "$693",
+            "b": "1k EAST",
+            "dep": "693 EAST",
             "tier": "小型"
           },
           "2": {
-            "b": "$10k",
-            "dep": "$6.9k",
+            "b": "10k EAST",
+            "dep": "6.9k EAST",
             "tier": "中型"
           },
           "3": {
-            "b": "$100k",
-            "dep": "$69k",
+            "b": "100k EAST",
+            "dep": "69k EAST",
             "tier": "大型"
           }
         },

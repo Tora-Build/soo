@@ -12,10 +12,13 @@ import { OperatorActionsPanel } from "../components/features/portfolio/OperatorA
 import { DismissMarketPanel } from "../components/features/portfolio/DismissMarketPanel";
 import { ClaimRefundPanel } from "../components/features/portfolio/ClaimRefundPanel";
 import { RedeemLpPanel } from "../components/features/portfolio/RedeemLpPanel";
-import { formatCurrencyCompact } from "../lib/utils";
+import { formatAmmAmount } from "../lib/utils";
 import { useTranslation } from "react-i18next";
 
-const formatUsd = (value: number) => formatCurrencyCompact(value);
+// Everything this page totals is AMM-denominated — `useActivePositions`
+// reads AMM vault positions and `useLPPositions` reads LP, whose yield is paid
+// in the AMM's token by `redeem_lp`. None of it is dollars.
+const formatAmm = (value: number) => formatAmmAmount(value);
 
 const formatBigint = (value: bigint, decimals: number, digits = 4) => {
   return Number(formatUnits(value, decimals)).toLocaleString(undefined, {
@@ -78,7 +81,7 @@ export const Portfolio = () => {
               {t("portfolio.totalValue")}
             </p>
             <p className="text-2xl font-mono font-semibold text-ink">
-              {formatUsd(totalPortfolioValue)}
+              {formatAmm(totalPortfolioValue)}
             </p>
           </div>
         </div>
@@ -89,13 +92,13 @@ export const Portfolio = () => {
               {t("portfolio.activePositionValue")}
             </p>
             <p className="mt-1 text-base font-mono font-semibold text-ink">
-              {formatUsd(totalPositionValue)}
+              {formatAmm(totalPositionValue)}
             </p>
           </div>
           <div className="border border-rule bg-inset p-4">
             <p className="text-xs text-muted">{t("portfolio.lpFloorValue")}</p>
             <p className="mt-1 text-base font-mono font-semibold text-ink">
-              {formatUsd(totalLPValueNumber)}
+              {formatAmm(totalLPValueNumber)}
             </p>
           </div>
           <div className="border border-rule bg-inset p-4">
@@ -171,7 +174,7 @@ export const Portfolio = () => {
                         {t("portfolio.estimatedValue")}
                       </p>
                       <p className="text-sm font-mono font-semibold text-ink">
-                        {formatUsd(position.value)}
+                        {formatAmm(position.value)}
                       </p>
                     </div>
                   </div>
