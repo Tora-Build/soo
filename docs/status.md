@@ -80,7 +80,7 @@ solana program deploy target/deploy/sooth_amm.so \
 once the payer has ~3 SOL again will land the program at the expected ID
 with no further code changes.
 
-Singleton bootstrap (`apps/demo/scripts/seed-devnet.mjs`) is complete:
+Singleton bootstrap (`apps/demo/scripts/seed-localnet.mjs`, which seeds any cluster via `SOLANA_RPC_URL`) is complete:
 
 - `ProtocolConfig` PDA: `5zeukhATu775fSK7tbewDrDvSy9DNkAuXsXLPZrGAeZ8`
 - `fee_pool_vault`: `BvoFfmXcEEaKHKzPNTmSbmzBfAWWDoFW197F3BfuEyiZ`

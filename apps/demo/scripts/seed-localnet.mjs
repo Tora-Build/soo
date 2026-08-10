@@ -111,6 +111,7 @@ const {
   deriveAmmStatePda,
   deriveFeePoolAuthorityPda,
   feePoolAmmPda,
+  feePoolBookPda,
   deriveFeePoolVaultAta,
   deriveLockAuthorityPda,
   deriveLockVaultAta,
@@ -185,10 +186,19 @@ const USDC_MINT_DEVNET = new PublicKey(
   "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX",
 );
 
+// The AMM venue's token, mirroring `AMM_TOKEN_MINT` in the program's
+// constants.rs. Pinned by `address = ...` constraints on every AMM account, so
+// a mismatch is a hard transaction failure rather than a display bug — this and
+// the Rust constant must move together.
+const AMM_MINT_DEVNET = new PublicKey(
+  "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu",
+);
+
 const MINT_AUTHORITY_PATH = resolve(LOCALNET_DIR, "mint-authority.json");
 const USER_KEYPAIR_PATH = resolve(LOCALNET_DIR, "user-keypair.json");
 const CREATOR_KEYPAIR_PATH = resolve(LOCALNET_DIR, "creator-keypair.json");
 const USDC_MINT_DUMP_PATH = resolve(LOCALNET_DIR, "usdc-mint-account.json");
+const AMM_MINT_DUMP_PATH = resolve(LOCALNET_DIR, "amm-mint-account.json");
 const LOCALNET_ENV_PATH = resolve(LOCALNET_DIR, ".env.local");
 const ENV_LOCAL_PATH = resolve(DEMO_ROOT, ".env.local");
 
@@ -349,8 +359,12 @@ async function prepare() {
   // and works in every case.
   const lamports = 10 * LAMPORTS_PER_SOL;
 
-  const dump = {
-    pubkey: USDC_MINT_DEVNET.toBase58(),
+  // One dump per venue token. Both are pinned by `address = ...` constraints,
+  // so a market cannot be created unless BOTH exist at exactly those keys —
+  // preloading only USDC fails at create_market with a constraint error that
+  // says nothing about a missing mint.
+  const dumpFor = (mint) => ({
+    pubkey: mint.toBase58(),
     account: {
       lamports,
       data: [data.toString("base64"), "base64"],
@@ -359,11 +373,13 @@ async function prepare() {
       rentEpoch: 0,
       space: MINT_SIZE,
     },
-  };
-  writeFileSync(USDC_MINT_DUMP_PATH, JSON.stringify(dump, null, 2));
-  log(`wrote usdc mint dump: ${USDC_MINT_DUMP_PATH}`);
-  log(`  pubkey: ${USDC_MINT_DEVNET.toBase58()}`);
-  log(`  authority: ${mintAuthority.publicKey.toBase58()}`);
+  });
+  writeFileSync(USDC_MINT_DUMP_PATH, JSON.stringify(dumpFor(USDC_MINT_DEVNET), null, 2));
+  writeFileSync(AMM_MINT_DUMP_PATH, JSON.stringify(dumpFor(AMM_MINT_DEVNET), null, 2));
+  log(`wrote mint dumps (shared authority):`);
+  log(`  book (USDC): ${USDC_MINT_DEVNET.toBase58()} -> ${USDC_MINT_DUMP_PATH}`);
+  log(`  amm        : ${AMM_MINT_DEVNET.toBase58()} -> ${AMM_MINT_DUMP_PATH}`);
+  log(`  authority  : ${mintAuthority.publicKey.toBase58()}`);
   log(`  decimals: 6`);
 }
 
@@ -392,18 +408,26 @@ async function init() {
     die(`cannot reach validator at ${RPC_URL}: ${e.message ?? e}`);
   }
 
-  const usdcMintAcc = await connection.getAccountInfo(USDC_MINT_DEVNET);
-  if (!usdcMintAcc) {
-    die(
-      `USDC mint not present at ${USDC_MINT_DEVNET.toBase58()} — did you boot the validator with --account?`,
-    );
+  // Both venue mints must exist BEFORE create_market: each is pinned by an
+  // `address = ...` constraint, and a missing one fails with a constraint
+  // error that never mentions a mint. Checking here names the actual problem.
+  for (const [label, mint] of [
+    ["book (USDC)", USDC_MINT_DEVNET],
+    ["amm", AMM_MINT_DEVNET],
+  ]) {
+    const acc = await connection.getAccountInfo(mint);
+    if (!acc) {
+      die(
+        `${label} mint not present at ${mint.toBase58()} — did you boot the validator with --account for BOTH mints? (localnet-up.sh passes two)`,
+      );
+    }
+    if (!acc.owner.equals(TOKEN_PROGRAM_ID)) {
+      die(
+        `${label} mint at ${mint.toBase58()} is owned by ${acc.owner.toBase58()}, expected SPL Token program`,
+      );
+    }
+    log(`${label} mint preloaded: OK`);
   }
-  if (!usdcMintAcc.owner.equals(TOKEN_PROGRAM_ID)) {
-    die(
-      `USDC mint at ${USDC_MINT_DEVNET.toBase58()} is owned by ${usdcMintAcc.owner.toBase58()}, expected SPL Token program`,
-    );
-  }
-  log(`USDC mint preloaded: OK`);
 
   // ─── Airdrop SOL to creator + user + mintAuthority ─────────────────────
   for (const [name, kp] of [
@@ -508,6 +532,43 @@ async function init() {
   await sendAndConfirmTransaction(connection, treasuryAtaTx, [creator]);
   log(`creator treasury USDC ATA: ${creatorTreasuryAta.toBase58()}`);
 
+  // ─── Fund both venue tokens ───────────────────────────────────────────
+  //
+  // The AMM prices in its own token and the book in USDC, so a wallet holding
+  // only one can trade only one. The creator needs AMM tokens specifically:
+  // `seed_lp` posts the LMSR subsidy in the AMM's mint.
+  for (const [who, kp, amount] of [
+    ["user", user, 1_000_000_000n],
+    ["creator", creator, 10_000_000_000n],
+  ]) {
+    const ata = getAssociatedTokenAddressSync(AMM_MINT_DEVNET, kp.publicKey);
+    await sendAndConfirmTransaction(
+      connection,
+      new Transaction().add(
+        createAssociatedTokenAccountIdempotentInstruction(
+          creator.publicKey,
+          ata,
+          kp.publicKey,
+          AMM_MINT_DEVNET,
+        ),
+      ),
+      [creator],
+    );
+    await sendAndConfirmTransaction(
+      connection,
+      new Transaction().add(
+        createMintToInstruction(
+          AMM_MINT_DEVNET,
+          ata,
+          mintAuthority.publicKey,
+          amount,
+        ),
+      ),
+      [mintAuthority],
+    );
+    log(`minted ${Number(amount) / 1e6} AMM tokens to ${who}`);
+  }
+
   // ─── Build Anchor providers + create market ───────────────────────────
   const wallet = {
     publicKey: creator.publicKey,
@@ -538,10 +599,11 @@ async function init() {
   const [marketPda] = deriveMarketPda(marketId, PROGRAMS);
   const [vaultAuthority] = deriveVaultAuthorityPda(marketId, PROGRAMS);
   const [lockAuthority] = deriveLockAuthorityPda(marketId, PROGRAMS);
-  const [yesMint] = deriveYesMintPda(marketId, PROGRAMS);
-  const [noMint] = deriveNoMintPda(marketId, PROGRAMS);
-  const vault = deriveMarketVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
-  const lockVault = deriveLockVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
+  const vaultBook = deriveMarketVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
+  const vaultAmm = deriveMarketVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);
+  // The sell-lock escrow follows the AMM's token: only the AMM sells on a
+  // cooldown.
+  const lockVault = deriveLockVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);
   const [ammStatePda] = deriveAmmStatePda(marketId, PROGRAMS);
   const [configPda] = deriveProtocolConfigPda(PROGRAMS);
 
@@ -704,11 +766,11 @@ async function init() {
       config: configPda,
       market: marketPda,
       vaultAuthority,
-      yesMint,
-      noMint,
       lockAuthority,
-      usdcMint: USDC_MINT_DEVNET,
-      vault,
+      bookMint: USDC_MINT_DEVNET,
+      ammMint: AMM_MINT_DEVNET,
+      vaultBook,
+      vaultAmm,
       lockVault,
       ammState: ammStatePda,
       creator: creator.publicKey,
@@ -820,9 +882,12 @@ async function init() {
         // seed_lp now transfers the LMSR subsidy (b*ln 2) into the market
         // vault — before bug B0 was fixed it recorded seed_deposit_wad and
         // moved nothing, leaving the vault unable to pay winners.
-        marketVault: vault,
-        creatorUsdcAta,
-        usdcMint: USDC_MINT_DEVNET,
+        marketVault: vaultAmm,
+        creatorAmmAta: getAssociatedTokenAddressSync(
+          AMM_MINT_DEVNET,
+          creator.publicKey,
+        ),
+        ammMint: AMM_MINT_DEVNET,
         creator: creator.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -851,8 +916,10 @@ async function init() {
       .accounts({
         market: marketPda,
         feePoolAuthority: feePoolAuthorityPda,
-        usdcMint: USDC_MINT_DEVNET,
-        marketFeePool: feePoolAmmPdaAddr,
+        bookMint: USDC_MINT_DEVNET,
+        ammMint: AMM_MINT_DEVNET,
+        feePoolBook: feePoolBookPda(marketId, PROGRAMS)[0],
+        feePoolAmm: feePoolAmmPdaAddr,
         signer: creator.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,

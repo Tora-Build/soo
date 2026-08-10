@@ -216,9 +216,10 @@ interface ResolvedMarket {
   creator: PublicKey;
   adjudicator: PublicKey;
   questionHash: Uint8Array; // 32 bytes (raw — we don't have the original question on-chain)
-  yesMint: PublicKey;
-  noMint: PublicKey;
-  vault: PublicKey;
+  /** Book-venue collateral vault (`BOOK_TOKEN_MINT`). */
+  vaultBook: PublicKey;
+  /** AMM-venue collateral vault (`AMM_TOKEN_MINT`). */
+  vaultAmm: PublicKey;
   startTime: bigint;
   deadline: bigint;
   lifecycle: "Initializing" | "Open" | "Locked" | "Settled";
@@ -2856,9 +2857,8 @@ export class SolanaChainAdapter implements ChainAdapter {
       creator: raw.creator,
       adjudicator: raw.adjudicator,
       questionHash: new Uint8Array(raw.questionHash),
-      yesMint: raw.yesMint,
-      noMint: raw.noMint,
-      vault: raw.vault,
+      vaultBook: raw.vaultBook,
+      vaultAmm: raw.vaultAmm,
       startTime: BigInt(raw.startTime.toString()),
       deadline: BigInt(raw.deadline.toString()),
       lifecycle: lifecycleName(raw.lifecycle),

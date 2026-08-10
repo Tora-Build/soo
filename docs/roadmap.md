@@ -15,7 +15,7 @@ The dapp works locally end-to-end with 19/19 Playwright e2e specs green on a fre
      --keypair apps/demo/.deploy-payer.json --use-rpc --url devnet
    ```
 
-   Then `node apps/demo/scripts/seed-devnet.mjs --keypair apps/demo/.deploy-payer.json --with-market` to seed the demo market.
+   Then `bash apps/demo/scripts/seed-fixture.sh` (with `SOLANA_RPC_URL`/`SOLANA_WS_URL` set for a remote cluster) to seed the demo markets.
 
 3. **Build the standalone Solana indexer.** P3 is resolved: do not widen the EVM Ponder `chainId` model. Keep the Solana indexer decoupled, with the existing `solanaMainnet` / `solanaDevnet` / `solanaLocalnet` status shape ready for integration.
 4. **Performance / observability.** Measure retry rate during devnet validation and keep it under the P5 target of <5%. No structured Solana indexer integration exists yet, so broader user testing should include RPC fallback behavior and indexer-lag reporting.
