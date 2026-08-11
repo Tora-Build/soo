@@ -12,6 +12,7 @@
  * toggle swaps the drawer's body in place instead of navigating away.
  * Standalone page mode (no callback) keeps the original Link navigation.
  */
+import { lookupMarketQuestion } from "../../../lib/market-questions";
 import { useCallback } from "react";
 import { BarChart3 } from "lucide-react";
 import { useWriteContract } from "@/lib/chain-shim";
@@ -188,7 +189,15 @@ export const AMMPageBody = ({
       {/* Context Bar */}
       <TradingContextBar
         question={
-          truth?.question || sqfMeta?.question || sqfMeta?.name || marketAddress
+          // `truth.question` is the on-chain hash, not text, and sqfMeta is
+          // empty for markets without off-chain metadata — so both fall
+          // through and the title used to be the raw address. The local cache
+          // holds what `MarketCreated` emitted, which is the actual question.
+          truth?.question ||
+          sqfMeta?.question ||
+          sqfMeta?.name ||
+          lookupMarketQuestion(marketAddress) ||
+          marketAddress
         }
         address={marketAddress}
         stage={stage}

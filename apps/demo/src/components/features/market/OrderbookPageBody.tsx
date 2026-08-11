@@ -9,6 +9,7 @@
  * that when this body is rendered inside MarketDrawer, the AMM/Orderbook
  * toggle swaps the drawer's body in place instead of navigating away.
  */
+import { lookupMarketQuestion } from "../../../lib/market-questions";
 import { useContext, useMemo, useState } from "react";
 import { keccak256, encodePacked } from "@/lib/chain-shim";
 
@@ -102,7 +103,15 @@ export const OrderbookPageBody = ({
     <div className="bg-canvas flex flex-col gap-1">
       <TradingContextBar
         question={
-          truth?.question || sqfMeta?.question || sqfMeta?.name || marketAddress
+          // `truth.question` is the on-chain hash, not text, and sqfMeta is
+          // empty for markets without off-chain metadata — so both fall
+          // through and the title used to be the raw address. The local cache
+          // holds what `MarketCreated` emitted, which is the actual question.
+          truth?.question ||
+          sqfMeta?.question ||
+          sqfMeta?.name ||
+          lookupMarketQuestion(marketAddress) ||
+          marketAddress
         }
         address={marketAddress}
         stage={stage}
