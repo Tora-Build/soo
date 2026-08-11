@@ -339,12 +339,24 @@ export async function dispatchAmmRead(
         // the projection rows render as $0.
         const seedWad = (snap.market.b * LN2_WAD) / WAD;
         const creatorDeposit = seedWad / WAD_TO_USDC_SCALAR;
+        // `graduatedAt` as a SENTINEL, not a timestamp.
+        //
+        // Upstream only ever asks `graduatedAt > 0n`, and `AmmState` records
+        // graduation as a bool with no time attached — so 1n means "yes" and
+        // 0n means "no", which is exactly the information that exists.
+        //
+        // This was hardcoded 0n, which made `useLaunchpadMarketDirect`
+        // report EVERY market as still bonding no matter what the chain said.
+        // A graduated market therefore rendered the "BONDING" badge and the
+        // AMM's 5% fee rate while its orderbook tab was open next to it —
+        // the page contradicted itself, and the fee shown was not the fee
+        // being charged.
         return [
           synthCreator,
           synthCreator,
           snap.market.b,
           creatorDeposit,
-          0n,
+          snap.market.isGraduated ? 1n : 0n,
         ] as const;
       } catch {
         return [

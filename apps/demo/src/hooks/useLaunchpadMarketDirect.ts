@@ -1,3 +1,4 @@
+import { lookupMarketQuestion } from "../lib/market-questions";
 import { useChainStore } from "../store/useChainStore";
 import { useDeployments, getAllDeploymentsForChain } from "./useDeployments";
 import { ABIS, ERC20_ABI } from "../config/abis";
@@ -199,7 +200,15 @@ export function useLaunchpadMarketDirect(marketAddress: Address | undefined) {
       const createdAt = 0n;
 
       const marketSymbol = shortenAddress(marketAddress!);
-      const marketName = marketSymbol;
+      // The market's question, not its address.
+      //
+      // `Market` stores only `question_hash`; the text is emitted in
+      // `MarketCreated` and cached locally once recovered, so this is a cheap
+      // read of what the list already resolved. Falls back to the shortened
+      // address for markets created before the event carried the question —
+      // those genuinely have no recoverable title.
+      const marketName =
+        lookupMarketQuestion(marketAddress) || marketSymbol;
 
       // Fee bps + graduation progress live on FeeRouter, NOT LaunchpadEngine
       // (see BUG-003). Calling them on LaunchpadEngine reverts and wastes
