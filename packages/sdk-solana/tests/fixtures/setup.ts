@@ -19,6 +19,7 @@
 //   non-bypass setAccount we keep, because it's a fixture (devnet USDC isn't
 //   on LiteSVM) rather than a workaround for a missing on-chain feature.
 
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,6 +99,13 @@ export interface SmokeContext {
   marketId: Uint8Array;
   marketPda: PublicKey;
   ammStatePda: PublicKey;
+}
+
+/** Question used by the smoke fixture; hashed to satisfy `create_market`. */
+const SMOKE_QUESTION = "Will the smoke fixture resolve YES?";
+
+function sha256Bytes(text: string): Uint8Array {
+  return new Uint8Array(createHash("sha256").update(text, "utf8").digest());
 }
 
 export interface SmokeOptions {
@@ -368,7 +376,10 @@ export async function bootSmoke(
         await (coreProgram.methods as any)
           .createMarket({
             marketId: Array.from(marketId),
-            questionHash: Array(32).fill(0),
+            // The program verifies `sha256(question) == question_hash` before
+            // emitting the text, so a zeroed hash no longer passes.
+            question: SMOKE_QUESTION,
+            questionHash: Array.from(sha256Bytes(SMOKE_QUESTION)),
             startTime: new BN(startTime),
             deadline: new BN(deadline),
             adjudicator: creator.publicKey,

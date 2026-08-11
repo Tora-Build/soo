@@ -70,6 +70,30 @@ export async function dispatchPortfolioRead(
       return BigInt(allKnownMarketRefs(ctx).length);
     }
 
+    case "marketQuestion": {
+      // The question, recovered from the market's creation transaction.
+      //
+      // Not an EVM method — there is no upstream equivalent, because on EVM
+      // the question lives in contract storage. Here it exists only in the
+      // `MarketCreated` event, so reading it means walking to the oldest
+      // signature on the PDA and decoding the log. That is a real cost, which
+      // is why callers cache the result and ask only when they have nothing.
+      // `pickMarketRef` is the resolver the other market-PDA reads use: it
+      // handles the address slot as well as args, which is how
+      // `useOnChainMarkets` sends this one.
+      const marketRef = pickMarketRef(call, ctx);
+      if (!marketRef) return "";
+      try {
+        return (await ctx.adapter.readMarketQuestion(marketRef)) ?? "";
+      } catch {
+        // A market created before the event carried the question, or an
+        // unreadable history. Empty string means "unknown", and the caller
+        // falls back to the address — the state this whole path improves on,
+        // not a regression.
+        return "";
+      }
+    }
+
     case "isGraduated": {
       // Reads the real AmmState flag.
       //

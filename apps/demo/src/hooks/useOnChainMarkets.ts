@@ -1,4 +1,7 @@
-import { lookupMarketQuestion } from "../lib/market-questions";
+import {
+  lookupMarketQuestion,
+  rememberMarketQuestion,
+} from "../lib/market-questions";
 import { useChainStore } from "../store/useChainStore";
 import { useDeployments } from "./useDeployments";
 import { ABIS } from "../config/abis";
@@ -204,10 +207,35 @@ export function useOnChainMarkets() {
               // is off by default here; the local store then covers markets
               // this browser created; `symbol` (a shortened address) is the
               // last resort and is what every market showed before.
+              // Order matters. The indexer is authoritative when present but
+              // is off by default here; the local store then covers markets
+              // this browser created; `symbol` (a shortened address) is the
+              // last resort and is what every market showed before.
               let question =
                 indexerMarket?.name ||
                 lookupMarketQuestion(marketAddress) ||
                 symbol;
+
+              // Still nameless? Recover it from the creation transaction —
+              // the `MarketCreated` event is the only on-chain copy, and this
+              // is what makes a market created on another device or by
+              // another person show its actual question here.
+              //
+              // Cached into the same local store on the way through, because
+              // the read walks the PDA's signature history and is far too
+              // expensive to repeat on every poll.
+              if (question === symbol) {
+                const fromChain = await readContractSafe<string>(client, {
+                  address: marketAddress as Address,
+                  abi: ABIS.TruthMarket,
+                  functionName: "marketQuestion",
+                  args: [marketAddress],
+                }).catch(() => "");
+                if (fromChain && fromChain.trim()) {
+                  question = fromChain;
+                  rememberMarketQuestion(marketAddress, fromChain);
+                }
+              }
               let isSettled = false;
               let isFinalized = false;
               const isDismissed = false; // dismiss removed in v0.1.2

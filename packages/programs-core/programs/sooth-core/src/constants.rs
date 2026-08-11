@@ -184,3 +184,12 @@ pub const PROTOCOL_CONFIG_TOTAL_LEN: usize =
 const _: () = assert!(POSITION_TOTAL_LEN == 153);
 const _: () = assert!(LOCK_ENTRY_TOTAL_LEN == 129);
 const _: () = assert!(PROTOCOL_CONFIG_TOTAL_LEN == 165);
+
+/// Longest question `create_market` will accept, in bytes.
+///
+/// The text rides in the instruction and again in `MarketCreated`, so it is
+/// bounded twice over: to keep the transaction inside its size limit, and to
+/// keep the event small enough that a client can read it back off the
+/// creation transaction. 300 bytes comfortably fits the phrasing real
+/// prediction markets use.
+pub const MAX_QUESTION_LEN: usize = 300;

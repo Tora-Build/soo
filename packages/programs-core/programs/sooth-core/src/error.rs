@@ -216,4 +216,8 @@ pub enum SoothCoreError {
 
     #[msg("Requested book capacity exceeds the per-instruction realloc limit")]
     BookCapacityTooLarge,
+    #[msg("Question is empty or exceeds the maximum length")]
+    InvalidQuestion,
+    #[msg("question_hash is not the hash of the supplied question")]
+    QuestionHashMismatch,
 }

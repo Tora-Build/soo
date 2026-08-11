@@ -118,6 +118,13 @@ pub struct LockClaimed {
 /// after the four instruction legs land (architecture §4.1).
 #[event]
 pub struct MarketCreated {
+    /// The question in full — the ONLY place it exists on chain.
+    ///
+    /// `Market` stores just `question_hash`, so without this a client has no
+    /// way to render what a market asked short of running an indexer that
+    /// captured it off-chain at creation time. `create_market` proves this
+    /// text hashes to the stored hash before emitting.
+    pub question: String,
     pub market: Pubkey,
     pub creator: Pubkey,
     pub adjudicator: Pubkey,

@@ -13,6 +13,9 @@ use anchor_lang::Discriminator;
 use anchor_spl::associated_token::{self, AssociatedToken, Create};
 use anchor_spl::token::{self, InitializeMint, Mint, Token};
 
+use anchor_lang::solana_program::hash::hash;
+
+use crate::constants::MAX_QUESTION_LEN;
 use crate::error::SoothCoreError;
 use crate::events::MarketCreated;
 use crate::state::{AmmState, Market, MarketLifecycle, ProtocolConfig};
@@ -20,6 +23,19 @@ use crate::state::{AmmState, Market, MarketLifecycle, ProtocolConfig};
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct CreateMarketArgs {
     pub market_id: [u8; 16],
+    /// The question, in full.
+    ///
+    /// Only its hash is stored — `Market` keeps 32 bytes and the text is not
+    /// persisted anywhere on chain. But it IS emitted in `MarketCreated`, so a
+    /// client can recover it from the creation transaction without an indexer.
+    /// Before that event was carried, the words a market asked existed nowhere
+    /// retrievable and every market rendered as its own address.
+    ///
+    /// Verified against `question_hash` below, which is what makes the event
+    /// trustworthy: without the check, a creator could store the hash of one
+    /// question and broadcast the text of another, and nothing downstream
+    /// could tell.
+    pub question: String,
     pub question_hash: [u8; 32],
     pub start_time: i64,
     pub deadline: i64,
@@ -114,6 +130,20 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
         args.adjudicator != Pubkey::default(),
         SoothCoreError::AdjudicatorIsDefault
     );
+    // Bounded so the instruction cannot be used to push arbitrary data
+    // through the transaction, and so `MarketCreated` stays inside the log
+    // size a client can actually read back.
+    require!(
+        !args.question.is_empty() && args.question.len() <= MAX_QUESTION_LEN,
+        SoothCoreError::InvalidQuestion
+    );
+    // The stored hash must be the hash of the emitted text. This is the whole
+    // basis on which a reader may trust the event.
+    require!(
+        hash(args.question.as_bytes()).to_bytes() == args.question_hash,
+        SoothCoreError::QuestionHashMismatch
+    );
+
     require!(args.initial_b > 0, SoothCoreError::InvalidLiquidity);
     require!(
         args.initial_b <= i128::MAX as u128,
@@ -274,6 +304,7 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
 
     let now = Clock::get()?.unix_timestamp;
     emit!(MarketCreated {
+        question: args.question.clone(),
         market: ctx.accounts.market.key(),
         creator: creator_key,
         adjudicator: args.adjudicator,

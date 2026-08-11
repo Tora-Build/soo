@@ -42,6 +42,7 @@
 //
 // No emojis in script output (project rule).
 
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -798,6 +799,13 @@ async function init() {
   const demoAdjudicator = creator.publicKey;
   // `addAdjudicator` is gone with the allowlist; nothing to allow-list.
 
+  // Overridable so `seed-fixture.sh` can give its two markets distinct
+  // questions — with the text now on chain, seeded markets are no longer
+  // indistinguishable base58 in the UI.
+  const seedQuestion =
+    process.env.SEED_QUESTION ??
+    `Sooth demo market ${marketPda.toBase58().slice(0, 8)} — will YES resolve?`;
+
   log(`creating market PDA ${marketPda.toBase58()}...`);
 
   // ─── create_market (one-shot) ────────────────────────────────────────
@@ -816,7 +824,12 @@ async function init() {
   await launchpadProgram.methods
     .createMarket({
       marketId: Array.from(marketId),
-      questionHash: Array(32).fill(0),
+      // `create_market` proves sha256(question) == question_hash and emits the
+      // text in `MarketCreated`, which is the only place it exists on chain.
+      question: seedQuestion,
+      questionHash: Array.from(
+        createHash("sha256").update(seedQuestion, "utf8").digest(),
+      ),
       startTime: new BN(startTime),
       deadline: new BN(deadline),
       adjudicator: demoAdjudicator,

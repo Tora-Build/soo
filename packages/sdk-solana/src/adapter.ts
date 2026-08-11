@@ -485,6 +485,9 @@ function deriveBookAuthorisedOperatorsPda(
   );
 }
 
+/** Mirrors `MAX_QUESTION_LEN` in the program's `constants.rs`. */
+const MAX_QUESTION_LEN = 300;
+
 export class SolanaChainAdapter implements ChainAdapter {
   readonly node: SoothNode;
   readonly chainKind = "solana" as const;
@@ -2333,6 +2336,93 @@ export class SolanaChainAdapter implements ChainAdapter {
    * not an index, and the cost is one `getTransaction` per signature. Callers
    * wanting deep history need a real indexer.
    */
+  /**
+   * The question a market asked, recovered from its creation transaction.
+   *
+   * `Market` stores only `question_hash`, so the text lives in exactly one
+   * place on chain: the `MarketCreated` event emitted at creation, which the
+   * program only emits after proving the text hashes to the stored hash. That
+   * makes this trustworthy without an indexer — but it is a transaction-history
+   * read, not an index, so it is worth understanding the cost before calling it
+   * in a loop.
+   *
+   * Creation is the OLDEST signature on the market PDA, and
+   * `getSignaturesForAddress` pages newest-first, so a busy market means
+   * walking back through its history. Bounded by `maxPages`; a market with more
+   * traffic than that returns undefined rather than a wrong answer, and the
+   * caller should cache what it finds.
+   *
+   * Returns undefined for markets created before the event carried the
+   * question — those are not recoverable at all, which is the reason the field
+   * was added.
+   */
+  async readMarketQuestion(
+    market: MarketRef,
+    opts?: { maxPages?: number },
+  ): Promise<string | undefined> {
+    const marketPda = decodePubkeyRef(market);
+    const maxPages = opts?.maxPages ?? 5;
+    // The stored hash, used below to verify whatever the event decodes to.
+    const resolved = await this.fetchMarket(marketPda);
+
+    // Walk to the oldest signature on the account.
+    let before: string | undefined;
+    let oldest: string | undefined;
+    for (let page = 0; page < maxPages; page++) {
+      const sigs = await this.connection.getSignaturesForAddress(marketPda, {
+        limit: 1000,
+        before,
+      });
+      if (sigs.length === 0) break;
+      oldest = sigs[sigs.length - 1].signature;
+      if (sigs.length < 1000) break; // reached the beginning
+      before = oldest;
+      if (page === maxPages - 1) return undefined; // deeper than we will walk
+    }
+    if (!oldest) return undefined;
+
+    const tx = await this.connection.getTransaction(oldest, {
+      maxSupportedTransactionVersion: 0,
+      commitment: "confirmed",
+    });
+    const logs = tx?.meta?.logMessages;
+    if (!logs) return undefined;
+
+    // `emit!` writes the event as base64 on a "Program data:" log line.
+    for (const line of logs) {
+      const m = line.match(/^Program data: (.+)$/);
+      if (!m) continue;
+      try {
+        const decoded = (this.program as { coder: { events: { decode(s: string): { name: string; data: Record<string, unknown> } | null } } })
+          .coder.events.decode(m[1]);
+        if (!decoded) continue;
+        if (!/^marketCreated$/i.test(decoded.name)) continue;
+        const q = decoded.data.question;
+        if (typeof q !== "string" || !q.trim()) continue;
+        // Prove it before returning it.
+        //
+        // A market created BEFORE the event carried a question emits the old
+        // layout, and decoding those bytes against the current schema does not
+        // fail — it reads the length prefix out of what used to be `market:
+        // Pubkey` and hands back binary garbage that is still a `string`.
+        // Rendering that as a title is worse than rendering the address, and
+        // caching it is worse again.
+        //
+        // The program guarantees `sha256(question) == question_hash`, so the
+        // stored hash is an independent witness: recompute and compare. Old
+        // events fail this and return undefined, which is the honest answer.
+        const digest = await sha256(q);
+        if (Buffer.from(digest).equals(Buffer.from(resolved.questionHash))) {
+          return q;
+        }
+      } catch {
+        // A log line that is not one of our events, or an older event shape.
+        // Neither is an error — keep scanning.
+      }
+    }
+    return undefined;
+  }
+
   async readBookHistory(
     market: MarketRef,
     opts?: { limit?: number },
@@ -2403,7 +2493,27 @@ export class SolanaChainAdapter implements ChainAdapter {
         msg: `buildCreateMarket: marketId must be 16 bytes, got ${marketId.length}`,
       });
     }
-    const questionHash = args.questionHash ?? (await sha256(args.question));
+    // The program now takes the question TEXT and proves it hashes to
+    // `question_hash` before emitting it in `MarketCreated`. That event is the
+    // only place the words exist on chain, so a caller that supplies a bare
+    // hash and no text would create a market nobody can ever render.
+    if (!args.question || !args.question.trim()) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: "buildCreateMarket: question text is required — the program verifies it against questionHash and emits it, and without it the market has no recoverable title",
+      });
+    }
+    const question = args.question.trim();
+    const questionBytes = new TextEncoder().encode(question).length;
+    if (questionBytes > MAX_QUESTION_LEN) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildCreateMarket: question is ${questionBytes} bytes, max ${MAX_QUESTION_LEN}`,
+      });
+    }
+    // Derived from the text rather than trusted from the caller: the program
+    // rejects a mismatch anyway, and failing here names the cause.
+    const questionHash = await sha256(question);
     if (questionHash.length !== 32) {
       throw new SoothError({
         kind: "ProgramError",
@@ -2451,6 +2561,7 @@ export class SolanaChainAdapter implements ChainAdapter {
     const ix: TransactionInstruction = await (this.program.methods as any)
       .createMarket({
         marketId: Array.from(marketId),
+        question,
         questionHash: Array.from(questionHash),
         startTime: bigIntToBn(startTime),
         deadline: bigIntToBn(args.deadline),

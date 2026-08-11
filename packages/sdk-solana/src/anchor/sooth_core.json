@@ -4563,6 +4563,16 @@
       "code": 6064,
       "name": "BookCapacityTooLarge",
       "msg": "Requested book capacity exceeds the per-instruction realloc limit"
+    },
+    {
+      "code": 6065,
+      "name": "InvalidQuestion",
+      "msg": "Question is empty or exceeds the maximum length"
+    },
+    {
+      "code": 6066,
+      "name": "QuestionHashMismatch",
+      "msg": "question_hash is not the hash of the supplied question"
     }
   ],
   "types": [
@@ -4958,6 +4968,24 @@
                 16
               ]
             }
+          },
+          {
+            "name": "question",
+            "docs": [
+              "The question, in full.",
+              "",
+              "Only its hash is stored — `Market` keeps 32 bytes and the text is not",
+              "persisted anywhere on chain. But it IS emitted in `MarketCreated`, so a",
+              "client can recover it from the creation transaction without an indexer.",
+              "Before that event was carried, the words a market asked existed nowhere",
+              "retrievable and every market rendered as its own address.",
+              "",
+              "Verified against `question_hash` below, which is what makes the event",
+              "trustworthy: without the check, a creator could store the hash of one",
+              "question and broadcast the text of another, and nothing downstream",
+              "could tell."
+            ],
+            "type": "string"
           },
           {
             "name": "question_hash",
@@ -5598,6 +5626,18 @@
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "question",
+            "docs": [
+              "The question in full — the ONLY place it exists on chain.",
+              "",
+              "`Market` stores just `question_hash`, so without this a client has no",
+              "way to render what a market asked short of running an indexer that",
+              "captured it off-chain at creation time. `create_market` proves this",
+              "text hashes to the stored hash before emitting."
+            ],
+            "type": "string"
+          },
           {
             "name": "market",
             "type": "pubkey"
