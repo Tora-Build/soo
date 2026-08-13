@@ -43,7 +43,7 @@ use crate::error::SoothCoreError;
 use crate::events::Redeemed;
 use crate::math::wad_to_base;
 use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
-use crate::state::{Market, Position};
+use crate::state::{AmmState, Market, Position};
 
 #[derive(Accounts)]
 pub struct RedeemAmmPosition<'info> {
@@ -52,6 +52,18 @@ pub struct RedeemAmmPosition<'info> {
         bump = market.bump,
     )]
     pub market: Box<Account<'info, Market>>,
+
+    /// Decremented as shares are redeemed, so `q_<side> - seed_q_<side>`
+    /// always equals the winning shares still unclaimed. `sweep_residual`
+    /// gates on that difference reaching zero — without this bookkeeping the
+    /// vault's post-settlement surplus is indistinguishable from money still
+    /// owed to a slow claimant, and could never be swept.
+    #[account(
+        mut,
+        seeds = [b"amm", market.market_id.as_ref()],
+        bump = amm_state.bump,
+    )]
+    pub amm_state: Box<Account<'info, AmmState>>,
 
     /// CHECK: derived via seeds; signs the vault outflow.
     #[account(
@@ -122,6 +134,19 @@ pub fn handler(ctx: Context<RedeemAmmPosition>) -> Result<()> {
     // than a second payout. (The account survives, so it IS callable again.)
     ctx.accounts.position.yes_shares = 0;
     ctx.accounts.position.no_shares = 0;
+
+    // Retire the redeemed shares from the outstanding count. `q = seed + Σ
+    // positions` is the standing invariant, so an underflow here would mean a
+    // position existed that q never counted — fail loud rather than mask it.
+    let amm = &mut ctx.accounts.amm_state;
+    amm.q_yes = amm
+        .q_yes
+        .checked_sub(yes_shares_i)
+        .ok_or(error!(SoothCoreError::MathOverflow))?;
+    amm.q_no = amm
+        .q_no
+        .checked_sub(no_shares_i)
+        .ok_or(error!(SoothCoreError::MathOverflow))?;
 
     if usdc_payout > 0 {
         let market_id = ctx.accounts.market.market_id;

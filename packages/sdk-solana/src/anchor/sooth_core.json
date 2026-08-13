@@ -934,6 +934,264 @@
       "args": []
     },
     {
+      "name": "close_market",
+      "discriminator": [
+        88,
+        154,
+        248,
+        186,
+        48,
+        14,
+        123,
+        244
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "docs": [
+            "program owns it and deserializes it as a `Market` manually. It is",
+            "deliberately NOT `Account<Market>`: Anchor would re-serialize the full",
+            "struct on exit, and this handler shrinks the account to 8 bytes."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "amm_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "book",
+          "docs": [
+            "The book arena, for graduated markets. Optional because a market that",
+            "never graduated never allocated one.",
+            "",
+            "its lamports manually (it is a raw zero-copy account, not an Anchor",
+            "`Account`, so `close =` cannot apply)."
+          ],
+          "writable": true,
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_book",
+          "writable": true
+        },
+        {
+          "name": "vault_amm",
+          "writable": true
+        },
+        {
+          "name": "lock_vault",
+          "writable": true
+        },
+        {
+          "name": "fee_pool_amm",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_pool_book",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lock_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_pool_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "docs": [
+            "The market's creator — verified against the Market account in the",
+            "handler. Signs, and receives every reclaimed lamport."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "market_id",
+          "type": {
+            "array": [
+              "u8",
+              16
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "create_market",
       "discriminator": [
         103,
@@ -2296,6 +2554,34 @@
           ]
         },
         {
+          "name": "amm_state",
+          "docs": [
+            "Decremented as shares are redeemed, so `q_<side> - seed_q_<side>`",
+            "always equals the winning shares still unclaimed. `sweep_residual`",
+            "gates on that difference reaching zero — without this bookkeeping the",
+            "vault's post-settlement surplus is indistinguishable from money still",
+            "owed to a slow claimant, and could never be swept."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
           "name": "vault_authority",
           "pda": {
             "seeds": [
@@ -3488,6 +3774,142 @@
       "args": []
     },
     {
+      "name": "sweep_residual",
+      "discriminator": [
+        230,
+        118,
+        35,
+        155,
+        165,
+        110,
+        141,
+        19
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "amm_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "venue_mint",
+          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
+        },
+        {
+          "name": "vault_amm",
+          "writable": true
+        },
+        {
+          "name": "protocol_treasury_vault",
+          "docs": [
+            "The treasury's account for the AMM's token — owner pinned by config,",
+            "exactly as in `distribute_fees`. The cranker chooses nothing."
+          ],
+          "writable": true
+        },
+        {
+          "name": "cranker",
+          "docs": [
+            "Permissionless, like fee distribution: the residual must not be",
+            "hostage to any one keeper, and every destination above is fixed."
+          ],
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "trade_positions",
       "discriminator": [
         14,
@@ -4030,6 +4452,19 @@
       ]
     },
     {
+      "name": "MarketClosed",
+      "discriminator": [
+        86,
+        91,
+        119,
+        43,
+        94,
+        0,
+        217,
+        113
+      ]
+    },
+    {
       "name": "MarketCreated",
       "discriminator": [
         88,
@@ -4234,6 +4669,19 @@
         4,
         244,
         208,
+        130
+      ]
+    },
+    {
+      "name": "ResidualSwept",
+      "discriminator": [
+        72,
+        205,
+        219,
+        77,
+        249,
+        124,
+        150,
         130
       ]
     }
@@ -4573,6 +5021,31 @@
       "code": 6066,
       "name": "QuestionHashMismatch",
       "msg": "question_hash is not the hash of the supplied question"
+    },
+    {
+      "code": 6067,
+      "name": "MarketNotClosable",
+      "msg": "Market is not in a closeable state"
+    },
+    {
+      "code": 6068,
+      "name": "VaultNotEmpty",
+      "msg": "A vault still holds funds — every claim must be paid before close"
+    },
+    {
+      "code": 6069,
+      "name": "FeePoolNotEmpty",
+      "msg": "A fee pool still holds funds — distribute before close"
+    },
+    {
+      "code": 6070,
+      "name": "BookNotEmpty",
+      "msg": "The book still has live orders or funded seats"
+    },
+    {
+      "code": 6071,
+      "name": "OutstandingClaims",
+      "msg": "Winning shares are still unredeemed — the balance is owed, not residual"
     }
   ],
   "types": [
@@ -5618,6 +6091,43 @@
       }
     },
     {
+      "name": "MarketClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_id",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_rent_reclaimed",
+            "type": "u64"
+          },
+          {
+            "name": "book_rent_reclaimed",
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "MarketCreated",
       "docs": [
         "Mirror of EVM `LaunchpadEngine.MarketCreated`. Emitted by `create_market`",
@@ -6416,6 +6926,35 @@
           {
             "name": "amount_usdc",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ResidualSwept",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_id",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
           }
         ]
       }

@@ -28,8 +28,14 @@ const INSTRUCTIONS_DIR = resolve(
   "../../programs-core/programs/sooth-core/src/instructions",
 );
 
-/** Creates both vaults / both fee pools, so it names both venues by design. */
-const BUILDS_BOTH = new Set(["create_market", "init_market_fee_pool"]);
+/** Creates — or destroys — both venues' accounts, so it names both by design.
+ *  `close_market` is the teardown mirror of `create_market`: it must pin and
+ *  verify every vault and fee pool on both sides before reclaiming them. */
+const BUILDS_BOTH = new Set([
+  "create_market",
+  "init_market_fee_pool",
+  "close_market",
+]);
 
 type Venue = "amm" | "book";
 

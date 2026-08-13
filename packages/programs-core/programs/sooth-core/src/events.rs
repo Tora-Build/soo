@@ -382,3 +382,21 @@ pub struct BookFilled {
     pub fee: u64,
     pub ts: i64,
 }
+
+#[event]
+pub struct ResidualSwept {
+    pub market: Pubkey,
+    pub market_id: [u8; 16],
+    pub amount: u64,
+    pub ts: i64,
+}
+
+#[event]
+pub struct MarketClosed {
+    pub market: Pubkey,
+    pub market_id: [u8; 16],
+    pub creator: Pubkey,
+    pub market_rent_reclaimed: u64,
+    pub book_rent_reclaimed: u64,
+    pub ts: i64,
+}

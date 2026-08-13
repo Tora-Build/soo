@@ -1988,6 +1988,9 @@ export class SolanaChainAdapter implements ChainAdapter {
       .redeemAmmPosition()
       .accounts({
         market: marketPda,
+        // Redeeming now retires the shares from AmmState's outstanding count
+        // — the bookkeeping `sweep_residual` gates on.
+        ammState: deriveAmmStatePda(resolved.marketId, this.programIds)[0],
         vaultAuthority,
         position,
         vault: deriveMarketVaultAta(
@@ -2145,6 +2148,128 @@ export class SolanaChainAdapter implements ChainAdapter {
         ...buildIxMeta(ix, crankerPk),
         preIxs,
         operation: `distributeFees:${args.venue}`,
+      },
+    };
+  }
+
+  /**
+   * Sweep a settled market's unowed AMM surplus to the protocol treasury.
+   *
+   * Only legal once every winning share has been redeemed — the program
+   * checks `q_winner == seed_q_winner`, so calling early fails with
+   * OutstandingClaims rather than taking money a slow claimant is owed.
+   * Permissionless; every destination is pinned by the program.
+   */
+  async buildSweepResidual(
+    market: MarketRef,
+    args: { cranker: AddressRef },
+  ): Promise<TradeRequest> {
+    const crankerPk = decodePubkeyRef(args.cranker);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const [configPda] = deriveProtocolConfigPda(this.programIds);
+    const config = await (this.program.account as any).protocolConfig.fetch(
+      configPda,
+    );
+    const treasuryVault = getAssociatedTokenAddressSync(
+      this.ammMint,
+      config.treasury as PublicKey,
+      true,
+    );
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .sweepResidual()
+      .accounts({
+        config: configPda,
+        market: marketPda,
+        ammState: deriveAmmStatePda(resolved.marketId, this.programIds)[0],
+        vaultAuthority: deriveVaultAuthorityPda(
+          resolved.marketId,
+          this.programIds,
+        )[0],
+        venueMint: this.ammMint,
+        vaultAmm: deriveMarketVaultAta(
+          resolved.marketId,
+          this.ammMint,
+          this.programIds,
+        ),
+        protocolTreasuryVault: treasuryVault,
+        cranker: crankerPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, crankerPk),
+        // The treasury may never have held the AMM token; create its ATA so a
+        // permissionless crank cannot be blocked by a missing account.
+        preIxs: [
+          serializeIx(
+            createAssociatedTokenAccountIdempotentInstruction(
+              crankerPk,
+              treasuryVault,
+              config.treasury as PublicKey,
+              this.ammMint,
+              TOKEN_PROGRAM_ID,
+              ASSOCIATED_TOKEN_PROGRAM_ID,
+            ),
+          ),
+        ],
+        operation: "sweepResidual",
+      },
+    };
+  }
+
+  /**
+   * Close a finished market and reclaim its rent to the creator.
+   *
+   * Fails unless every vault and fee pool is empty and the book (if any) is
+   * inert — the program's preconditions, not this client's. The Market
+   * account itself survives as an 8-byte tombstone so the market_id can never
+   * be re-created; see close_market.rs for why full deletion is an exploit.
+   */
+  async buildCloseMarket(
+    market: MarketRef,
+    args: { creator: AddressRef },
+  ): Promise<TradeRequest> {
+    const creatorPk = decodePubkeyRef(args.creator);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const id = resolved.marketId;
+    const [bookPdaKey] = bookPda(id, this.programIds);
+    // The book account only exists for graduated markets. Anchor's Option
+    // accounts are encoded by passing the program id in the slot when absent.
+    const bookInfo = await this.connection.getAccountInfo(bookPdaKey);
+
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .closeMarket(Array.from(id))
+      .accounts({
+        market: marketPda,
+        ammState: deriveAmmStatePda(id, this.programIds)[0],
+        book: bookInfo ? bookPdaKey : null,
+        vaultBook: deriveMarketVaultAta(id, this.bookMint, this.programIds),
+        vaultAmm: deriveMarketVaultAta(id, this.ammMint, this.programIds),
+        lockVault: deriveLockVaultAta(id, this.ammMint, this.programIds),
+        feePoolAmm: feePoolAmmPda(id, this.programIds)[0],
+        feePoolBook: feePoolBookPda(id, this.programIds)[0],
+        vaultAuthority: deriveVaultAuthorityPda(id, this.programIds)[0],
+        lockAuthority: deriveLockAuthorityPda(id, this.programIds)[0],
+        feePoolAuthority: deriveFeePoolAuthorityPda(this.programIds)[0],
+        creator: creatorPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, creatorPk),
+        operation: "closeMarket",
       },
     };
   }

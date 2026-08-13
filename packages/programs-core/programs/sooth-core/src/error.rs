@@ -220,4 +220,14 @@ pub enum SoothCoreError {
     InvalidQuestion,
     #[msg("question_hash is not the hash of the supplied question")]
     QuestionHashMismatch,
+    #[msg("Market is not in a closeable state")]
+    MarketNotClosable,
+    #[msg("A vault still holds funds — every claim must be paid before close")]
+    VaultNotEmpty,
+    #[msg("A fee pool still holds funds — distribute before close")]
+    FeePoolNotEmpty,
+    #[msg("The book still has live orders or funded seats")]
+    BookNotEmpty,
+    #[msg("Winning shares are still unredeemed — the balance is owed, not residual")]
+    OutstandingClaims,
 }

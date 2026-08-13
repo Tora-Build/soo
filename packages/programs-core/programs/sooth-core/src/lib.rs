@@ -230,6 +230,14 @@ pub mod sooth_core {
         claim_unlocked::handler(ctx)
     }
 
+    pub fn sweep_residual(ctx: Context<SweepResidual>) -> Result<()> {
+        instructions::sweep_residual::handler(ctx)
+    }
+
+    pub fn close_market(ctx: Context<CloseMarket>, market_id: [u8; 16]) -> Result<()> {
+        instructions::close_market::handler(ctx, market_id)
+    }
+
     pub fn dismiss_market(ctx: Context<DismissMarket>) -> Result<()> {
         dismiss_market::handler(ctx)
     }

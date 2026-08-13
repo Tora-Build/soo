@@ -603,6 +603,17 @@ not useful for deciding anything.
 - **No parallelism within a market.** Every trade write-locks the book, so one
   market's throughput is capped by Solana's 12M CU per-account budget however
   many validators are free. `main` has the same limit for a different reason.
+- **A market's life can now END.** `sweep_residual` moves a settled market's
+  provably-unowed AMM surplus to the treasury (gated on every winning share
+  being redeemed — `redeem_amm_position` retires shares from `AmmState.q`, so
+  the gate is exact, not a timeout), and `close_market` reclaims the rent once
+  every vault and fee pool is empty. The Market account survives as an 8-byte
+  tombstone so the market_id can never be re-created — full deletion would
+  resurrect every old Position PDA against a fresh vault. What still cannot be
+  reclaimed: an absent maker's resting escrow, an unclaimed sell-lock, a
+  dismissed market's surplus (no sweep gate exists for refund accounting), and
+  the LP mint (classic SPL mints have no close authority). Each blocks close
+  by design — the money is someone's.
 - **Book LP yield has no claim path.** `distribute_fees_book` credits the LP
   share in USDC, but `redeem_lp` pays only the AMM token. The money is safe — a
   PDA owns it — but it is not withdrawable. Needs a second, book-denominated

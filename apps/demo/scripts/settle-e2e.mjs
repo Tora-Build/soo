@@ -545,6 +545,77 @@ if (!vaultBookAta || !vaultAmmAta) {
   }
 }
 
+// ── 9. end of life: distribute, sweep, close (opt-in: CLOSE=1) ──────────────
+//
+// Only meaningful on a market whose book carries no third-party resting
+// orders (seed with SEED_LADDER=0): close requires every balance at zero, and
+// an absent maker's escrow blocks it — by design, since that escrow is the
+// maker's money.
+if (process.env.CLOSE === "1" && failures.length === 0 && skips.length === 0) {
+  step(9, "distribute fees, sweep residual, close the market");
+  const creatorSigner = signerFor(creator);
+  const creatorRef = `sol:${creator.publicKey.toBase58()}`;
+
+  for (const venue of ["amm", "book"]) {
+    try {
+      await adapter.submit(
+        await adapter.buildDistributeFees(marketRef, {
+          venue, cranker: creatorRef,
+        }),
+        creatorSigner,
+      );
+      log(`  distributed ${venue} fees`);
+    } catch (e) {
+      if (/NothingToDistribute|nothing to distribute/i.test(String(e))) log(`  ${venue} pool empty`);
+      else failures.push(`distribute ${venue}: ${String(e).slice(0, 160)}`);
+    }
+  }
+
+  // The graduation script bought its shares with the creator wallet, and the
+  // sweep gate — correctly — refuses while those winning shares are
+  // unredeemed. This is the gate working, not a nuisance: any wallet's
+  // unclaimed win looks identical to residual on a balance check, and only
+  // the q-accounting can tell them apart.
+  try {
+    await adapter.submit(
+      await adapter.buildRedeemAmmPosition(marketRef, { user: creatorRef }),
+      creatorSigner,
+    );
+    log("  graduation driver redeemed its winning shares");
+  } catch (e) {
+    log(`  driver redeem skipped: ${String(e).slice(0, 100)}`);
+  }
+
+  try {
+    await adapter.submit(
+      await adapter.buildSweepResidual(marketRef, { cranker: creatorRef }),
+      creatorSigner,
+    );
+    log("  residual swept to treasury");
+  } catch (e) {
+    if (/NothingToDistribute|nothing to distribute/i.test(String(e))) log("  no residual to sweep");
+    else failures.push(`sweep: ${String(e).slice(0, 160)}`);
+  }
+
+  try {
+    const lamBefore = await connection.getBalance(creator.publicKey);
+    await adapter.submit(
+      await adapter.buildCloseMarket(marketRef, { creator: creatorRef }),
+      creatorSigner,
+    );
+    const lamAfter = await connection.getBalance(creator.publicKey);
+    const info = await connection.getAccountInfo(marketPda);
+    const tomb =
+      info && info.data.length === 8 &&
+      Buffer.from(info.data).toString() === "MKTCLOSD";
+    log(`  closed: reclaimed ${((lamAfter - lamBefore) / 1e9).toFixed(5)} SOL, tombstone ${tomb ? "in place" : "MISSING"}`);
+    if (!tomb) failures.push("close_market left no tombstone");
+    if (lamAfter <= lamBefore) failures.push("close_market reclaimed nothing");
+  } catch (e) {
+    failures.push(`close_market: ${String(e).slice(0, 200)}`);
+  }
+}
+
 if (failures.length > 0) {
   console.error(`\n[settle-e2e] ${failures.length} FAILURE(S):`);
   for (const f of failures) console.error(`  - ${f}`);
