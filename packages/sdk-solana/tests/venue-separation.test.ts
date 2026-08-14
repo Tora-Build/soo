@@ -35,6 +35,10 @@ const BUILDS_BOTH = new Set([
   "create_market",
   "init_market_fee_pool",
   "close_market",
+  // One burn claims yield from BOTH venues' vaults — paying one and burning
+  // would forfeit the holder's share of the other, so the mixing is the
+  // feature, not a slip.
+  "redeem_lp",
 ]);
 
 type Venue = "amm" | "book";

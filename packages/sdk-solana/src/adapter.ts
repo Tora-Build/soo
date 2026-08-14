@@ -73,6 +73,8 @@ import {
   bookSidePda,
   marketBookPda,
   feePoolAmmPda,
+  lpYieldAmmPda,
+  lpYieldBookPda,
   feePoolBookPda,
   orderbookPositionPda,
   SOOTH_CORE_PROGRAM_ID,
@@ -1622,14 +1624,10 @@ export class SolanaChainAdapter implements ChainAdapter {
     const [lpMint] = deriveLpMintPda(resolved.marketId, this.programIds);
     const userLpAta = deriveUserLpAta(userPk, lpMint);
     const [lpYieldAuthority] = deriveLpYieldAuthority(this.programIds);
-    const lpYieldVault = getAssociatedTokenAddressSync(
-      this.ammMint,
-      lpYieldAuthority,
-      true,
-      TOKEN_PROGRAM_ID,
-      ASSOCIATED_TOKEN_PROGRAM_ID,
-    );
+    const [lpYieldAmm] = lpYieldAmmPda(resolved.marketId, this.programIds);
+    const [lpYieldBook] = lpYieldBookPda(resolved.marketId, this.programIds);
     const userUsdcAta = deriveUserUsdcAta(userPk, this.ammMint);
+    const userBookAta = deriveUserUsdcAta(userPk, this.bookMint);
 
     const ix: TransactionInstruction = await (this.program.methods as any)
       .redeemLp(bigIntToBn(args.lpAmount))
@@ -1642,9 +1640,13 @@ export class SolanaChainAdapter implements ChainAdapter {
         ammState: ammPda,
         lpMint,
         userLpAta,
-        lpYieldVault,
+        // One burn claims BOTH venues' yield — paying one and burning would
+        // forfeit the other, which is why this is a single instruction.
+        lpYieldAmm,
+        lpYieldBook,
         lpYieldAuthority,
         userAmmAta: userUsdcAta,
+        userBookAta,
         user: userPk,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
@@ -1678,9 +1680,9 @@ export class SolanaChainAdapter implements ChainAdapter {
           serializeIx(
             createAssociatedTokenAccountIdempotentInstruction(
               userPk,
-              lpYieldVault,
-              lpYieldAuthority,
-              this.ammMint,
+              userBookAta,
+              userPk,
+              this.bookMint,
               TOKEN_PROGRAM_ID,
               ASSOCIATED_TOKEN_PROGRAM_ID,
             ),
@@ -1688,7 +1690,7 @@ export class SolanaChainAdapter implements ChainAdapter {
         ],
         operation: "redeemLp",
         lpAmountStr: args.lpAmount.toString(),
-        lpYieldVault: lpYieldVault.toBase58(),
+        lpYieldVault: lpYieldAmm.toBase58(),
       },
     };
   }
@@ -2066,11 +2068,9 @@ export class SolanaChainAdapter implements ChainAdapter {
     // not a token account — passing it directly fails with AccountNotInitialized
     // (3012), because a wallet is not an SPL token account. It cannot be one
     // account either way, since the two venues hold different mints.
-    const lpYieldVault = getAssociatedTokenAddressSync(
-      venueMint,
-      lpYieldAuthority,
-      true,
-    );
+    const lpYieldVault = (isAmm
+      ? lpYieldAmmPda(resolved.marketId, this.programIds)
+      : lpYieldBookPda(resolved.marketId, this.programIds))[0];
     const adjudicatorFeeVault = getAssociatedTokenAddressSync(
       venueMint,
       resolved.adjudicator,
@@ -2089,6 +2089,9 @@ export class SolanaChainAdapter implements ChainAdapter {
       venueMint,
       feePool,
       lpYieldAuthority,
+      // Read for supply: a zero-supply LP mint reroutes the LP slice to the
+      // protocol, since no holder exists to ever claim it.
+      lpMint: deriveLpMintPda(resolved.marketId, this.programIds)[0],
       lpYieldVault,
       adjudicatorFeeVault,
       protocolTreasuryVault,
@@ -2105,7 +2108,6 @@ export class SolanaChainAdapter implements ChainAdapter {
     // venue they may never have traded. Idempotent, so it costs nothing once
     // the accounts exist.
     const preIxs = [
-      [lpYieldVault, lpYieldAuthority],
       [adjudicatorFeeVault, resolved.adjudicator],
       [protocolTreasuryVault, config.treasury as PublicKey],
     ].map(([ata, owner]) =>
@@ -2262,9 +2264,12 @@ export class SolanaChainAdapter implements ChainAdapter {
         lockVault: deriveLockVaultAta(id, this.ammMint, this.programIds),
         feePoolAmm: feePoolAmmPda(id, this.programIds)[0],
         feePoolBook: feePoolBookPda(id, this.programIds)[0],
+        lpYieldAmm: lpYieldAmmPda(id, this.programIds)[0],
+        lpYieldBook: lpYieldBookPda(id, this.programIds)[0],
         vaultAuthority: deriveVaultAuthorityPda(id, this.programIds)[0],
         lockAuthority: deriveLockAuthorityPda(id, this.programIds)[0],
         feePoolAuthority: deriveFeePoolAuthorityPda(this.programIds)[0],
+        lpYieldAuthority: deriveLpYieldAuthority(this.programIds)[0],
         creator: creatorPk,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
@@ -3651,6 +3656,15 @@ function buildInitMarketFeePoolIx(args: {
   const [feePoolAmm] = feePoolAmmPda(args.marketId, {
     soothCore: args.coreProgramId,
   });
+  const [lpYieldAuthority] = deriveLpYieldAuthority({
+    soothCore: args.coreProgramId,
+  });
+  const [lpYieldAmm] = lpYieldAmmPda(args.marketId, {
+    soothCore: args.coreProgramId,
+  });
+  const [lpYieldBook] = lpYieldBookPda(args.marketId, {
+    soothCore: args.coreProgramId,
+  });
   return {
     marketFeePool: feePoolAmm,
     ix: new TransactionInstruction({
@@ -3662,6 +3676,12 @@ function buildInitMarketFeePoolIx(args: {
         { pubkey: args.ammMint, isSigner: false, isWritable: false },
         { pubkey: feePoolBook, isSigner: false, isWritable: true },
         { pubkey: feePoolAmm, isSigner: false, isWritable: true },
+        // The per-market LP yield vaults, created alongside the pools since
+        // the global-vault cross-market fix. Hand-rolled key list: order MUST
+        // match the InitMarketFeePool struct.
+        { pubkey: lpYieldAuthority, isSigner: false, isWritable: false },
+        { pubkey: lpYieldAmm, isSigner: false, isWritable: true },
+        { pubkey: lpYieldBook, isSigner: false, isWritable: true },
         { pubkey: args.user, isSigner: true, isWritable: true },
         { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },

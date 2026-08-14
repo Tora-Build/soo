@@ -614,10 +614,11 @@ not useful for deciding anything.
   dismissed market's surplus (no sweep gate exists for refund accounting), and
   the LP mint (classic SPL mints have no close authority). Each blocks close
   by design — the money is someone's.
-- **Book LP yield has no claim path.** `distribute_fees_book` credits the LP
-  share in USDC, but `redeem_lp` pays only the AMM token. The money is safe — a
-  PDA owns it — but it is not withdrawable. Needs a second, book-denominated
-  claim.
+- ~~Book LP yield has no claim path~~ — RESOLVED. `redeem_lp` burns once and
+  pays both venues' yield vaults pro-rata; the vaults are per-market (the
+  global predecessor let one market's LPs claim every market's yield), LP
+  unlocks at graduation OR settlement/dismissal, and fees distributed after
+  the last LP burns fold into the protocol share instead of stranding.
 - **Two balances to fund.** A wallet holding only USDC cannot trade any market
   before graduation (§4a). Every client, fixture and script has to know which
   venue it is touching, and getting it wrong fails on balance rather than on

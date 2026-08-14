@@ -81,10 +81,23 @@ pub struct DistributeFeesAmm<'info> {
     #[account(seeds = [b"lp_yield_authority"], bump)]
     pub lp_yield_authority: UncheckedAccount<'info>,
 
-    /// Same account `redeem_lp` pays LP holders from — so the share lands
-    /// where the claim path expects it.
+    /// The market's LP mint — read for its SUPPLY. Yield paid into the vault
+    /// after the last LP has burned is unclaimable forever (`redeem_lp` needs
+    /// a holder to exist), and it would block `close_market` forever too. So
+    /// when supply is zero the LP slice folds into the protocol remainder
+    /// instead: the last LP out forfeits nothing they were owed — the fees
+    /// arriving now were earned after they exited.
+    #[account(seeds = [b"lp", market.market_id.as_ref()], bump)]
+    pub lp_mint: Box<Account<'info, Mint>>,
+
+    /// THIS market's AMM-side yield vault — the same account `redeem_lp`
+    /// pays LP holders from, so the share lands where the claim path expects
+    /// it. Seeded by market_id: a global vault here was a cross-market theft,
+    /// since redeem paid the whole pool out against one market's LP supply.
     #[account(
         mut,
+        seeds = [b"lp_yield_amm", market.market_id.as_ref()],
+        bump,
         token::authority = lp_yield_authority,
         token::mint = venue_mint,
     )]
@@ -170,7 +183,15 @@ pub fn handler(ctx: Context<DistributeFeesAmm>) -> Result<()> {
     let total: u64 = ctx.accounts.fee_pool.amount;
     require!(total > 0, SoothCoreError::NothingToDistribute);
 
-    let split = compute_fee_split(total, &ctx.accounts.config)?;
+    let mut split = compute_fee_split(total, &ctx.accounts.config)?;
+    if ctx.accounts.lp_mint.supply == 0 {
+        // No holder can ever claim this — see `lp_mint` above.
+        split.to_protocol = split
+            .to_protocol
+            .checked_add(split.to_lp_yield)
+            .ok_or(error!(SoothCoreError::MathOverflow))?;
+        split.to_lp_yield = 0;
+    }
 
     let bump = ctx.bumps.fee_pool_authority;
     let signer_seeds: &[&[&[u8]]] = &[&[b"fee_pool_authority", &[bump]]];

@@ -1095,6 +1095,65 @@
           }
         },
         {
+          "name": "lp_yield_amm",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_yield_book",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
+              }
+            ]
+          }
+        },
+        {
           "name": "vault_authority",
           "pda": {
             "seeds": [
@@ -1150,6 +1209,36 @@
                   111,
                   111,
                   108,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_yield_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
                   95,
                   97,
                   117,
@@ -1701,12 +1790,67 @@
           }
         },
         {
+          "name": "lp_mint",
+          "docs": [
+            "The market's LP mint — read for its SUPPLY. Yield paid into the vault",
+            "after the last LP has burned is unclaimable forever (`redeem_lp` needs",
+            "a holder to exist), and it would block `close_market` forever too. So",
+            "when supply is zero the LP slice folds into the protocol remainder",
+            "instead: the last LP out forfeits nothing they were owed — the fees",
+            "arriving now were earned after they exited."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
           "name": "lp_yield_vault",
           "docs": [
-            "Same account `redeem_lp` pays LP holders from — so the share lands",
-            "where the claim path expects it."
+            "THIS market's AMM-side yield vault — the same account `redeem_lp`",
+            "pays LP holders from, so the share lands where the claim path expects",
+            "it. Seeded by market_id: a global vault here was a cross-market theft,",
+            "since redeem paid the whole pool out against one market's LP supply."
           ],
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
         },
         {
           "name": "adjudicator_fee_vault",
@@ -1904,17 +2048,68 @@
           }
         },
         {
+          "name": "lp_mint",
+          "docs": [
+            "The market's LP mint — read for its SUPPLY. Yield paid into the vault",
+            "after the last LP has burned is unclaimable forever (`redeem_lp` needs",
+            "a holder to exist), and it would block `close_market` forever too. So",
+            "when supply is zero the LP slice folds into the protocol remainder",
+            "instead: the last LP out forfeits nothing they were owed — the fees",
+            "arriving now were earned after they exited."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
           "name": "lp_yield_vault",
           "docs": [
-            "The book's LP yield accrues here, in the BOOK's token.",
-            "",
-            "KNOWN GAP: `redeem_lp` pays only in the AMM's token, so this balance",
-            "has no claim path yet — the incubation cohort earning a share of book",
-            "revenue needs a second, book-denominated claim. The money is safe (a",
-            "PDA owns it) but is not yet withdrawable. Tracked in",
-            "`docs/design/dual-token-venues.md`."
+            "THIS market's book-side yield vault, in the BOOK's token. `redeem_lp`",
+            "now pays from both venues' vaults in one burn, so this balance has a",
+            "claim path — and it is per-market for the same reason the AMM's is:",
+            "a global vault let one market's LPs take every market's yield."
           ],
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
         },
         {
           "name": "adjudicator_fee_vault",
@@ -2067,6 +2262,97 @@
                   97,
                   109,
                   109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_yield_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_yield_amm",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_yield_book",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
                 ]
               },
               {
@@ -2853,8 +3139,71 @@
           }
         },
         {
-          "name": "lp_yield_vault",
-          "writable": true
+          "name": "lp_yield_amm",
+          "docs": [
+            "THIS market's AMM-side yield vault."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_yield_book",
+          "docs": [
+            "THIS market's book-side yield vault, in the book's token."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
         },
         {
           "name": "lp_yield_authority",
@@ -2888,6 +3237,10 @@
         },
         {
           "name": "user_amm_ata",
+          "writable": true
+        },
+        {
+          "name": "user_book_ata",
           "writable": true
         },
         {
@@ -5844,6 +6197,16 @@
           },
           {
             "name": "usdc_paid",
+            "docs": [
+              "AMM-venue yield paid, in the AMM token. Field name predates the split."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "book_paid",
+            "docs": [
+              "Book-venue yield paid, in the book's token (USDC)."
+            ],
             "type": "u64"
           }
         ]

@@ -105,6 +105,13 @@ pub struct CloseMarket<'info> {
     #[account(mut, seeds = [b"fee_pool_book", market_id.as_ref()], bump)]
     pub fee_pool_book: Box<Account<'info, TokenAccount>>,
 
+    // LP yield is a claim like any other: nonzero means some LP has not
+    // burned for their share yet, and closing would strand it.
+    #[account(mut, seeds = [b"lp_yield_amm", market_id.as_ref()], bump)]
+    pub lp_yield_amm: Box<Account<'info, TokenAccount>>,
+    #[account(mut, seeds = [b"lp_yield_book", market_id.as_ref()], bump)]
+    pub lp_yield_book: Box<Account<'info, TokenAccount>>,
+
     // ── Signer-only PDAs that own the token accounts above ───────────────
     /// CHECK: signer-only PDA; derivation is the check.
     #[account(seeds = [b"vault", market_id.as_ref()], bump)]
@@ -115,6 +122,9 @@ pub struct CloseMarket<'info> {
     /// CHECK: signer-only PDA; derivation is the check.
     #[account(seeds = [b"fee_pool_authority"], bump)]
     pub fee_pool_authority: UncheckedAccount<'info>,
+    /// CHECK: signer-only PDA; derivation is the check.
+    #[account(seeds = [b"lp_yield_authority"], bump)]
+    pub lp_yield_authority: UncheckedAccount<'info>,
 
     /// The market's creator — verified against the Market account in the
     /// handler. Signs, and receives every reclaimed lamport.
@@ -179,6 +189,14 @@ pub fn handler(ctx: Context<CloseMarket>, market_id: [u8; 16]) -> Result<()> {
         ctx.accounts.fee_pool_book.amount == 0,
         SoothCoreError::FeePoolNotEmpty
     );
+    require!(
+        ctx.accounts.lp_yield_amm.amount == 0,
+        SoothCoreError::FeePoolNotEmpty
+    );
+    require!(
+        ctx.accounts.lp_yield_book.amount == 0,
+        SoothCoreError::FeePoolNotEmpty
+    );
 
     // ── The book, if it exists, must be inert ────────────────────────────
     if let Some(book_acc) = &ctx.accounts.book {
@@ -213,14 +231,16 @@ pub fn handler(ctx: Context<CloseMarket>, market_id: [u8; 16]) -> Result<()> {
     }
 
     // ── Close the five token accounts (SPL requires zero balances) ───────
-    let (vb, lb, fb) = (
+    let (vb, lb, fb, yb) = (
         ctx.bumps.vault_authority,
         ctx.bumps.lock_authority,
         ctx.bumps.fee_pool_authority,
+        ctx.bumps.lp_yield_authority,
     );
     let vault_seeds: &[&[u8]] = &[b"vault", market_id.as_ref(), &[vb]];
     let lock_seeds: &[&[u8]] = &[b"lock", market_id.as_ref(), &[lb]];
     let fee_seeds: &[&[u8]] = &[b"fee_pool_authority", &[fb]];
+    let yield_seeds: &[&[u8]] = &[b"lp_yield_authority", &[yb]];
 
     fn close_ta<'info>(
         token_program: &Program<'info, Token>,
@@ -275,6 +295,20 @@ pub fn handler(ctx: Context<CloseMarket>, market_id: [u8; 16]) -> Result<()> {
         ctx.accounts.fee_pool_book.to_account_info(),
         ctx.accounts.fee_pool_authority.to_account_info(),
         fee_seeds,
+    )?;
+    close_ta(
+        tp,
+        dest.clone(),
+        ctx.accounts.lp_yield_amm.to_account_info(),
+        ctx.accounts.lp_yield_authority.to_account_info(),
+        yield_seeds,
+    )?;
+    close_ta(
+        tp,
+        dest.clone(),
+        ctx.accounts.lp_yield_book.to_account_info(),
+        ctx.accounts.lp_yield_authority.to_account_info(),
+        yield_seeds,
     )?;
 
     // ── Reclaim the book's rent ─────────────────────────────────────────

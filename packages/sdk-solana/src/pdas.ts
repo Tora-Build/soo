@@ -405,6 +405,32 @@ export function feePoolBookPda(
   );
 }
 
+/** THIS market's AMM-side LP yield vault. Seeds: [b"lp_yield_amm", market_id].
+ *  Per-market on purpose: the global predecessor let one market's LPs claim
+ *  every market's yield. */
+export function lpYieldAmmPda(
+  marketId: MarketId,
+  programs: Pick<ProgramIds, "soothCore">,
+): [PublicKey, number] {
+  const id = assertMarketId(marketId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("lp_yield_amm"), id],
+    programs.soothCore,
+  );
+}
+
+/** THIS market's book-side LP yield vault. Seeds: [b"lp_yield_book", market_id]. */
+export function lpYieldBookPda(
+  marketId: MarketId,
+  programs: Pick<ProgramIds, "soothCore">,
+): [PublicKey, number] {
+  const id = assertMarketId(marketId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("lp_yield_book"), id],
+    programs.soothCore,
+  );
+}
+
 export function feePoolAmmPda(
   marketId: Uint8Array,
   programs?: Partial<Pick<ProgramIds, "soothCore">>,

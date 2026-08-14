@@ -12,6 +12,8 @@ import { WAD } from "../src/math/lmsr.js";
 import {
   deriveLpMintPda,
   deriveLpYieldAuthority,
+  lpYieldAmmPda,
+  lpYieldBookPda,
   deriveUserLpAta,
   deriveUserUsdcAta,
 } from "../src/pdas.js";
@@ -56,11 +58,9 @@ describe("LP redemption flow", () => {
     // LP is AMM-side equity, so its yield vault and the creator's payout ATA
     // hold the AMM's token — `redeem_lp` pins them to `AMM_TOKEN_MINT`.
     const [lpYieldAuthority] = deriveLpYieldAuthority(smoke.programs);
-    const lpYieldVault = getAssociatedTokenAddressSync(
-      smoke.ammMint,
-      lpYieldAuthority,
-      true,
-    );
+    // Per-market since the global-vault cross-market fix.
+    const [lpYieldVault] = lpYieldAmmPda(smoke.marketId, smoke.programs);
+    const [lpYieldBookVault] = lpYieldBookPda(smoke.marketId, smoke.programs);
     const creatorUsdcAta = deriveUserUsdcAta(
       smoke.creator.publicKey,
       smoke.ammMint,
@@ -79,6 +79,14 @@ describe("LP redemption flow", () => {
       creatorUsdcAta,
       smoke.ammMint,
       smoke.creator.publicKey,
+      0n,
+    );
+    // The book-side vault must exist too — one burn pays both venues.
+    await writeTokenAccount(
+      smoke,
+      lpYieldBookVault,
+      smoke.usdcMint,
+      lpYieldAuthority,
       0n,
     );
 
@@ -127,10 +135,14 @@ describe("LP redemption flow", () => {
     const conn = new LiteSvmConnection(smoke.ctx);
     const program = anchorProgram(smoke.ctx, smoke.creator);
     const [lpYieldAuthority] = deriveLpYieldAuthority(smoke.programs);
-    const lpYieldVault = getAssociatedTokenAddressSync(
-      smoke.ammMint,
+    const [lpYieldVault] = lpYieldAmmPda(smoke.marketId, smoke.programs);
+    const [lpYieldBookVault] = lpYieldBookPda(smoke.marketId, smoke.programs);
+    await writeTokenAccount(
+      smoke,
+      lpYieldBookVault,
+      smoke.usdcMint,
       lpYieldAuthority,
-      true,
+      0n,
     );
     // Fund the vault so the drain would be worth something if it worked.
     const yieldAmount = 2_000_000n;
@@ -172,9 +184,14 @@ describe("LP redemption flow", () => {
               ammState,
               lpMint: smoke.ammMint, // <- the substitution
               userLpAta: attackerUsdc,
-              lpYieldVault,
+              lpYieldAmm: lpYieldVault,
+              lpYieldBook: lpYieldBookVault,
               lpYieldAuthority,
               userAmmAta: attackerUsdc,
+              userBookAta: deriveUserUsdcAta(
+                smoke.creator.publicKey,
+                smoke.usdcMint,
+              ),
               user: smoke.creator.publicKey,
               tokenProgram: TOKEN_PROGRAM_ID,
             })
@@ -187,6 +204,67 @@ describe("LP redemption flow", () => {
     expect((await getAccount(conn, lpYieldVault)).amount).toBe(vaultBefore);
   }, 60_000);
 
+  it("the GLOBAL vault location is dead — cross-market yield theft regression", async () => {
+    // The finding this whole change exists for. The yield vault used to be
+    // the ATA of the singleton lp_yield_authority — ONE account for every
+    // market in the protocol — and redeem paid `global_vault × lp / THIS
+    // market's supply`. Passing that old global location must now fail seed
+    // derivation: yield is claimable only from the vault seeded by this
+    // market's own id.
+    const smoke = await bootSmoke({
+      bWad: 1_000n * WAD,
+      userUsdcBaseUnits: 100_000_000n,
+    });
+    await forceGraduated(smoke);
+    const program = anchorProgram(smoke.ctx, smoke.creator);
+    const [lpYieldAuthority] = deriveLpYieldAuthority(smoke.programs);
+    const [lpMint] = deriveLpMintPda(smoke.marketId, smoke.programs);
+    const creatorLpAta = deriveUserLpAta(smoke.creator.publicKey, lpMint);
+
+    // Fund the OLD global location — another market's accumulated yield.
+    const globalVault = getAssociatedTokenAddressSync(
+      smoke.ammMint, lpYieldAuthority, true,
+    );
+    await writeTokenAccount(
+      smoke, globalVault, smoke.ammMint, lpYieldAuthority, 5_000_000n,
+    );
+    const [lpYieldBookVault] = lpYieldBookPda(smoke.marketId, smoke.programs);
+    await writeTokenAccount(
+      smoke, lpYieldBookVault, smoke.usdcMint, lpYieldAuthority, 0n,
+    );
+    const attackerAta = deriveUserUsdcAta(smoke.creator.publicKey, smoke.ammMint);
+    await writeTokenAccount(
+      smoke, attackerAta, smoke.ammMint, smoke.creator.publicKey, 0n,
+    );
+
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        new Transaction().add(
+          await (program.methods as any)
+            .redeemLp(new anchorPkg.BN(1))
+            .accounts({
+              market: smoke.marketPda,
+              ammState: deriveAmmStatePda(smoke.marketId, smoke.programs)[0],
+              lpMint,
+              userLpAta: creatorLpAta,
+              // ← the old global vault, holding everyone's yield
+              lpYieldAmm: globalVault,
+              lpYieldBook: lpYieldBookVault,
+              lpYieldAuthority,
+              userAmmAta: attackerAta,
+              userBookAta: deriveUserUsdcAta(
+                smoke.creator.publicKey, smoke.usdcMint,
+              ),
+              user: smoke.creator.publicKey,
+              tokenProgram: TOKEN_PROGRAM_ID,
+            })
+            .instruction(),
+        ),
+      ),
+    ).rejects.toThrow(customError(ANCHOR_CONSTRAINT_SEEDS));
+  }, 60_000);
 });
 
 async function forceGraduated(

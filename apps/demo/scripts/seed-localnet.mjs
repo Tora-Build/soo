@@ -750,31 +750,17 @@ async function init() {
   const bookSingletons = null;
   log("  SoothBook singleton bootstrap skipped (direct BookSide ABI)");
 
-  // ─── Global lp_yield_vault (redeem_lp payout source) ─────────────────
+  // ─── LP yield vaults are PER-MARKET now ──────────────────────────────
   //
-  // `sooth_launchpad::redeem_lp` pays pro-rata USDC from a singleton ATA
-  // owned by the `lp_yield_authority` PDA. The idempotent ATA create keeps
-  // localnet re-seeds safe and gives the demo a stable env pointer.
+  // The global singleton ATA this block used to create was a cross-market
+  // theft: every market's yield in one pot, paid out against any one
+  // market's LP supply. `init_market_fee_pool` creates the per-market
+  // vaults; nothing global needs seeding here.
   const [lpYieldAuthorityPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("lp_yield_authority")],
     SOOTH_CORE_ID,
   );
-  const lpYieldVaultAta = getAssociatedTokenAddressSync(
-    USDC_MINT_DEVNET,
-    lpYieldAuthorityPda,
-    true,
-  );
-  const lpYieldTx = new Transaction().add(
-    createAssociatedTokenAccountIdempotentInstruction(
-      creator.publicKey,
-      lpYieldVaultAta,
-      lpYieldAuthorityPda,
-      USDC_MINT_DEVNET,
-    ),
-  );
-  await sendAndConfirmTransaction(connection, lpYieldTx, [creator]);
-  log(`  lp_yield_authority=${lpYieldAuthorityPda.toBase58()}`);
-  log(`  lp_yield_vault=${lpYieldVaultAta.toBase58()}`);
+  log(`  lp_yield_authority=${lpYieldAuthorityPda.toBase58()} (vaults are per-market)`);
 
   // ─── Adjudicator allowlist (Codex C2 minimum-viable mitigation) ──────
   //
@@ -993,6 +979,13 @@ async function init() {
         ammMint: AMM_MINT_DEVNET,
         feePoolBook: feePoolBookPda(marketId, PROGRAMS)[0],
         feePoolAmm: feePoolAmmPdaAddr,
+        lpYieldAuthority: lpYieldAuthorityPda,
+        lpYieldAmm: PublicKey.findProgramAddressSync(
+          [Buffer.from("lp_yield_amm"), Buffer.from(marketId)], SOOTH_CORE_ID,
+        )[0],
+        lpYieldBook: PublicKey.findProgramAddressSync(
+          [Buffer.from("lp_yield_book"), Buffer.from(marketId)], SOOTH_CORE_ID,
+        )[0],
         signer: creator.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -1073,7 +1066,9 @@ async function init() {
     `# this file, so markets from earlier runs are carried forward here rather`,
     `# than becoming unreachable through the UI (there is no on-chain registry).`,
     `VITE_DEMO_EXTRA_MARKET_REFS=${carriedMarketRefs.join(",")}`,
-    `VITE_DEMO_LP_YIELD_VAULT=${lpYieldVaultAta.toBase58()}`,
+    `VITE_DEMO_LP_YIELD_VAULT=${PublicKey.findProgramAddressSync(
+      [Buffer.from("lp_yield_amm"), Buffer.from(marketId)], SOOTH_CORE_ID,
+    )[0].toBase58()}`,
     `# Pre-funded user pubkey (1000 USDC, 10 SOL). Import the keypair`,
     `# at apps/demo/.localnet/user-keypair.json into Phantom or Solflare`,
     `# (Settings → Add/Connect Wallet → Import Private Key) to test trades.`,

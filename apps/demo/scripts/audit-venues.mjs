@@ -194,20 +194,21 @@ const feePoolAuthority = pda([Buffer.from("fee_pool_authority")]);
 const lpYieldAuthority = pda([Buffer.from("lp_yield_authority")]);
 
 const dest = {
-  lp: getAssociatedTokenAddressSync(AMM_MINT, lpYieldAuthority, true),
+  lp: pda([Buffer.from("lp_yield_amm"), Buffer.from(mid)]),
   adj: getAssociatedTokenAddressSync(AMM_MINT, markets.bonding.adjudicator, true),
   treasury: getAssociatedTokenAddressSync(AMM_MINT, cfg.treasury, true),
 };
 await connection.confirmTransaction(
   await connection.sendTransaction(
     new Transaction().add(
-      ...Object.entries(dest).map(([, addr]) => addr).map((addr, i) =>
-        createAssociatedTokenAccountIdempotentInstruction(
-          creator.publicKey,
-          addr,
-          [lpYieldAuthority, markets.bonding.adjudicator, cfg.treasury][i],
-          AMM_MINT,
-        ),
+      ...[[dest.adj, markets.bonding.adjudicator], [dest.treasury, cfg.treasury]].map(
+        ([addr, owner]) =>
+          createAssociatedTokenAccountIdempotentInstruction(
+            creator.publicKey,
+            addr,
+            owner,
+            AMM_MINT,
+          ),
       ),
     ),
     [creator],
@@ -344,12 +345,12 @@ console.log("\n[6] distribute_fees_book's accounts are satisfiable");
 {
   const feePoolBook = pda([Buffer.from("fee_pool_book"), Buffer.from(mid)]);
   const bookTreasury = getAssociatedTokenAddressSync(BOOK_MINT, cfg.treasury, true);
-  const bookLp = getAssociatedTokenAddressSync(BOOK_MINT, lpYieldAuthority, true);
+  const bookLp = pda([Buffer.from("lp_yield_book"), Buffer.from(mid)]);
   const bookAdj = getAssociatedTokenAddressSync(BOOK_MINT, markets.bonding.adjudicator, true);
   await connection.confirmTransaction(
     await connection.sendTransaction(
       new Transaction().add(
-        ...[[bookTreasury, cfg.treasury], [bookLp, lpYieldAuthority], [bookAdj, markets.bonding.adjudicator]].map(
+        ...[[bookTreasury, cfg.treasury], [bookAdj, markets.bonding.adjudicator]].map(
           ([addr, owner]) =>
             createAssociatedTokenAccountIdempotentInstruction(creator.publicKey, addr, owner, BOOK_MINT),
         ),
@@ -370,6 +371,7 @@ console.log("\n[6] distribute_fees_book's accounts are satisfiable");
             feePoolAuthority,
             venueMint: BOOK_MINT,
             feePool: feePoolBook,
+            lpMint: pda([Buffer.from("lp"), Buffer.from(mid)]),
             lpYieldAuthority,
             lpYieldVault: bookLp,
             adjudicatorFeeVault: bookAdj,

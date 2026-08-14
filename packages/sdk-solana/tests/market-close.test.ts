@@ -54,6 +54,8 @@ import {
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
   feePoolAmmPda,
+  lpYieldAmmPda,
+  lpYieldBookPda,
   feePoolBookPda,
   deriveMarketPda,
 } from "../src/pdas.js";
@@ -291,9 +293,10 @@ async function distributeAmm(smoke: SmokeContext, program: any) {
           feePoolAuthority: deriveFeePoolAuthorityPda(programs)[0],
           venueMint: ammMint,
           feePool: feePoolAmmPda(marketId, programs)[0],
+          lpMint: deriveLpMintPda(marketId, programs)[0],
           bBaseYieldVault: deriveMarketVaultAta(marketId, ammMint, programs),
           lpYieldAuthority,
-          lpYieldVault: await mk(lpYieldAuthority),
+          lpYieldVault: lpYieldAmmPda(marketId, programs)[0],
           adjudicatorFeeVault: await mk(market.adjudicator),
           protocolTreasuryVault: await mk(cfg.treasury),
           cranker: creator.publicKey,
@@ -302,6 +305,57 @@ async function distributeAmm(smoke: SmokeContext, program: any) {
         .instruction(),
     ),
   );
+}
+
+async function redeemAllLp(smoke: SmokeContext) {
+  const { marketId, programs, ammMint, usdcMint } = smoke;
+  const lpMint = deriveLpMintPda(marketId, programs)[0];
+  // EVERY holder must burn before the yield vaults reach zero: the creator
+  // got LP at seed_lp, and the buyer got LP minted on each trade. A partial
+  // burn leaves the other holder's share — which close correctly refuses to
+  // destroy.
+  for (const holder of [smoke.creator, smoke.user]) {
+    const p = anchorProgram(smoke.ctx, holder);
+    const holderLpAta = deriveUserLpAta(holder.publicKey, lpMint);
+    const acc = await smoke.ctx.banksClient.getAccount(holderLpAta);
+    const bal = acc ? Buffer.from(acc.data).readBigUInt64LE(64) : 0n;
+    if (bal === 0n) continue;
+    const mkAta = async (mint: PublicKey) => {
+      const ata = getAssociatedTokenAddressSync(mint, holder.publicKey);
+      await sendTx(
+        smoke.ctx,
+        [holder],
+        new Transaction().add(
+          createAssociatedTokenAccountIdempotentInstruction(
+            holder.publicKey, ata, holder.publicKey, mint,
+          ),
+        ),
+      );
+      return ata;
+    };
+    await sendTx(
+      smoke.ctx,
+      [holder],
+      new Transaction().add(
+        await (p.methods as any)
+          .redeemLp(new BN(bal.toString()))
+          .accounts({
+            market: smoke.marketPda,
+            ammState: deriveAmmStatePda(marketId, programs)[0],
+            lpMint,
+            userLpAta: holderLpAta,
+            lpYieldAmm: lpYieldAmmPda(marketId, programs)[0],
+            lpYieldBook: lpYieldBookPda(marketId, programs)[0],
+            lpYieldAuthority: deriveLpYieldAuthority(programs)[0],
+            userAmmAta: await mkAta(ammMint),
+            userBookAta: await mkAta(usdcMint),
+            user: holder.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .instruction(),
+      ),
+    );
+  }
 }
 
 async function close(smoke: SmokeContext, program: any, signer: Keypair) {
@@ -321,9 +375,12 @@ async function close(smoke: SmokeContext, program: any, signer: Keypair) {
           lockVault: deriveLockVaultAta(marketId, ammMint, programs),
           feePoolAmm: feePoolAmmPda(marketId, programs)[0],
           feePoolBook: feePoolBookPda(marketId, programs)[0],
+          lpYieldAmm: lpYieldAmmPda(marketId, programs)[0],
+          lpYieldBook: lpYieldBookPda(marketId, programs)[0],
           vaultAuthority: deriveVaultAuthorityPda(marketId, programs)[0],
           lockAuthority: deriveLockAuthorityPda(marketId, programs)[0],
           feePoolAuthority: deriveFeePoolAuthorityPda(programs)[0],
+          lpYieldAuthority: deriveLpYieldAuthority(programs)[0],
           creator: signer.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
@@ -434,6 +491,10 @@ describe("close_market", () => {
     await redeem(smoke, program, smoke.user);
     await reclaimSubsidy(smoke, program);
     await distributeAmm(smoke, program); // fee pool -> 0; b_base back to vault
+    // The LP share landed in the per-market yield vault; the creator holds
+    // 100% of the LP, so one full burn drains it. Close refuses otherwise —
+    // unclaimed LP yield is a claim like any other.
+    await redeemAllLp(smoke);
     await sweep(smoke, program, smoke.user, smoke.creator.publicKey);
 
     const a = accts(smoke, smoke.user.publicKey);
@@ -458,6 +519,8 @@ describe("close_market", () => {
       deriveLockVaultAta(smoke.marketId, smoke.ammMint, smoke.programs),
       a.feePoolAmm,
       feePoolBookPda(smoke.marketId, smoke.programs)[0],
+      lpYieldAmmPda(smoke.marketId, smoke.programs)[0],
+      lpYieldBookPda(smoke.marketId, smoke.programs)[0],
     ]) {
       const acc = await smoke.ctx.banksClient.getAccount(gone);
       expect(acc === null || acc.data.length === 0).toBe(true);
@@ -474,6 +537,7 @@ describe("close_market", () => {
     await redeem(smoke, program, smoke.user);
     await reclaimSubsidy(smoke, program);
     await distributeAmm(smoke, program);
+    await redeemAllLp(smoke);
     await sweep(smoke, program, smoke.user, smoke.creator.publicKey);
     const err = await close(smoke, program, smoke.user).catch((e) => e);
     expect(codeOf(err)).toBe(ERR.Unauthorized);
@@ -487,6 +551,7 @@ describe("close_market", () => {
     await redeem(smoke, program, smoke.user);
     await reclaimSubsidy(smoke, program);
     await distributeAmm(smoke, program);
+    await redeemAllLp(smoke);
     await sweep(smoke, program, smoke.user, smoke.creator.publicKey);
     const asCreator = anchorProgram(smoke.ctx, smoke.creator);
     await close(smoke, asCreator, smoke.creator);

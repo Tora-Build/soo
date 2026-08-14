@@ -41,6 +41,9 @@ import {
   deriveVaultAuthorityPda,
   marketBookPda,
   feePoolAmmPda,
+  lpYieldAmmPda,
+  lpYieldBookPda,
+  deriveLpYieldAuthority,
   feePoolBookPda,
   orderbookPositionPda,
 } from "../../src/pdas.js";
@@ -167,6 +170,9 @@ export async function initMarketFeePool(
   // venues cannot share one.
   const [feePoolBook] = feePoolBookPda(smoke.marketId, smoke.programs);
   const [feePoolAmm] = feePoolAmmPda(smoke.marketId, smoke.programs);
+  const [lpYieldAuthority] = deriveLpYieldAuthority(smoke.programs);
+  const [lpYieldAmm] = lpYieldAmmPda(smoke.marketId, smoke.programs);
+  const [lpYieldBook] = lpYieldBookPda(smoke.marketId, smoke.programs);
   await sendTx(
     ctx,
     [payer],
@@ -180,6 +186,9 @@ export async function initMarketFeePool(
           ammMint: smoke.ammMint,
           feePoolBook,
           feePoolAmm,
+          lpYieldAuthority,
+          lpYieldAmm,
+          lpYieldBook,
           signer: payer.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,

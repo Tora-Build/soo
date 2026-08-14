@@ -1,4 +1,22 @@
-//! `redeem_lp` — burn post-graduation LP shares for pro-rata USDC yield.
+//! `redeem_lp` — burn post-graduation LP shares for pro-rata yield from
+//! BOTH venues, in one instruction.
+//!
+//! ## Why one burn pays two vaults
+//!
+//! LP yield accrues in two currencies: the AMM's fees in its own token, the
+//! book's in USDC. The LP token is the claim on both — so a redemption that
+//! paid only one venue and burned the LP would silently forfeit the holder's
+//! share of the other. Splitting this into two instructions would need
+//! per-holder claimed-per-venue bookkeeping to prevent exactly that; one
+//! atomic burn needs none.
+//!
+//! ## Why the vaults are per-market
+//!
+//! They were global (one ATA of the singleton `lp_yield_authority` per mint),
+//! and payout divided the GLOBAL pool by THIS market's LP supply — so a dust
+//! market's sole LP could take every market's yield. The vaults are now
+//! seeded by `market_id`; each market's yield is claimable only against its
+//! own supply.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};
@@ -31,7 +49,6 @@ pub struct RedeemLp<'info> {
         seeds = [b"amm", market.market_id.as_ref()],
         bump = amm_state.bump,
         constraint = amm_state.market == market.key() @ SoothCoreError::AmmStateMarketMismatch,
-        constraint = amm_state.is_graduated @ SoothCoreError::NotGraduated,
     )]
     pub amm_state: Box<Account<'info, AmmState>>,
 
@@ -49,13 +66,27 @@ pub struct RedeemLp<'info> {
     )]
     pub user_lp_ata: Box<Account<'info, TokenAccount>>,
 
+    /// THIS market's AMM-side yield vault.
     #[account(
         mut,
+        seeds = [b"lp_yield_amm", market.market_id.as_ref()],
+        bump,
         token::authority = lp_yield_authority,
-        constraint = lp_yield_vault.mint == AMM_TOKEN_MINT
+        constraint = lp_yield_amm.mint == AMM_TOKEN_MINT
             @ SoothCoreError::VaultAuthorityMismatch,
     )]
-    pub lp_yield_vault: Box<Account<'info, TokenAccount>>,
+    pub lp_yield_amm: Box<Account<'info, TokenAccount>>,
+
+    /// THIS market's book-side yield vault, in the book's token.
+    #[account(
+        mut,
+        seeds = [b"lp_yield_book", market.market_id.as_ref()],
+        bump,
+        token::authority = lp_yield_authority,
+        constraint = lp_yield_book.mint == crate::constants::BOOK_TOKEN_MINT
+            @ SoothCoreError::VaultAuthorityMismatch,
+    )]
+    pub lp_yield_book: Box<Account<'info, TokenAccount>>,
 
     /// CHECK: signer-only PDA derived by seeds.
     #[account(
@@ -66,10 +97,17 @@ pub struct RedeemLp<'info> {
 
     #[account(
         mut,
-        token::mint = lp_yield_vault.mint,
+        token::mint = lp_yield_amm.mint,
         token::authority = user,
     )]
     pub user_amm_ata: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        token::mint = lp_yield_book.mint,
+        token::authority = user,
+    )]
+    pub user_book_ata: Box<Account<'info, TokenAccount>>,
 
     pub user: Signer<'info>,
 
@@ -77,8 +115,16 @@ pub struct RedeemLp<'info> {
 }
 
 pub fn handler(ctx: Context<RedeemLp>, lp_amount: u64) -> Result<()> {
+    // The incubation lock ends when the market's story does — by graduating,
+    // by settling, or by being dismissed. Gating on graduation ALONE meant a
+    // market that settled without graduating (most incubation failures) had
+    // its LP yield distributed into a vault `redeem_lp` refused to open:
+    // stranded by construction, and blocking `close_market` forever, since
+    // unclaimed LP yield is a claim the close rightly refuses to destroy.
     require!(
-        ctx.accounts.amm_state.is_graduated,
+        ctx.accounts.amm_state.is_graduated
+            || ctx.accounts.market.is_settled()
+            || ctx.accounts.amm_state.is_dismissed,
         SoothCoreError::NotGraduated
     );
     require!(lp_amount > 0, SoothCoreError::ZeroLpAmount);
@@ -86,13 +132,18 @@ pub fn handler(ctx: Context<RedeemLp>, lp_amount: u64) -> Result<()> {
     let lp_supply = ctx.accounts.lp_mint.supply;
     require!(lp_supply > 0, SoothCoreError::EmptyLpSupply);
 
-    let payout_u128 = (ctx.accounts.lp_yield_vault.amount as u128)
-        .checked_mul(lp_amount as u128)
-        .and_then(|v| v.checked_div(lp_supply as u128))
-        .ok_or(error!(SoothCoreError::MathOverflow))?;
-    let payout: u64 = payout_u128
-        .try_into()
-        .map_err(|_| error!(SoothCoreError::MathOverflow))?;
+    // Both shares from the PRE-burn supply, so the two venues use the same
+    // denominator and a holder's fraction is identical on each.
+    let share = |vault: u64| -> Result<u64> {
+        (vault as u128)
+            .checked_mul(lp_amount as u128)
+            .and_then(|v| v.checked_div(lp_supply as u128))
+            .ok_or(error!(SoothCoreError::MathOverflow))?
+            .try_into()
+            .map_err(|_| error!(SoothCoreError::MathOverflow))
+    };
+    let payout = share(ctx.accounts.lp_yield_amm.amount)?;
+    let payout_book = share(ctx.accounts.lp_yield_book.amount)?;
 
     token::burn(
         CpiContext::new(
@@ -106,20 +157,34 @@ pub fn handler(ctx: Context<RedeemLp>, lp_amount: u64) -> Result<()> {
         lp_amount,
     )?;
 
-    if payout > 0 {
-        let bump = ctx.bumps.lp_yield_authority;
-        let signer_seeds: &[&[&[u8]]] = &[&[b"lp_yield_authority", &[bump]]];
+    let bump = ctx.bumps.lp_yield_authority;
+    let signer_seeds: &[&[&[u8]]] = &[&[b"lp_yield_authority", &[bump]]];
+    for (vault, dest, amount) in [
+        (
+            ctx.accounts.lp_yield_amm.to_account_info(),
+            ctx.accounts.user_amm_ata.to_account_info(),
+            payout,
+        ),
+        (
+            ctx.accounts.lp_yield_book.to_account_info(),
+            ctx.accounts.user_book_ata.to_account_info(),
+            payout_book,
+        ),
+    ] {
+        if amount == 0 {
+            continue;
+        }
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.lp_yield_vault.to_account_info(),
-                    to: ctx.accounts.user_amm_ata.to_account_info(),
+                    from: vault,
+                    to: dest,
                     authority: ctx.accounts.lp_yield_authority.to_account_info(),
                 },
                 signer_seeds,
             ),
-            payout,
+            amount,
         )?;
     }
 
@@ -127,6 +192,7 @@ pub fn handler(ctx: Context<RedeemLp>, lp_amount: u64) -> Result<()> {
         user: ctx.accounts.user.key(),
         lp_burned: lp_amount,
         usdc_paid: payout,
+        book_paid: payout_book,
     });
 
     Ok(())

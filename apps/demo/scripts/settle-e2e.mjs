@@ -586,6 +586,37 @@ if (process.env.CLOSE === "1" && failures.length === 0 && skips.length === 0) {
     log(`  driver redeem skipped: ${String(e).slice(0, 100)}`);
   }
 
+  // LP redemption AFTER both venues distributed: the book's LP share only
+  // lands in the yield vault at step 9, so a burn back in 7b would have
+  // forfeited it — and close refuses while any LP yield sits unclaimed. The
+  // graduation driver holds LP from its trades, so it must burn too.
+  for (const [who, kp] of [["creator", creator], ["driver", creator]]) {
+    try {
+      await adapter.submit(
+        await adapter.buildRedeemLp(marketRef, {
+          user: `sol:${kp.publicKey.toBase58()}`,
+          lpAmount: await (async () => {
+            const { getAssociatedTokenAddressSync } = await import("@solana/spl-token");
+            const lpMint = PublicKey.findProgramAddressSync(
+              [Buffer.from("lp"), marketId], soothCore,
+            )[0];
+            const ata = getAssociatedTokenAddressSync(lpMint, kp.publicKey);
+            const info = await connection.getAccountInfo(ata);
+            return info ? Buffer.from(info.data).readBigUInt64LE(64) : 0n;
+          })(),
+        }),
+        signerFor(kp),
+      );
+      log(`  ${who} burned remaining LP for both venues' yield`);
+    } catch (e) {
+      if (/ZeroLpAmount|must fit in u64 and be > 0/i.test(String(e))) {
+        log(`  ${who} holds no LP — already redeemed`);
+      } else {
+        log(`  ${who} LP redeem skipped: ${String(e).slice(0, 90)}`);
+      }
+    }
+  }
+
   // Second reclaim, deliberately AFTER the driver's redemption: obligations
   // dropped, so more of the creator's capped subsidy came free — and the
   // sweep reserves exactly that cap, so close blocks until the creator takes

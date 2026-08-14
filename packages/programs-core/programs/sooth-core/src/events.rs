@@ -194,7 +194,10 @@ pub struct LpSeeded {
 pub struct LpRedeemed {
     pub user: Pubkey,
     pub lp_burned: u64,
+    /// AMM-venue yield paid, in the AMM token. Field name predates the split.
     pub usdc_paid: u64,
+    /// Book-venue yield paid, in the book's token (USDC).
+    pub book_paid: u64,
 }
 
 // ── Adjudicator / resolution ─────────────────────────────────────────────────

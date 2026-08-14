@@ -47,6 +47,7 @@ import {
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
   feePoolAmmPda,
+  lpYieldAmmPda,
 } from "../src/pdas.js";
 import { WAD } from "../src/math/lmsr.js";
 import { bootSmoke, type SmokeContext } from "./fixtures/setup.js";
@@ -181,9 +182,10 @@ async function boot() {
     feePoolAuthority,
     venueMint: ammMint,
     feePool,
+    lpMint,
     bBaseYieldVault: deriveMarketVaultAta(marketId, ammMint, programs),
     lpYieldAuthority,
-    lpYieldVault: await ata(smoke, ammMint, lpYieldAuthority),
+    lpYieldVault: lpYieldAmmPda(marketId, programs)[0],
     adjudicatorFeeVault: await ata(smoke, ammMint, market.adjudicator),
     protocolTreasuryVault: await ata(smoke, ammMint, cfg.treasury),
     cranker: smoke.user.publicKey,
@@ -278,7 +280,9 @@ describe("distribute_fees destinations cannot be chosen by the caller", () => {
       ...accounts,
       lpYieldVault: await ata(smoke, smoke.ammMint, thief.publicKey),
     }).catch((e) => e);
-    expect(codeOf(err)).toBe(ERR.ConstraintTokenOwner);
+    // Seeds-bound since the per-market split, so the rejection is Anchor's
+    // ConstraintSeeds rather than the owner check it used to be.
+    expect(codeOf(err)).toBe(2006);
   }, 90_000);
 
   it("refuses an adjudicator vault the cranker owns", async () => {
