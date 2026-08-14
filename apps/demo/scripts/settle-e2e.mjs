@@ -586,6 +586,20 @@ if (process.env.CLOSE === "1" && failures.length === 0 && skips.length === 0) {
     log(`  driver redeem skipped: ${String(e).slice(0, 100)}`);
   }
 
+  // Second reclaim, deliberately AFTER the driver's redemption: obligations
+  // dropped, so more of the creator's capped subsidy came free — and the
+  // sweep reserves exactly that cap, so close blocks until the creator takes
+  // it. Repeatable-by-design is what makes this ordering workable.
+  try {
+    await adapter.submit(
+      await adapter.buildReclaimSubsidy(marketRef, { creator: creatorRef }),
+      creatorSigner,
+    );
+    log("  creator reclaimed the remainder of the subsidy cap");
+  } catch (e) {
+    log(`  second reclaim skipped: ${String(e).slice(0, 90)}`);
+  }
+
   try {
     await adapter.submit(
       await adapter.buildSweepResidual(marketRef, { cranker: creatorRef }),

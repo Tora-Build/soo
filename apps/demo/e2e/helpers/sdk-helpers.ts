@@ -1009,92 +1009,6 @@ export async function getTokenAccountAmount(
   }
 }
 
-export async function mintOrderbookCompleteSetViaAdapter(args: {
-  conn: Connection;
-  signer: Keypair;
-  usdcMint: PublicKey;
-  marketPda: PublicKey;
-  amount: bigint;
-}): Promise<string> {
-  const adapter = makeSolanaAdapter({ conn: args.conn, usdcMint: args.usdcMint });
-  const req = await adapter.buildOrderbookMint(
-    `sol:${args.marketPda.toBase58()}`,
-    {
-      amount: args.amount,
-      user: `sol:${args.signer.publicKey.toBase58()}`,
-    },
-  );
-  const receipt = await adapter.submit(req, makeSignerRef(args.signer));
-  return receipt.txId;
-}
-
-export function buildOrderbookFillBundle(args: {
-  marketId: Buffer;
-  usdcMint: PublicKey;
-  maker: PublicKey;
-  makerSide: 0 | 1;
-  makerTick: number;
-}): AccountMeta[] {
-  return [
-    {
-      pubkey: deriveBookSidePda(args.marketId, args.makerSide, args.makerTick),
-      isSigner: false,
-      isWritable: true,
-    },
-    {
-      pubkey: deriveOrderbookPositionPda(args.marketId, args.maker),
-      isSigner: false,
-      isWritable: true,
-    },
-    {
-      pubkey: getAssociatedTokenAddressSync(args.usdcMint, args.maker),
-      isSigner: false,
-      isWritable: true,
-    },
-    // Exactly FILL_BUNDLE_LEN (3) accounts: [book_side, maker_position,
-    // maker_usdc_ata]. This used to append two reserved SystemProgram
-    // placeholders, left over from when the CPI-era layout was 5 wide. The
-    // program requires remaining_accounts.len() % 3 == 0, so the extra pair
-    // made every crossing buy fail with WrongBundleArity BEFORE any real
-    // validation ran — which masked the error the caller was testing for.
-  ];
-}
-
-export async function sendOrderbookBuyWithRemainingAccounts(args: {
-  conn: Connection;
-  signer: Keypair;
-  usdcMint: PublicKey;
-  marketPda: PublicKey;
-  side: 0 | 1;
-  tick: number;
-  amount: bigint;
-  escrow?: boolean;
-  matchLimit?: number;
-  remainingAccounts: AccountMeta[];
-}): Promise<string> {
-  const adapter = makeSolanaAdapter({ conn: args.conn, usdcMint: args.usdcMint });
-  const ixs = await adapter.buildOrderbookBuyTx(
-    `sol:${args.marketPda.toBase58()}`,
-    {
-      side: args.side,
-      tick: args.tick,
-      amount: args.amount,
-      escrow: args.escrow ?? false,
-      matchLimitPerTx: args.matchLimit ?? 3,
-      user: `sol:${args.signer.publicKey.toBase58()}`,
-    },
-    args.remainingAccounts,
-  );
-  const tx = new Transaction().add(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-    heapFrameIx(),
-    ...ixs,
-  );
-  return sendAndConfirmTransaction(args.conn, tx, [args.signer], {
-    commitment: "confirmed",
-  });
-}
-
 export async function fetchTransactionLogs(
   conn: Connection,
   txId: string,
@@ -1336,9 +1250,8 @@ export function makeSolanaAdapter(args: {
     },
     programIds: {
       soothCore: coreProgramId,
-      soothLog: logProgramId,
     },
-    usdcMint: args.usdcMint,
+    bookMint: args.usdcMint,
     connection: args.conn,
   });
 }
@@ -1431,14 +1344,17 @@ export async function placeOrderbookBuyViaAdapter(args: {
   matchLimit?: number;
 }): Promise<string> {
   const adapter = makeSolanaAdapter({ conn: args.conn, usdcMint: args.usdcMint });
-  const req = await adapter.buildOrderbookBuy(`sol:${args.marketPda.toBase58()}`, {
+  // Repaired to the redesigned book's API: the legacy `buildOrderbookBuy`
+  // died with the per-price-level book. `escrow` has no equivalent — the new
+  // book always escrows collateral at placement.
+  const req = await adapter.buildBookPlace(`sol:${args.marketPda.toBase58()}`, {
     side: args.side,
-    tick: args.tick,
+    limitTick: args.tick,
     amount: args.amount,
-    escrow: args.escrow ?? false,
     matchLimit: args.matchLimit ?? 3,
+    postRemainder: true,
     user: `sol:${args.signer.publicKey.toBase58()}`,
-  } as never);
+  });
   const receipt = await adapter.submit(req, makeSignerRef(args.signer));
   return receipt.txId;
 }
@@ -1453,13 +1369,18 @@ export async function cancelOrderbookViaAdapter(args: {
   byId?: bigint;
 }): Promise<string> {
   const adapter = makeSolanaAdapter({ conn: args.conn, usdcMint: args.usdcMint });
-  const req = await adapter.buildOrderbookCancel(
+  // Repaired to the redesigned book: cancellation is by order sequence, not
+  // by (side, tick) — the arena has no per-price accounts to address.
+  if (args.byId === undefined) {
+    throw new Error(
+      "cancelOrderbookViaAdapter: the redesigned book cancels by order seq — pass byId",
+    );
+  }
+  const req = await adapter.buildBookCancelMany(
     `sol:${args.marketPda.toBase58()}`,
-    args.side,
-    args.tick,
     {
       user: `sol:${args.signer.publicKey.toBase58()}`,
-      byId: args.byId,
+      orderSeqs: [args.byId],
     },
   );
   const receipt = await adapter.submit(req, makeSignerRef(args.signer));

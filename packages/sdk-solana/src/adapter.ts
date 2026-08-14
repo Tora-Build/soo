@@ -2182,6 +2182,13 @@ export class SolanaChainAdapter implements ChainAdapter {
         config: configPda,
         market: marketPda,
         ammState: deriveAmmStatePda(resolved.marketId, this.programIds)[0],
+        // The creator's subsidy ledger — the program reserves their
+        // unreclaimed cap so a sweep cannot front-run reclaim_subsidy.
+        lpPosition: deriveLpPositionPda(
+          resolved.marketId,
+          resolved.creator,
+          this.programIds,
+        )[0],
         vaultAuthority: deriveVaultAuthorityPda(
           resolved.marketId,
           this.programIds,

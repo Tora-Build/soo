@@ -105,7 +105,7 @@ function accts(smoke: SmokeContext, user: PublicKey) {
   };
 }
 
-async function buy(smoke: SmokeContext, program: any, user: Keypair, shares: bigint) {
+async function buy(smoke: SmokeContext, program: any, user: Keypair, shares: bigint, outcome = OUTCOME_YES) {
   const a = accts(smoke, user.publicKey);
   await sendTx(
     smoke.ctx,
@@ -118,7 +118,7 @@ async function buy(smoke: SmokeContext, program: any, user: Keypair, shares: big
       )
       .add(
         await program.methods
-          .tradePositions(OUTCOME_YES, new BN(shares.toString()), new BN((100n * WAD).toString()))
+          .tradePositions(outcome, new BN(shares.toString()), new BN((100n * WAD).toString()))
           .accounts({
             market: smoke.marketPda,
             ammState: a.ammState,
@@ -211,6 +211,9 @@ async function sweep(smoke: SmokeContext, program: any, cranker: Keypair, treasu
             config: a.protocolConfig,
             market: smoke.marketPda,
             ammState: a.ammState,
+            lpPosition: deriveLpPositionPda(
+              smoke.marketId, smoke.creator.publicKey, smoke.programs,
+            )[0],
             vaultAuthority: a.vaultAuthority,
             venueMint: smoke.ammMint,
             vaultAmm: a.marketVault,
@@ -337,7 +340,11 @@ async function settledMarket() {
   });
   const program = anchorProgram(smoke.ctx, smoke.user);
   await initMarketFeePool(smoke.ctx, program, smoke, smoke.creator);
+  // A winning YES leg AND a larger losing NO leg. The NO cost is the market's
+  // profit — without it the vault holds less than the subsidy, every trade
+  // having been a payout, and there is genuinely nothing to sweep.
   await buy(smoke, program, smoke.user, 10n * WAD);
+  await buy(smoke, program, smoke.user, 30n * WAD, 0);
   await settleYes(smoke);
   return { smoke, program };
 }
@@ -370,21 +377,38 @@ describe("sweep_residual", () => {
     expect(codeOf(err)).toBe(ERR.OutstandingClaims);
   }, 60_000);
 
-  it("moves exactly the residual to the treasury once claims are done", async () => {
+  it("leaves the creator's unreclaimed subsidy — a sweep cannot front-run reclaim", async () => {
+    // The creator has NOT reclaimed yet. A permissionless cranker fires the
+    // sweep first. The vault must keep exactly the creator's cap
+    // (posted − reclaimed) — anything else confiscates their capital to the
+    // treasury, the same shape as the fee-drain bug with a nicer name.
     const { smoke, program } = await settledMarket();
     await redeem(smoke, program, smoke.user);
     const a = accts(smoke, smoke.user.publicKey);
-    const residual = await tokenBal(smoke, a.marketVault);
-    expect(residual).toBeGreaterThan(0n);
-    // Delta, not absolute: the treasury owner here is `creator`, whose ATA
-    // already holds their trading balance.
+    const vaultBefore = await tokenBal(smoke, a.marketVault);
+
+    const lpPos = await (program.account as any).lpPosition.fetch(
+      deriveLpPositionPda(smoke.marketId, smoke.creator.publicKey, smoke.programs)[0],
+    );
+    const posted = BigInt(lpPos.seedDepositWad.toString()) / 10n ** 12n;
+    const reserved = posted - BigInt(lpPos.reclaimedBase.toString());
+    expect(reserved).toBeGreaterThan(0n);
+
     const treasuryVault = getAssociatedTokenAddressSync(
       smoke.ammMint, smoke.creator.publicKey, true,
     );
-    const before = await tokenBal(smoke, treasuryVault);
+    const tBefore = await tokenBal(smoke, treasuryVault);
     await sweep(smoke, program, smoke.user, smoke.creator.publicKey);
+
+    // The cap stays; only what lies above it moved.
+    expect(await tokenBal(smoke, a.marketVault)).toBe(reserved);
+    expect((await tokenBal(smoke, treasuryVault)) - tBefore).toBe(
+      vaultBefore - reserved,
+    );
+
+    // And the creator can still take what is theirs, emptying the vault.
+    await reclaimSubsidy(smoke, program);
     expect(await tokenBal(smoke, a.marketVault)).toBe(0n);
-    expect((await tokenBal(smoke, treasuryVault)) - before).toBe(residual);
   }, 60_000);
 });
 

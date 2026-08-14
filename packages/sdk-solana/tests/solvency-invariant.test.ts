@@ -55,7 +55,6 @@ import { LiteSvmConnection } from "./fixtures/svm.js";
 import {
   SHARES,
   anchorProgram,
-  buyTx,
   createFundedMaker,
   fillBundle,
   enableBook,

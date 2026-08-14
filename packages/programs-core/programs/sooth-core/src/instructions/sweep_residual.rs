@@ -45,7 +45,8 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
 use crate::error::SoothCoreError;
 use crate::events::ResidualSwept;
-use crate::state::{AmmState, Market, ProtocolConfig};
+use crate::math::wad_to_base;
+use crate::state::{AmmState, LpPosition, Market, ProtocolConfig};
 
 #[derive(Accounts)]
 pub struct SweepResidual<'info> {
@@ -77,6 +78,19 @@ pub struct SweepResidual<'info> {
         token::mint = venue_mint,
     )]
     pub vault_amm: Box<Account<'info, TokenAccount>>,
+
+    /// The creator's subsidy ledger. Read-only here: the sweep must LEAVE the
+    /// unreclaimed portion of the subsidy in the vault, because a
+    /// permissionless instruction that takes the full balance can be fired
+    /// before the creator runs `reclaim_subsidy` — confiscating their posted
+    /// capital to the treasury. The gate above protects winners; this
+    /// reservation protects the creator. Both are claimants; neither may be
+    /// raced.
+    #[account(
+        seeds = [b"lp_position", market.market_id.as_ref(), market.creator.as_ref()],
+        bump = lp_position.bump,
+    )]
+    pub lp_position: Box<Account<'info, LpPosition>>,
 
     /// The treasury's account for the AMM's token — owner pinned by config,
     /// exactly as in `distribute_fees`. The cranker chooses nothing.
@@ -113,7 +127,12 @@ pub fn handler(ctx: Context<SweepResidual>) -> Result<()> {
     };
     require!(drained, SoothCoreError::OutstandingClaims);
 
-    let amount = ctx.accounts.vault_amm.amount;
+    // Reserve the creator's unreclaimed subsidy. `reclaim_subsidy` is capped
+    // at `posted - reclaimed`, so exactly that much of the balance is still
+    // the creator's to take; only what lies above it is residual.
+    let posted = wad_to_base(ctx.accounts.lp_position.seed_deposit_wad)?;
+    let reserved = posted.saturating_sub(ctx.accounts.lp_position.reclaimed_base);
+    let amount = ctx.accounts.vault_amm.amount.saturating_sub(reserved);
     require!(amount > 0, SoothCoreError::NothingToDistribute);
 
     let market_id = ctx.accounts.market.market_id;

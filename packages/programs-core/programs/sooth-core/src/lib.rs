@@ -98,7 +98,6 @@ pub mod sooth_core {
     use crate::instructions::distribute_fees;
     use crate::instructions::distribute_fees_book;
     use crate::instructions::init_market_fee_pool;
-    use crate::instructions::initialize_amm_state;
     use crate::instructions::lock_for_resolution;
     use crate::instructions::pause;
     use crate::instructions::redeem_lp;
@@ -136,13 +135,6 @@ pub mod sooth_core {
         args: CreateMarketArgs,
     ) -> Result<()> {
         create_market::handler(ctx, args)
-    }
-
-    pub fn initialize_amm_state(
-        ctx: Context<InitializeAmmState>,
-        args: InitializeAmmStateArgs,
-    ) -> Result<()> {
-        initialize_amm_state::handler(ctx, args)
     }
 
     // ── Fee infrastructure ────────────────────────────────────────────────────

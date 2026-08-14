@@ -2098,84 +2098,6 @@
       "args": []
     },
     {
-      "name": "initialize_amm_state",
-      "discriminator": [
-        107,
-        21,
-        178,
-        73,
-        206,
-        85,
-        154,
-        116
-      ],
-      "accounts": [
-        {
-          "name": "market",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market.market_id",
-                "account": "Market"
-              }
-            ]
-          }
-        },
-        {
-          "name": "amm_state",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  109,
-                  109
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market.market_id",
-                "account": "Market"
-              }
-            ]
-          }
-        },
-        {
-          "name": "creator",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "args",
-          "type": {
-            "defined": {
-              "name": "InitializeAmmStateArgs"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "initialize_protocol",
       "discriminator": [
         188,
@@ -3885,6 +3807,48 @@
         {
           "name": "vault_amm",
           "writable": true
+        },
+        {
+          "name": "lp_position",
+          "docs": [
+            "The creator's subsidy ledger. Read-only here: the sweep must LEAVE the",
+            "unreclaimed portion of the subsidy in the vault, because a",
+            "permissionless instruction that takes the full balance can be fired",
+            "before the creator runs `reclaim_subsidy` — confiscating their posted",
+            "capital to the treasury. The gate above protects winners; this",
+            "reservation protects the creator. Both are claimants; neither may be",
+            "raced."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.creator",
+                "account": "Market"
+              }
+            ]
+          }
         },
         {
           "name": "protocol_treasury_vault",
@@ -5645,22 +5609,6 @@
           },
           {
             "name": "ts",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "InitializeAmmStateArgs",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "initial_b",
-            "type": "u128"
-          },
-          {
-            "name": "trial_end_at",
             "type": "i64"
           }
         ]

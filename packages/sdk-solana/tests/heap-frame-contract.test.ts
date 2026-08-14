@@ -30,7 +30,6 @@ import {
   SOOTH_CORE_HEAP_BYTES,
   SHARES,
   anchorProgram,
-  buyTx,
   enableBook,
   initMarketFeePool,
   sendTx,

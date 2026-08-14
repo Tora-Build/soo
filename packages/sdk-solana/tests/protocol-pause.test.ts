@@ -24,7 +24,6 @@ import {
   CLOB_ERROR,
   SHARES,
   anchorProgram,
-  buyTx,
   cancelTx,
   customError,
   fetchBookSide,
