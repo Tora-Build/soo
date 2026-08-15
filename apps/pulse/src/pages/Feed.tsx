@@ -1,80 +1,78 @@
-// The feed: pump.fun's discovery model over prediction markets. KOTH slot for
-// the market closest to graduation, cards beneath, each card one tap from a
-// real trade.
+// The feed: a clean list, one bar per market — bet without leaving the page.
+// The question links to the full page (chart, book, tape); the bar bets.
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 
-import { cents, timeAgo } from "../lib/fmt";
-import { GraduationBar } from "../components/GraduationBar";
+import { BetBar } from "../components/BetBar";
 import { useMarkets, type PulseMarket } from "../hooks/useMarkets";
-import { WAD } from "../config";
 
-function Card({ m, king }: { m: PulseMarket; king?: boolean }) {
+function Meta({ m }: { m: PulseMarket }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const s = m.deadline - Math.floor(Date.now() / 1000);
+  const closes =
+    s <= 0
+      ? "closed"
+      : s > 86400
+        ? `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`
+        : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
   return (
-    <Link
-      to={`/m/${m.ref.replace(/^sol:/, "")}`}
-      className={`block rounded-md border bg-panel p-4 transition-colors hover:border-accent ${
-        king ? "border-warn" : "border-line"
-      }`}
-    >
-      {king && (
-        <div className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-widest text-warn">
-          ♛ closest to graduation
-        </div>
+    <span className="flex shrink-0 items-center gap-2 font-mono text-[10px] text-faint">
+      {m.isGraduated ? (
+        <span className="rounded bg-yes-soft px-1.5 py-0.5 font-semibold text-yes">LIVE</span>
+      ) : (
+        <span className="text-accent">{Math.round(m.graduation * 100)}%→book</span>
       )}
-      <h3 className="min-h-[2.5rem] text-sm font-medium leading-snug text-ink">
-        {m.question}
-      </h3>
-      <div className="mt-3 flex items-end justify-between">
-        <div>
-          <div className="font-mono text-2xl font-bold text-yes">
-            {cents(m.yesPriceWad)}
-          </div>
-          <div className="font-mono text-[10px] uppercase text-faint">yes</div>
-        </div>
-        <div className="text-right">
-          <div className="font-mono text-lg text-no">{cents(WAD - m.yesPriceWad)}</div>
-          <div className="font-mono text-[10px] uppercase text-faint">no</div>
-        </div>
+      <span>{closes}</span>
+    </span>
+  );
+}
+
+function Row({ m }: { m: PulseMarket }) {
+  return (
+    <div className="border-b border-line/60 py-3 last:border-b-0">
+      <div className="mb-1.5 flex items-baseline justify-between gap-3">
+        <Link
+          to={`/m/${m.ref.replace(/^sol:/, "")}`}
+          className="min-w-0 truncate text-sm font-medium text-ink hover:text-accent"
+        >
+          {m.question}
+        </Link>
+        <Meta m={m} />
       </div>
-      <div className="mt-3">
-        <GraduationBar progress={m.graduation} graduated={m.isGraduated} />
-      </div>
-      <div className="mt-2 font-mono text-[10px] text-faint">
-        {m.isSettled
-          ? "settled"
-          : m.deadline
-            ? `closes in ${timeAgo(2 * Math.floor(Date.now() / 1000) - m.deadline)}`
-            : ""}
-      </div>
-    </Link>
+      <BetBar market={m} />
+    </div>
   );
 }
 
 export function Feed() {
   const { markets, isLoading } = useMarkets();
   const open = markets.filter((m) => !m.isSettled);
-  const king = [...open]
-    .filter((m) => !m.isGraduated)
-    .sort((a, b) => b.graduation - a.graduation)[0];
-  const rest = open.filter((m) => m !== king);
   const settled = markets.filter((m) => m.isSettled);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
+    <div className="mx-auto max-w-2xl px-4 py-4">
       {isLoading && (
         <p className="py-16 text-center font-mono text-xs text-faint">
           reading the chain…
         </p>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {king && <Card m={king} king />}
-        {rest.map((m) => (
-          <Card key={m.ref} m={m} />
-        ))}
-        {settled.map((m) => (
-          <Card key={m.ref} m={m} />
-        ))}
-      </div>
+      {open.map((m) => (
+        <Row key={m.ref} m={m} />
+      ))}
+      {settled.length > 0 && (
+        <>
+          <h2 className="mt-6 mb-1 font-mono text-[10px] uppercase tracking-widest text-faint">
+            settled
+          </h2>
+          {settled.map((m) => (
+            <Row key={m.ref} m={m} />
+          ))}
+        </>
+      )}
       {!isLoading && markets.length === 0 && (
         <p className="py-16 text-center font-mono text-xs text-faint">
           no markets on this cluster — launch one

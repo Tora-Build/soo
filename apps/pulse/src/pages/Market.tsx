@@ -5,7 +5,7 @@ import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 import { PriceChart } from "../components/PriceChart";
-import { BetPanels } from "../components/BetPanels";
+import { BetBar } from "../components/BetBar";
 import { GraduationBar } from "../components/GraduationBar";
 import { OrderBookPanel } from "../components/OrderBookPanel";
 import { useMarket } from "../hooks/useMarkets";
@@ -68,7 +68,9 @@ export function Market() {
         </div>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="space-y-4">
+        {/* the same one-bar control the feed uses — one way to bet, everywhere */}
+        <BetBar market={market} />
         <div className="space-y-4">
           <PriceChart points={points} liveYesWad={market.yesPriceWad} />
           <GraduationBar progress={market.graduation} graduated={market.isGraduated} />
@@ -98,9 +100,6 @@ export function Market() {
               )}
             </ul>
           </section>
-        </div>
-        <div>
-          <BetPanels market={market} />
         </div>
       </div>
     </div>
