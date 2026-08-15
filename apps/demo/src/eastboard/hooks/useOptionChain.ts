@@ -26,6 +26,7 @@ import {
 import { deriveCellStatus, type OptionCellStatus } from "../lib/cellStatus";
 import { isEastboardFixtureMode } from "../lib/fixtureMode";
 import { useOnChainMarkets } from "../../hooks/useOnChainMarkets";
+import { useDerivedOptionMarkets } from "./useDerivedOptionMarkets";
 import { useDemo } from "../../lib/DemoContext";
 
 export type { OptionCellStatus } from "../lib/cellStatus";
@@ -89,6 +90,10 @@ export function useOptionChain(underlyingId: string) {
     () => buildOptionTemplates(underlying, expiries),
     [underlying, expiries],
   );
+
+  // Probe chain for markets whose PDA derives from a template question —
+  // finds cells activated in other browsers, no registry needed.
+  useDerivedOptionMarkets(templates);
 
   // Every market the demo can see, matched to templates by parsed question.
   const onChain = useOnChainMarkets();

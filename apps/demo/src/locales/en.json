@@ -1402,7 +1402,7 @@
       "changeLanguage": "Change language"
     },
     "shell": {
-      "testnetBanner": "No-value Solana devnet research prototype — outcomes and funds are for testing only",
+      "testnetBanner": "Devnet — funds have no value",
       "networkFooter": "Solana Devnet · Sooth Core"
     },
     "wallet": {
@@ -1423,7 +1423,7 @@
     "hero": {
       "eyebrow": "Daily close / binary settlement",
       "title": "A clear board for Asia’s closing bell",
-      "body": "Select a pre-set strike and expiry. Unactivated cells open a guided funding preview; ready markets trade through Sooth’s central limit order book."
+      "body": "Pick a strike. Buy YES or NO. Settles at the official close."
     },
     "metrics": {
       "cells": "Template cells",
@@ -1441,7 +1441,7 @@
       "outcomePutAria": "Show PUT prices: official close below strike",
       "payoff": {
         "eyebrow": "Binary payoff contract",
-        "body": "Prices are shown in cents. Your limit price is the collateral at risk per share; the order ticket adds the live crossing fee before you sign.",
+        "body": "Prices are in cents; a share pays 100¢ when right, 0¢ when wrong.",
         "correct": "If correct",
         "wrong": "If wrong",
         "invalid": "If INVALID",
@@ -1583,7 +1583,6 @@
         "registrationPending": "Liquidity target reached but order-book registration is not confirmed",
         "noSetupFee": "No remaining market setup fee was found"
       },
-      "solanaNote": "One signature: create_market initializes the vaults, AMM state and lifecycle in a single Solana transaction, with the question stored and verified on-chain.",
       "liquidity": "Liquidity (b)",
       "title": "Activate market",
       "strike": "Strike",
@@ -1801,11 +1800,12 @@
         "notEnough": "Not enough YES to sell",
         "buyCta": "Buy {{shares}} YES",
         "sellCta": "Sell {{shares}} YES",
-        "bought": "Bought {{shares}} YES — one signature, no approvals",
         "sold": "Sold {{shares}} YES — proceeds unlock after the cooldown",
-        "cooldownNote": "Sell proceeds are escrowed by the program and unlock after the cooldown — claim them from your portfolio.",
-        "axisNote": "One axis: buying YES walks the price up, selling YES walks it down — \"NO\" is the same curve from the other side. Priced in {{symbol}} until graduation opens the order book.",
-        "yourPosition": "your position"
+        "yourPosition": "your position",
+        "closed": "Closed {{shares}} {{side}}",
+        "closeCta": "Close {{shares}} {{side}}",
+        "paysIfNo": "Pays if NO",
+        "cooldownShort": "Proceeds unlock after cooldown — claim in portfolio"
       }
     },
     "mechanism": {

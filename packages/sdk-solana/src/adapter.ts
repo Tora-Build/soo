@@ -2836,7 +2836,17 @@ export class SolanaChainAdapter implements ChainAdapter {
     // The umbrella SDK's CreateMarketArgs is intentionally narrow; we fill
     // in Solana-specific fields with safe defaults when omitted. See the
     // type definition in `types.ts` for the full per-field contract.
-    const marketId = args.marketId ?? randomMarketId();
+    // Deterministic by default: the market id IS the question (first 16
+    // bytes of its sha256). One question, one market — a second create of
+    // the same text fails at `init`, and any client can DERIVE the PDA from
+    // the words alone, which is what makes wizard-created markets
+    // discoverable across browsers without a registry or indexer. Callers
+    // that genuinely want two markets with identical text pass marketId.
+    const marketId =
+      args.marketId ??
+      (args.question?.trim()
+        ? (await sha256(args.question)).slice(0, 16)
+        : randomMarketId());
     if (marketId.length !== 16) {
       throw new SoothError({
         kind: "ProgramError",
@@ -3910,6 +3920,15 @@ function buildInitMarketFeePoolIx(args: {
 // keccak256 for the same role; Solana's `solana-program` exposes both
 // SHA-256 and keccak — we pick SHA-256 here because `crypto.subtle` ships
 // it natively whereas keccak would require a userland dep.
+/** The default market id for a question: first 16 bytes of sha256(text).
+ * Exported so frontends can derive a question's market PDA without creating
+ * it — the discovery primitive for registry-less clients. */
+export async function marketIdForQuestion(
+  question: string,
+): Promise<Uint8Array> {
+  return (await sha256(question)).slice(0, 16);
+}
+
 async function sha256(input: string): Promise<Uint8Array> {
   const data = new TextEncoder().encode(input);
   const buf = await globalThis.crypto.subtle.digest("SHA-256", data);

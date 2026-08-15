@@ -1402,7 +1402,7 @@
       "changeLanguage": "切换语言"
     },
     "shell": {
-      "testnetBanner": "无价值 Solana devnet 研究原型——结算与资金仅用于测试",
+      "testnetBanner": "Devnet 测试网——资金无实际价值",
       "networkFooter": "Solana Devnet · Sooth Core"
     },
     "wallet": {
@@ -1423,7 +1423,7 @@
     "hero": {
       "eyebrow": "每日收盘 / 二元结算",
       "title": "聚焦亚洲收盘价的期权盘面",
-      "body": "选择预设行权价和到期日。尚未开放的合约会显示资金配置引导；已上线市场通过 Sooth 中央限价订单簿交易。"
+      "body": "选择行权价，买入 YES 或 NO，按官方收盘价结算。"
     },
     "metrics": {
       "cells": "期权合约",
@@ -1441,7 +1441,7 @@
       "outcomePutAria": "显示 PUT 价格：官方收盘价低于行权价",
       "payoff": {
         "eyebrow": "二元收益合约",
-        "body": "价格统一以分显示。限价就是每份合约承担风险的抵押金额；签名前，订单面板会计入实时吃单手续费。",
+        "body": "价格以美分计；判断正确每份兑付 100¢,错误为 0¢。",
         "correct": "判断正确",
         "wrong": "判断错误",
         "invalid": "结果为 INVALID",
@@ -1583,7 +1583,6 @@
         "registrationPending": "流动性目标已达到，但订单簿登记尚未确认",
         "noSetupFee": "没有剩余的市场启动手续费目标"
       },
-      "solanaNote": "一次签名:create_market 在一笔 Solana 交易中初始化金库、AMM 状态与生命周期,问题文本上链并经程序校验。",
       "liquidity": "流动性 (b)",
       "title": "激活市场",
       "strike": "行权价",
@@ -1801,11 +1800,12 @@
         "notEnough": "YES 持仓不足",
         "buyCta": "买入 {{shares}} YES",
         "sellCta": "卖出 {{shares}} YES",
-        "bought": "已买入 {{shares}} YES——一次签名,无需授权",
         "sold": "已卖出 {{shares}} YES——所得将在冷却期后解锁",
-        "cooldownNote": "卖出所得由程序托管,冷却期后解锁——请在持仓页领取。",
-        "axisNote": "单一价格轴:买入 YES 推高价格,卖出 YES 压低价格——\"NO\" 只是同一条曲线的另一侧。毕业开启订单簿前以 {{symbol}} 计价。",
-        "yourPosition": "当前持仓"
+        "yourPosition": "当前持仓",
+        "closed": "已平仓 {{shares}} {{side}}",
+        "closeCta": "平仓 {{shares}} {{side}}",
+        "paysIfNo": "NO 兑付",
+        "cooldownShort": "所得冷却期后解锁——在持仓页领取"
       }
     },
     "mechanism": {

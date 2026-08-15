@@ -88,10 +88,6 @@ export function ActivationWizard({
         </div>
       </dl>
 
-      <p className="text-[10px] leading-relaxed text-muted">
-        {t("eastboard.activation.solanaNote")}
-      </p>
-
       {activation.message && (
         <div className="border border-warn/40 bg-warn-soft p-3 font-mono text-[10px] leading-relaxed text-warn">
           {activation.message}
