@@ -2286,6 +2286,72 @@ export class SolanaChainAdapter implements ChainAdapter {
     };
   }
 
+  /**
+   * Fund a market's LMSR curve: the creator posts the b·ln2 subsidy and
+   * receives the LP allocation. Without this a created market LOOKS alive
+   * but cannot trade — `trade_positions` mints LP to every buyer, and only
+   * seed_lp creates the LP mint. The UI creation flows skipped it for
+   * months and every wizard-created market was an untradeable orphan.
+   */
+  async buildSeedLp(
+    market: MarketRef,
+    args: { creator: AddressRef },
+  ): Promise<TradeRequest> {
+    const creatorPk = decodePubkeyRef(args.creator);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const amm = await this.readAmmState(`sol:${marketPda.toBase58()}`);
+    const bWad = amm?.b ?? 0n;
+    const LN2_WAD = 693147180559945309n;
+    const seedDepositWad = (bWad * LN2_WAD) / 10n ** 18n;
+    const [lpMint] = deriveLpMintPda(resolved.marketId, this.programIds);
+    const creatorLpAta = deriveUserLpAta(creatorPk, lpMint);
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .seedLp({
+        lpAmount: bigIntToBn(1_000_000_000n),
+        seedDepositWad: bigIntToBn(seedDepositWad),
+      })
+      .accounts({
+        config: deriveProtocolConfigPda(this.programIds)[0],
+        market: marketPda,
+        ammState: deriveAmmStatePda(resolved.marketId, this.programIds)[0],
+        lpMint,
+        lpMintAuthority: deriveLpMintAuthorityPda(
+          resolved.marketId,
+          this.programIds,
+        )[0],
+        creatorLpAta,
+        lpPosition: deriveLpPositionPda(
+          resolved.marketId,
+          creatorPk,
+          this.programIds,
+        )[0],
+        marketVault: deriveMarketVaultAta(
+          resolved.marketId,
+          this.ammMint,
+          this.programIds,
+        ),
+        creatorAmmAta: deriveUserUsdcAta(creatorPk, this.ammMint),
+        ammMint: this.ammMint,
+        creator: creatorPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: SYSVAR_RENT_PUBKEY,
+      })
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, creatorPk),
+        operation: "seedLp",
+      },
+    };
+  }
+
   async buildReclaimSubsidy(
     market: MarketRef,
     args: { creator: AddressRef },

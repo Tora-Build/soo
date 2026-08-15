@@ -1787,6 +1787,25 @@
         "lpBalance": "{{amount}} LP",
         "readingLp": "Reading LP balance…",
         "lpDescription": "Redeemable pro-rata only after settlement, after liabilities and reserved fees."
+      },
+      "real": {
+        "priceTitle": "market price",
+        "connect": "Connect a wallet first",
+        "buyYes": "Buy YES",
+        "sellYes": "Sell YES",
+        "shares": "shares",
+        "cost": "Est. cost",
+        "proceeds": "Est. proceeds",
+        "paysIfYes": "Pays if YES",
+        "pending": "Signing…",
+        "notEnough": "Not enough YES to sell",
+        "buyCta": "Buy {{shares}} YES",
+        "sellCta": "Sell {{shares}} YES",
+        "bought": "Bought {{shares}} YES — one signature, no approvals",
+        "sold": "Sold {{shares}} YES — proceeds unlock after the cooldown",
+        "cooldownNote": "Sell proceeds are escrowed by the program and unlock after the cooldown — claim them from your portfolio.",
+        "axisNote": "One axis: buying YES walks the price up, selling YES walks it down — \"NO\" is the same curve from the other side. Priced in {{symbol}} until graduation opens the order book.",
+        "yourPosition": "your position"
       }
     },
     "mechanism": {

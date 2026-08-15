@@ -9,7 +9,7 @@
 // Both panels are the demo's devnet-proven components, not ports: the same
 // SimpleTradingPanel that serves /amm/:addr and the same SoothBookTerminal
 // that serves /orderbook/:addr.
-import { SimpleTradingPanel } from "../../../components/features/SimpleTradingPanel";
+import { BondingTrade } from "./BondingTrade";
 import { SoothBookTerminal } from "../../../components/features/pro/SoothBookTerminal";
 import type { OptionChainCell } from "../../hooks/useOptionChain";
 
@@ -33,13 +33,7 @@ export function CanonicalBook({
       </div>
     );
   }
-  return (
-    <div className="mx-auto w-full max-w-[560px] p-4">
-      <SimpleTradingPanel
-        address={cell.marketAddress}
-        isGraduated={false}
-        isSettled={cell.status === "settled"}
-      />
-    </div>
-  );
+  // Pre-graduation: the drawer's OWN simplified panel — upstream's design
+  // made real — not the classic demo panel it used to embed.
+  return <BondingTrade cell={cell} />;
 }

@@ -633,7 +633,12 @@ export function OptionsChain() {
               if (activeCell) {
                 setTradeCell({
                   ...activeCell,
-                  status: "live",
+                  // A freshly activated market is BONDING, not live —
+                  // upstream could force "live" because its EVM markets were
+                  // book-tradeable at birth; ours graduate first. "live"
+                  // here routed brand-new cells into the order-book
+                  // terminal, which cannot trade them.
+                  status: "activating",
                   marketAddress: marketAddress ?? activeCell.marketAddress,
                   fixture: chain.fixtureMode,
                 });

@@ -1787,6 +1787,25 @@
         "lpBalance": "{{amount}} LP",
         "readingLp": "正在读取 LP 余额…",
         "lpDescription": "结算后，在扣除负债和预留手续费后，才可按比例赎回。"
+      },
+      "real": {
+        "priceTitle": "市场价格",
+        "connect": "请先连接钱包",
+        "buyYes": "买入 YES",
+        "sellYes": "卖出 YES",
+        "shares": "份额",
+        "cost": "预计成本",
+        "proceeds": "预计所得",
+        "paysIfYes": "YES 兑付",
+        "pending": "签名中…",
+        "notEnough": "YES 持仓不足",
+        "buyCta": "买入 {{shares}} YES",
+        "sellCta": "卖出 {{shares}} YES",
+        "bought": "已买入 {{shares}} YES——一次签名,无需授权",
+        "sold": "已卖出 {{shares}} YES——所得将在冷却期后解锁",
+        "cooldownNote": "卖出所得由程序托管,冷却期后解锁——请在持仓页领取。",
+        "axisNote": "单一价格轴:买入 YES 推高价格,卖出 YES 压低价格——\"NO\" 只是同一条曲线的另一侧。毕业开启订单簿前以 {{symbol}} 计价。",
+        "yourPosition": "当前持仓"
       }
     },
     "mechanism": {

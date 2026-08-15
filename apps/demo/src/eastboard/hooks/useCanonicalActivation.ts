@@ -15,6 +15,7 @@ import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useAccount, useWriteContract } from "@/lib/chain-shim";
+import { useDemo } from "../../lib/DemoContext";
 import { ABIS } from "../../config/abis";
 import { useDeployments } from "../../hooks/useDeployments";
 import type { OptionTemplate } from "../core";
@@ -35,6 +36,7 @@ export function useCanonicalActivation(
   existingMarketAddress?: `0x${string}`,
 ): CanonicalActivation {
   const { address, isConnected } = useAccount();
+  const demo = useDemo();
   const { writeContractAsync } = useWriteContract();
   const { contracts } = useDeployments();
   const queryClient = useQueryClient();
@@ -82,6 +84,17 @@ export function useCanonicalActivation(
         globalThis as unknown as { __lastCreatedMarketPda?: string }
       ).__lastCreatedMarketPda;
       if (pda) setMarketAddress(`0x${pda}` as `0x${string}`);
+
+      // Second signature: fund the curve. Without seed_lp the market LOOKS
+      // alive but cannot trade — trade_positions mints LP to every buyer and
+      // only seed_lp creates that mint. Every wizard-created market before
+      // this was an untradeable orphan.
+      if (pda && demo?.adapter && demo.signer && demo.userRef) {
+        const seedReq = await demo.adapter.buildSeedLp(`sol:${pda}`, {
+          creator: demo.userRef,
+        });
+        await demo.adapter.submit(seedReq, demo.signer as never);
+      }
       setStepState("done");
       setMessage(null);
       // The grid re-derives cell status from the market list.
