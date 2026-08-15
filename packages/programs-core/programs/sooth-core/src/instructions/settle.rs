@@ -9,12 +9,11 @@
 //!     staying live. Mirrors EVM, where `settle(address market)` is callable
 //!     by anyone after `vetoEndsAt`.
 //!
-//!   - **No `winning_outcome` argument.** It is read from the entry. The
-//!     previous signature let the authority settle an outcome that differed
-//!     from the one attested, which would have made the veto window
-//!     meaningless: dispute the attestation all you like, settle could pass
-//!     something else. The attested value is now the only thing that can be
-//!     finalized.
+//!   - **No `winning_outcome` argument.** It is read from the entry, so the
+//!     attested value is the only thing that can be finalized. Accepting an
+//!     outcome from the caller would make the veto window meaningless:
+//!     dispute the attestation all you like, settle could pass something
+//!     else.
 
 use anchor_lang::prelude::*;
 
@@ -34,7 +33,8 @@ pub struct Settle<'info> {
     )]
     pub market: Account<'info, Market>,
 
-    /// Per-market adjudicator record. Used to authenticate the caller.
+    /// Per-market adjudicator record; supplies the attested outcome and
+    /// timestamp.
     #[account(
         seeds = [ADJUDICATOR_ENTRY_SEED, market.key().as_ref()],
         bump = adjudicator_entry.bump,

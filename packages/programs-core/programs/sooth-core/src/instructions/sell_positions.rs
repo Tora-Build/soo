@@ -66,7 +66,7 @@ pub struct SellPositions<'info> {
         token::mint = amm_mint,
         token::authority = vault_authority,
         // `VaultAuthorityMismatch`, not `MarketNotOpen`. This fires when the
-        // caller passes the wrong vault — which since the token split means the
+        // caller passes the wrong vault — with per-venue vaults that means the
         // BOOK's vault — and reporting a lifecycle error sends a debugger to
         // look at the market's state instead of at the account they passed.
         constraint = market_vault.key() == market.vault_amm

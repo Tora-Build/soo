@@ -23,9 +23,8 @@ import {
 import { bootSmoke } from "./fixtures/setup.js";
 import { LiteSvmConnection } from "./fixtures/svm.js";
 
-// Wave 1B fix landed — see the matching note at the top of
-// `sell-flow.test.ts`. Both `sell_positions` and `claim_unlocked` now CPI
-// into `sooth_market` helpers for the PDA-signed transfers.
+// Both `sell_positions` and `claim_unlocked` CPI into `sooth_market` helpers
+// for the PDA-signed transfers — see the note atop `sell-flow.test.ts`.
 describe("AMM claim_unlocked flow", () => {
   it("buy → sell → warp clock → claim drains lock_vault → user ATA", async () => {
     const t0 = Date.now();

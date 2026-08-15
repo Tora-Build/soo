@@ -1804,8 +1804,7 @@
         "yourPosition": "当前持仓",
         "closed": "已平仓 {{shares}} {{side}}",
         "closeCta": "平仓 {{shares}} {{side}}",
-        "paysIfNo": "NO 兑付",
-        "cooldownShort": "所得冷却期后解锁——在持仓页领取"
+        "paysIfNo": "NO 兑付"
       }
     },
     "mechanism": {

@@ -23,11 +23,9 @@ pub struct Market {
     pub question_hash: [u8; 32],
     /// Book-venue collateral vault (`BOOK_TOKEN_MINT`).
     ///
-    /// Renamed from `vault` when the venues split tokens, deliberately: a
-    /// rename makes the compiler visit every use, and picking the wrong vault
-    /// is the one mistake in this change that fails silently rather than
-    /// loudly. An SPL token account holds exactly one mint, so these cannot be
-    /// merged even if someone wanted to.
+    /// Named per venue: picking the wrong vault is the one mistake here that
+    /// fails silently rather than loudly. An SPL token account holds exactly
+    /// one mint, so the two vaults cannot be merged.
     pub vault_book: Pubkey,
     /// AMM-venue collateral vault (`AMM_TOKEN_MINT`).
     pub vault_amm: Pubkey,
@@ -50,11 +48,10 @@ pub struct Market {
     /// `trade_positions`. It lives here rather than being read from
     /// `AmmState` because `book_place` already loads `Market` and does NOT
     /// load `AmmState` — checking the real flag would mean adding an account
-    /// and 32 bytes to every order, permanently, to read one bit. The book
-    /// redesign's headline property is that a fill costs zero extra accounts;
-    /// this keeps it.
+    /// and 32 bytes to every order, permanently, to read one bit, and a fill
+    /// must cost zero extra accounts.
     ///
-    /// The cost of mirroring is that two places now hold the same fact. They
+    /// The cost of mirroring is that two places hold the same fact. They
     /// cannot drift: graduation is one-way and set at exactly one site.
     pub book_enabled: bool,
 

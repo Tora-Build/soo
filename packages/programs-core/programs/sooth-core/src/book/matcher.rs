@@ -1,9 +1,9 @@
 //! Matching: walk the opposite side, settle each fill, rest the remainder.
 //!
-//! This is the loop whose cost the entire redesign is justified by. Today a
-//! fill needs **3 accounts and 99 transaction bytes** — `[book_side,
-//! maker_position, maker_usdc_ata]` — which caps a crossing buy at 5 fills
-//! against the 1232-byte packet limit.
+//! This is the loop whose per-fill cost sets the book's ceiling. A design
+//! that needed **3 accounts and 99 transaction bytes** per fill —
+//! `[book_side, maker_position, maker_usdc_ata]` — would cap a crossing buy
+//! at 5 fills against the 1232-byte packet limit.
 //!
 //! Here a fill touches nothing outside the book account the instruction already
 //! holds: the maker's order, the maker's seat and the taker's seat are all
@@ -84,11 +84,10 @@ pub struct MatchResult {
     pub resting_seq: u64,
     /// Per-fill records for the event log, in execution order.
     ///
-    /// A `Vec` allocates, which the arena deliberately avoids — but the 256 KB
-    /// heap frame is mandatory program-wide anyway until the legacy borsh book
-    /// is deleted, so this costs nothing that is not already paid. When that
-    /// frame goes, this becomes a fixed-size array and `match_limit` gains a
-    /// ceiling to match.
+    /// A `Vec` allocates, which the arena otherwise avoids — but the 256 KB
+    /// heap frame is mandatory program-wide (see `lib.rs`), so this costs
+    /// nothing that is not already paid. If that frame ever goes, this becomes
+    /// a fixed-size array and `match_limit` gains a ceiling to match.
     pub filled_orders: Vec<FilledOrder>,
 }
 
@@ -438,11 +437,9 @@ impl<'a> Book<'a> {
     /// Everything this book still owes, in USDC base units, under
     /// `winning_outcome`.
     ///
-    /// Three components, and all three are enumerable because the redesigned
-    /// book is ONE account — which is precisely what the legacy
-    /// `OrderbookPosition` (one PDA per market-user, no way to list them) made
-    /// impossible, and why reclaiming the unspent LMSR subsidy had to wait for
-    /// that ledger to be deleted:
+    /// Three components, and all three are enumerable because the book is ONE
+    /// account — a per-user PDA ledger could not be listed, and so could not
+    /// be summed at all:
     ///
     ///   - **positions**: every seat's winning side, one unit per share;
     ///   - **credit**: already-released USDC nobody has withdrawn yet;

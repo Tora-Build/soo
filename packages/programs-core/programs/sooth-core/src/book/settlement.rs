@@ -1,7 +1,7 @@
 //! Settlement for the unified-axis orderbook.
 //!
-//! Phase 2 of `docs/design/orderbook-redesign.md`. Pure arithmetic — no
-//! accounts, no CPI — so every rule here is exercised by ordinary `cargo test`.
+//! See `docs/design/orderbook-redesign.md`. Pure arithmetic — no accounts,
+//! no CPI — so every rule here is exercised by ordinary `cargo test`.
 //!
 //! ## The unified axis
 //!
@@ -10,10 +10,10 @@
 //! instead of two complementary books. A position is a single signed number:
 //! `net > 0` is long YES, `net < 0` is long NO.
 //!
-//! This is Kalshi's and Drift's model. It is economically identical to the
-//! two-sided complete-set book we have today, and it makes the "excess goes to
-//! the filler" rule fall out of ordinary price improvement instead of needing a
-//! separate rebate accumulator (see `docs/design/orderbook-redesign.md` §5.2).
+//! This is Kalshi's and Drift's model. It is economically identical to a
+//! two-sided complete-set book, and it makes the "excess goes to the filler"
+//! rule fall out of ordinary price improvement instead of needing a separate
+//! rebate accumulator (see `docs/design/orderbook-redesign.md` §5.2).
 //!
 //! ## One rule replaces the mint/transfer/merge table
 //!
@@ -197,20 +197,17 @@ pub fn settle_leg(side: u8, old_net: i64, amount: u64, own_cost: u64) -> R<LegSe
 ///
 /// ## Why there is no floor-on-sum here
 ///
-/// `instructions/orderbook_common.rs` computes fees with the floor-on-sum rule,
-/// `floor((cost + fee) / 1e12) - floor(cost / 1e12)`, and pins it with golden
-/// fixtures for EVM bit-parity. That rule exists because the old path carries
-/// cost in **WAD**, where a cost can hold a fraction of a base unit that a
-/// sub-unit fee can tip over a boundary.
+/// The floor-on-sum rule, `floor((cost + fee) / 1e12) - floor(cost / 1e12)`,
+/// exists for costs carried in **WAD**, where a cost can hold a fraction of a
+/// base unit that a sub-unit fee can tip over a boundary.
 ///
 /// This book works in base units, so a cost is always a whole number of base
 /// units and there is no fraction to tip: floor-on-sum and floor-on-fee are
-/// provably the same function here. Adding the ceremony would be cargo-culting.
+/// provably the same function here.
 ///
-/// Note EVM fee parity is **already** deliberately broken by the `min(p, 1-p)`
-/// rule itself, which replaces `rate * cost` precisely because the latter is
-/// arbitrageable across the complement. Preserving a rounding convention for a
-/// formula we are not using would be parity theatre.
+/// EVM fee parity is deliberately not a goal: the `min(p, 1-p)` rule replaces
+/// `rate * cost` precisely because the latter is arbitrageable across the
+/// complement.
 ///
 /// Note also that dividing by `NUM_TICKS` and then by `BPS_DENOMINATOR` is
 /// arithmetically identical to dividing by their product —
@@ -401,9 +398,9 @@ mod tests {
     fn selling_yes_high_and_buying_no_low_cost_the_same_fee() {
         // THE point of min(p, 1-p). Selling 100 YES at 0.80 and buying 100 NO
         // at 0.20 are the same position, and split/merge converts between them
-        // for free. Today the sell leg pays ZERO (escrow legs are fee-exempt)
-        // and the buy leg pays 1% of $20, so everyone routes through the free
-        // side and the fee is avoidable outright.
+        // for free. A fee charged on own cost would let the sell leg pay ZERO
+        // (escrow legs are fee-exempt) while the buy leg pays 1% of $20, so
+        // everyone would route through the free side.
         let amount = shares(100);
         let (_, ask) = fill(800, amount, SIDE_ASK, 0, 0);
         let sell_fee = taker_fee(amount, 800, FEE_BPS, ask.collateral_in).unwrap();

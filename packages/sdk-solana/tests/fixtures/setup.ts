@@ -434,8 +434,8 @@ export async function bootSmoke(
     );
 
   // ─── Advance the clock past `startTime` ────────────────────────────────
-  // C1 (Codex) added a `start_time <= now < deadline` guard to
-  // `trade_positions`. The SVM boots with `unix_timestamp = 0`; warp the
+  // `trade_positions` enforces `start_time <= now < deadline`.
+  // The SVM boots with `unix_timestamp = 0`; warp the
   // sysvar clock to a slot inside the trading window so the buy path can
   // execute. We pick `startTime + 1` as the smallest legal value.
   warpClockTo(ctx, BigInt(startTime + 1));

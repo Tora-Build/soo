@@ -14,7 +14,7 @@ export interface ChainDeployments {
   TruthMarket?: string;
   FeeRouter?: string;
   AdjudicatorRegistry?: string;
-  // Legacy compat (removed in v0.1.0)
+  // Optional entries — absent from v0.1.0+ deployments.
   Collateralizer?: string;
   ProtocolConfig?: string;
   USDC?: string;

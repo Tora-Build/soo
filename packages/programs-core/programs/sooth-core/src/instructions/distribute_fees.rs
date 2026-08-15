@@ -55,12 +55,10 @@ pub struct DistributeFeesAmm<'info> {
 
     // ── Destinations ─────────────────────────────────────────────────────
     //
-    // Every one is pinned. They used to carry `token::mint` and nothing else,
-    // while `cranker` is any signer — so anyone could call this and route the
-    // b_base, LP and adjudicator shares (90% of the pool at the shipped split)
-    // into accounts they controlled. Only the treasury was bound. It was
-    // unreachable in practice because no client built the instruction, which
-    // is not a security property.
+    // Every one is pinned. `cranker` is any signer, so a destination bound
+    // only by `token::mint` would let anyone call this and route the b_base,
+    // LP and adjudicator shares (90% of the pool at the shipped split) into
+    // accounts they controlled.
     //
     /// The venue's own collateral vault: the `b_base` share stays with the
     /// market rather than leaving it.
@@ -92,8 +90,8 @@ pub struct DistributeFeesAmm<'info> {
 
     /// THIS market's AMM-side yield vault — the same account `redeem_lp`
     /// pays LP holders from, so the share lands where the claim path expects
-    /// it. Seeded by market_id: a global vault here was a cross-market theft,
-    /// since redeem paid the whole pool out against one market's LP supply.
+    /// it. Seeded by market_id: a global vault here would allow cross-market
+    /// theft, since redeem pays out against one market's LP supply.
     #[account(
         mut,
         seeds = [b"lp_yield_amm", market.market_id.as_ref()],
@@ -114,13 +112,13 @@ pub struct DistributeFeesAmm<'info> {
 
     /// `config.treasury` is the treasury's OWNER, not one token account.
     ///
-    /// It was `address = config.treasury`, which cannot work once there are two
-    /// venues: that pins one account, and the same account cannot also satisfy
-    /// `token::mint = venue_mint` for two different mints. Whichever venue the
-    /// treasury account did not hold could never distribute — its pool would
-    /// fill and never drain. Binding the authority instead pins the
-    /// destination just as tightly (the caller still cannot choose an owner)
-    /// while letting the treasury hold one account per venue.
+    /// Bound by authority rather than `address = config.treasury` because
+    /// with two venues a single pinned account cannot satisfy
+    /// `token::mint = venue_mint` for two different mints — whichever venue
+    /// the treasury account did not hold could never distribute, and its pool
+    /// would fill and never drain. Binding the authority pins the destination
+    /// just as tightly (the caller still cannot choose an owner) while
+    /// letting the treasury hold one account per venue.
     #[account(
         mut,
         token::authority = config.treasury,
@@ -272,12 +270,10 @@ pub fn handler(ctx: Context<DistributeFeesAmm>) -> Result<()> {
 mod tests {
     use super::*;
 
-    // Ported from main's sooth_launchpad/tests/distribute_fees_per_market.rs.
-    //
     // The on-chain drain path (pool emptied, only the addressed market's pool
-    // touched) is already covered end-to-end by
-    // apps/demo/e2e/onchain/orderbook-per-market-fee.spec.ts, so what is worth
-    // restoring here is the split ARITHMETIC — a pure function, and the place
+    // touched) is covered end-to-end by
+    // apps/demo/e2e/onchain/orderbook-per-market-fee.spec.ts, so what these
+    // tests pin is the split ARITHMETIC — a pure function, and the place
     // where a rounding mistake silently misroutes protocol revenue.
 
     fn cfg(b_base: u16, lp: u16, adj: u16, protocol: u16) -> ProtocolConfig {

@@ -1,15 +1,9 @@
 // A trader's resting orders, in the EVM-shaped form upstream components expect.
 //
-// This used to walk the legacy two-sided book: read `MarketBook`, expand a tick
-// bitmap per side, then fetch a `BookSide` account for every occupied tick —
-// one RPC round trip per price level, and the reason the depth panel was never
-// wired up. Those accounts are gone.
-//
-// The redesigned book is a single account, so the same answer is one read. The
-// exported shape is unchanged so `ActiveOrdersCard` and `wagmi-shim` need no
-// edits, but `escrow` is now always false: collateral is posted in USDC per
-// leg, never by delivering outcome tokens, so the flag no longer distinguishes
-// anything.
+// The book is a single account, so this is one read. `escrow` is always
+// false: collateral is posted in USDC per leg, never by delivering outcome
+// tokens, so the flag distinguishes nothing here — it exists only to satisfy
+// the shape `ActiveOrdersCard` and `wagmi-shim` consume.
 
 import { PublicKey, type Connection as SolanaConnection } from "@solana/web3.js";
 import { type SolanaChainAdapter } from "@sooth/sdk-solana";

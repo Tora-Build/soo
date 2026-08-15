@@ -8,8 +8,8 @@
 // from a seeded one, which is worse than it sounds, because the two route to
 // different venues.
 //
-// Upstream filled this from the indexer (`indexerMarket?.name`). With
-// `VITE_USE_INDEXER=false` that is always null.
+// The indexer path (`indexerMarket?.name`) is unavailable: the demo runs with
+// `VITE_USE_INDEXER=false`, so that field is always null.
 //
 // So: remember locally what this browser submitted. Deliberately narrow —
 //
@@ -23,7 +23,7 @@
 //     title next to a correct address.
 //
 // localStorage rather than sessionStorage on purpose: a market outlives the
-// tab that created it, and the previous side channel lost everything the
+// tab that created it, so a session-scoped store would lose every title the
 // moment the tab closed.
 
 const KEY = "__soothMarketQuestions";

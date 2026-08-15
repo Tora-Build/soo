@@ -1,18 +1,12 @@
 // Turn a decoded `Book` account into what the orderbook UI renders.
 //
-// This replaces two things at once.
+// **One fetch, not a ladder scan.** The book is a single account, so the whole
+// ladder is one `getAccountInfo` and a decode — no per-tick enumeration.
 //
-// **The 999-call ladder scan.** `useOrderbook` walks every tick from 999 down
-// to 1 issuing `getOrdersAtTick` through a multicall, because the legacy book
-// stores one account per price level and there is no way to enumerate them.
-// The redesigned book is a single account, so the whole ladder is one
-// `getAccountInfo` and a decode.
-//
-// **The complement flip.** The legacy book is two-sided: side 1 quotes its own
-// price and side 0 quotes `1 - p`, so every display surface has to remember to
-// invert one of them. The new book quotes a single unified YES axis — a bid at
+// **One price axis.** The book quotes a single unified YES axis — a bid at
 // tick 400 and an ask at tick 400 are both "YES at 0.40", differing only in
-// direction. `tickToYesPrice` collapses to a division.
+// direction — so `tickToYesPrice` is a division and no display surface has to
+// remember to invert a side.
 //
 // Everything here is pure: it takes a `BookSnapshot` and returns view models,
 // so it is unit-testable without a chain, a wallet, or React.
@@ -30,10 +24,10 @@ export const SIDE_ASK = 1;
 /**
  * YES price for a tick on the unified axis.
  *
- * No side parameter, deliberately. On the legacy book this needed one, and
- * forgetting it rendered the wrong side of the market at a glance-identical
- * number. Here both sides quote the same axis, so a side argument could only
- * ever reintroduce that bug.
+ * No side parameter, deliberately. Both sides quote the same axis, so a side
+ * argument could only reintroduce the complement bug it would invite —
+ * forgetting it renders the wrong side of the market at a glance-identical
+ * number.
  */
 export function yesPrice(tick: number): number {
   return Math.max(0, Math.min(1, tick / NUM_TICKS));
@@ -119,7 +113,7 @@ export function toBookView(snapshot: BookSnapshot, maxRows = 12): BookView {
 export interface MyOrder {
   /** The real on-chain sequence — what `book_cancel` takes. */
   seq: bigint;
-  /** Stable id for React keys. No longer synthesised from side and tick. */
+  /** Stable id for React keys, derived from the real seq. */
   id: string;
   side: number;
   tick: number;
@@ -132,11 +126,10 @@ export interface MyOrder {
 /**
  * A trader's resting orders.
  *
- * Each carries its real `seq`, so cancelling names an exact order. The legacy
- * UI synthesised `"${side}:${tick}"` ids when it did not know a real one and
- * regex-parsed them back — a path that resolved `"unknown-400"` to the NO side
- * because "unknown" contains "no", and truncated `"yes-12345"` to tick 345.
- * Both are gone by construction here: there is nothing to synthesise.
+ * Each carries its real `seq`, so cancelling names an exact order. Ids are
+ * never synthesised from side and tick and never parsed back, which is what
+ * keeps a label like `"unknown-400"` or `"yes-12345"` from being misread as a
+ * side or a tick.
  */
 export function myOrders(snapshot: BookSnapshot, trader: string): MyOrder[] {
   const mine: MyOrder[] = [];
@@ -264,8 +257,7 @@ export function myPosition(snapshot: BookSnapshot, trader: string): MyPosition {
  * Cost of a market order that sweeps the book, in base units.
  *
  * Walks the same side the on-chain matcher would, at the same prices, so a
- * quote shown to a user matches what they will pay — the legacy UI could not
- * do this without the 999-call scan.
+ * quote shown to a user matches what they will pay.
  *
  * Returns what is fillable; a caller comparing `filled` against the requested
  * amount learns the book is too thin, rather than being told a partial cost as

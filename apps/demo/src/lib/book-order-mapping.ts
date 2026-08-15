@@ -24,9 +24,9 @@
 // | buy NO at q         | ASK at 1 - q                  |
 // | sell NO at q        | BID at 1 - q                  |
 //
-// Buying NO is selling YES. That identity is the whole reason the redesigned
-// book needs one axis instead of two, and it is where the legacy path spent a
-// `buyNo`-at-`oppositeTick` special case per direction.
+// Buying NO is selling YES. That identity is the whole reason the book needs
+// one axis instead of two: all four form directions collapse into a side flag
+// plus a single complement, with no per-direction special case.
 
 export const SIDE_BID = 0;
 export const SIDE_ASK = 1;
@@ -52,8 +52,8 @@ export class OrderMappingError extends Error {}
  * Clamp a decimal price to a tradeable tick.
  *
  * 0 is free and 1000 is certain, so neither can rest — the program rejects
- * both. Clamping rather than throwing matches the legacy `clampTick`, so a
- * slider at either extreme still produces an order instead of an error toast.
+ * both. This clamps rather than throws, so a slider at either extreme still
+ * produces an order instead of an error toast.
  */
 export function priceToTick(price: number): number {
   if (!Number.isFinite(price)) {

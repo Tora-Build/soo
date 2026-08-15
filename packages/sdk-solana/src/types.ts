@@ -38,19 +38,16 @@ export interface SoothNode {
   rpcUrl: string;
   // Sooth program addresses — base58, Solana-only.
   //
-  // The 5→1 merge left one program: `soothCore`. `soothLog` is gone too — it
-  // existed because a program was believed unable to CPI into itself, which is
-  // false (Solana permits direct self recursion), so events now use Anchor's
-  // `emit_cpi!` instead. The pre-merge keys are retained
-  // as deprecated so existing node descriptors still typecheck — the adapter
-  // reads only `soothCore` and `usdcMint`, so leaving the old ones set is a
-  // silent no-op rather than an error.
+  // There is one program: `soothCore` (events use Anchor's `emit_cpi!`, so no
+  // separate log program exists). The adapter reads only `soothCore`,
+  // `usdcMint`, and `ammMint`; the deprecated keys below are retained so
+  // existing node descriptors still typecheck — setting them is a silent
+  // no-op rather than an error.
   programs?: {
     soothCore?: string;
     /**
-     * The BOOK venue's token. The name predates the venue split, when there
-     * was only one collateral token; it is kept because node descriptors in
-     * the wild already set it.
+     * The BOOK venue's token. The name is kept as `usdcMint` because node
+     * descriptors in the wild already set it.
      */
     usdcMint?: string;
     /**
@@ -303,9 +300,7 @@ export interface ChainAdapter {
   // Writes
   buildTrade(market: MarketRef, args: TradeArgs): Promise<TradeRequest>;
   buildClaim(market: MarketRef, args: ClaimArgs): Promise<ClaimRequest>;
-  // The book: one place/cancel/withdraw set. The legacy two-sided
-  // buy/sell/cancel trio it replaced is gone along with the instructions
-  // behind it.
+  // The book: one place/cancel/withdraw set.
   buildBookPlace(
     market: MarketRef,
     args: {

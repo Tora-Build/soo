@@ -273,13 +273,12 @@ mod wide_cost_regression {
     /// `lmsr_cost` ends in `wad_mul(b, m + ln_sum)`, and that product exceeds
     /// `u128::MAX` once the cost passes ~340.28e18 — which is just
     /// `max(q) + b·ln(2)`, i.e. a market with a few hundred shares
-    /// outstanding. The old `wad_mul` wrapped there instead of erroring.
+    /// outstanding. `wad_mul` must error there rather than wrap.
     ///
-    /// `cost_delta` differences two costs, so while both endpoints wrapped the
-    /// same number of times the error cancelled exactly and the market looked
-    /// healthy. A trade that straddled a wrap boundary did not cancel: at
-    /// b = 50, q = (307, 303), buying 4 YES returned **-338.16** — the program
-    /// paying the trader to take shares.
+    /// `cost_delta` differences two costs, so equal wraps at both endpoints
+    /// cancel exactly and a market looks healthy. A trade straddling the
+    /// boundary does not cancel: at b = 50, q = (307, 303), buying 4 YES
+    /// yields **-338.16** — the program paying the trader to take shares.
     #[test]
     fn buying_never_costs_a_negative_amount() {
         for b in [1i128, 50, 100, 1_000, 10_000] {
@@ -329,8 +328,8 @@ mod wide_cost_regression {
 
     /// Buying then selling the same size returns to the same cost.
     ///
-    /// The wrap was not symmetric, so a round trip across the boundary lost
-    /// (or created) value.
+    /// A wrap is not symmetric, so a round trip across the boundary would lose
+    /// (or create) value.
     #[test]
     fn a_round_trip_is_value_neutral() {
         let b = 50 * WAD;

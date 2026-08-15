@@ -316,18 +316,13 @@ describe("AMM position redemption after settlement", () => {
   }, 60_000);
 
   it("B0: the vault covers the payout because seed_lp posts the LMSR subsidy", async () => {
-    // This test used to assert the opposite, and passed.
-    //
     // LMSR is a SUBSIDISED market maker: it deliberately collects less from
     // traders than it owes winners, and that difference — bounded by b*ln(2) —
-    // is the liquidity it provides. It has to be posted up front. `seed_lp`
-    // took a `seed_deposit_wad` argument, wrote it to LpPosition, and
-    // transferred nothing, so a market's vault held only trader deposits and a
-    // winning position could not be paid at all: the SPL transfer aborted with
-    // InsufficientFunds (0x1).
-    //
-    // Nobody had hit it because there was no AMM redeem path either (B1).
-    // Adding one surfaced this.
+    // is the liquidity it provides. It has to be posted up front, which is
+    // what `seed_lp` transfers. A `seed_deposit_wad` merely recorded on
+    // LpPosition without moving tokens would leave the vault holding only
+    // trader deposits, and a winning position could not be paid at all: the
+    // SPL transfer aborts with InsufficientFunds (0x1).
     const { smoke, program, user } = await boot();
     const a = accountsFor(smoke, user.publicKey);
     const conn = new LiteSvmConnection(smoke.ctx);

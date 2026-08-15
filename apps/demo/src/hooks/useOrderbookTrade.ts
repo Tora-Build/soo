@@ -505,10 +505,8 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
 
       // ── The book write path ────────────────────────────────────────────
       //
-      // One call for every quadrant. The legacy two-sided book needed four,
-      // because it had to express "buy NO" as "buy YES on the other side at
-      // the complement tick" and then mirror that again for sells. On a single
-      // axis that is one `side` flag.
+      // One call for every quadrant: on a single YES axis, buy/sell NO/YES is
+      // one `side` flag plus the complement applied exactly once.
       //
       // It is also one instruction instead of a planned batch: the program
       // walks its own book, so nothing is precomputed off-chain and there is
@@ -631,10 +629,10 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
   /**
    * Cancel several orders in ONE transaction.
    *
-   * The panel used to loop `cancelOrder`, so N orders meant N wallet prompts
-   * and N fees, and a partial failure left the trader to work out which ones
-   * went through. The shim chunks this at the measured transaction limit and
-   * ends each chunk with a withdraw, so refunds reach the wallet.
+   * Looping `cancelOrder` would mean N wallet prompts and N fees for N
+   * orders, and a partial failure would leave the trader to work out which
+   * ones went through. The shim chunks this at the measured transaction limit
+   * and ends each chunk with a withdraw, so refunds reach the wallet.
    */
   const cancelOrders = useCallback(
     async (orderIds: string[]): Promise<boolean> => {
@@ -680,15 +678,12 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
       // ── The book write path ────────────────────────────────────────────
       //
       // Cancel by the order's real sequence. Nothing is synthesised, so
-      // nothing has to be parsed back — which removes both bugs the
-      // characterisation tests pinned: "unknown-400" resolving to the NO side
-      // because "unknown" contains "no", and "yes-12345" truncating to tick
-      // 345.
+      // nothing has to be parsed back — an id like "unknown-400" or
+      // "yes-12345" has no side or tick to misread out of it.
       //
-      // A level target has no meaning here. On the legacy book "cancel my
-      // order at this level" was the only thing the UI could express when the
-      // indexer had not caught up; the book now carries every order's seq in
-      // the same account the ladder came from, so the caller always has one.
+      // A level target has no meaning here: the book carries every order's
+      // seq in the same account the ladder came from, so the caller always
+      // has one.
       {
         if (target.kind !== "id") {
           toast.error(

@@ -5,7 +5,7 @@
 //
 //   1. `getGraduationProgress(market)` — `FeeRouter.getGraduationProgress`
 //      returns `(feesAccrued, threshold, progressBps)` upstream. The Solana
-//      adapter now reads the same values from `AmmState.fee_b_base_wad`,
+//      adapter reads the same values from `AmmState.fee_b_base_wad`,
 //      `AmmState.b`, and `AmmState.is_graduated`.
 //
 //   2. `totalSupply()` — LP token total supply. Upstream reads this from
@@ -15,9 +15,9 @@
 //      don't degenerate to 0.
 //
 // Dispatch precedence (in `wagmi-shim.ts`): markets-bridge runs *after*
-// the portfolio bridge but *before* the amm bridge. The portfolio bridge
-// no longer claims `totalSupply` — that case fell out of its graceful-zero
-// list specifically so this bridge can synthesize a non-zero LP supply.
+// the portfolio bridge but *before* the amm bridge. `totalSupply` is
+// deliberately absent from the portfolio bridge's graceful-zero list so this
+// bridge can synthesize a non-zero LP supply.
 // Function names this bridge doesn't recognize fall through unchanged.
 
 import { WAD, LN2_WAD, type SolanaChainAdapter } from "@sooth/sdk-solana";

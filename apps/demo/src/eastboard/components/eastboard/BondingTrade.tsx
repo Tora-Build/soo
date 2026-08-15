@@ -242,11 +242,6 @@ export function BondingTrade({ cell }: { cell: OptionChainCell }) {
               : `${side === 1 ? "YES" : "NO"} · ${String(shares)}`}
         </button>
 
-        {closes && (
-          <p className="mt-2 font-mono text-[10px] text-warn">
-            {t("eastboard.trade.real.cooldownShort")}
-          </p>
-        )}
         {message && (
           <p
             className={`mt-2 font-mono text-[11px] ${tone === "pos" ? "text-pos" : "text-neg"}`}

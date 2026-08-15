@@ -69,25 +69,12 @@ export const QuickTradeProvider = ({ children }: QuickTradeProviderProps) => {
 
   // Which panel a market opens on is decided by the PROGRAM, read directly.
   //
-  // This used to search a cached `useOnChainMarkets()` list and force the mode
-  // back to "amm" whenever that list said the market was not graduated. Two
-  // problems, and both showed up as "the orderbook does not appear on a
-  // graduated market":
-  //
-  //   1. Two sources of truth. `Markets.tsx` picks the initial mode from ITS
-  //      copy of `stage`, and this effect then overrode it from a different
-  //      fetch. When either was stale, mid-refresh, or had swallowed a read
-  //      error into `isGraduated: false`, the panel flipped underneath the
-  //      user with nothing explaining why.
-  //
-  //   2. A market absent from the list — still loading, filtered out, or
-  //      dropped because one of its reads failed — left `market` null, so the
-  //      guard silently did nothing and the mode depended on who opened it.
-  //
-  // One read of `isGraduated` for the selected market answers it outright, and
-  // the flag is the same one the program gates the book on. Undefined means
-  // "not known yet" and is deliberately NOT treated as false — that is what
-  // made a graduated market open on the AMM while the answer was still in
+  // One read of `isGraduated` for the selected market answers it outright,
+  // and the flag is the same one the program gates the book on. A cached
+  // market list would be a second source of truth that can be stale,
+  // mid-refresh, or missing the market entirely. Undefined means "not known
+  // yet" and is deliberately NOT treated as false — treating it as false
+  // would open a graduated market on the AMM while the answer is still in
   // flight.
   const graduated = useIsGraduated(selected);
 

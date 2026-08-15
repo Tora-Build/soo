@@ -6,7 +6,7 @@
 // moving the ceiling from 5 fills per transaction to somewhere in the 50-150
 // range. That estimate was reasoning, not measurement. This file measures it.
 //
-// The old numbers, from orderbook-cu-budget.test.ts on the same harness:
+// The per-account-bundle baseline, measured on the same harness:
 //
 //   fills │ tx bytes │ writable │ CU
 //   ──────┼──────────┼──────────┼─────────
@@ -127,10 +127,9 @@ async function send(
   signer: Keypair,
   ix: TransactionInstruction,
 ): Promise<Measured> {
-  // The 256 KB heap frame is still mandatory, even though this path allocates
+  // The 256 KB heap frame is mandatory even though this path allocates
   // nothing: the custom #[global_allocator] is program-wide, so the caller
-  // contract binds every instruction until the old borsh book is deleted.
-  // Retiring it is one of the things Phase 3 buys.
+  // contract binds every instruction.
   const tx = new Transaction()
     .add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }))
     .add(heapFrameIx())

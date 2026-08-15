@@ -48,10 +48,10 @@ export function useTraderVault() {
   // Book seat: collateral locked behind resting orders, plus the credit a
   // cancel or a fill has already returned but which has not been withdrawn.
   //
-  // `reservedBalance` used to be a hardcoded 0n, so a trader who placed orders
-  // watched their wallet balance drop with nothing on the page accounting for
-  // it — the collateral was sitting in the book, invisible. On the redesigned
-  // book that is the normal resting state, not an edge case.
+  // `reservedBalance` must report that locked collateral: a resting order is
+  // the normal state on this book, and a zero here would show a trader their
+  // wallet balance dropping with nothing on the page accounting for it.
+  //
   // A seat is per-market but the Trading Account is global, so this sums over
   // every market the demo knows about. There is no on-chain market registry —
   // `demoConfig` IS the list — so a market missing from it is also missing

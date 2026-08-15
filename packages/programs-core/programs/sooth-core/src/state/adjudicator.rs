@@ -78,16 +78,10 @@ impl AdjudicatorEntry {
 mod tests {
     use super::*;
 
-    /// The salvageable part of main's `sooth_adjudicator/tests/adjudicator_flow.rs`.
-    ///
-    /// The rest of that file (register / attest / dispute) tested inline copies
-    /// of the handler bodies rather than the handlers, so it is re-tested for
-    /// real against the on-chain instructions in the SDK's
-    /// `tests/adjudicator-flow.test.ts`. Only these state-shape assertions
-    /// exercise code that actually ships.
-    ///
-    /// Main's four `AdjudicatorKind` tests are dropped, not ported: the merge
-    /// removed the `kind` field, so Manual/ZkTLS/Other no longer exist.
+    /// A fresh entry for the state-shape assertions below. The register /
+    /// attest / dispute flow is exercised against the real on-chain
+    /// instructions in the SDK's `tests/adjudicator-flow.test.ts`; these
+    /// tests cover only the account layout.
     fn fresh() -> AdjudicatorEntry {
         let authority = Pubkey::new_unique();
         AdjudicatorEntry {

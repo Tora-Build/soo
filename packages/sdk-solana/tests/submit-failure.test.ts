@@ -1,20 +1,19 @@
-// H5 (Codex): submit-failure path. The buy smoke covers the green path;
-// this file proves that a guaranteed-fail tx (here: outcome=2, which fails
-// the on-chain `outcome == NO || outcome == YES` guard with code 6003
-// `InvalidOutcome`) raises a `SoothError` instead of being swallowed.
+// The submit-failure path. The buy smoke covers the green path; this file
+// proves that a guaranteed-fail tx (here: outcome=2, which fails the on-chain
+// `outcome == NO || outcome == YES` guard with code 6003 `InvalidOutcome`)
+// raises a `SoothError` instead of being swallowed — `submit` inspects
+// `confirmation.value.err`, which is where a reverted tx reports itself.
 //
-// Without the fix, `submit` returned a SubmitReceipt for failed txs because
-// `confirmation.value.err` was never inspected. The LiteSVM shim's
-// `processTransaction` throws on failure with a string carrying
-// "custom program error: 0x..", so the regex-based decoder runs through
-// the `sendRawTransaction` catch path — equivalent to the live
+// The LiteSVM shim's `processTransaction` throws on failure with a string
+// carrying "custom program error: 0x..", so the regex-based decoder runs
+// through the `sendRawTransaction` catch path — equivalent to the live
 // `confirmTransaction.value.err` path on a real cluster.
 //
-// H5 2nd-pass (Codex): bounded retry/resend. The new `submit()` distinguishes
-// retryable failures (BlockhashNotFound, RPC blips) from terminal ones
-// (program errors 6000-6011, signature/balance issues). The retry tests
-// below use a `MockConnection` rather than LiteSVM because LiteSVM's
-// in-memory ledger doesn't simulate blockhash expiry.
+// `submit` also bounds retry/resend, distinguishing retryable failures
+// (BlockhashNotFound, RPC blips) from terminal ones (program errors
+// 6000-6011, signature/balance issues). The retry tests below use a
+// `MockConnection` rather than LiteSVM because LiteSVM's in-memory ledger
+// doesn't simulate blockhash expiry.
 
 import { describe, expect, it } from "vitest";
 import {

@@ -7,10 +7,9 @@
 // orders, and stalling the panel on a thrown promise would be worse.
 //
 // `isGraduated` is not like that. It is a CLAIM, and it decides routing — a
-// market that reads as not-graduated has no orderbook tab at all. So when the
-// validator was down, every read failed, the catch returned `false`, and the
-// orderbook silently vanished. Nothing on screen said the chain was gone; the
-// app looked like it was working and quietly reported a market as still
+// market that reads as not-graduated has no orderbook tab at all. If a
+// transport failure degraded to `false`, an unreachable validator would make
+// the orderbook silently vanish, with the app reporting a market as still
 // bonding when in fact nothing had been asked.
 //
 // A missing account and an unreachable RPC are different facts and must not

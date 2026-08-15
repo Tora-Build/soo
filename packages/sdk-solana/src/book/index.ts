@@ -1,4 +1,4 @@
-// Client for the redesigned orderbook (`docs/design/orderbook-redesign.md`).
+// Client for the orderbook (`docs/design/orderbook-redesign.md`).
 //
 // Three things live here: the PDA, instruction builders, and a decoder that
 // turns the raw account into a usable snapshot.
@@ -13,17 +13,12 @@
 // in the Rust struct shows up as a failing assertion rather than silently
 // mis-parsed orders.
 //
-// ## What replaced the matching driver
+// ## Matching is on-chain
 //
-// The old `matching-driver.ts` had to predict the exact crossing sequence
-// off-chain and pass one 3-account bundle per fill in `remaining_accounts`,
-// because the program could not discover makers. That is where audit finding
-// H1 comes from: batches planned against a book that has since moved select
-// stale makers, and every batch after the first fails.
-//
-// Here the program walks its own book. A taker sends one instruction with a
-// `matchLimit` and the on-chain matcher does the rest, so there is nothing to
-// precompute, nothing to go stale, and no H1.
+// The program walks its own book: a taker sends one instruction with a
+// `matchLimit` and the on-chain matcher discovers makers itself. Nothing is
+// precomputed off-chain, so no client-side match plan can go stale between
+// planning and execution (the failure class of audit finding H1).
 
 import {
   ComputeBudgetProgram,

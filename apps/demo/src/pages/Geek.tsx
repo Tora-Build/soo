@@ -116,7 +116,7 @@ export function Geek() {
         activeAddress ?? undefined,
         // 5th arg is Solana-fork-only — the SDK pulls adapter + signer +
         // market ref from here for the wired commands (balance, buyyes,
-        // buyno, mint, marketstatus). EVM upstream ignores it.
+        // buyno, mint, marketstatus).
         demo,
       );
     } catch {

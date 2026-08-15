@@ -2,13 +2,12 @@
 //
 // ## Why this exists
 //
-// Every live-update path in the upstream app is EVM event driven —
-// `ActivityListener` mounts globally and watches PositionTraded,
-// MarketGraduated, LPRedeemed and four others. On Solana all of it is dead:
-// the chain-shim's `useWatchContractEvent` is a no-op stub, so those handlers
-// never fire and nothing invalidates. The app has been running on polling
-// alone, which is why a trade could land on-chain and leave the page showing
-// stale numbers until the next interval elapsed.
+// The EVM-shaped live-update path — `ActivityListener` watching
+// PositionTraded, MarketGraduated, LPRedeemed and four others — is inert on
+// Solana: the chain-shim's `useWatchContractEvent` is a no-op stub, so those
+// handlers never fire and nothing invalidates. Without this hook the app runs
+// on polling alone, and a trade can land on-chain while the page keeps
+// showing stale numbers until the next interval elapses.
 //
 // ## Why account subscriptions rather than synthetic logs
 //

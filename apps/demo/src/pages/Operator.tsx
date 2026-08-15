@@ -1239,11 +1239,10 @@ export const Operator = () => {
     | `0x${string}`
     | undefined;
 
-  // Markets for current chain. Pull from on-chain via useLaunchpadMarkets
-  // — the legacy markets.json was hand-curated and is now empty for v0.2.0,
-  // so the Operator UI was rendering nothing. Fall back to the static
-  // config only if the hook hasn't returned anything (preserves the old
-  // hardcoded path on chains where on-chain discovery is disabled).
+  // Markets for the current chain come from on-chain discovery via
+  // `useLaunchpadMarkets`; markets.json is empty for v0.2.0. The static
+  // config is a fallback only when the hook returns nothing, which is the
+  // path chains with on-chain discovery disabled take.
   const { markets: launchpadMarkets } = useLaunchpadMarkets();
   const allMarkets = useMemo<MarketConfig[]>(() => {
     if (launchpadMarkets.length > 0) {

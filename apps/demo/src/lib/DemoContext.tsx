@@ -109,14 +109,14 @@ function ProductionDemoProvider({ children }: { children: ReactNode }) {
   }, [wallet.publicKey, signTx, signMessage]);
 
   // Push-based freshness. Without this nothing invalidates on on-chain
-  // activity: upstream's live updates all hang off EVM events, and the
-  // chain-shim's `useWatchContractEvent` is a no-op, so the app ran on polling
-  // alone — a trade could land and leave the page stale until the next tick.
+  // activity: the chain-shim's `useWatchContractEvent` is a no-op, so the app
+  // would run on polling alone and a trade could land while the page stayed
+  // stale until the next tick.
   //
   // One program subscription covers every book, AMM state and position. That
-  // is cheaper than it sounds because the redesigned book is ONE account per
-  // market rather than one per price level, so a market's whole orderbook —
-  // ladder, seats, credit, escrow — is a single account change.
+  // is cheaper than it sounds because the book is ONE account per market, so
+  // a market's whole orderbook — ladder, seats, credit, escrow — is a single
+  // account change.
   const watchedPrograms = useMemo(
     () => [demoConfig.node.programs?.soothCore].filter(Boolean) as string[],
     [],

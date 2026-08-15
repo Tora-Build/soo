@@ -111,11 +111,9 @@ export async function checkCollateralBacking(
     /**
      * The book account, if this market has one.
      *
-     * Replaces the old `orderbookPositions` list. That was one PDA per
-     * (market, user) and callers had to know every trader in advance to derive
-     * them — the same non-enumerability that blocked reclaiming the LMSR
-     * subsidy. The redesigned book is a single account, so the whole CLOB
-     * ledger is one read and cannot be under-counted by forgetting a trader.
+     * The book is a single account, so the whole CLOB ledger is one read and
+     * cannot be under-counted by forgetting a trader. A per-(market, user)
+     * PDA list would require knowing every trader in advance to derive.
      */
     book?: PublicKey;
   } = {},

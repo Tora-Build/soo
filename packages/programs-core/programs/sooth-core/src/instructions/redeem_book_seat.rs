@@ -2,15 +2,11 @@
 //!
 //! ## Why this exists
 //!
-//! It did not, and that was the last funds-are-stuck hole in the redesigned
-//! book. The book had five instructions — init, grow, place, cancel, withdraw —
-//! and `book_withdraw` moves *credit*, which is USDC already released by a
-//! cancel or by a fill that closed exposure. Nothing paid out a **position**.
-//!
-//! So a trader could buy YES on the book, watch the market settle YES, and have
-//! no instruction anywhere that turned their winning shares into money. Exactly
-//! the shape of B1, which stranded every AMM buyer's winnings until
-//! `redeem_amm_position` was written; this is the same bug one ledger over.
+//! This is the only instruction that turns a winning book **position** into
+//! money. `book_withdraw` moves *credit* — USDC already released by a cancel
+//! or by a fill that closed exposure — and pays out no position at all, so
+//! without this a trader who bought YES on the book and watched the market
+//! settle YES would have their winnings stranded.
 //!
 //! ## The payout rule
 //!
@@ -24,8 +20,8 @@
 //! exactly one of the two holders is paid at settlement. Total out equals total
 //! in, by construction rather than by accounting.
 //!
-//! `OUTCOME_INVALID` splits, matching `redeem_amm_position` and
-//! `redeem_orderbook` so the three ledgers cannot drift.
+//! `OUTCOME_INVALID` splits, matching `redeem_amm_position` so the two
+//! ledgers cannot drift.
 //!
 //! ## Why resting orders are left alone
 //!

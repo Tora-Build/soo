@@ -205,13 +205,11 @@ function activityToHistory(act: IndexerActivity): HistoryRow | null {
 }
 
 /**
- * Open orders straight out of the redesigned book account.
+ * Open orders straight out of the book account.
  *
- * The legacy function below reconstructs them by replaying OrderPlaced /
- * OrderCancelled / OrdersFilled logs over a chunked getLogs scan and netting
- * per price level. That is event sourcing to answer a question the chain can
- * answer directly, and it can only ever produce a LEVEL — hence the
- * synthesised `${side}:${tick}` id, and the cancel-by-guess it forced.
+ * Preferred over the log-replay fallback below, which nets OrderPlaced /
+ * OrderCancelled / OrdersFilled per price level and so can only ever produce
+ * a LEVEL — a synthesised `${side}:${tick}` id that forces cancel-by-guess.
  *
  * Here each order carries its real `seq`, which is what `book_cancel` takes.
  */
@@ -238,14 +236,14 @@ async function fetchOpenOrdersFromBook(
   return rows.map((o) => ({
     // The real sequence. Nothing synthesised, nothing to parse back.
     id: o.seq.toString(),
-    // `OpenOrder.outcome` follows the LEGACY convention, where 1 is the YES
-    // side — `tickToYesPrice(tick, 1)` returns the tick as a YES price, and
-    // the panel reads `sideIsYes = outcome === 1`.
+    // `OpenOrder.outcome` follows the EVM-shaped convention, where 1 is the
+    // YES side — `tickToYesPrice(tick, 1)` returns the tick as a YES price,
+    // and the panel reads `sideIsYes = outcome === 1`.
     //
-    // The redesigned book numbers its sides the other way round: 0 is
-    // SIDE_BID, which BUYS YES. Passing the book's side straight through
-    // inverted every row — a resting bid rendered as "Sell" in the YES tab and
-    // "Buy" in the NO tab, at prices that looked plausible either way.
+    // The book numbers its sides the other way round: 0 is SIDE_BID, which
+    // BUYS YES. So the two must be translated here; passing the book's side
+    // straight through inverts every row — a resting bid renders as "Sell" in
+    // the YES tab and "Buy" in the NO tab, at plausible-looking prices.
     outcome: (o.side === SIDE_BID ? 1 : 0) as 0 | 1,
     // One axis: a bid at 400 and an ask at 400 are both "YES at 0.40".
     yesPrice: clampUnit(o.priceTick / 1000),

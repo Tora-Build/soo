@@ -97,12 +97,10 @@ export async function dispatchPortfolioRead(
     case "isGraduated": {
       // Reads the real AmmState flag.
       //
-      // This used to return a hardcoded `false` with the note "AMM-only fork —
-      // markets never graduate to a SoothBook orderbook". That was true when
-      // written and is not any more: the orderbook exists. While the stub
-      // stayed, `useOnChainMarkets` could never set `stage = "live"`, so no
-      // market ever routed to /orderbook/:addr no matter what the chain said —
-      // the orderbook was unreachable through the UI by construction.
+      // This value gates `useOnChainMarkets`'s `stage = "live"`, which is what
+      // routes a market to /orderbook/:addr. A hardcoded `false` here would
+      // make the orderbook unreachable through the UI no matter what the
+      // chain says.
       const marketRef = toMarketRef(call.args?.[0]);
       if (!marketRef) return false;
       try {
@@ -148,9 +146,9 @@ export async function dispatchPortfolioRead(
     }
 
     // ─── LP / Vault / Locked-funds — graceful zero ──────────────────────
-    // NOTE: `totalSupply` was previously handled here as a graceful zero;
-    // it now falls through to the markets-bridge so MarketStats's LP-supply
-    // dependent math (floorRate/ceilingRate) gets a synthetic anchor value.
+    // NOTE: `totalSupply` is deliberately absent from this list — it falls
+    // through to the markets-bridge so MarketStats's LP-supply dependent math
+    // (floorRate/ceilingRate) gets a synthetic anchor value instead of zero.
     case "totalAssets":
     case "totalNetAssets":
     case "ammAssets":

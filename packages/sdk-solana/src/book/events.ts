@@ -1,16 +1,12 @@
-// Decoders for the redesigned book's events.
+// Decoders for the book's events.
 //
 // ## Where the payload lives
 //
 // These are emitted with Anchor's `emit_cpi!`, which self-invokes the program
-// so the payload becomes an **inner instruction** rather than a program log.
-// Logs are truncated and not reliably retrievable from every RPC; an inner
-// instruction is real transaction data that `getTransaction` returns.
-//
-// That is precisely what the separate `sooth_log` program was built to provide.
-// It exists because of a belief that a program cannot CPI into itself — but
-// Solana permits direct self recursion, which is the mechanism Anchor uses
-// here. See `instructions/book_place.rs`.
+// (Solana permits direct self recursion) so the payload becomes an **inner
+// instruction** rather than a program log. Logs are truncated and not reliably
+// retrievable from every RPC; an inner instruction is real transaction data
+// that `getTransaction` returns. See `instructions/book_place.rs`.
 //
 // The wire framing of an `emit_cpi!` inner instruction is:
 //
@@ -19,10 +15,10 @@
 // ## Versioning
 //
 // Every event's first field is a `version` byte, and these decoders **reject an
-// unknown version** rather than guessing. The existing book's events have no
-// version at all, and both failure modes are live today: `sooth-data` throws on
-// trailing bytes, so adding one field 500s `GET /v12/fills`; and a renamed
-// event returns an empty list with HTTP 200, which is silent data loss.
+// unknown version** rather than guessing. Unversioned events have two failure
+// modes: a consumer that throws on trailing bytes turns one added field into a
+// hard API error (`sooth-data` 500s `GET /v12/fills`), and a renamed event
+// returns an empty list with HTTP 200, which is silent data loss.
 
 import { PublicKey } from "@solana/web3.js";
 

@@ -47,21 +47,19 @@ pub fn wad_mul(a: i128, b: i128) -> Result<i128, MathError> {
     // < 2^64, so `mid` < 3·2^64 and cannot overflow u128 — which is what makes
     // `mid >> 64` the exact carry.
     //
-    // The earlier version derived that carry from whether
-    // `(ll >> 64) + (mid_lo << 64)` overflowed u128. That is a different
-    // question: the real carry is whether `(ll >> 64) + mid_lo` crosses 2^64,
-    // and the two disagree exactly when the top limb is large. When they
-    // disagreed, `prod_hi` came out one short, the 256-bit division silently
-    // dropped 2^128, and `wad_mul` returned a number ~340.28e18 BELOW the true
-    // product instead of reporting an overflow.
+    // The carry must NOT be derived from whether `(ll >> 64) + (mid_lo << 64)`
+    // overflows u128: that is a different question from whether
+    // `(ll >> 64) + mid_lo` crosses 2^64, and the two disagree exactly when
+    // the top limb is large. A `prod_hi` one short makes the 256-bit division
+    // silently drop 2^128, so `wad_mul` returns a number ~340.28e18 BELOW the
+    // true product instead of reporting an overflow.
     //
-    // `lmsr_cost` ends in `wad_mul(b, m + ln_sum)`, so the wrap fired for any
-    // market whose cost exceeded that threshold — `max(q) + b·ln(2) > ~340`.
-    // `cost_delta` differences two costs, so while both endpoints wrapped the
-    // same number of times the error cancelled and the market looked healthy.
-    // A trade that straddled a wrap boundary did not cancel: it returned a
-    // large NEGATIVE cost for a buy — the program paying the trader to take
-    // shares. Reachable at b=50 with ~340 shares outstanding.
+    // That matters because `lmsr_cost` ends in `wad_mul(b, m + ln_sum)`: any
+    // market whose cost exceeds `max(q) + b·ln(2) > ~340` would wrap
+    // (reachable at b=50 with ~340 shares outstanding). `cost_delta`
+    // differences two costs, so equal wraps at both endpoints cancel and hide
+    // it, while a trade straddling the boundary returns a large NEGATIVE cost
+    // for a buy — the program paying the trader to take shares.
     let mid = (ll >> 64)
         .wrapping_add(lh & ((1u128 << 64) - 1))
         .wrapping_add(hl & ((1u128 << 64) - 1));
@@ -258,11 +256,10 @@ mod wide_mul_regression {
     /// rather than against itself.
     ///
     /// The cases that matter are the ones whose 256-bit product exceeds
-    /// `u128::MAX` — that is where the carry into the high word was computed
-    /// wrongly. The old code returned a value ~340.28e18 BELOW the truth
-    /// instead of erroring, which is how `lmsr_cost` came to report 5.37 for a
-    /// market whose real cost was 345.65, and how `cost_delta` came to return
-    /// a NEGATIVE cost for a buy.
+    /// `u128::MAX` — that is where the carry into the high word is easy to get
+    /// wrong. A wrong carry returns a value ~340.28e18 BELOW the truth instead
+    /// of erroring, which makes `lmsr_cost` report 5.37 for a market whose
+    /// real cost is 345.65, and `cost_delta` return a NEGATIVE cost for a buy.
     const CASES: &[(i128, i128, Option<i128>)] = &[
         (50000000000000000000i128, 6000000000000000000i128, Some(300000000000000000000)),
         (50000000000000000000i128, 6794000000000000000i128, Some(339700000000000000000)),
@@ -320,8 +317,8 @@ mod wide_mul_regression {
     #[test]
     fn agrees_with_naive_multiplication_when_it_cannot_overflow() {
         // Below the boundary the schoolbook path and a plain i128 multiply
-        // must agree exactly. This is the half of the domain the old code got
-        // right, so it guards the fix against regressing the easy cases.
+        // must agree exactly — the easy half of the domain, pinned so a
+        // change to the limb code cannot break it.
         for a in [1i128, 7, 1_000, WAD, 3 * WAD, 999_999] {
             for b in [1i128, 2, WAD, WAD / 3, 12_345_678] {
                 assert_eq!(wad_mul(a, b).unwrap(), a * b / WAD, "wad_mul({a}, {b})");
@@ -331,9 +328,9 @@ mod wide_mul_regression {
 
     #[test]
     fn reports_overflow_instead_of_wrapping() {
-        // A quotient that genuinely exceeds i128 must be an error. Before the
-        // fix the same input class silently wrapped, which is strictly worse
-        // than failing: the caller cannot tell.
+        // A quotient that genuinely exceeds i128 must be an error, never a
+        // silent wrap — a wrap is strictly worse than failing, because the
+        // caller cannot tell.
         assert_eq!(wad_mul(i128::MAX, i128::MAX), Err(MathError::Overflow));
         assert_eq!(wad_mul(i128::MAX, 2 * WAD), Err(MathError::Overflow));
     }

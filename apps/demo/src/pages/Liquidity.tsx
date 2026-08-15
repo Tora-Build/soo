@@ -4,9 +4,8 @@
  * Master/detail layout:
  *   Left  : filter + sort + scrollable card grid of every market with
  *           a per-card LP summary (graduation %, depth, deadline, stage).
- *   Right : LiquidityDetailPanel for the selected market — shows the
- *           full GraduationProgress + LPHolders + MarketStats + redeem CTA
- *           that used to live on the AMM page right column.
+ *   Right : LiquidityDetailPanel for the selected market — the full
+ *           GraduationProgress + LPHolders + MarketStats + redeem CTA.
  *
  * Click any left-panel card → right panel updates.
  */

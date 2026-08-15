@@ -2,12 +2,9 @@
 //
 // `cranker` is any signer. Distribution is permissionless on purpose, so fees
 // are not hostage to one keeper, but that is only safe if every destination is
-// fixed by the program. Three of the four used to carry `token::mint` and
-// nothing else, so anyone could call this and route the b_base, LP and
-// adjudicator shares — 90% of the pool at the shipped 50/30/10/10 split — into
-// accounts they owned. Nothing prevented it except that no client built the
-// instruction, which is not a security property; it is a gap waiting for
-// someone to write the builder. `buildDistributeFees` is that builder.
+// fixed by the program. A destination carrying `token::mint` and nothing else
+// would let any caller route the b_base, LP and adjudicator shares — 90% of
+// the pool at the 50/30/10/10 split — into accounts they owned.
 //
 // So the substitution attempts matter more than the happy path: each one is a
 // theft that must fail. The happy path is here to keep them honest — a
@@ -280,8 +277,8 @@ describe("distribute_fees destinations cannot be chosen by the caller", () => {
       ...accounts,
       lpYieldVault: await ata(smoke, smoke.ammMint, thief.publicKey),
     }).catch((e) => e);
-    // Seeds-bound since the per-market split, so the rejection is Anchor's
-    // ConstraintSeeds rather than the owner check it used to be.
+    // The vault is seeds-bound per market, so the rejection is Anchor's
+    // ConstraintSeeds.
     expect(codeOf(err)).toBe(2006);
   }, 90_000);
 

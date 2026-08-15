@@ -1,30 +1,22 @@
 //! `reclaim_subsidy` — return the unspent LMSR subsidy to the creator after
-//! settlement. (Bug B0, residual half.)
+//! settlement.
 //!
-//! ## Why this could not be written until now
+//! ## What this returns
 //!
 //! `seed_lp` requires the creator to post `b·ln(2)` into the market vault. That
 //! is the maximum the LMSR can ever lose, not what it *will* lose: fees repay
 //! it as the market trades, and a market that never moves much gives most of it
-//! back. Until this instruction there was no way to give any of it back — it
-//! sat in the vault forever.
+//! back. This instruction is the only path that returns the unspent portion.
 //!
 //! Paying it out safely means knowing everything the vault still owes, and an
 //! UNDER-count is an over-payment taken out of traders' collateral.
 //!
-//! Since the venues split tokens there is exactly **one** ledger to count:
-//! AMM positions, aggregated in `AmmState.q_yes` / `q_no`. The subsidy was
-//! posted in the AMM token and is returned from the AMM vault, so the book —
-//! a different vault holding a different mint — is not this instruction's
-//! business. Counting its seats here would subtract book obligations from the
-//! AMM residual and strand the creator's capital, which is the bug this
-//! instruction exists to fix, inverted.
-//!
-//! Two other ledgers were counted historically and are gone. The legacy
-//! `OrderbookPosition` was one PDA per (market, user) with no way to enumerate
-//! them, so the sum was unknowable; deleting the legacy book removed it. SPL
-//! outcome tokens went with the complete-set instructions — see
-//! `docs/design/dual-token-venues.md` §4.
+//! There is exactly **one** ledger to count: AMM positions, aggregated in
+//! `AmmState.q_yes` / `q_no`. The subsidy is posted in the AMM token and is
+//! returned from the AMM vault, so the book — a different vault holding a
+//! different mint — is not this instruction's business. Counting its seats
+//! here would subtract book obligations from the AMM residual and strand the
+//! creator's capital.
 //!
 //! ## The two guards
 //!
@@ -43,7 +35,7 @@
 //! and guessing early means leaving their own money behind permanently.
 
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 use crate::constants::AMM_TOKEN_MINT;
 use crate::error::SoothCoreError;
@@ -109,8 +101,8 @@ pub struct ReclaimSubsidy<'info> {
 ///
 /// `q_yes` includes `seed_q_yes`, the virtual inventory the subsidy bought.
 /// Nobody holds those, so counting them would understate the residual — the
-/// safe direction, but it would strand the creator's money, which is the whole
-/// bug. Subtract them, saturating: a negative would mean state corruption, and
+/// safe direction, but it would strand the creator's money.
+/// Subtract them, saturating: a negative would mean state corruption, and
 /// treating it as zero over-counts obligations rather than under-counting.
 fn ledger_obligations(amm: &AmmState, winning_outcome: u8) -> Result<u64> {
     let user_q_yes = amm.q_yes.saturating_sub(amm.seed_q_yes).max(0) as u128;
@@ -140,8 +132,8 @@ pub fn handler(ctx: Context<ReclaimSubsidy>) -> Result<()> {
 
     // AMM obligations only. The book's seats are owed from the BOOK vault,
     // which holds a different token — subtracting them here would understate
-    // the AMM residual and strand the creator's own capital, which is the bug
-    // this instruction exists to fix. The book needs no equivalent: every fill
+    // the AMM residual and strand the creator's own capital.
+    // The book needs no equivalent: every fill
     // escrows both legs to exactly 1.00, so its vault is fully collateralised
     // by construction and the creator posted nothing into it.
     let obligations = ledger_owed;

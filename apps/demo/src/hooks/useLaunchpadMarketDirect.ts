@@ -232,8 +232,8 @@ export function useLaunchpadMarketDirect(marketAddress: Address | undefined) {
             }).catch(() => 3000n),
           ])
         : [500n, 100n, 3000n];
-      // graduationMultiplier was removed from v0.1.2; keep the shape but
-      // treat it as 1x for display purposes.
+      // v0.1.2 exposes no graduationMultiplier; keep the shape but treat it
+      // as 1x for display purposes.
       const graduationMultiplier = 1n;
 
       const isCreated = creator !== ZERO_ADDRESS;
@@ -275,10 +275,9 @@ export function useLaunchpadMarketDirect(marketAddress: Address | undefined) {
             })
           : 0n;
 
-      // LaunchpadEngine.getMarketState(address) does not exist in v0.1.2.
-      // floorValue computation was tied to the bonding curve LP state which
-      // is no longer exposed via this getter; leave as 0 until a replacement
-      // view is deployed.
+      // LaunchpadEngine.getMarketState(address) does not exist in v0.1.2, and
+      // floorValue needs the bonding-curve LP state it would expose; leave as
+      // 0 until a replacement view is deployed.
       const floorValue = 0n;
 
       const graduationProgressPct = Math.min(100, Number(progressBps) / 100);

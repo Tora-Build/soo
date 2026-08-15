@@ -65,9 +65,8 @@ pub fn handler(ctx: Context<InitializeProtocol>, args: InitializeProtocolArgs) -
     // Zero is rejected rather than treated as "no veto window", because the
     // Anchor client encodes a MISSING i64 argument as 0. A caller who simply
     // forgets `vetoPeriodSecs` would otherwise silently deploy a protocol
-    // where dispute can never fire and settle is immediate — exactly the
-    // collapsed behaviour this split exists to remove, reintroduced by typo.
-    // Deployments that genuinely want no delay pass 1 second.
+    // where dispute can never fire and settle is immediate. Deployments that
+    // genuinely want no delay pass 1 second.
     //
     // Negative would put `veto_ends_at` before `attested_at`, making settle
     // callable before the attestation it finalizes; unbounded-large would

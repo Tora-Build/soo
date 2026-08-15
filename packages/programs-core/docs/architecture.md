@@ -1,757 +1,469 @@
-# Sooth on Solana — Architecture Mapping
+# Architecture — `sooth_core`
 
-> Reference doc for porting Sooth Protocol (v0.1.2 / v0.2.0 sooth-core) to Solana.
-> Status: implementation in progress — three Anchor programs scaffolded
-> (`sooth_amm`, `sooth_market`, `sooth_launchpad`). Updated 2026-05-07.
-
-This document maps every EVM concept in `packages/contracts-core` onto a Solana-native equivalent (Anchor program + PDA layout) and flags the technical risks that need a prototype before committing.
-
-The "implementation status" annotations in §4-§8 below refer to the actual
-state of `packages/programs-core/programs/*` as of the date above. See
-`packages/programs-core/README.md` "Programs" table for the per-program
-summary; that table and this doc are kept in lock-step.
+> The cross-cutting design of the Solana program: what the accounts are, how a
+> market moves through its life, and which constraints shape the code. Per-file
+> detail lives in the source; this is the map you read first.
+>
+> Source: `packages/programs-core/programs/sooth-core/src/`.
 
 ---
 
-## 0. TL;DR
+## 1. One program
 
-- **Not a port — a rewrite.** Solidity → Rust/Anchor. ABIs → IDLs. Storage slots → PDAs. ERC20 → SPL Token (or Token-2022).
-- **Programs**: 5 (vs 8 EVM contracts). Some EVM "contracts" collapse into Anchor instructions on a shared program.
-- **Hardest unknowns**:
-  1. LMSR `exp`/`ln` under Solana's compute-unit (CU) budget.
-  2. CLOB choice: build a Solana-native `SoothBook` vs integrate Phoenix / OpenBook v2.
-  3. zkTLS attestation — Primus has no first-class Solana support.
-  4. **SDK boundary**: does the existing `@sooth/sdk` public surface absorb Solana's race/retry/account-enumeration semantics without app-code changes? See `../../sdk-solana/docs/implementation-guide.md`.
-- **What's easier on Solana**: orderbook matching (cheap CU, fast finality), parallel market trades (Sealevel), token mint authority (Token-2022 extensions).
-- **What's harder**: per-user state (account rent, account size), stateful CPI choreography, no events-as-source-of-truth (logs are best-effort).
+Sooth on Solana is a single Anchor program, `sooth_core`, deployed to devnet at
+`EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw`.
+
+Market lifecycle, the LMSR AMM, the order book, LP and fee flows, and
+adjudication are Rust modules inside it, calling each other as ordinary
+functions:
+
+```
+programs/sooth-core/src/
+├── lib.rs             # declare_id!, the 256 KB bump allocator, 30 ix handlers
+├── constants.rs       # venue mints, veto bounds, account byte offsets
+├── error.rs           # SoothCoreError — ABI-stable, append-only discriminants
+├── events.rs          # 28 #[event] types
+├── bitmap.rs
+├── instructions/      # one file per instruction handler
+├── state/             # Anchor accounts: Market, AmmState, Position, LockEntry,
+│                      #   LpPosition, ProtocolConfig, AdjudicatorEntry, …
+├── book/              # account.rs, arena.rs, matcher.rs, settlement.rs
+└── math/              # lmsr.rs, wad.rs, book.rs
+```
+
+There is no cross-program CPI, no instruction-introspection gate, no shared
+workspace crate holding program IDs or account offsets, and one IDL
+(`sooth_core.json`, re-exported by the SDK as `soothCoreIdl`). A function that
+should not be callable on its own is simply a private Rust function rather than
+a public instruction defended by a parent-instruction check. See decision D22 in
+[`docs/decision-log.md`](../../../docs/decision-log.md).
+
+The one place the program still invokes itself is `emit_cpi!`, which writes
+durable fill records as inner instructions. Solana permits direct self
+recursion, so this needs no second program.
+
+### Instruction surface
+
+Thirty handlers, grouped by what they touch:
+
+| Group | Instructions |
+| ----- | ------------ |
+| Protocol | `initialize_protocol`, `pause`, `unpause` |
+| Creation | `create_market`, `init_market_fee_pool`, `seed_lp` |
+| AMM | `trade_positions`, `sell_positions`, `claim_unlocked` |
+| Book | `book_init`, `book_grow`, `book_place`, `book_cancel`, `book_withdraw` |
+| Fees / LP | `distribute_fees_amm`, `distribute_fees_book`, `redeem_lp` |
+| Adjudication | `register_adjudicator`, `request_lock`, `lock_for_resolution`, `attest_outcome`, `dispute`, `settle` |
+| End of life | `redeem_amm_position`, `redeem_book_seat`, `claim_refund`, `dismiss_market`, `reclaim_subsidy`, `sweep_residual`, `close_market` |
 
 ---
 
-## 1. Program Layout (5 programs)
+## 2. The dual-venue lifecycle
 
-| EVM Contract                               | Solana Program / Module                                     | Rationale                                                                                                                                      |
-| ------------------------------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `LaunchpadEngine.sol`                      | `sooth_launchpad` program                                   | Market factory. Owns market PDAs and creator deposits.                                                                                         |
-| `AMMEngine.sol`                            | `sooth_amm` program                                         | LMSR math, position storage, lock-on-sell. Heavy CU consumer; isolating it lets us version it independently.                                   |
-| `OrderEngine.sol` + `TruthMarket.sol`      | `sooth_market` program                                      | Market lifecycle + custody + mint/merge/redeem. EVM split was for upgradability; on Solana we get program upgrades natively, so collapse them. |
-| `SoothBook.sol`                            | `sooth_book` program **OR** Phoenix integration             | See §6. Native CLOBs already exist on Solana — strongly consider not rebuilding.                                                               |
-| `FeeRouter.sol`                            | Module inside `sooth_launchpad`                             | FeeRouter has no upgrade story or external callers; it's a pure splitter. CPIs add CU overhead, so inline it.                                  |
-| `AdjudicatorRegistry.sol` + `IAdjudicator` | `sooth_adjudicator` program (interface) + per-type programs | Each adjudicator type is its own program (mock, manual, zkTLS-when-available). The registry becomes a small lookup PDA in `sooth_launchpad`.   |
-| `LaunchpadLPToken.sol`                     | SPL Mint owned by `sooth_launchpad` PDA                     | LP shares = SPL token. Free transferability for LP tokens.                                                                                     |
-| `BaseToken` (MockUSDC)                     | USDC SPL mint (`EPjFW...`) on mainnet, devnet faucet USDC   | No need for our own mock; use real USDC.                                                                                                       |
+A market is two venues in sequence, and the program — not the UI — decides which
+one is open.
+
+```
+create_market ──▶ seed_lp ──▶  AMM bonding (LMSR, instance token)
+                                       │
+                        fees reach b·ln(2)
+                                       ▼
+                               MarketGraduated
+                                       │
+                                       ▼
+                              order book (USDC)
+                                       │
+                             request_lock / lock_for_resolution
+                                       ▼
+                    attest_outcome ─ veto window ─ dispute?
+                                       ▼
+                                    settle
+                                       ▼
+        redeem_amm_position · redeem_book_seat · book_withdraw ·
+        redeem_lp · reclaim_subsidy ─▶ sweep_residual ─▶ close_market
+```
+
+`MarketLifecycle` is a four-state machine — `Initializing`, `Open`, `Locked`,
+`Settled` — and `can_transition_to` permits only `Initializing → Open`,
+`Open → Locked`, `Locked → Settled`. Graduation is *not* a lifecycle state; it
+is the `AmmState.is_graduated` flag mirrored onto `Market.book_enabled`, so a
+graduated market is still `Open` and both venues trade.
+
+### Two tokens, one deployment
+
+The AMM prices in the deployment's instance token; the book prices in USDC. Both
+mints are compile-time constants in `constants.rs`:
+
+| Role | Devnet | Mainnet (`--features mainnet`) |
+| ---- | ------ | ------------------------------ |
+| `AMM_TOKEN_MINT` | `CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu` (mock "EAST") | must be set before the crate compiles |
+| `BOOK_TOKEN_MINT` | `ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX` (mock USDC) | real Circle USDC |
+
+Compile-time is the strongest form of "set once at deployment": not storage, not
+governance-writable. The consequence, accepted deliberately, is **one program
+deployment per instance** — two instances with different AMM tokens are two
+program IDs. Both mints are pinned by `address =` account constraints throughout,
+so a mismatch is a hard transaction failure rather than a UI inconsistency.
+Rationale in [`docs/design/dual-token-venues.md`](../../../docs/design/dual-token-venues.md)
+and decision D21.
 
 ---
 
-## 2. Account / State Mapping
+## 3. Accounts
 
-EVM uses contract storage slots keyed by `mapping(address => ...)`. Solana stores state in accounts owned by a program, addressed by PDAs. Every per-user, per-market record is a separate account that someone must pay rent on.
+### Singleton
 
-### 2.1 Global / Singleton State
+| Account | Seeds | Holds |
+| ------- | ----- | ----- |
+| `ProtocolConfig` | `[b"protocol_config"]` | authority, treasury, `amm_fee_bps` / `book_fee_bps`, `graduation_bps`, the four-way fee split, `default_trial_period`, `veto_period_secs`, `paused` |
+| fee-pool authority | `[b"fee_pool_authority"]` | signer for both venue fee pools |
+| LP-yield authority | `[b"lp_yield_authority"]` | signer for both venue LP-yield vaults |
 
-| EVM (storage on `LaunchpadEngine`)            | Solana                                                         | PDA seeds                    |
-| --------------------------------------------- | -------------------------------------------------------------- | ---------------------------- |
-| `owner`, `defaultTrialPeriod`, fee bps config | `Config` account (singleton)                                   | `[b"config"]`                |
-| `markets` (array of created markets)          | Off-chain index (RPC `getProgramAccounts`) + optional registry | n/a — don't iterate on-chain |
-| `adjudicatorRegistry` mapping                 | `AdjudicatorEntry` accounts, one per registered type           | `[b"adj", type_id]`          |
+`paused` gates exactly four instructions — `trade_positions`, `sell_positions`,
+`book_place`, `seed_lp`. Every exit path stays open while paused, deliberately.
 
-### 2.2 Per-Market State
+### Per market
 
-EVM puts everything on the `TruthMarket` clone + slots in `AMMEngine` / `OrderEngine` keyed by market address. On Solana, split by access pattern (avoid huge accounts that everyone writes to):
+`market_id` is a caller-supplied `[u8; 16]` that seeds every per-market PDA. The
+SDK defaults it to the first 16 bytes of `sha256(question)`.
 
-| Account              | Owner program        | Seeds                      | Holds                                                                                                             |
-| -------------------- | -------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `Market`             | `sooth_market`       | `[b"market", market_id]`   | question hash, deadline, startTime, adjudicator pubkey, lifecycle state (Live/Resolved/Attested/Settled), outcome |
-| `AmmState`           | `sooth_amm`          | `[b"amm", market_id]`      | `qYes`, `qNo`, `b`, `seedQYes`, `seedQNo`, fee accumulators, `isGraduated`, `trialEndTime`                        |
-| `MarketVault` (USDC) | SPL Token (PDA auth) | `[b"vault", market_id]`    | All collateral for this market (single ATA owned by market PDA)                                                   |
-| `YesMint` / `NoMint` | SPL Token            | `[b"mint", market_id, b"y" | b"n"]`                                                                                                            | YES / NO outcome token mints; mint authority = market PDA |
-| `LpMint`             | SPL Token            | `[b"lp", market_id]`       | Launchpad LP token mint                                                                                           |
-| `BookState`          | `sooth_book`         | `[b"book", market_id]`     | Tick bitmap, sequencer cursor, fee state. Order data lives in tick PDAs (see §6).                                 |
+| Account | Seeds | Holds |
+| ------- | ----- | ----- |
+| `Market` | `[b"market", market_id]` | creator, adjudicator, `question_hash`, both vaults, lock vault, `start_time`, `deadline`, lifecycle, `winning_outcome`, `book_enabled` |
+| `AmmState` | `[b"amm", market_id]` | `q_yes`, `q_no`, `b`, `seed_q_yes`, `seed_q_no`, `fee_b_base_wad`, `trial_end_at`, `is_graduated`, `is_dismissed` |
+| `Book` | `[b"book", market_id]` | the entire order book — see §5 |
+| vault authority | `[b"vault", market_id]` | signs both venue vaults |
+| lock authority | `[b"lock", market_id]` | signs the sell-cooldown vault |
+| fee pools | `[b"fee_pool_amm", market_id]`, `[b"fee_pool_book", market_id]` | per-venue fee accrual |
+| LP yield | `[b"lp_yield_amm", market_id]`, `[b"lp_yield_book", market_id]` | per-venue LP yield |
+| `LpPosition` | `[b"lp_position", market_id, creator]` | `seed_deposit_wad`, `graduated_at`, `reclaimed_base` |
+| LP mint | `[b"lp", market_id]`, authority `[b"lp_mint_authority", market_id]` | LP shares as an SPL mint |
+| `AdjudicatorEntry` | `[b"adjudicator", market]` | authority, dispute authority, attested outcome + timestamp, disputed flag |
 
-`market_id` = first 16 bytes of `keccak256(question || creator || nonce)` — keeps PDAs short and deterministic.
+### Per user
 
-### 2.3 Per-User-Per-Market State
+| Account | Seeds | Holds |
+| ------- | ----- | ----- |
+| `Position` | `[b"pos", market_id, user]` | `yes_shares`, `no_shares` (i128 WAD), `locked_cost_usdc`, `lock_nonce` |
+| `LockEntry` | `[b"lock_entry", position, nonce_le]` | one sell's proceeds and its `unlock_at` |
 
-| EVM                                               | Solana                                          | Seeds                               |
-| ------------------------------------------------- | ----------------------------------------------- | ----------------------------------- |
-| `Position { yesShares, noShares }` mapping        | `Position` account                              | `[b"pos", market_id, user_pubkey]`  |
-| AMM lock queue (`lockedAt`, `unlockAt`, balances) | `LockEntry` accounts (one per sell)             | `[b"lock", market_id, user, nonce]` |
-| Open CLOB orders (`UserOrders[]`)                 | `UserBook` account (compact list, swap-and-pop) | `[b"userbook", market_id, user]`    |
+A book trader has no PDA at all. Their seat is a block inside the market's single
+`Book` account.
 
-**Rent implication**: every (user, market) pair the user touches costs ~0.002 SOL rent for `Position`. Either the user pays (UX friction) or the protocol subsidizes via a treasury PDA. Token-2022 has account-compression options worth investigating for `LockEntry` and `UserBook`.
+### What is not here
 
-### 2.4 What we lose: cheap iteration
-
-- EVM: `getMarkets()` → returns array. On Solana there is no equivalent — clients use `getProgramAccounts` filtered by discriminator + market_id, or rely on the indexer (Helius, Triton, our own).
-- Implication: indexer becomes load-bearing for the markets-list page. Plan for this.
-
----
-
-## 3. Type Mapping
-
-| EVM type                | Solana (Anchor)                                                                                            |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `address`               | `Pubkey` (32 bytes)                                                                                        |
-| `uint256`               | `u128` (sufficient for our caps) or `[u64; 4]` only where needed                                           |
-| `int256` (signed delta) | `i128`                                                                                                     |
-| `uint64` deadline       | `i64` Unix seconds (Solana `Clock::unix_timestamp` is `i64`)                                               |
-| `bytes32` hash          | `[u8; 32]`                                                                                                 |
-| `keccak256`             | `solana_program::keccak::hash` (available, but `hashv` of `sha256` is cheaper if we re-derive market keys) |
-| `mapping(K => V)`       | PDA-per-key; no native maps                                                                                |
-| `event X(...)`          | `emit!` macro (best-effort, NOT durable — clients must subscribe live or via indexer)                      |
-| Custom errors           | `#[error_code]` enum                                                                                       |
-
-### 3.1 WAD math → fixed-point on Solana
-
-EVM uses 1e18 WAD throughout. On Solana, the cheapest stable choice is to keep WAD math (`u128` holds WAD comfortably for all values < 3.4e20) so we don't re-derive formulas. But:
-
-- `LMSRMath` on EVM uses `PRBMath` (`exp`/`ln` in fixed-point). No drop-in Rust equivalent that's CU-cheap.
-- Candidates: `fixed` crate, `spl-math`, hand-rolled Taylor + range-reduction tables.
-- **Risk**: a single `tradePositions` may need 2 `exp` + 2 `ln` calls. Naïve impls run 100k+ CU. The default tx CU limit is 200k; max is 1.4M. **Must prototype.**
-
-USDC↔WAD conversion (`_wadToUsdc` / `_usdcToWad`) is identical on Solana — same 1e12 scalar (USDC is 6 decimals on Solana mainnet too).
+No `BookSide` or per-tick accounts, no `MarketBook`, no `OrderbookPosition`, no
+SPL outcome-token mints, and no complete-set mint/merge. A position is a number
+in an account, not a transferable token.
 
 ---
 
-## 4. Call-Chain Translation
+## 4. The AMM
 
-### 4.1 Market Creation
+`trade_positions` (buy) and `sell_positions` (sell) move an LMSR cursor. Cost is
+the closed form `C(q + Δ) − C(q)` evaluated in exact WAD fixed point —
+`math/lmsr.rs` implements `exp` by range reduction against `ln 2` plus a Taylor
+series, and `ln` by bit-length reduction plus an `atanh` series. No lookup
+tables, no crank split (decision D4). Measured peak is ~55k CU for the math
+inside a ~75–80k CU trade.
 
-**EVM**:
+Rounding is asymmetric on purpose: inflows round up (`wad_to_usdc_ceil`),
+outflows round down (`wad_to_usdc_floor`), so the vault's token balance is a
+strict lower bound on its WAD-denominated liability and round-trip trades cannot
+drain it a base unit at a time.
 
-```
-LaunchpadEngine.createMarket(question, startTime, deadline, adjudicator, bBase, p, adjConfig)
-  → deploy TruthMarket clone
-  → AMMEngine.initializeMarket(...)
-  → IAdjudicator(adjudicator).configureMarket(market, config)
-  → BaseToken.transferFrom(creator, this, deposit)
-```
+**Sell cooldown.** `sell_positions` moves proceeds into the lock vault and opens
+a `LockEntry` seeded by the position's monotonic `lock_nonce`; `claim_unlocked`
+drains it after `unlock_at`, closes the account, and refunds the rent to the
+user. Buys never pay for a lock account, which is why buy and sell are separate
+instructions: Anchor evaluates `init` constraints before the handler runs, so a
+unified instruction would charge every buyer rent for an escrow they never use.
 
-**Solana** — implemented as **four** sequential instructions (lifecycle in
-parens after each step):
+**Subsidy.** LMSR is a *subsidised* maker — it deliberately collects less from
+traders than it owes winners, bounded by `b·ln(2)`. `seed_lp` requires the
+creator to post at least that much (`InsufficientSeedDeposit` otherwise) and
+transfers it into the AMM vault. Without it the vault cannot pay winners. Market
+creation is permissionless but not free: roughly 693 units at `b = 1000`, 34.7 at
+`b = 50` (decision D19).
 
-```
-ix1: sooth_market::initialize_market         (Initializing — Market PDA only)
-  args: { market_id, question_hash, start_time, deadline, adjudicator }
-  body:
-    - init Market PDA at [b"market", market_id]; record creator + lifecycle = Initializing.
+**Graduation.** Every buy accrues `fee_wad` into `AmmState.fee_b_base_wad` and
+compares it against `b·ln(2) · graduation_bps / 10_000` (`graduation_bps == 0`
+reads as 10 000, i.e. the full threshold). Crossing it sets `is_graduated`,
+emits `MarketGraduated`, and flips `Market.book_enabled` to true. The threshold
+is read before the check, so the trade that graduates the market still earns LP.
 
-ix2: sooth_market::initialize_outcome_mints  (Initializing)
-  body:
-    - init yes_mint and no_mint SPL Mints (mint authority = vault_authority PDA).
-
-ix3: sooth_market::initialize_market_vaults  (Initializing → Open)
-  accounts: [market, vault_authority, lock_authority, usdc_mint, vault, lock_vault, …]
-  body:
-    - init `vault` ATA (owner = vault_authority, mint = USDC).
-    - init `lock_vault` ATA (owner = lock_authority, mint = USDC).
-    - flip lifecycle Initializing → Open.
-    - usdc_mint is pinned to USDC_MINT_DEVNET (H1 in security review).
-
-ix4: sooth_amm::initialize_amm_state         (Open — trade-ready)
-  args: { initial_b, trial_end_at }
-  body:
-    - init AmmState PDA at [b"amm", market_id]; q_yes/q_no = 0; b = initial_b.
-    - require initial_b > 0 and initial_b ≤ i128::MAX (M1 in security review).
-```
-
-Notes:
-
-- The split into four instructions is **not** a design preference but a hard
-  requirement of Anchor 0.30.1's `try_accounts` codegen on BPF: with every
-  `Account<'info, T>` boxed, four SPL inits in one ix overflow the SBF
-  4 KB stack frame (~6 KB observed with mints + ATAs together; ~5.4 KB with
-  mints alone; ~4 KB with ATAs alone). Discovered during the SDK adapter
-  smoke-test work — see `programs-core/README.md` "Build commands". When
-  Anchor or SBF stack ceiling changes, these can collapse back down.
-- A market in `Initializing` lifecycle is partially set up but **not**
-  tradeable: `trade_positions` requires `market.is_open()` and the
-  AmmState PDA, neither of which is true until ix3+ix4 complete.
-- All four instructions are typically batched into one transaction by the
-  SDK's `buildCreateMarket` — but split-tx submission is also valid as
-  long as ix4 lands before any `trade_positions` call.
-
-### 4.2 AMM Trade (buy only)
-
-**EVM**:
-
-```
-AMMEngine.tradePositions(market, 1, +Δ, maxCost)
-  → LMSR cost = C(q+Δ) - C(q)
-  → FeeRouter.split(cost)
-  → BaseToken.transferFrom(user, AMM, cost+fee)
-  → position.yesShares += Δ
-  → if pre-graduation: mint LP tokens 1:1
-```
-
-**Solana**:
-
-```
-ix: sooth_amm::trade_positions
-  accounts: [market, amm_state, position PDA (init_if_needed),
-             vault_authority, user_usdc_ata, market_vault, usdc_mint,
-             user, system, token, rent]
-  args: { outcome: u8, delta_shares: i128, max_cost_wad: u128 }
-  body:
-    - require market.is_open()
-    - require market.start_time ≤ now < market.deadline   (C1 fix; commit 68b663b)
-    - require delta_shares > 0                            (buys only — sells route
-                                                           through sell_positions;
-                                                           returns SellNotImplemented
-                                                           on negative delta)
-    - cost_wad = LMSR.cost_delta(amm_state, outcome, delta) // ✓ wired (D4)
-    - fee_wad = 0                                          // STUB (see §8)
-    - require cost_wad + fee_wad ≤ max_cost_wad           // looser than EVM by fee_wad
-    - cost_usdc = wad_to_usdc_ceil(cost_wad)              // ✓ real
-    - CPI token::transfer(user_ata → market_vault, cost_usdc) // user-signed
-    - amm_state.q_yes/q_no += delta                       // ✓ real
-    - position.yes_shares/no_shares += delta              // ✓ real
-    - if !is_graduated: STUB — LP mint deferred to sooth_launchpad::seed_lp
-    - emit!(PositionTraded { ... })                       // ✓ real
-```
-
-**Status**: end-to-end real for the buy path (see
-`programs/sooth_amm/src/instructions/trade_positions.rs`). Fee transfer
-to `fee_pool_vault` is real, the slippage check
-`cost_wad + fee_wad ≤ max_cost_wad` is byte-for-byte equivalent to the
-EVM, and pre-graduation LP mint runs via the manual CPI into
-`sooth_launchpad::mint_lp_for_buy` (parent-ix introspection auth gate, see
-§4.2). The graduation flip on `fee_b_base_wad ≥ b · ln(2)` lands in the
-same ix and emits `MarketGraduated`.
-
-**Sells**: `trade_positions` is buy-only by design. `delta_shares > 0` is
-required — negative deltas return `SellNotImplemented` to make the SDK's
-dispatch error explicit. Sells go through `sooth_amm::sell_positions` (a
-sibling ix), which mirrors this account list plus the lock-side accounts.
-The split exists because Anchor 0.30.1 evaluates `init` constraints
-before the handler runs, so a unified ix would force buyers to pay rent
-on a useless `LockEntry` PDA. See §4.3 for the sell flow.
-
-**USDC mint pinning** (H1 fix; commit 68b663b): `usdc_mint` is pinned to
-`USDC_MINT_DEVNET` (a `pub const Pubkey` in `sooth_amm::lib.rs`) via an
-`address` constraint. The `user_usdc_ata` and `market_vault` ATAs are
-then `token::mint = usdc_mint` constrained, so the canonical-USDC chain
-is unforgeable from the IDL surface alone.
-
-**Prerequisite**: `initialize_amm_state` (§4.1 ix4) must have run for this
-market before any `trade_positions` call. Until that ix runs, the AmmState
-PDA does not exist and the trade fails at account-load time
-(`AccountNotInitialized`). The market must additionally be in `Open`
-lifecycle (ix3 of §4.1 sets this).
-
-**Compute budget** (measured): production `trade_positions` consumes
-**~68k–71k CU** per buy on `litesvm` (smoke-test logs in
-`packages/sdk-solana/tests/`). This matches the spike's projection
-(~75–80k envelope) within rounding and sits well under the 200k default
-per-instruction limit — no `ComputeBudgetInstruction::set_compute_unit_limit`
-is required on the production trade path. See §5 for the full breakdown.
-
-### 4.3 Sell with Lock-on-Sell
-
-EVM stores locks inline on the position. On Solana, a per-sell `LockEntry`
-account is cleaner. The original sketch in this section unified the sell
-into `trade_positions`; the implementation splits it into **two**
-instructions on `sooth_amm` plus **two** PDA-signing helper ixs on
-`sooth_market` (commits abfcf15 + b53715b — the Wave 1A → 1B refactor).
-
-**Why the split:** the `vault_authority` and `lock_authority` PDAs are
-both derived under `sooth_market::ID` (set up by
-`initialize_market_vaults`), so only `sooth_market` can `invoke_signed`
-against them. The original Wave 1A `sell_positions` tried to sign for
-`vault_authority` from inside `sooth_amm` and was rejected by the runtime
-("Cross-program invocation with unauthorized signer or writable account").
-Wave 1B moves the actual transfer into `sooth_market` helpers that
-`sooth_amm` CPIs into.
-
-```
-ix: sooth_amm::sell_positions
-  args: { outcome: u8, delta_shares: i128 (must be < 0), min_proceeds_wad: u128 }
-  body:
-    - require market.is_open() and start_time ≤ now < deadline
-    - require delta_shares < 0
-    - cost_wad = LMSR.cost_delta(...)                     // ≤ 0 for sells
-    - proceeds_wad = |cost_wad|
-    - if min_proceeds_wad > 0: require proceeds_wad ≥ min_proceeds_wad
-    - proceeds_usdc = wad_to_usdc_floor(proceeds_wad)     // floor for solvency
-    - amm_state.q_yes/q_no += delta                       // ✓
-    - position.yes_shares/no_shares += delta              // ✓
-    - if proceeds_usdc > 0:
-        CPI sooth_market::transfer_to_lock(market_vault → lock_vault, proceeds_usdc)
-                                                          // PDA-signed inside sooth_market
-    - init LockEntry PDA at [b"lock_entry", position.key(), nonce_le_u64]
-        where nonce = position.lock_nonce (pre-increment)
-    - position.lock_nonce += 1                            // monotonic counter
-    - emit!(PositionSold { ... })
-
-ix: sooth_amm::claim_unlocked
-  accounts: [market, position, lock_entry, lock_authority, lock_vault,
-             user_usdc_ata, usdc_mint, user (signer), token, sooth_market_program]
-  body:
-    - require now ≥ lock_entry.unlock_at                 // 24h after sell
-    - if amount > 0:
-        CPI sooth_market::transfer_from_lock_vault(lock_vault → user_ata, amount)
-                                                          // PDA-signed inside sooth_market
-    - emit!(LockClaimed { ... })
-    - close lock_entry (close = user; rent refund to user)
-```
-
-**LockEntry PDA seed scheme** (`programs/sooth_amm/src/state/lock_entry.rs`):
-`[b"lock_entry", position.key(), nonce_le_u64]`. The `nonce` is the
-per-`Position` monotonic counter `Position::lock_nonce` at sell time;
-`sell_positions` increments it post-init so the next sell uses fresh seeds.
-The previously-considered `[b"lock", market_id, user, nonce]` was rejected
-because `b"lock"` is already used for the `lock_authority` PDA — same
-prefix would muddy the seed namespace and make audit grep fragile.
-`[b"lock_entry", market_id, user, nonce]` was rejected because it requires
-the user to track an out-of-band per-(user, market) counter; reusing the
-existing per-(user, market) `Position` PDA's address is shorter and binds
-the lock lifecycle to the position lifecycle for free.
-
-**Lock duration**: `LOCK_DURATION_SECS = 86_400` (24h) is hard-coded in
-`sooth_amm::lib.rs`. Mirrors every production deploy config in
-`packages/contracts-core/config/*.json` on the EVM side. The Solidity AMM
-bounds `_lockDuration` to `[30 minutes, 36 hours]`; the Solana port hard-
-codes the production value because the AMM doesn't expose a per-deploy
-admin key (changing the constant requires a program upgrade anyway). Lift
-to `AmmState` if a future deploy needs a different value.
-
-**Auth model on the helpers** (`transfer_to_lock` /
-`transfer_from_lock_vault`): three layered gates:
-
-1. **User signature** flows down from the outer `sell_positions` /
-   `claim_unlocked` via CPI (`user: Signer` on the helper).
-2. **Position/LockEntry shape validation** — the helpers can't type these
-   accounts as `Account<'info, Position>` without a circular Cargo dep
-   (`sooth_market` → `sooth_amm`), so they parse `owner`, `user`, and
-   `market` from raw bytes via offsets shared in the `sooth-account-offsets`
-   workspace crate. A compile-time assertion in `sooth_amm` ties those
-   offsets back to the live struct's `SPACE` so layout drift trips the
-   build (see `packages/programs-core/crates/sooth-account-offsets/`).
-3. **Parent-ix introspection** — the `Instructions` sysvar is walked to
-   confirm one of the preceding top-level ixs is a `sooth_amm` dispatch
-   with the expected discriminator (`sell_positions` or `claim_unlocked`).
-   Closes the solvency hole where a direct call to the helper could move
-   USDC `vault → lock_vault` without minting a matching `LockEntry` (or
-   drain `lock_vault` without closing one). See
-   `programs/sooth_market/src/instruction_introspection.rs` for the
-   mechanism.
-
-Tradeoff: more accounts (sell now needs the `sooth_market` program +
-`Instructions` sysvar in the account list), but rent is recoverable on
-`claim`. The alternative — keeping a fixed-size ring buffer in `Position`
-— would avoid the per-sell PDA but bounds queue depth and changes the
-on-wire `Position` shape, which would re-trigger the offset-sync work
-above for any reader of `Position`.
-
-> **Sidebar — Anchor `declare_id!` ergonomics.** Anchor's `declare_id!` macro emits BOTH `pub static ID: Pubkey` AND `pub const ID_CONST: Pubkey`. The `static` cannot be used in const context (e.g., the compile-time `pubkey_eq` asserts that `sooth-protocol-types` uses to hold `sooth_amm` / `sooth_market` IDs in lock-step), but `ID_CONST` can. This is undocumented in Anchor's user docs; it's only visible in `anchor-attribute-account-0.30.1/src/id.rs`'s codegen. Cross-program PDA-signing helpers like the ones above need program IDs at compile time to derive PDAs in `const fn`-style helpers, so the `sooth-protocol-types` crate's pubkey-equality asserts use `crate::ID_CONST` rather than `crate::ID` for that reason. Discovered during the cross-program signing refactor when the natural-looking `assert!(pubkey_eq(crate::ID, …))` failed with "non-const fn in const context".
-
-### 4.4 Settlement (Multi-phase Adjudicator)
-
-EVM lifecycle: `configureMarket → resolve → attest → settle` with
-`dispute` veto branch.
-
-Solana — same lifecycle, but the v1 implementation collapses RESOLVING +
-ATTESTED into a single `Locked` state on the `Market` PDA (see
-`programs/sooth_market/src/state/lifecycle.rs`). The veto window is
-folded into `sooth_adjudicator`'s responsibility (program not yet
-implemented; the dispute path can be re-introduced as a separate ix later
-without bloating the v1 state machine).
-
-```
-ix: sooth_market::lock_for_resolution
-  accounts: [market, adjudicator (signer)]
-  body:
-    - require lifecycle == Open
-    - LOOSE auth check: signer.key == market.adjudicator    // STUB
-    - lifecycle = Locked
-    - emit!(MarketLocked { ... })
-
-ix: sooth_market::settle(winning_outcome: u8)
-  body:
-    - require lifecycle == Locked
-    - require winning_outcome ∈ {NO, YES, INVALID}
-    - LOOSE auth check: signer.key == market.adjudicator    // STUB
-    - lifecycle = Settled, market.winning_outcome = winning_outcome
-    - emit!(MarketSettled { ... })
-```
-
-**Status**: state mutation real; the adjudicator-CPI auth check is wired
-via parent-ix introspection on the `Instructions` sysvar — the parent
-program-id must equal `market.adjudicator` (the canonical
-`sooth_adjudicator` program ID). The defense-in-depth panic if
-`market.adjudicator == Pubkey::default()` is preserved.
-
-**Adjudicator allowlist** (commit abfcf15 — Codex C2 mitigation):
-`AdjudicatorAllowlist` is a singleton PDA on `sooth_market` (seeds
-`[b"adjudicator_allowlist"]`) that gates which pubkeys can be passed as
-the `adjudicator` field on `initialize_market`. Capacity 16 entries
-(rationale in `state/adjudicator_allowlist.rs`); `add_adjudicator` /
-`remove_adjudicator` are gated on `allowlist.authority` (the protocol
-multisig). This shrinks the attack surface from "anyone with a keypair"
-to "the curated set" pending the full `sooth_adjudicator` program. The
-lifecycle ixs (`lock_for_resolution`, `settle`) themselves are unchanged
-by the allowlist — it only constrains the **set** of valid adjudicators
-at market-creation.
-
-**EVM `invalidate()` fallback**: `TruthMarket.sol:177-189` exposes a
-permissionless `invalidate()` callable by anyone after
-`deadline + invalidationBuffer` to force the market to SETTLED with
-`outcome = INVALID`. The Solana port has not implemented this fallback
-(noted as future work in `state/lifecycle.rs`). Cross-link to the
-matching gap in §12.
-
-Cross-program invocation depth on Solana is capped at 4. Our chain
-(user → market → adjudicator → market) is depth 3 — fine.
-
-### 4.5 Redemption
-
-**Status: implemented.** `sooth_market::redeem` is the post-settlement
-1:1 winner payout with half-pay on `INVALID`. Cargo `cpi_redeem` 4/4
-green; SDK + e2e cover the YES-wins path through the
-`/portfolio` Redeem CTA. See `programs/sooth_market/src/instructions/redeem.rs`.
-
-Spec (mirrors EVM `OrderEngine.settlePosition` / `TruthMarket.getRedemptionValue`):
-
-```
-ix: sooth_market::redeem
-  accounts: [market, vault_authority, yes_mint, no_mint, vault,
-             user_usdc_ata, user_yes_ata, user_no_ata, user (signer), token]
-  body:
-    - require market.lifecycle == Settled
-    - read market.winning_outcome
-    - per TruthMarket.getRedemptionValue (TruthMarket.sol:220-231):
-        if winning == YES: payout_per_share = WAD if side == YES else 0
-        if winning == NO:  payout_per_share = WAD if side == NO  else 0
-        if winning == INVALID: payout_per_share = WAD/2 for both sides   // 50:50 split
-    - payout_usdc = wad_to_usdc_floor(payout_per_share × shares)
-    - burn the redeemed side's outcome tokens from user
-    - CPI token::transfer(vault → user_ata, payout_usdc),
-      signed by vault_authority PDA
-    - emit redemption event
-```
-
-Wired-out reasons documented in `redeem.rs`'s module comment: the
-redemption flow is gated on `sooth_adjudicator` (so that
-`Settled + winning_outcome` are trustworthy) and on `sooth_book`'s
-position-credit representation (so that escrow-locked positions
-participate identically to AMM-acquired shares). The H1 USDC-mint
-constraint will be added at unstub time (see the inline note in
-`redeem.rs:58-64`).
-
-LP redemption (`redeemLP`) will follow the same pattern against the
-`LpMint` supply share once `sooth_launchpad::seed_lp` lands.
+**Trial and dismissal.** `dismiss_market` lets the creator wind down a market
+that never graduated, after `trial_end_at`; `claim_refund` returns each trader's
+`Position.locked_cost_usdc`.
 
 ---
 
-## 5. AMM Engine — CU Budget Deep Dive
+## 5. The order book
 
-**Resolved by D4 (`docs/decision-log.md`) via the LMSR CU spike at
-`_spikes/lmsr-cu/`.** The Taylor-exact variant (variant A) is fast
-enough that the LUT approximation (variant B) was dropped, and no crank
-pattern is needed. Numbers below are measured, not estimated.
+One dynamically grown, zero-copy account per market, holding both sides on a
+single YES-price axis. Decision D23; the study behind it is
+[`docs/design/orderbook-redesign.md`](../../../docs/design/orderbook-redesign.md).
 
-### Spike (`_spikes/lmsr-cu`) — LMSR math in isolation
-
-`compute_units_consumed` from BanksClient transaction meta, bare
-`solana-program` (no Anchor), `cargo test-sbf`:
-
-| case                           | LMSR-only CU |
-| ------------------------------ | ------------ |
-| cold-start (q=0, buy 1% of b)  | 42,898       |
-| small (Δ = 1% of b)            | 44,468       |
-| medium (Δ = 10% of b)          | 46,823       |
-| large (Δ = 50% of b)           | 48,847       |
-| **imbalanced (10× q_no, +1%)** | **55,467**   |
-| tail (100× q_no, +1%)          | 32,768       |
-| sell (Δ = -10% of b)           | 46,771       |
-| two-sided (+5% YES, -5% NO)    | 46,752       |
-
-Peak math cost: **~55k CU** in the imbalanced 10× case; the 100× tail is
-cheaper because the smaller side's `exp` argument falls below
-`EXP_MAX_INPUT_WAD` and short-circuits to 0.
-
-### Production `sooth_amm::trade_positions` — measured on litesvm
-
-Real ix with Anchor account validation, LMSR `cost_delta`, `spl-token`
-transfer CPI, and state mutation. Captured from
-`packages/sdk-solana/tests/smoke.test.ts`'s buy ~1% of b transaction:
-
-| ix                         | measured CU |
-| -------------------------- | ----------- |
-| `initialize_amm_state`     | ~10,013     |
-| `trade_positions` (buy 1%) | **~68,300** |
-| `sell_positions`           | ~98,500     |
-| `claim_unlocked`           | ~24,236     |
-
-Buy envelope ~68k CU is well inside the spike's projection (~75–80k)
-and **leaves ~130k CU of headroom under the 200k default per-instruction
-limit**. No `ComputeBudgetInstruction::set_compute_unit_limit` is needed
-on the production trade path.
-
-### Mitigation tree (kept as documented escape hatches)
-
-Variant A (Taylor exact) is sufficient. The mitigation tree below is
-preserved as documentation in case a future Anchor port or new CPI hop
-narrows the headroom:
-
-1. **Approximation tables (variant B)** — pre-computed `exp`/`ln` LUTs
-   with linear interp. Sketch in `_spikes/lmsr-cu/src/math.rs`.
-   Expected ~5x reduction at ~1e-6 relative error (well below USDC
-   dust). **Not built; documented escape hatch only.**
-2. **Crank pattern** — split cost calc into two TXs. Hurts UX (two
-   signatures), uncaps CU per ix. **Not needed.**
-3. **Drop LMSR for constant-product (xy=k)** — major economic redesign.
-   Last resort. **Not relevant given current measurements.**
-
----
-
-## 6. CLOB — Build vs Integrate
-
-**Status (post-D13 pivot)**: Monaco fork retired; direction is
-**direct port of EVM `SoothBook.sol`** — see [`docs/spec/sooth_book.md`](../../../docs/spec/sooth_book.md)
-for the canonical 9-week implementation plan. The original Monaco
-investigation lives in [`docs/archive/monaco-investigation-week-01.md`](../../../docs/archive/monaco-investigation-week-01.md);
-the build-vs-integrate options below remain as historical context.
-
-### Option A — Port SoothBook to Anchor (`sooth_book` program)
-
-- Tick bitmap → on-chain `BookState.bitmap: [u64; 16]` (1024 ticks fits)
-- Per-tick PDA `[b"tick", market_id, tick]` holding orders deque
-- 4 atomics (`buyYes`, `buyNo`, `mint`, `merge`) → 4 instructions
-- **Pro**: full control, identical UX, integrates with our adjudicator/lifecycle
-- **Con**: orderbook engineering is non-trivial; lots of edge cases (matching, partial fills, gas/CU per match), already solved by Phoenix/OpenBook
-
-### Option B — Integrate Phoenix
-
-- Phoenix is a non-custodial CLOB on Solana, used by Ellipsis Labs
-- Each (market, outcome) becomes a Phoenix market YES/USDC and NO/USDC
-- We'd act as the "matchmaker" via CPIs
-- **Pro**: battle-tested, ultra-fast matching (~1k CU per match)
-- **Con**: external dependency, our YES/NO mints must conform to Phoenix's listing requirements, fee structure not ours, can't enforce 4-atomic invariant cross-market
-
-### Option C — Integrate OpenBook v2
-
-- Similar to Phoenix, more permissive listing
-- Larger ecosystem (Jupiter routes through it)
-- **Pro**: composability with broader Solana DeFi
-- **Con**: same as Phoenix re: invariants
-
-### Option D — Fork Monaco (recommended; pending founder approval)
-
-- Monaco Protocol is an Apache-2.0 sports-betting CLOB at
-  `github.com/MonacoProtocol/protocol` (v0.15.5 investigated).
-- Hard cap is `MarketLiquidities::LIQUIDITIES_VEC_LENGTH = 30` (per side,
-  60 total) — would need to be lifted to ~1000 for Sooth's prediction-
-  market tick grid. Lift is genuinely orthogonal to the matching loop
-  because matching is bounded by a separate `MATCH_CAPACITY = 10`
-  constant.
-- Per-order CU cost remains bounded after the lift; a CU benchmark on a
-  populated 1000-cap account is the remaining open item before commit.
-- See `docs/archive/monaco-investigation-week-01.md` and
-  `docs/archive/monaco-fork-analysis.md` for the source-reading detail.
-
----
-
-## 7. Adjudicator on Solana
-
-EVM uses `IAdjudicator` interface + `ZkTLSAdjudicator` backed by Primus's on-chain verifier (`PrimusZKTLS` proxy at `0xc3E3...` on Base Sepolia).
-
-### Status of zkTLS on Solana
-
-- **Primus**: no Solana program as of 2026-05. EVM-only.
-- **Reclaim Protocol**: has a Solana SDK (`@reclaimprotocol/solana-sdk`) — could substitute.
-- **Manual / mock**: `ManualAdjudicator` ports trivially as `sooth_manual_adjudicator` program (resolver pubkey gated `resolve` instruction).
-
-### Phased plan
-
-1. **v1 Solana**: ship with `ManualAdjudicator` only (parity with how we shipped EVM Manual first).
-2. **v2 Solana**: integrate Reclaim or wait for Primus Solana support. Adjudicator interface (instruction signatures) is the same; only the verifier program changes.
-
-`AdjudicatorRegistry` becomes a small PDA per registered adjudicator program-id, stored in `sooth_launchpad`.
-
----
-
-## 8. Fee Router
-
-EVM: 4-way split `bBase 50% / LP 30% / adjudicator 10% / protocol 10%`.
-
-**Status (architecture vs implementation reconciliation)**: the fee
-router lives in `sooth_launchpad`, **not inlined inside
-`sooth_amm::trade_positions`** as the original sketch implied. See the
-program ownership table in `packages/programs-core/README.md` ("Programs"
-table). Rationale: `sooth_launchpad` already owns `ProtocolConfig` (the
-bps splits + treasury pubkey) and the LP-mint authority — colocating the
-distributor with the source-of-truth config keeps the CPI surface
-narrower than threading `ProtocolConfig` through every `trade_positions`
-call. CPI overhead is negligible at ~5–7k CU per hop.
-
-`sooth_launchpad::distribute_fees` is implemented (4-way bps split:
-b-base accumulator + LP yield vault + adjudicator fee vault + treasury
-vault). `sooth_amm::trade_positions` charges the real `fee_wad` per the
-ProtocolConfig `fee_bps`, transfers it to `fee_pool_vault`, and
-increments the per-market `fee_b_base_wad` accumulator used by the
-graduation gate (`b · ln(2)` threshold). LP minting on pre-graduation
-buys runs via the manual CPI into `sooth_launchpad::mint_lp_for_buy`
-(parent-ix introspection auth gate); seeded LP comes from
-`sooth_launchpad::seed_lp` at market creation. Post-graduation
-`sooth_launchpad::redeem_lp` burns LP for pro-rata yield from the
-singleton `lp_yield_vault`.
-
----
-
-## 9. Trial Period & Dismiss
-
-EVM stores `trialEndTimes[market]` per market, set at `createMarket`:
+### Layout
 
 ```
-trialDuration = min(0.3 × (deadline - now), defaultTrialPeriod)
+Book  (PDA [b"book", market_id], raw account, bytemuck-cast in place)
+├── discriminator  "KooB\0\1\0\0"          8 B
+├── BookHeader                           128 B
+│     market, next_seq, free_head, bids_head, asks_head,
+│     seats_head, block_count, order_count, bump, _reserved
+└── blocks[]                              64 B each, one free list
+      OrderNode { amount, trader, seq, next, prev, price_tick, side, flags }
+      SeatNode  { credit, trader, net, next, kind }
 ```
 
-Solana: identical formula, stored on `AmmState.trial_end_at: i64`. `dismiss_market` instruction guards:
+Orders and seats share one arena, so a market with many orders and few traders
+and a market with the reverse both fit without preallocating for the worst case
+of each. `MAX_ORDERS = 4096` is a ceiling on **blocks**, not on orders: a trader
+holding a position costs one block (their seat), a resting maker costs two.
 
-1. `Clock::unix_timestamp >= amm_state.trial_end_at`
-2. `!amm_state.is_graduated`
-3. `!amm_state.is_dismissed`
-4. `signer == market.creator`
+`book_init` creates the account; `book_grow` is permissionless and extends it one
+`realloc` step per call, bounded by Solana's 10 240-byte-per-instruction growth
+cap and by `MAX_ORDERS`.
 
-`claim_refund` walks `Position` and refunds the locked cost, then closes the position account.
+### Price axis
 
----
+Ticks are `1..=999` on a single YES axis; a NO order at price `p` is stored as a
+YES order at `1 − p`. Crossing is an ordinary limit compare, fills execute at the
+**maker's** tick, and the crossing surplus reaches the taker as price
+improvement. Bids sort descending, asks ascending, ties by ascending `seq` —
+strict price-time priority, maintained on insert over intrusive doubly-linked
+lists. The block layout is deliberately tree-compatible, so swapping the index
+for O(log n) later would not touch the arena or the wire format.
 
-## 10. Frontend / SDK Mapping
+### Seats
 
-| EVM stack                              | Solana stack                                                |
-| -------------------------------------- | ----------------------------------------------------------- | ------------------------------------- |
-| `viem` / `wagmi`                       | `@solana/web3.js` + `@coral-xyz/anchor`                     |
-| MetaMask / Privy                       | Wallet Adapter (Phantom, Solflare, Backpack) + Privy Solana |
-| ABIs                                   | Anchor IDLs (`target/idl/*.json`)                           |
-| `useReadContract`                      | `program.account.X.fetch(pda)` + React Query                |
-| `useWriteContract`                     | `program.methods.X(...).accounts({...}).rpc()`              |
-| Indexer (Ponder, Postgres)             | Helius webhooks → Postgres, or Triton, or our own Geyser    |
-| `registry/nodes.json` (chain manifest) | Same idea: `{ cluster: "devnet"                             | "mainnet-beta", program_ids: {...} }` |
+A fill credits `SeatNode.credit` inside the arena instead of transferring to a
+maker's ATA. `SeatNode.net` carries the signed position (positive is long YES).
+That is what removes the last per-fill account from the fill path:
 
-**Implemented**: the SDK lives in its own package at
-`packages/sdk-solana/` (`@sooth/sdk-solana`) rather than as a subpath
-inside the EVM `@sooth/sdk`. Rationale: the dependency surface (Anchor,
-`@solana/web3.js`, `@solana/spl-token`) is too large to colocate with the
-EVM SDK without forcing every consumer to pull the union. The two SDKs
-share formulas through copy-then-adapt, not through a shared workspace
-crate — the LMSR closed form is small and the WAD scalars are identical.
+| | per fill |
+| --- | --- |
+| extra accounts | **0** |
+| extra transaction bytes | **0** |
+| CU | **~821** marginal over a ~23k fixed base |
 
-Demo app (`apps/demo`) is forked Solana-only from the EVM `apps/demo`
-with a `chain-shim` bridge that lets the same UI render against the
-`SolanaChainAdapter`. See `packages/sdk-solana/README.md` for the SDK
-surface and `apps/demo/src/integrations/chain-shim/` for the bridge.
+Transaction size and writable-account count are flat whether a taker crosses one
+order or twenty, because `book_place` nets the taker's collateral into at most
+one transfer each way plus one fee transfer *however many orders it crosses*.
+Token cost is per transaction, not per fill. No address lookup tables are
+involved.
 
----
+**Self-trade prevention**: an order that would cross its owner's resting order
+cancels that resting order, refunds the escrow to the owner's seat credit, and
+keeps walking — a self-order does not shield strangers queued behind it.
 
-## 11. Repo Layout (actual — sooth-solana repo)
+### Escrow, cancel, withdraw
 
-This document lives in `sooth-solana` (the Solana monorepo), peer to
-`sooth-alpha` (the EVM monorepo) rather than nested inside it. Layout
-as of 2026-05:
+A resting order escrows its own leg at its own limit; the escrow is recomputed
+from the node rather than stored, and `leg_costs` splits a fill so the two legs
+sum to exactly the traded amount (the maker leg floors, the taker leg absorbs
+the remainder).
+
+`book_cancel` checks ownership, refunds the escrow to the owner's **seat
+credit**, unlinks the node, and emits `BookOrderCancelled`. `book_withdraw` moves
+credit to a real token account in a single transfer and frees the seat if it is
+left empty. Neither is gated on pause or on lifecycle — they are the exit paths,
+and cancel is the only way to recover escrow after settlement. Rent behaviour is
+covered in
+[`../../sdk-solana/docs/orderbook-cancel-ux.md`](../../sdk-solana/docs/orderbook-cancel-ux.md).
+
+### Gating and fees
+
+`book_place` requires the protocol unpaused, the market `Open`, and
+`Market.book_enabled` — a pre-graduation book returns `NotGraduated`. The fee
+rate comes from `ProtocolConfig.book_fee_bps`, never from the caller, and is
+charged on risk rather than notional:
 
 ```
-sooth-solana/
-├── Cargo.toml                  # workspace root (4 programs + 2 shared crates)
-├── packages/
-│   ├── programs-core/          # Anchor programs + their docs
-│   │   ├── Anchor.toml
-│   │   ├── programs/
-│   │   │   ├── sooth_amm/         # LMSR + buy + sell + claim_unlocked ✓ implemented
-│   │   │   ├── sooth_market/      # Market lifecycle + custody + redeem + adjudicator-allowlist ✓ implemented
-│   │   │   ├── sooth_launchpad/   # Factory + fee router + seed_lp + mint_lp_for_buy ✓ implemented
-│   │   │   └── sooth_adjudicator/ # register + request_lock + attest_outcome + dispute (Manual variant) ✓ implemented
-│   │   ├── crates/
-│   │   │   ├── sooth-account-offsets/   # shared Position/LockEntry byte offsets
-│   │   │   └── sooth-protocol-types/    # cross-program IDs + USDC mint + ix discriminators
-│   │   ├── docs/
-│   │   │   ├── architecture.md          # this doc
-│   │   │   └── research/                # CLOB / Monaco investigation
-│   │   └── README.md           # programs status table
-│   └── sdk-solana/             # @sooth/sdk-solana (TS) — chain adapter
-├── apps/
-│   └── demo/                   # forked Solana-only demo (chain-shim bridge)
-├── docs/
-│   ├── status.md               # program / SDK / demo / devnet state
-│   ├── build.md                # local build + Phantom UX + wallet-adapter rules
-│   ├── roadmap.md              # active items + pending decisions
-│   ├── decision-log.md         # P-numbers / D-numbers
-│   ├── glossary.md             # WAD, OUTCOME, tick, CU, PDA, ATA
-│   ├── spec/                   # canonical per-program implementation specs
-│   │   ├── README.md
-│   │   ├── sooth_book.md
-│   │   ├── sooth_amm.md
-│   │   ├── sooth_market.md
-│   │   ├── sooth_launchpad.md
-│   │   ├── sooth_adjudicator.md
-│   │   └── sqf.md
-│   ├── archive/                # superseded plans + investigations (D13 pivot)
-│   │   ├── README.md
-│   │   ├── sooth_book-fork-plan.md
-│   │   ├── monaco-fork-analysis.md
-│   │   ├── monaco-investigation-week-01.md
-│   │   └── ladder-vs-density.md
-│   ├── sooth_book/             # active sooth_book design notes (cu-analysis, sooth-ix-design)
-│   └── research/
-│       ├── porting-evaluation.md
-│       └── orderbook-survey.md
-├── _spikes/
-│   └── lmsr-cu/                # D4 prototype (excluded from workspace)
-└── HANDOVER.md                 # contributor index
+taker_fee = amount · min(tick, 1000 − tick) · book_fee_bps / (1000 · 10_000)
 ```
 
-Programs not yet implemented: `sooth_book` only (gated on the Monaco fork
-decision per §6 / P1). `sooth_adjudicator` Manual variant ships today; the
-ZkTLS variant remains a placeholder per §7. Workspace `[members]` reserves
-the `crates/` sibling for future shared no-Anchor crates (e.g.
-`sooth-book-matcher`); `sooth-account-offsets` and `sooth-protocol-types`
-are the current inhabitants.
+which leaves it invariant under the YES↔NO swap.
 
 ---
 
-## 12. Open Questions
+## 6. Fees and LP
 
-1. ~~**Compute budget for LMSR**~~ — **resolved by D4**. Production
-   `trade_positions` measures ~68k CU (see §5).
-2. **Account rent model**: who pays for `Position` PDAs? Subsidize from treasury, or charge users (~$0.30 SOL at $150/SOL)?
-3. ~~**CLOB**: Option A (port) vs Option B/C (Phoenix/OpenBook)~~ —
-   superseded by Monaco fork investigation (§6, P1). Founder approval
-   pending.
-4. **zkTLS**: ship v1 with ManualAdjudicator and revisit when Primus adds Solana, or commit to Reclaim now?
-5. **Indexer**: Helius webhook → existing Ponder Postgres, or run Geyser ourselves?
-6. **Multi-chain UX**: not applicable to this repo — `apps/demo` is a
-   forked Solana-only build; the EVM `apps/demo` lives in `sooth-alpha`.
-7. **LP token transferability**: SPL by default. Do we want it that way (better composability) or do we want to gate transfers like ERC20 with hooks? Token-2022 transfer hooks could enforce this.
-8. **Token-2022 vs classic SPL**: Token-2022 supports useful extensions (transfer hooks, confidential transfers, metadata pointer) but has CPI overhead and ecosystem gaps (some wallets/DEXes still flaky).
-9. ~~**Adjudicator-CPI auth check**~~: §4.4 — resolved. Both
-   `lock_for_resolution` and `settle` gate on parent-ix introspection of
-   the `Instructions` sysvar; the parent program-id must equal
-   `market.adjudicator` (the canonical `sooth_adjudicator` program).
-10. **`invalidate()` fallback** (§4.4): permissionless force-INVALID
-    after `deadline + invalidationBuffer` is on the EVM `TruthMarket`
-    but not yet ported.
+Fees accrue per market per venue into plain SPL token accounts owned by the
+`fee_pool_authority` PDA. `distribute_fees_amm` and `distribute_fees_book` are
+separate permissionless cranks that split a pool four ways per
+`ProtocolConfig` — `b_base_share_bps`, `lp_yield_share_bps`,
+`adjudicator_share_bps`, `protocol_share_bps`, summing to 10 000. The AMM crank
+routes the `b_base` share back into the market vault; the book crank has no
+`b_base` destination and folds that share into the remainder.
+
+LP yield lands in the per-market `lp_yield_amm` / `lp_yield_book` vaults. There
+is no global yield vault: yield belongs to the market that earned it.
+`redeem_lp` burns LP for a pro-rata claim against them.
+
+Every account on both cranks is pinned to that venue's mint, so the two venues
+cannot be crossed; the adjudicator's destination is pinned to
+`market.adjudicator` and the protocol's to `config.treasury`.
 
 ---
 
-## 13. Status Snapshot
+## 7. Adjudication and settlement
 
-This section used to enumerate "next steps" — those have either landed
-(LMSR spike, SDK adapter, Monaco investigation) or moved into the
-canonical roadmap surfaces (`docs/decision-log.md` + commit history +
-`packages/programs-core/README.md` "Programs" status table). Refer to
-those instead of duplicating here.
+`register_adjudicator` records the resolving authority and a separate
+`dispute_authority` on a per-market `AdjudicatorEntry`.
 
-Resolved decision points referenced by other sections:
+Attestation and settlement are deliberately two transactions (decision D18):
 
-- **D4** (`docs/decision-log.md`): LMSR Taylor-exact variant proceeds to
-  production; LUT and crank patterns dropped. Backs §5.
-- **D5**: AMM-on-Solana atomic escrow is structural — see SDK
-  implementation guide §6. Backs §6 Option A's escrow argument.
-- **P1** (Monaco fork): investigation complete (recommend fork);
-  founder approval pending. Backs §6.
-- **P2 → D4**: subsumed by D4.
-- **P4 → D5**: subsumed by D5.
+1. `request_lock` / `lock_for_resolution` moves the market `Open → Locked`.
+2. `attest_outcome` records the outcome on `AdjudicatorEntry` and leaves the
+   market `Locked`.
+3. For `ProtocolConfig.veto_period_secs` the `dispute_authority` may `dispute`
+   and override the attested value. The window is bounded
+   `0 < x <= 30 days`; zero is rejected rather than read as "no window", because
+   an omitted `i64` encodes as `0`. Deployments wanting no delay pass `1`.
+4. `settle` is **permissionless** and takes no `winning_outcome` argument — it
+   reads the attested value once the window has closed.
+
+Splitting them is what makes the veto real: a `dispute` handler that requires
+both an attestation and a not-yet-settled market is unreachable if attestation
+settles in the same transaction.
+
+Only the manual adjudicator exists. zkTLS attestation is not implemented — see
+the open items in [`docs/status.md`](../../../docs/status.md).
 
 ---
 
-_Last updated: 2026-05-07. Source-of-truth EVM contracts: `packages/contracts-core/src/` (sooth-core v0.1.2 / v0.2.0)._
+## 8. End of life
+
+After `settle`:
+
+- `redeem_amm_position` pays out `Position` shares — full value on the winning
+  side, half on `INVALID`.
+- `redeem_book_seat` pays `credit + payout`, where payout is `|net|` if the
+  sign matches the winner, `|net| / 2` on `INVALID`, else zero. It zeroes both
+  fields and frees the seat if nothing is left. Resting orders are deliberately
+  untouched; a maker cancels them to recover escrow.
+- `book_withdraw` and `claim_unlocked` remain open.
+- `reclaim_subsidy` returns the creator's unspent subsidy. It is repeatedly
+  callable because obligations shrink as traders redeem, and bounded both by the
+  vault residual and by what the creator actually posted.
+- `sweep_residual` moves the remaining LMSR surplus to the treasury.
+- `close_market` reclaims the rent and leaves an `MKTCLOSD` tombstone in place
+  of the `Market` account, requiring five token accounts empty and no live
+  orders or funded seats first.
+
+The tombstone exists because `market_id` is caller-chosen: a fully closed PDA
+could be re-initialized into a live-looking market that stale `Position`
+accounts still point at. A readable "this market is over" fact on chain is
+cheaper than defending every reader against that (decision D25).
+
+---
+
+## 9. Numeric domain
+
+| Quantity | Representation |
+| -------- | -------------- |
+| shares, LMSR cursor, costs | `i128` / `u128` at WAD (1e18) |
+| token amounts | `u64` base units; both venue mints are 6-decimal, `WAD_TO_USDC_SCALAR = 1e12` |
+| book order `amount` | `u64` base units; `ONE_SHARE = 1_000_000` |
+| ticks | `u16`, `1..=999`, `NUM_TICKS = 1000` |
+| timestamps | `i64` Unix seconds (`Clock::unix_timestamp`) |
+| hashes | `[u8; 32]`, SHA-256 (`solana_program::hash::hash`) |
+| errors | `#[error_code] SoothCoreError`, 72 variants, append-only discriminants |
+
+---
+
+## 10. Runtime constraints
+
+**Every transaction must prepend
+`ComputeBudgetInstruction::request_heap_frame(256 * 1024)`.** The program
+installs a custom 256 KB bump allocator (`SOOTH_CORE_HEAP_LEN`, behind the
+default `custom-heap` feature) and the runtime only maps that region when the
+transaction asks for it. Without the frame the first allocation lands outside
+mapped memory and the instruction aborts with "Access violation in heap
+section". This applies to every instruction, not just multi-fill buys. The SDK
+adapter adds it on every path it builds, and
+`packages/sdk-solana/tests/heap-frame-contract.test.ts` pins the contract from
+both directions.
+
+The frame exists because the default 32 KB heap capped matching at three fills —
+a four-fill buy OOM'd at ~226k CU. The zero-copy book removed the borsh
+`Vec<Order>` pressure that caused it; the only remaining book allocation is the
+matcher's `filled_orders` vector.
+
+Two further ceilings worth knowing:
+
+- **`MAX_PERMITTED_DATA_INCREASE = 10_240`** bytes per instruction bounds how far
+  `book_grow` can extend the arena in one call.
+- **`MAX_WRITABLE_ACCOUNT_UNITS`** is 24M CU per account per block. One hot
+  market is one hot account, so a single market has a throughput ceiling —
+  markets shard naturally across accounts. Phoenix and Manifest live with the
+  same constraint.
+
+---
+
+## 11. Events and off-chain reads
+
+Twenty-eight `#[event]` types. The book emits `BookOrderPlaced`, `BookFilled`,
+and `BookOrderCancelled` through `emit_cpi!`, which lands them as inner
+instructions — durable transaction data rather than best-effort logs, and
+decodable by `decodeBookEventsFromInner` in the SDK. `BOOK_EVENT_VERSION = 1`
+is checked on decode, so a version bump fails loudly instead of mis-parsing.
+
+The question text is not persisted on chain. `create_market` takes it as an
+argument, rejects anything empty or over `MAX_QUESTION_LEN = 300`, requires
+`sha256(question) == args.question_hash`, stores only the hash on `Market`, and
+re-emits the text in `MarketCreated`. The SDK's `readMarketQuestion` recovers it
+from transaction history, which is what lets cards, portfolios, and page titles
+render with no indexer at all (decision D24).
+
+There is no Solana indexer. Frontends read accounts and decode events directly —
+adequate at demo scale, and the boundary past which it stops being adequate has
+not been drawn.
+
+---
+
+## 12. Testing
+
+- **In-crate**: 120 `#[test]` functions across ten files, concentrated in
+  `book/matcher.rs`, `book/settlement.rs`, `book/arena.rs`, and `math/`.
+  `cargo test -p sooth_core`.
+- **On-chain behaviour**: driven from TypeScript against LiteSVM in
+  `packages/sdk-solana/tests/`, which loads `target/deploy/sooth_core.so`
+  directly. `pnpm -F @sooth/sdk-solana test`.
+- **End to end**: the Playwright suite in `apps/demo/e2e/onchain/` against a
+  local validator or Surfpool.
+
+Build with `anchor build` from the repo root; `Anchor.toml` lists
+`packages/programs-core/programs/sooth-core` as the single workspace member and
+pins the same program ID for devnet and localnet.
+
+---
+
+## 13. Deliberate omissions
+
+Not implemented, and not oversights:
+
+- **Off-chain signed orders** (the EVM "Path B"), retroactive `T*` settlement,
+  and `invalidate()` parity — decision D14.
+- **Complete sets.** No outcome-token mints, no mint/merge. Positions are
+  numbers in accounts.
+- **Three-outcome / MAYBE markets.** Markets are binary plus `INVALID`.
+- **A guardian allowlist.** The veto is held by a single `dispute_authority`.
+- **zkTLS adjudication.**
+
+`error.rs` still carries a handful of variants from the per-tick book —
+`BookSideFull`, `MissingCrossingBookSide`, `MakerAccountMismatch`,
+`WrongBundleArity` and friends. They are unreachable in the live code and kept
+only because the discriminants are ABI-stable and append-only.
+
+---
+
+## Related reading
+
+- [`docs/design/orderbook-redesign.md`](../../../docs/design/orderbook-redesign.md) — the study behind the single-account book
+- [`docs/design/dual-token-venues.md`](../../../docs/design/dual-token-venues.md) — why the venues hold different tokens
+- [`docs/decision-log.md`](../../../docs/decision-log.md) — what is settled and what is open
+- [`../../sdk-solana/docs/integrator-contract.md`](../../sdk-solana/docs/integrator-contract.md) — the client surface over all of this
+- [`docs/glossary.md`](../../../docs/glossary.md) — WAD, OUTCOME, tick, CU, PDA, ATA

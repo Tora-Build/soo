@@ -12,11 +12,10 @@
 //!
 //! ## Why the vaults are per-market
 //!
-//! They were global (one ATA of the singleton `lp_yield_authority` per mint),
-//! and payout divided the GLOBAL pool by THIS market's LP supply — so a dust
-//! market's sole LP could take every market's yield. The vaults are now
-//! seeded by `market_id`; each market's yield is claimable only against its
-//! own supply.
+//! The yield vaults are seeded by `market_id`, so each market's yield is
+//! claimable only against its own LP supply. A global vault would let payout
+//! divide the GLOBAL pool by THIS market's LP supply — a dust market's sole
+//! LP could take every market's yield.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};
@@ -28,16 +27,13 @@ use crate::state::{AmmState, Market};
 
 #[derive(Accounts)]
 pub struct RedeemLp<'info> {
-    // ── Account binding (bug B6) ────────────────────────────────────────
+    // ── Account binding ─────────────────────────────────────────────────
     //
-    // `lp_mint` used to be a bare `#[account(mut)] Box<Account<Mint>>` — no
-    // seeds, no market, nothing. Payout is
-    // `lp_yield_vault.amount * lp_amount / lp_mint.supply`, so anyone could
-    // create their own SPL mint with a supply of 1, burn 1 token, and take the
-    // ENTIRE global yield vault. `amm_state` was likewise bound only on
-    // `is_graduated`, so any graduated market in the protocol satisfied it.
-    //
-    // Everything is now tied back to one `market`.
+    // Every account here is tied back to one `market` via PDA seeds. Payout
+    // is `lp_yield_vault.amount * lp_amount / lp_mint.supply`, so an unbound
+    // `lp_mint` would let anyone bring their own SPL mint with a supply of 1,
+    // burn 1 token, and take the ENTIRE yield vault; an `amm_state` gated
+    // only on `is_graduated` would be satisfied by any graduated market.
 
     #[account(
         seeds = [b"market", market.market_id.as_ref()],
@@ -116,11 +112,11 @@ pub struct RedeemLp<'info> {
 
 pub fn handler(ctx: Context<RedeemLp>, lp_amount: u64) -> Result<()> {
     // The incubation lock ends when the market's story does — by graduating,
-    // by settling, or by being dismissed. Gating on graduation ALONE meant a
-    // market that settled without graduating (most incubation failures) had
-    // its LP yield distributed into a vault `redeem_lp` refused to open:
-    // stranded by construction, and blocking `close_market` forever, since
-    // unclaimed LP yield is a claim the close rightly refuses to destroy.
+    // by settling, or by being dismissed. Gating on graduation ALONE would
+    // strand a market that settled without graduating (most incubation
+    // failures): its LP yield sits in a vault `redeem_lp` refuses to open,
+    // blocking `close_market` forever, since unclaimed LP yield is a claim
+    // the close rightly refuses to destroy.
     require!(
         ctx.accounts.amm_state.is_graduated
             || ctx.accounts.market.is_settled()

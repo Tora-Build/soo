@@ -1,16 +1,15 @@
 // The option chain, assembled from Solana markets.
 //
-// Upstream (sooth-alpha `east` branch) matched grid cells to markets through
-// the indexer plus an EVM canonical-template registry. This port matches by
-// QUESTION TEXT: the Solana program stores sha256(question) on the market and
-// emits the verified text in `MarketCreated`, and `parseOptionQuestion` is the
-// exact inverse of the template builder — so a cell and a market agree if and
-// only if their questions are byte-identical. No registry, no indexer.
+// Grid cells match markets by QUESTION TEXT: the Solana program stores
+// sha256(question) on the market and emits the verified text in
+// `MarketCreated`, and `parseOptionQuestion` is the exact inverse of the
+// template builder — so a cell and a market agree if and only if their
+// questions are byte-identical. No registry, no indexer.
 //
-// Everything EVM-shaped is gone; the data comes from the same two sources the
-// rest of the demo already trusts: `useOnChainMarkets` for the list and the
-// adapter's snapshot for per-cell pricing. Only matched cells are priced —
-// the grid is templates × strikes, but real markets are sparse.
+// The data comes from the same two sources the rest of the demo already
+// trusts: `useOnChainMarkets` for the list and the adapter's snapshot for
+// per-cell pricing. Only matched cells are priced — the grid is templates ×
+// strikes, but real markets are sparse.
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";

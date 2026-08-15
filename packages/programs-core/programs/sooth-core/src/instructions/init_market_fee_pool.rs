@@ -8,14 +8,13 @@
 //!
 //! ## Why the yield vaults are PER-MARKET
 //!
-//! They were not, and that was a cross-market theft. `lp_yield_authority` is
-//! a global singleton, so "the ATA of that authority for the AMM mint" was
-//! ONE account for the whole protocol — every market's `distribute_fees`
-//! paid into it, and `redeem_lp` paid out `global_vault × lp / THIS market's
-//! supply`. The sole LP of a dust market could burn 100% of a supply of one
-//! and take every other market's accumulated yield; first to redeem won.
-//! Seeding the vaults by `market_id` makes each market's yield claimable
-//! only against its own LP supply.
+//! Seeding the vaults by `market_id` makes each market's yield claimable only
+//! against its own LP supply. `lp_yield_authority` is a global singleton, so
+//! "the ATA of that authority for the AMM mint" would be ONE account for the
+//! whole protocol: every market's `distribute_fees` would pay into it, and
+//! `redeem_lp` would pay out `global_vault × lp / THIS market's supply`. The
+//! sole LP of a dust market could burn 100% of a supply of one and take every
+//! other market's accumulated yield, first to redeem winning.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};

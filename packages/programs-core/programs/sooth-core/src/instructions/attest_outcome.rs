@@ -5,19 +5,14 @@
 //! state for `VETO_PERIOD_SECS`, during which `dispute` may override the
 //! outcome; after that window anyone may call `settle` to finalize.
 //!
-//! This used to call `settle_internal` inline, which made the `dispute`
-//! handler unreachable: dispute requires both `is_attested()` and a
-//! not-yet-`Settled` market, and collapsing attest+settle into one
-//! transaction meant no market was ever in both states at once. Every
-//! dispute failed with `MarketAlreadySettled` or `NotYetAttested`. See
-//! `sdk-solana/tests/adjudicator-flow.test.ts`, which pins both branches.
-//!
-//! Splitting the phases is the remediation the spec already planned —
-//! `docs/spec/sooth_adjudicator.md` §6 records the collapse as a
-//! partial-conformance deviation (self-attested J1) whose fix is "separate
-//! `resolve` and `attest` ix with veto window". It also matches the EVM
-//! contract, where `resolve` and a permissionless `settle` are distinct
-//! calls either side of `vetoEndsAt`.
+//! Attest and settle MUST stay separate instructions: `dispute` requires
+//! both `is_attested()` and a not-yet-`Settled` market, so collapsing
+//! attest+settle into one transaction would leave no market ever in both
+//! states at once and make every dispute fail with `MarketAlreadySettled`
+//! or `NotYetAttested`. `sdk-solana/tests/adjudicator-flow.test.ts` pins
+//! both branches. The split matches the EVM contract, where `resolve` and
+//! a permissionless `settle` are distinct calls either side of
+//! `vetoEndsAt`.
 
 use anchor_lang::prelude::*;
 
@@ -40,7 +35,7 @@ pub struct AttestOutcome<'info> {
     )]
     pub adjudicator_entry: Account<'info, AdjudicatorEntry>,
 
-    /// Read-only: attestation no longer changes the lifecycle. `settle` does
+    /// Read-only: attestation does not change the lifecycle. `settle` does
     /// that, after the veto window.
     #[account(
         seeds = [b"market", market.market_id.as_ref()],
@@ -70,10 +65,9 @@ pub fn handler(ctx: Context<AttestOutcome>, winning_outcome: u8) -> Result<()> {
         SoothCoreError::AlreadyAttested
     );
 
-    // `settle_internal` used to enforce this via `can_transition_to`. With the
-    // settle call removed, attestation must gate the lifecycle itself —
-    // otherwise an Open market could be attested and would then settle
-    // straight out of trading once the veto window elapsed.
+    // Attestation must gate the lifecycle itself — otherwise an Open market
+    // could be attested and would then settle straight out of trading once
+    // the veto window elapsed.
     require!(
         matches!(ctx.accounts.market.lifecycle, MarketLifecycle::Locked),
         SoothCoreError::InvalidLifecycleTransition

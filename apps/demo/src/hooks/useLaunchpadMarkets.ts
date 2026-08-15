@@ -25,8 +25,7 @@ export interface LaunchpadMarketData {
 }
 
 /**
- * Legacy hook wrapper for V10 on-chain discovery.
- * Replaces the old LaunchpadFactory-based logic with LaunchpadEngine-based logic.
+ * Wrapper over LaunchpadEngine-based on-chain market discovery.
  */
 export function useLaunchpadMarkets() {
   const {

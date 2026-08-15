@@ -53,7 +53,6 @@ impl AmmState {
         + 64; // _reserved
 }
 
-/// Cross-crate layout sync: `AmmState::SPACE` must match `POSITION_TOTAL_LEN`
-/// in `constants.rs`. Actually this assert ties AmmState offset
-/// constants. We just assert Position size hasn't drifted.
+/// Layout sync guard: pins `POSITION_TOTAL_LEN` in `constants.rs` so the
+/// `Position` layout cannot drift from the offsets used by raw parsers.
 const _: () = assert!(POSITION_TOTAL_LEN == 153);

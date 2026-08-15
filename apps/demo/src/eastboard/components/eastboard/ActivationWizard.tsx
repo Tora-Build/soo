@@ -1,14 +1,10 @@
 // Activation, Solana-shaped.
 //
-// Upstream's wizard walked a five-step EVM machine — MOSS session, approve,
-// prepare, pump rounds, canonical registration — because activating a cell on
-// MegaETH took five transactions. On Solana it takes ONE: `create_market`
-// composes the whole initialization, and the template's question rides in the
-// instruction, verified against its hash by the program. A wizard that
-// renders five steps for one signature would be theater, so this one shows
-// what is actually true: the cell's terms, one action, one result.
-//
-// Same props as upstream so `OptionsChain` is untouched.
+// Activating a cell takes ONE transaction: `create_market` composes the whole
+// initialization, and the template's question rides in the instruction,
+// verified against its hash by the program. A multi-step wizard for one
+// signature would be theater, so this one shows what is actually true: the
+// cell's terms, one action, one result.
 
 import { useTranslation } from "react-i18next";
 

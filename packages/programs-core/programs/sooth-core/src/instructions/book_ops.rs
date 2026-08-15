@@ -35,7 +35,7 @@ pub struct BookCancel<'info> {
 /// Cancel a resting order. The refund lands in the owner's seat credit; call
 /// `book_withdraw` to move it to a wallet.
 ///
-/// Not gated on `require_not_paused`, matching the existing `cancel`: a maker
+/// Not gated on `require_not_paused`: a maker
 /// must always be able to pull a resting order, or a pause strands their
 /// collateral in the book.
 pub fn cancel_handler(ctx: Context<BookCancel>, order_seq: u64) -> Result<()> {

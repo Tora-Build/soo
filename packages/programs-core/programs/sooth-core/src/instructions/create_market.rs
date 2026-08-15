@@ -11,7 +11,7 @@ use anchor_lang::solana_program::program::invoke_signed;
 use anchor_lang::solana_program::system_instruction;
 use anchor_lang::Discriminator;
 use anchor_spl::associated_token::{self, AssociatedToken, Create};
-use anchor_spl::token::{self, InitializeMint, Mint, Token};
+use anchor_spl::token::{Mint, Token};
 
 use anchor_lang::solana_program::hash::hash;
 
@@ -27,9 +27,8 @@ pub struct CreateMarketArgs {
     ///
     /// Only its hash is stored — `Market` keeps 32 bytes and the text is not
     /// persisted anywhere on chain. But it IS emitted in `MarketCreated`, so a
-    /// client can recover it from the creation transaction without an indexer.
-    /// Before that event was carried, the words a market asked existed nowhere
-    /// retrievable and every market rendered as its own address.
+    /// client can recover it from the creation transaction without an indexer;
+    /// the event is the only retrievable copy of the words a market asked.
     ///
     /// Verified against `question_hash` below, which is what makes the event
     /// trustworthy: without the check, a creator could store the hash of one
@@ -157,7 +156,6 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
     let amm_bump = ctx.bumps.amm_state;
 
     let creator_key = ctx.accounts.creator.key();
-    let vault_authority_key = ctx.accounts.vault_authority.key();
 
     // ── Leg 1: Init Market PDA ────────────────────────────────────────────
     {

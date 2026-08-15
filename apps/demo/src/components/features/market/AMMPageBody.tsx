@@ -190,9 +190,9 @@ export const AMMPageBody = ({
       <TradingContextBar
         question={
           // `truth.question` is the on-chain hash, not text, and sqfMeta is
-          // empty for markets without off-chain metadata — so both fall
-          // through and the title used to be the raw address. The local cache
-          // holds what `MarketCreated` emitted, which is the actual question.
+          // empty for markets without off-chain metadata — so both can fall
+          // through. The local cache holds what `MarketCreated` emitted,
+          // which is the actual question; the raw address is the last resort.
           truth?.question ||
           sqfMeta?.question ||
           sqfMeta?.name ||

@@ -306,13 +306,11 @@ function SoothBookTerminalActive({
   // Submit-side validation
   const availableUsdc = Number(formatUnits(availableBalance, 18));
   const availableShares = Number(formatUnits(relevantTokenBalance, 18));
-  // A sell no longer needs shares.
+  // A sell does not need shares.
   //
-  // On the legacy book selling YES delivers YES tokens, so you had to mint a
-  // pair for $1 first and sell off the leg you did not want. The redesigned
-  // book collateralises a sell in USDC instead — selling YES at p IS buying NO
-  // at (1 - p) — and the seat carries the negative position. The program
-  // accepts that; this gate was blocking it.
+  // The book collateralises a sell in USDC — selling YES at p IS buying NO
+  // at (1 - p) — and the seat carries the negative position, so the balance
+  // gate below only checks USDC collateral, never token holdings.
   const collateral = orderCollateral({
     shares: sharesNum,
     price: limitPriceNum,
@@ -340,9 +338,9 @@ function SoothBookTerminalActive({
       // Keep the tenth of a cent.
       //
       // The tick grid is 1/1000, so a level sits at 0.1c resolution and the
-      // form validates in 0.1c steps. Rounding to a whole cent moved the click
-      // OFF the level it came from: clicking 51.5c filled the form with 52c,
-      // which no longer crosses the order that was clicked.
+      // form validates in 0.1c steps. Rounding to a whole cent would move the
+      // click OFF the level it came from: clicking 51.5c would fill the form
+      // with 52c, which does not cross the order that was clicked.
       setLimitPrice((Math.round(price * 1000) / 10).toFixed(1));
     },
     [],
@@ -391,13 +389,11 @@ function SoothBookTerminalActive({
     // Send the RAW price of the selected outcome — `toBookPlace` (via
     // `placeOrder` -> `useOrderbookTrade`) does its own YES-axis complement
     // from `outcome`, per its documented contract ("price: Price of the
-    // outcome named above"). This used to pre-complement here too:
-    // `isYes ? limitPriceNum : 1 - limitPriceNum`. The two complements don't
-    // cancel — they compound into the WRONG tick every time a NO order was
-    // placed, silently: a 49c "buy NO" rested at the tick for 49c "sell NO"
-    // instead, moving every NO order onto its mirror price with no error and
-    // no visible sign beyond ticks 2x closer together than intended, which
-    // reads as unexpected self-crossing rather than as a price bug.
+    // outcome named above"). Pre-complementing here (`isYes ? limitPriceNum
+    // : 1 - limitPriceNum`) would compound with that complement into the
+    // WRONG tick for every NO order, silently: a 49c "buy NO" would rest at
+    // the tick for 49c "sell NO" — no error, just orders on mirror prices.
+    // Exactly ONE layer owns the complement, and it is toBookPlace.
     const success = await placeOrder(
       outcome,
       limitPriceNum.toFixed(4),

@@ -1,15 +1,12 @@
 // Activating a cell = creating its market, through the demo's proven path.
 //
-// Upstream's activation was a five-step EVM machine: MOSS session, USDC
-// approve, prepareMarket, pump rounds, canonical registration. On Solana the
-// whole thing is ONE transaction — `create_market` composes the vaults, AMM
+// Activation is ONE transaction — `create_market` composes the vaults, AMM
 // state and lifecycle in a single instruction, and the question text rides in
 // it, verified against its hash by the program. So this hook is deliberately
 // small: the same `writeContractAsync({ functionName: "createMarket" })` call
-// the Launchpad page has been making against devnet all along, prefilled from
-// the option template.
+// the Launchpad page makes, prefilled from the option template.
 //
-// The step model the wizard renders collapses to two: sign, confirm.
+// The step model the wizard renders is two steps: sign, confirm.
 
 import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -61,7 +58,7 @@ export function useCanonicalActivation(
       // `dispatchCreateMarket` reads [question, startTime, deadline,
       // adjudicator, bWad, probabilityWad, config] and builds the Solana
       // create_market from it. The template's deadline is the exchange close
-      // plus the attestation window, exactly as upstream encoded it.
+      // plus the attestation window.
       const startTime = BigInt(Math.floor(Date.now() / 1000));
       await writeContractAsync({
         address: contracts.LaunchpadEngine as `0x${string}`,

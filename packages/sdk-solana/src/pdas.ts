@@ -20,9 +20,6 @@ export type MarketId = Uint8Array;
 
 export interface ProgramIds {
   soothCore: PublicKey;
-  /** Durable-log sink invoked by `buy`. Defaults to the canonical id; a
-   *  program cannot CPI into itself, so this cannot be folded into
-   *  `soothCore` however much the single-program design would prefer it. */
 }
 
 const enc = new TextEncoder();
@@ -124,7 +121,7 @@ export function derivePositionPda(
 }
 
 // Per-market `AdjudicatorEntry` PDA owned by `sooth_core`.
-// Seeds: [b"adjudicator", market_pda]. Replaces the old allowlist approach.
+// Seeds: [b"adjudicator", market_pda].
 // Required by `attest_outcome` / `register_adjudicator` ix account lists.
 export function deriveAdjudicatorEntryPda(
   marketPda: PublicKey,
@@ -406,8 +403,8 @@ export function feePoolBookPda(
 }
 
 /** THIS market's AMM-side LP yield vault. Seeds: [b"lp_yield_amm", market_id].
- *  Per-market on purpose: the global predecessor let one market's LPs claim
- *  every market's yield. */
+ *  Per-market on purpose: a shared global vault would let one market's LPs
+ *  claim every market's yield. */
 export function lpYieldAmmPda(
   marketId: MarketId,
   programs: Pick<ProgramIds, "soothCore">,

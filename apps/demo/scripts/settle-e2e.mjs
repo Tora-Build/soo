@@ -30,11 +30,11 @@
 //   Book seat   `net` + `credit`        → redeem_book_seat
 //   AMM         `Position.yes/no_shares`→ redeem_amm_position
 //
-// An earlier version covered only the first and asserted solvency against book
-// seats alone, so a market could read SOLVENT while owing on the other. Both
-// now trade before settlement and claim after it, and the solvency check
-// counts both. (A third — SPL outcome tokens — was removed with the
-// complete-set instructions; see docs/design/dual-token-venues.md §4.)
+// Both ledgers must trade before settlement and claim after it, and the
+// solvency check counts both — checking book seats alone would let a market
+// read SOLVENT while still owing on the AMM. (There is no third ledger: SPL
+// outcome tokens went with the complete-set instructions; see
+// docs/design/dual-token-venues.md §4.)
 //
 // Usage: node scripts/settle-e2e.mjs <marketPubkey> [yes|no|invalid]
 
@@ -237,10 +237,9 @@ log(`  wallets: maker ${before.maker}, taker ${before.taker}`);
 
 // ── 1b. An AMM position, on the other ledger ────────────────────────────────
 //
-// `redeem_amm_position` is what bug B1 added, and until now nothing had ever
-// called it against a validator. It pays `Position.yes_shares`, which only
+// `redeem_amm_position` pays `Position.yes_shares`, which only
 // `trade_positions` writes — so the position has to be built through an AMM
-// buy, not the book.
+// buy, not the book, for this leg to exercise it at all.
 step("1b", "AMM buy (separate ledger from the book)");
 const ammBuyer = await fundedTrader("ammBuyer");
 let ammBought = false;
@@ -260,9 +259,9 @@ try {
 } catch (e) {
   // A skip is NOT a pass. Everything downstream of this — redeem_amm_position,
   // the creator's reclaim_subsidy, and the AMM half of the solvency check —
-  // becomes vacuous when the buy does not happen, and the script used to end
-  // with "all payouts matched" having exercised none of it. Record it so the
-  // run reports what it actually proved.
+  // becomes vacuous when the buy does not happen. Record it so the run
+  // reports what it actually proved instead of claiming "all payouts
+  // matched" having exercised none of it.
   skips.push(`AMM buy: ${String(e).slice(0, 200)}`);
   log(`  SKIPPED — AMM buy failed: ${String(e).slice(0, 160)}`);
 }
@@ -488,11 +487,10 @@ step(8, "each venue's vault vs the obligations denominated in its token");
 // the balances are in different tokens, so a book surplus cannot cover an AMM
 // shortfall — the protocol has no path to convert one into the other.
 //
-// This block used to read `decoded.vault`, a field that stopped existing when
-// the vault was split into `vault_book` / `vault_amm`. `undefined` made the
-// guard below fall through, so the whole solvency check silently did nothing
-// while the script still printed "all payouts matched". Reading both fields
-// explicitly is what stops that recurring.
+// Both `vault_book` and `vault_amm` are read explicitly and asserted below:
+// an `undefined` vault field would make the guard fall through, leaving the
+// whole solvency check doing nothing while the script still printed "all
+// payouts matched".
 const vaultBookAta = decoded.vaultBook ?? decoded.vault_book;
 const vaultAmmAta = decoded.vaultAmm ?? decoded.vault_amm;
 if (!vaultBookAta || !vaultAmmAta) {

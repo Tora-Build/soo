@@ -192,12 +192,10 @@ export function useOrderbook(marketAddress: `0x${string}`) {
     async (isBackground = false) => {
       // Why the ladder is empty, said out loud.
       //
-      // This function has five paths that bail without rendering anything, and
-      // every one of them used to be silent — so "no liquidity" looked
-      // identical whether the market had none, the market ref failed to parse,
-      // or the RPC was unreachable. Several rounds of debugging went into
-      // distinguishing those from the outside; a one-line reason turns the
-      // next report into a fact.
+      // This function has five paths that bail without rendering anything.
+      // Each logs a reason, because a silent bail makes "no liquidity" look
+      // identical whether the market has none, the market ref failed to
+      // parse, or the RPC is unreachable.
       const bail = (why: string) => {
         // eslint-disable-next-line no-console
         console.warn(`[useOrderbook] no ladder: ${why}`, {

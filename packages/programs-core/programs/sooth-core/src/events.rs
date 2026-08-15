@@ -5,9 +5,9 @@
 
 use anchor_lang::prelude::*;
 
-/// Mirror of EVM `TruthMarket.MarketResolved` (LIVE → RESOLVING). Renamed to
-/// "Locked" to match Solana lifecycle names — the semantic intent is the same:
-/// trading halts pending adjudicator outcome. See `state/lifecycle.rs`.
+/// Emitted on the LIVE → RESOLVING transition: trading halts pending the
+/// adjudicator outcome. Counterpart of EVM `TruthMarket.MarketResolved`.
+/// See `state/lifecycle.rs`.
 #[event]
 pub struct MarketLocked {
     pub market: Pubkey,
@@ -194,7 +194,7 @@ pub struct LpSeeded {
 pub struct LpRedeemed {
     pub user: Pubkey,
     pub lp_burned: u64,
-    /// AMM-venue yield paid, in the AMM token. Field name predates the split.
+    /// AMM-venue yield paid, in the AMM token.
     pub usdc_paid: u64,
     /// Book-venue yield paid, in the book's token (USDC).
     pub book_paid: u64,
@@ -265,9 +265,9 @@ pub struct FillRecord {
 
 /// All fills from one `buy`, batched into a single event.
 ///
-/// Batched deliberately: the P0.1 spike showed per-fill emission OOMs the
-/// 32 KB heap. Emitted with `emit_cpi!` (a self-CPI), not `emit!` —
-/// see that program's docs for why. Consumers must verify this arrives as a
+/// Batched deliberately: per-fill emission exhausts the 32 KB heap. Emitted
+/// with `emit_cpi!` (a self-CPI), not `emit!` — see the versioned-book-events
+/// section below for why. Consumers must verify this arrives as a
 /// direct inner instruction of a successful `sooth_core::buy`; the event
 /// itself is permissionless.
 #[event]
@@ -287,8 +287,7 @@ pub struct OrderCancelled {
     pub order_id: u64,
     /// Unfilled amount at the moment of cancellation. An indexer cannot
     /// reconstruct this after the fact: `cancel` zeroes the order in place, so
-    /// the size that was withdrawn is gone from state. Ported from main
-    /// (a1f3964).
+    /// the size that was withdrawn is gone from state.
     pub remaining: u128,
 }
 
@@ -313,20 +312,18 @@ pub struct ProtocolPausedEvent {
     pub ts: i64,
 }
 
-// ── Redesigned orderbook events ──────────────────────────────────────────
+// ── Versioned book events ────────────────────────────────────────────────
 //
-// Every one carries a `version` as its FIRST field. The existing book's events
-// have none, and the consequences are live: `sooth-data`'s decoder throws on
-// trailing bytes, so adding a single field to `FillRecord` takes down
-// `GET /v12/fills` with a 500 — while a *renamed* event returns an empty list
-// with HTTP 200, which is silent data loss. A version byte lets a consumer
-// branch instead of guess.
+// Every one carries a `version` as its FIRST field. `sooth-data`'s decoder
+// throws on trailing bytes, so an unversioned layout change either takes an
+// endpoint down with a 500 or — worse, for a renamed event — returns an empty
+// list with HTTP 200, which is silent data loss. A version byte lets a
+// consumer branch instead of guess.
 //
 // These are emitted with `emit_cpi!` rather than `emit!`, so the payload lands
 // in an inner instruction rather than a program log. Program logs are truncated
 // and not reliably retrievable from every RPC; an inner instruction is real
-// transaction data. That is what the now-deleted `sooth_log` provided —
-// see `book_place` for why it is no longer needed.
+// transaction data.
 
 /// Bump when any book event's layout changes. Consumers should reject a
 /// version they do not know rather than mis-parse it.
@@ -372,8 +369,8 @@ pub struct BookFill {
 /// All fills from one `book_place`, batched into a single event.
 ///
 /// Batched rather than emitted per fill because a 20-fill cross would otherwise
-/// produce 20 inner instructions, and the per-event overhead would show up in
-/// exactly the marginal cost this redesign exists to shrink.
+/// produce 20 inner instructions, and per-event overhead would dominate the
+/// marginal cost of a fill.
 #[event]
 pub struct BookFilled {
     pub version: u8,

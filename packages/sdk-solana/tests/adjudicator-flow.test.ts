@@ -1,38 +1,21 @@
 // Resolution authority: register → lock → attest → (dispute).
 //
-// Replaces main's sooth_adjudicator/tests/adjudicator_flow.rs (23 tests),
-// which the 5→1 merge deleted. It is NOT a transcription, because 18 of
-// main's 23 tests do not test the program.
+// Exercised against the actual instructions on LiteSVM, not against inline
+// copies of the handler bodies: a test that re-implements the handler passes
+// whether or not the real handler exists, so it is worth nothing as a
+// regression. State-shape assertions (SPACE, is_attested) live in Rust, in
+// `state/adjudicator.rs`.
 //
-// Main's file defines its own `register()`, `attest()` and `dispute()`
-// functions at the top — inline copies of the handler bodies — and then
-// tests those copies. Its own comment is explicit: "We replicate the handler
-// bodies inline … The on-chain handlers must stay in lock-step with these
-// helpers — if/when this drifts, the integration suite will catch the gap."
-// There is no such integration suite. Delete the real handler and every one
-// of those tests still passes, which makes them worth ~nothing as
-// regressions. Only the state-shape tests (SPACE, is_attested) test real
-// code; those are ported to Rust in `state/adjudicator.rs`.
+// Attest and settle are separate phases either side of a VETO_PERIOD_SECS
+// window (docs/spec/sooth_adjudicator.md §6, matching the EVM contract).
+// Keeping them separate is what makes the dispute path reachable at all: if
+// `attest_outcome` settled inline, no market would ever be
+// attested-and-not-yet-settled, and every dispute would fail with
+// MarketAlreadySettled or NotYetAttested. The final two describe blocks cover
+// the veto window from both sides.
 //
-// So the flow is re-tested here against the actual instructions on LiteSVM.
-// Doing that immediately surfaced something the mock could not: the dispute
-// path was UNREACHABLE. `attest_outcome` called `settle_internal` inline, so
-// no market was ever attested-and-not-yet-settled, and every dispute failed
-// with either MarketAlreadySettled or NotYetAttested. `disputed` was
-// permanently false and AlreadyDisputed was dead code.
-//
-// That is fixed: attest and settle are now separate phases either side of a
-// VETO_PERIOD_SECS window, per the remediation the spec already planned
-// (docs/spec/sooth_adjudicator.md §6) and matching the EVM contract. The
-// final two describe blocks cover the window from both sides — the veto
-// tests below would all have been impossible to write against the old code.
-//
-// Note main's `AdjudicatorKind` (Manual / ZkTLS / Other) is gone in develop —
-// the entry has no `kind` field — so main's four kind-dispatch tests
-// (attest_rejects_zk_tls_in_v1, attest_rejects_other_variant_in_v1, the
-// discriminant table, the kind SPACE constant) describe a type that no longer
-// exists and are dropped rather than faked.
-
+// `AdjudicatorEntry` has no `kind` field — there is one attestation path, so
+// there is nothing to dispatch on.
 import { describe, expect, it } from "vitest";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { SystemProgram } from "@solana/web3.js";
@@ -181,8 +164,7 @@ describe("register_adjudicator", () => {
 
     expect(entry.market.toBase58()).toBe(smoke.marketPda.toBase58());
     expect(entry.authority.toBase58()).toBe(smoke.creator.publicKey.toBase58());
-    // v1 collapses the two roles. This is deliberate and matches main —
-    // it is not a develop regression.
+    // v1 collapses the two roles: dispute_authority defaults to authority.
     expect(entry.disputeAuthority.toBase58()).toBe(
       smoke.creator.publicKey.toBase58(),
     );
@@ -372,8 +354,8 @@ describe("attest_outcome", () => {
     expect(entry.attestedAt).not.toBeNull();
     expect(entry.disputed).toBe(false);
 
-    // The ATTESTED state that did not previously exist: outcome recorded,
-    // lifecycle untouched. This is the window dispute needs.
+    // The ATTESTED state: outcome recorded, lifecycle untouched. This is the
+    // window dispute needs.
     const market = await fetchMarket(program, smoke);
     expect(market.lifecycle).toHaveProperty("locked");
     expect(market.lifecycle).not.toHaveProperty("settled");
@@ -734,8 +716,7 @@ describe("dispute — the veto branch, now reachable", () => {
   }, 60_000);
 
   it("still refuses after settlement", async () => {
-    // The old MarketAlreadySettled guard remains correct — it is just no
-    // longer the only reachable outcome.
+    // Once settled, MarketAlreadySettled is the guard a dispute hits.
     const { smoke, program, vetoEndsAt } = await attested();
     warpClockTo(smoke.ctx, vetoEndsAt);
     await sendTx(

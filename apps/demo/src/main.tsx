@@ -1,8 +1,7 @@
-// React root for the Solana fork. Hybrid of upstream's main.tsx and the
-// Solana wallet-adapter wiring:
+// React root for the Solana demo.
 //
-//   - Same React-Query / React-Router / Toaster providers and route table
-//   - Wagmi/AppKit providers replaced with @solana/wallet-adapter-react's
+//   - React-Query / React-Router / Toaster providers and the route table
+//   - Wallet connectivity via @solana/wallet-adapter-react's
 //     <ConnectionProvider> + <WalletProvider> + <WalletModalProvider>
 //   - `autoConnect` is required — despite the name, in
 //     @solana/wallet-adapter-react v0.15.x it gates the modal's
@@ -58,7 +57,6 @@ const IS_TEST_MODE =
   ((import.meta as unknown as { env?: Record<string, string> }).env ?? {})
     .VITE_TEST_MODE === "true";
 
-// Pages — copied verbatim from upstream.
 import { AppLayout } from "./layouts/AppLayout";
 import { Faucet } from "./pages/Faucet";
 import { AMM } from "./pages/AMM";
@@ -123,7 +121,7 @@ function Root() {
                       }}
                     />
                     <Routes>
-                      {/* Eastboard is the frontend now; the classic demo
+                      {/* Eastboard is the primary frontend; the classic demo
                           surfaces stay reachable under their own routes. */}
                       <Route
                         path="/"

@@ -1,8 +1,8 @@
 import { usePublicClient, useBlockNumber } from '@/lib/chain-shim';
 
 /**
- * Hook to get RPC connection status and current block number
- * Used to compare against indexer status and show sync lag
+ * RPC connection status and current block number.
+ * Compared against indexer status to show sync lag.
  */
 export const useChainStatus = () => {
   const publicClient = usePublicClient();

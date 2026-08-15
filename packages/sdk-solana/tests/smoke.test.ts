@@ -100,9 +100,8 @@ describe("AMM buy smoke", () => {
     expect(req.costEstimateWad).toBe(quote.cost);
 
     // Pre-trade vault balance is the LMSR subsidy the creator posted in
-    // seed_lp — b * ln(2), ceil'd to USDC base units. It used to be 0 because
-    // seed_lp never actually transferred anything (bug B0), which left the
-    // vault unable to pay a winning position.
+    // seed_lp — b * ln(2), ceil'd to USDC base units. Non-zero is what leaves
+    // the vault able to pay a winning position (bug B0).
     const vaultPre = await adapter.getMarketVaultUsdcRaw(marketRef);
     const SUBSIDY = 693_147_181n; // ceil(1000e18 * ln2 / 1e12)
     expect(vaultPre).toBe(SUBSIDY);

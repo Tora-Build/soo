@@ -1,567 +1,392 @@
-# Sooth SDK — Integrator Compatibility Contract
+# `@sooth/sdk-solana` — Integrator Contract
 
-> Canonical, third-party-facing spec for `@sooth/sdk` cross-chain compatibility.
-> Audience: external developers building on Sooth (frontends, market aggregators, Telegram bots, portfolio trackers, indexer mirrors).
-> Companion docs: `./implementation-guide.md` (SDK-author implementation guide), `../../programs-core/docs/architecture.md` (Solana program design).
-> Status: design spec — frozen surface defined, implementation gated by Phase A refactor.
-> Updated 2026-05-05.
-
----
-
-## §1. Purpose & Audience
-
-This is the contract that `@sooth/sdk` makes to anyone building on top of it. If you are integrating Sooth into a frontend, an automated trading bot, a market discovery aggregator, a portfolio tracker, or any other application — this doc tells you exactly what API surface you can rely on across both EVM and Solana Sooth deployments.
-
-### The single-line guarantee
-
-**Code written against `@sooth/sdk` runs unchanged on EVM and Solana Sooth deployments. The chain is a runtime property of the active node, not a compile-time choice.**
-
-You write your integration once. Users on a Base Sepolia node see EVM behavior. Users on a Solana mainnet-beta node see Solana behavior. Your code does not change. There is no `if (chain === 'solana')` branch anywhere in your application.
-
-### Audience this doc is for
-
-- Frontend developers shipping a Sooth-powered web app
-- Bot operators automating trades against Sooth markets
-- Aggregator developers indexing markets across multiple Sooth nodes
-- Tooling authors building portfolio trackers, P&L analyzers, market alerts
-- Anyone writing TypeScript that imports from `@sooth/sdk`
-
-### Audience this doc is NOT for
-
-- Sooth SDK contributors (see `./implementation-guide.md` for the implementation guide)
-- Sooth contract/program authors (see `../../programs-core/docs/architecture.md`)
-- Operators deploying their own Sooth nodes (separate operator docs)
-
-### Out of scope
-
-The contract does NOT promise to abstract:
-
-1. **Wallet UX** — Phantom popups look different from MetaMask popups. Your users see different wallet interfaces depending on the active chain. Your code is identical; their experience differs.
-2. **Block time / finality** — Solana finalizes in ~400ms; EVM L2s in 2–4s. The SDK's `await client.submit(...)` resolves on finality on both chains, but the elapsed time differs. UI code may want chain-aware "confirming…" copy.
-3. **Fee currency** — gas in ETH/HYPE/MON on EVM, SOL fees + USDC priority fees on Solana. The SDK exposes a normalized `feeUsd` estimate for display; raw "gas: X wei" displays must accept that the underlying unit changes.
-
-These are physical differences. They surface in the user's wallet and in the units of fee data, not in your code.
+> The public surface of the package and what you can rely on from it.
+> Audience: anyone building on Sooth's Solana deployment — frontends, bots,
+> aggregators, portfolio trackers.
+>
+> Status: shipped. The surface below is what `src/index.ts` exports today; both
+> in-repo frontends (`apps/demo`, `apps/pulse`) are built on it.
 
 ---
 
-## §2. The Three Categories of Difference
+## 1. What you get
 
-Every difference between EVM and Solana behavior falls into one of three buckets. Two are tolerable and one is forbidden.
+One package, one program, one import path:
 
-### Hidden — integrators never encounter
+```ts
+import { SolanaChainAdapter, encodePubkeyRef, OUTCOME } from "@sooth/sdk-solana";
+```
 
-These vary internally but are completely invisible from outside `@sooth/sdk`:
+`@sooth/sdk-solana` is ESM-only and speaks to a single Anchor program,
+`sooth_core`. It gives you:
 
-- Internal LOC count and repo split (the SDK's `evm/` and `solana/` subdirectories — never importable by you)
-- Underlying program implementation (Monaco fork vs custom Anchor program vs Phoenix CPI integration)
-- Transaction submission mechanism (viem `writeContract` vs Anchor `program.methods.x().rpc()`)
-- Wallet adapter wiring (the SDK accepts a uniform `SignerRef` and routes internally)
-- Account model details (PDA derivation, ALT management, retry-on-race logic)
+- **Reads** — market, AMM state, position, quotes, the order book, graduation
+  progress, adjudicator state, and recent trade/fill history, straight from
+  accounts and transaction data. No indexer is required or assumed.
+- **Instruction builders** — one `build*` method per protocol action, each
+  returning a serializable request you submit whenever you like.
+- **Submission** — `submit` and `preflight`, which handle the compute budget,
+  the heap frame, priority fees, blockhash refresh, confirmation, and bounded
+  retry.
+- **Math** — the same WAD fixed-point LMSR the program runs, so you can quote
+  without a round trip.
+- **Errors** — one `SoothError` type with a `kind` you can switch on.
 
-You can ignore all of this. If you find yourself needing to know any of it, the SDK has failed its contract — file an issue.
-
-### Additive — opt-in observability
-
-These are new fields/variants present on Solana but absent on EVM. They never break existing code; they exist for integrators who want telemetry:
-
-- **`SubmitReceipt.attempts?: number`** — present on Solana when client-driven matching retried; absent (or always `1`) on EVM. Ignoring this field gives identical behavior on both chains.
-- **`SoothError.kind = "BookMoved"`** — only ever raised by Solana when an orderbook trade lost a race against a concurrent fill. Integrators using exhaustive switches over `SoothError.kind` get a compile-time prompt to handle it (typically: retry transparently or show "market moved, please try again"). Integrators using untyped `try/catch` see a typed error like any other.
-
-These additions are SemVer-minor. Adding more such variants over time is permitted without a major-version bump.
-
-### Disqualifying — explicitly forbidden
-
-The contract forbids any of these from leaking through. If you observe one, the SDK is non-compliant:
-
-- **Different function names per chain** — no `placeOrderEVM` / `placeOrderSolana` split. One name, one signature, two implementations underneath.
-- **Different argument shapes** — `tick: number` means the same thing on both chains. No `tick` on EVM and `priceOdds` on Solana.
-- **Different return shapes** — receipts have a unified `txId: string` field (chain-prefixed). No `txHash` on EVM and `signature` on Solana at the type level.
-- **Different error taxonomies** — chain-specific error types do NOT escape. Everything funnels into the `SoothError` union.
-- **Different async semantics** — `await client.submit(...)` resolves on finality on both chains. EVM-style "resolves on broadcast, separate `wait()` for confirmation" patterns are normalized away.
-- **Chain branching in user code** — if the contract requires you to write `if (node.chainKind === 'solana') { ... } else { ... }` to handle a normal flow, the contract is broken. The only legitimate use of `chainKind` in user code is for chain-specific UX flourishes (different wallet logos, different explorer URLs).
+What it does **not** do: hold keys, subscribe to live events, or aggregate a
+cross-market portfolio. Those are named explicitly in §8.
 
 ---
 
-## §3. The Integrator Surface — Complete Symbol Inventory
-
-This is the frozen public API. Roughly 35 symbols. Every row carries a contract guarantee — what is identical, what is allowed to differ additively, and what is internal.
-
-> **Frozen** in the rightmost column means: signature changes require a major version bump and a 6-month deprecation window. **Additive-OK** means new optional fields or variants are permitted (SemVer-minor).
-
-### Client factory
-
-| Symbol                        | Kind | Signature                                   | Behavior                                                     | Frozen? |
-| ----------------------------- | ---- | ------------------------------------------- | ------------------------------------------------------------ | ------- |
-| `createSoothClient`           | fn   | `(opts: SoothClientOptions) => SoothClient` | Synchronous. Picks adapter based on `opts.node.chainKind`.   | Frozen  |
-| `createSoothClientFromNodeId` | fn   | `(nodeId: string) => Promise<SoothClient>`  | Resolves node from registry, then calls `createSoothClient`. | Frozen  |
-
-### React hooks (all live under `@sooth/sdk/react`)
-
-All hooks return a TanStack-Query-compatible result object: `{ data, isLoading, isError, error, refetch }`. Mutation hooks additionally expose `{ mutate, mutateAsync, isPending, reset }`.
-
-| Symbol           | Signature                                                                    | Behavior                                            | Frozen? |
-| ---------------- | ---------------------------------------------------------------------------- | --------------------------------------------------- | ------- |
-| `useMarketInfo`  | `(market: MarketRef) => QueryResult<MarketInfo>`                             | Single-market snapshot read                         | Frozen  |
-| `useMarkets`     | `(filter?: MarketFilter) => QueryResult<MarketInfo[]>`                       | List markets, optionally filtered                   | Frozen  |
-| `usePosition`    | `(market: MarketRef, user?: AddressRef) => QueryResult<Position>`            | User's position on one market                       | Frozen  |
-| `usePositions`   | `(markets: MarketRef[], user?: AddressRef) => QueryResult<Position[]>`       | Batch position read                                 | Frozen  |
-| `usePortfolio`   | `(user?: AddressRef) => QueryResult<Portfolio>`                              | Aggregated holdings + LP + locks                    | Frozen  |
-| `useTrade`       | `(market: MarketRef) => MutationResult<TradeArgs, SubmitReceipt>`            | AMM trade (LMSR side)                               | Frozen  |
-| `useOrderbook`   | `(market: MarketRef) => MutationResult<OrderArgs, SubmitReceipt>`            | CLOB place/cancel/mint/merge dispatcher             | Frozen  |
-| `useClaim`       | `(market: MarketRef) => MutationResult<ClaimArgs, SubmitReceipt>`            | Settlement redemption                               | Frozen  |
-| `useCancelOrder` | `(market: MarketRef) => MutationResult<{ orderId: string }, SubmitReceipt>`  | Cancel a specific order                             | Frozen  |
-| `useSoothQuote`  | `(market: MarketRef, args: QuoteArgs) => QueryResult<TradeQuote>`            | AMM quote (cost/fee/impact)                         | Frozen  |
-| `useApproval`    | `(spender: AddressRef) => MutationResult<{ amount: bigint }, SubmitReceipt>` | Collateral approval (EVM) / SPL delegation (Solana) | Frozen  |
-
-### Builder functions
-
-For integrators not using React, the underlying builders are exported. They return `SoothRequest` objects suitable for passing to `client.submit`.
-
-| Symbol                            | Signature                                                    | Frozen?                   |
-| --------------------------------- | ------------------------------------------------------------ | ------------------------- | ------ |
-| `buildTradeRequest`               | `(client, market, args: TradeArgs) => Promise<SoothRequest>` | Frozen                    |
-| `buildSoothBookBuyRequest`        | `(client, market, args: BuyArgs) => Promise<SoothRequest>`   | Frozen                    |
-| `buildSoothBookSellRequest`       | `(client, market, args: SellArgs) => Promise<SoothRequest>`  | Frozen                    |
-| `buildClaimRequest`               | `(client, market, args: ClaimArgs) => Promise<SoothRequest>` | Frozen                    |
-| `buildSoothBookCancelByIdRequest` | `(client, orderId: string) => Promise<SoothRequest>`         | Frozen                    |
-| `computeSoothBookMaxCost`         | `(args: BuyArgs) => bigint`                                  | Pure math; no chain calls | Frozen |
-
-### Submission and subscriptions (via `SoothClient`)
-
-| Symbol                           | Signature                                                                | Behavior                     | Frozen? |
-| -------------------------------- | ------------------------------------------------------------------------ | ---------------------------- | ------- |
-| `client.submit`                  | `(req: SoothRequest, signer: SignerRef) => Promise<SubmitReceipt>`       | Resolves on finality         | Frozen  |
-| `client.preflight`               | `(req: SoothRequest) => Promise<PreflightResult>`                        | Simulates without submitting | Frozen  |
-| `client.subscribeMarketEvents`   | `(market: MarketRef, handler: (e: MarketEvent) => void) => Unsubscribe`  | Live event feed              | Frozen  |
-| `client.subscribePositionEvents` | `(user: AddressRef, handler: (e: PositionEvent) => void) => Unsubscribe` | Live position feed           | Frozen  |
-
-### Types
-
-| Symbol            | Shape                                                                                                                                                                                    | Frozen?     |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `MarketInfo`      | `{ market: MarketRef, question: string, deadline: bigint, isLive: boolean, isSettled: boolean, outcome?: 0 \| 1 \| 2, qYes: bigint, qNo: bigint, b: bigint, isGraduated: boolean, ... }` | Additive-OK |
-| `Position`        | `{ yesShares: bigint, noShares: bigint, lockedYes?: bigint, lockedNo?: bigint, unlockableAt?: bigint }`                                                                                  | Additive-OK |
-| `Order`           | `{ id: string, market: MarketRef, side: 0 \| 1, tick: number, amount: bigint, escrow: boolean, status: "active" \| "filled" \| "cancelled", maker: AddressRef }`                         | Additive-OK |
-| `Fill`            | `{ orderId: string, taker: AddressRef, maker: AddressRef, takerSide: 0 \| 1, yesTick: number, noTick: number, amount: bigint, surplus: bigint, timestamp: bigint }`                      | Additive-OK |
-| `TradeQuote`      | `{ cost: bigint, fee: bigint, netCost: bigint, newYesPrice: bigint, priceImpact: bigint }`                                                                                               | Additive-OK |
-| `SubmitReceipt`   | `{ txId: string, confirmedAt: bigint, fills: Fill[], attempts?: number }`                                                                                                                | Additive-OK |
-| `PreflightResult` | `{ ok: boolean, error?: SoothError, gasEstimate?: bigint, feeUsd?: number }`                                                                                                             | Additive-OK |
-| `SoothError`      | tagged union (see §3 sub-table below)                                                                                                                                                    | Additive-OK |
-| `MarketRef`       | `string` (opaque chain-prefixed identifier)                                                                                                                                              | Frozen      |
-| `SignerRef`       | `EVMSigner \| SolanaSigner` (the SDK accepts both; integrators pass whichever their wallet provides)                                                                                     | Frozen      |
-| `MarketEvent`     | tagged union: `OrderPlaced \| OrderFilled \| OrderCancelled \| Minted \| Merged \| MarketResolved \| MarketSettled`                                                                      | Additive-OK |
-
-### `SoothError` variants
-
-| `kind`                 | Fields                              | Raised on                |
-| ---------------------- | ----------------------------------- | ------------------------ |
-| `InsufficientShares`   | `needed: bigint, available: bigint` | Both chains              |
-| `OrderNotActive`       | `orderId: string`                   | Both chains              |
-| `MarketNotActive`      | `market: MarketRef`                 | Both chains              |
-| `InvalidTick`          | `tick: number`                      | Both chains              |
-| `SlippageExceeded`     | `expected: bigint, actual: bigint`  | Both chains              |
-| `InsufficientApproval` | `needed: bigint, available: bigint` | Both chains              |
-| `BookMoved`            | `attempt: number`                   | Solana only (race retry) |
-| `Reverted`             | `reason: string`                    | EVM fallback             |
-| `ProgramError`         | `code: number, msg: string`         | Solana fallback          |
-
-### Constants
-
-| Symbol        | Value                                    | Notes                     |
-| ------------- | ---------------------------------------- | ------------------------- |
-| `OUTCOME`     | `{ NO: 0, YES: 1, INVALID: 2 } as const` | Protocol-wide canonical   |
-| `WAD`         | `1_000_000_000_000_000_000n` (1e18)      | Internal precision        |
-| `MAX_UINT256` | `2n ** 256n - 1n`                        | EVM origin; valid on both |
-| `MIN_TICK`    | `1`                                      | Inclusive                 |
-| `MAX_TICK`    | `999`                                    | Inclusive                 |
-| `NUM_TICKS`   | `1000`                                   | Tick space size           |
-
-### Utilities
-
-| Symbol               | Signature                                      | Notes                                 |
-| -------------------- | ---------------------------------------------- | ------------------------------------- |
-| `formatWad`          | `(value: bigint, decimals?: number) => string` | Pure math                             |
-| `parseWad`           | `(value: string \| number) => bigint`          | Pure math                             |
-| `shortAddress`       | `(addr: AddressRef) => string`                 | Display helper                        |
-| `computeMarketKey`   | `(market: AddressRef) => string`               | Deterministic; chain-aware internally |
-| `classifyTradeError` | `(err: unknown) => SoothError`                 | Normalizes thrown errors              |
-
----
-
-## §4. The 8-Point Integrator Checklist
-
-Concrete tests an integrator can run on their own code to confirm SDK-compat compliance.
-
-### 1. Install one package
-
-✅ Pass: `pnpm add @sooth/sdk`
-
-❌ Fail: `pnpm add @sooth/sdk-evm` or `pnpm add @sooth/sdk-solana`
-
-There are no per-chain packages. Both backends ship in one package with the Solana adapter being tree-shakeable.
-
-### 2. Import from one path
-
-✅ Pass:
+## 2. Constructing the adapter
 
 ```ts
-import { createSoothClient, OUTCOME } from "@sooth/sdk";
-import { useTrade } from "@sooth/sdk/react";
-```
-
-❌ Fail:
-
-```ts
-import { evmClient } from "@sooth/sdk/evm";
-import { solanaClient } from "@sooth/sdk/solana";
-```
-
-Sub-paths under `@sooth/sdk/evm/*` and `@sooth/sdk/solana/*` are SDK-internal and not part of the contract.
-
-### 3. Discover chain via registry, not at compile time
-
-✅ Pass:
-
-```ts
-const node = await registry.getNodeById(activeNodeId);
-const client = createSoothClient({ node });
-```
-
-❌ Fail:
-
-```ts
-const client = isProduction
-  ? createSoothClient({ chain: "evm" })
-  : createSoothClient({ chain: "solana" });
-```
-
-The chain is a property of the node, discovered at runtime. Integrators do not select chains at build time.
-
-### 4. Use one wallet abstraction
-
-✅ Pass:
-
-```ts
-// EVM user — wagmi signer
-const signer = useSigner(); // from your wallet provider
-await client.submit(req, signer);
-
-// Solana user — same code
-const signer = useSolanaSigner(); // from wallet-adapter
-await client.submit(req, signer);
-```
-
-❌ Fail:
-
-```ts
-if (node.chainKind === "evm") {
-  await client.submitEVM(req, viemSigner);
-} else {
-  await client.submitSolana(req, anchorSigner);
-}
-```
-
-`client.submit` accepts both signer shapes via the `SignerRef` union. Integrators pass whichever their wallet provider yields.
-
-### 5. Handle one error union
-
-✅ Pass:
-
-```ts
-try {
-  await placeOrder(args);
-} catch (e) {
-  const err = classifyTradeError(e);
-  switch (err.kind) {
-    case "InsufficientShares":
-      return showInsufficientToast();
-    case "BookMoved":
-      return retry(); // Solana-only, OK to handle
-    default:
-      return showGenericError(err);
-  }
-}
-```
-
-❌ Fail:
-
-```ts
-try { ... } catch (e) {
-  if (e instanceof ViemContractRevertError) { ... }
-  else if (e instanceof AnchorError) { ... }
-}
-```
-
-Chain-specific error types do not escape. Everything funnels through `SoothError`.
-
-### 6. Read one event stream
-
-✅ Pass:
-
-```ts
-const unsubscribe = client.subscribeMarketEvents(market, (e) => {
-  if (e.kind === "OrderFilled") {
-    appendToFeed({ taker: e.taker, amount: e.amount });
-  }
+const adapter = new SolanaChainAdapter({
+  node: {
+    id: "solana-devnet",
+    chainKind: "solana",
+    chainId: "solana:devnet",
+    cluster: "devnet",
+    rpcUrl: "https://api.devnet.solana.com",
+    programs: {
+      soothCore: "EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw",
+      usdcMint: "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX", // book venue
+      ammMint: "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu",  // AMM venue
+    },
+  },
 });
 ```
 
-The `MarketEvent` shape is identical from either chain. Underlying source (EVM logs, Solana program logs, indexer webhook) is hidden.
+`SolanaAdapterOptions` also accepts `programIds`, `bookMint`, `ammMint`, and a
+prebuilt `connection`. Everything is optional but `node`: omit the program and
+mint fields and you get the compiled-in devnet defaults.
 
-### 7. Get one type for everything
+Two things to know about `node.programs`:
 
-✅ Pass:
+- `usdcMint` names the **book** venue's token. The field name predates the
+  two-token split; it is kept because node descriptors in the wild already set
+  it.
+- `soothAmm`, `soothMarket`, and `soothBook` still typecheck and are ignored.
+  There is one program now.
+
+`chainKind` is `"solana"`. `MarketRef`, `AddressRef`, and `TxId` are all strings
+of the form `sol:<base58>` — use `encodePubkeyRef` / `decodePubkeyRef` /
+`encodeSignatureRef` rather than concatenating by hand.
+
+---
+
+## 3. Reads
+
+| Method | Returns |
+| ------ | ------- |
+| `readSnapshot(market, user?)` | `SoothCoreSnapshot { market: MarketInfo, position? }` |
+| `readSnapshots(markets[], user?)` | `SoothCoreSnapshot[]` |
+| `readQuote(market, outcome, deltaShares)` | `TradeQuote` — off-chain LMSR, no round trip to the program |
+| `readPosition(market, user)` | `Position` |
+| `readAmmState(market, user?)` | raw LMSR cursor: `qYes`, `qNo`, `b`, fee accumulator, flags |
+| `readGraduationProgress(market)` | `{ feesAccumulatedWad, thresholdWad, isGraduated, progressBps }` |
+| `readVenueFeeBps()` | `{ amm, book }` — the two venue fee rates from `ProtocolConfig` |
+| `readBook(market)` | `BookSnapshot` — both ladders plus every seat |
+| `readAdjudicator(market)` | authority, dispute authority, attested outcome, disputed flag |
+| `readPendingUnlocks(market, user)` | matured and pending `LockEntry` records |
+| `readLpRedemption(market, user)` | LP balance and its pro-rata claim |
+| `readMarketQuestion(market)` | the question text, recovered from `MarketCreated` |
+| `readMarketTrades(market, …)` | recent AMM trades from transaction history |
+| `readBookHistory(market, …)` | recent book fills and cancels |
+| `getMarketVaultUsdcRaw(market)` | the book vault balance in base units |
+
+### Key shapes
 
 ```ts
-function renderMarket(info: MarketInfo) { ... }
-```
-
-Works for both EVM and Solana market data. There is no `EVMMarketInfo` / `SolanaMarketInfo` split.
-
-### 8. Bundle artifact is tree-shakeable
-
-If your build only ever connects to EVM nodes (e.g. you're shipping a chain-restricted frontend), the Solana wasm matcher and Anchor IDL JSON should not appear in your final bundle. Modern bundlers (Vite, esbuild, webpack 5) achieve this via dynamic `import()` on the adapter selection path.
-
-✅ Pass: bundling an EVM-only app produces a bundle <50KB larger than today's `@sooth/sdk` build.
-
-❌ Fail: every `@sooth/sdk` consumer ships ~500KB of Solana matcher wasm regardless of usage.
-
----
-
-## §5. What Cannot Be Made Identical (Honest Constraints)
-
-Three things the contract does not abstract. Knowing what's deliberately _not_ normalized is as important as knowing what is.
-
-### Wallet UX
-
-The SDK normalizes the **programmatic** interface (your code calls `client.submit(req, signer)`), but the **user-facing** wallet popup is still rendered by Phantom or MetaMask or whichever wallet your user is on. Solana wallets show transaction simulation differently from EVM wallets. SOL fees show up in different units from gas.
-
-If your application surfaces a transaction-preview UI of your own (not relying on the wallet's preview), you may want to use `client.preflight(req)` and render `feeUsd` rather than the chain-native unit.
-
-### Block time and finality
-
-`await client.submit(...)` resolves on finality on both chains. On Solana that's typically <1s; on EVM L2s it's 2–4s. Your application's perceived latency differs accordingly.
-
-If you have animations like "Confirming transaction…" that include a progress bar, you may want to tune the expected duration based on `node.chainKind`. This is a UI flourish, not a code branch on the contract.
-
-### Fee currency
-
-Sooth contracts charge fees in the collateral currency (USDC) — that's normalized. But the _transaction_ fee charged by the underlying chain (gas on EVM, SOL + priority fees on Solana) is paid in the chain's native token. The SDK's `PreflightResult.feeUsd` normalizes this for display; if you choose to surface raw fees ("0.0003 ETH" or "0.000005 SOL") you accept that the unit changes.
-
----
-
-## §6. Borderline Behaviors That Need Explicit Documentation
-
-Three places where the SDK contract holds but the underlying differences are user-observable.
-
-### Race retries on Solana
-
-On Solana, the SoothBook orderbook's matching may be client-driven (the SDK enumerates likely fills off-chain and includes them in the transaction). If a concurrent trade fills against the same orders between read and submit, the program rejects with `BookMoved` and the SDK retries automatically.
-
-**Contract guarantee**: `await client.submit(...)` resolves with a successful receipt OR a final error after retries are exhausted. Integrators do not write retry loops themselves.
-
-**Observable**: the resolved `SubmitReceipt.attempts` field reports the retry count. Integrators with hard-coded UI timeouts (e.g. "fail UI if no receipt in 3 seconds") may need to bump them. The SDK targets <5% retry rate in steady state; if production observes higher, file an issue.
-
-### Escrow atomicity is a hard SDK invariant
-
-`buildSoothBookBuyRequest({ escrow: true })` debits opposite-side shares to use as collateral, attempts to match, and refunds the opposite shares on cancel/dust. The contract requires this entire sequence to be **atomic** — either it all happens, or none of it happens.
-
-**The choice of underlying Solana program backend MUST honor this.** Custom-built `sooth_book` and Monaco-fork-based programs both can; Phoenix and OpenBook v2 integrations cannot (escrow becomes a multi-transaction sequence with intermediate states). Therefore, regardless of which Solana orderbook backend ends up shipping, escrow atomicity is the gating invariant.
-
-If you observe non-atomic escrow on any Sooth deployment, the SDK is non-compliant with the contract. File an issue.
-
-### Tick quantization risk
-
-Sooth's protocol model uses 1000 discrete ticks. If a future Solana orderbook backend uses fewer effective price levels (Monaco's default is 30 per side; some forks may use 100), the SDK adapter will round your `tick: number` argument to the nearest active level.
-
-**Contract guarantee**: rounding is deterministic, documented, and observable. If your `tick: 600` rounds to `tick: 605` due to backend quantization, the resulting `SubmitReceipt` reports the actual tick used. You can detect rounding by comparing `request.tick` vs `receipt.actualTick` (where `receipt.actualTick` is an additive-OK field present only when rounding occurred).
-
-For most integrators this is invisible. For high-frequency market-makers who price to 0.1% precision, this matters — consult the active node's `node.tickResolution` field (additive-OK) to know the effective tick granularity.
-
----
-
-## §7. Versioning & Backward Compatibility Policy
-
-`@sooth/sdk` follows SemVer.
-
-| Change                                                       | Version bump                           |
-| ------------------------------------------------------------ | -------------------------------------- |
-| Add a new contract symbol                                    | minor                                  |
-| Add an optional field to an existing type                    | minor                                  |
-| Add a new variant to a tagged union (e.g. `SoothError.kind`) | minor                                  |
-| Add a new chain backend (e.g. Solana support)                | minor — opt-in via registry            |
-| Change the signature of a frozen contract symbol             | **major + 6-month deprecation window** |
-| Remove a frozen contract symbol                              | **major + 6-month deprecation window** |
-| Internal refactor with no contract surface change            | patch                                  |
-
-### Deprecation policy
-
-When a frozen symbol is slated for removal:
-
-1. The next minor release marks it `@deprecated` in TypeScript and prints a one-time runtime warning when first used.
-2. The deprecation notice references the replacement symbol (always present before removal).
-3. The symbol is removed only in the _next_ major release after the 6-month window.
-4. Removed symbols are logged in the changelog with a migration snippet.
-
-### What's NOT versioned
-
-- The internal `evm/` and `solana/` adapter implementations may change in any release without bumping major. They are not part of the contract.
-- The set of supported nodes (registry contents) changes via `@sooth/registry` versioning, separate from the SDK.
-
----
-
-## §8. Reference Implementation Snippets
-
-Three end-to-end snippets. **Each is byte-identical regardless of whether the active node is EVM or Solana.** If you copy one of these into a project that swaps between chains, no part of the snippet should change.
-
-### Snippet 1: Build a market list page
-
-```tsx
-import { useMarkets, formatWad, OUTCOME } from "@sooth/sdk";
-
-export function MarketList() {
-  const { data: markets, isLoading, error } = useMarkets({ isLive: true });
-
-  if (isLoading) return <Spinner />;
-  if (error) return <ErrorBanner error={error} />;
-
-  return (
-    <ul>
-      {markets.map((m) => (
-        <li key={m.market}>
-          <h3>{m.question}</h3>
-          <p>YES probability: {formatProbability(m.qYes, m.qNo)}</p>
-          <p>
-            Deadline: {new Date(Number(m.deadline) * 1000).toLocaleString()}
-          </p>
-        </li>
-      ))}
-    </ul>
-  );
+interface MarketInfo {
+  market: MarketRef; question: string; deadline: bigint;
+  isLive: boolean; isSettled: boolean; outcome?: 0 | 1 | 2;
+  qYes: bigint; qNo: bigint; b: bigint; isGraduated: boolean;
 }
 
-function formatProbability(qYes: bigint, qNo: bigint): string {
-  // Pure math, identical on both chains
-  const total = qYes + qNo;
-  if (total === 0n) return "—";
-  return `${Number((qYes * 10000n) / total) / 100}%`;
+interface Position {
+  yesShares: bigint; noShares: bigint;          // WAD
+  lockedCostUsdc?: bigint;
+  lockedYes?: bigint; lockedNo?: bigint; unlockableAt?: bigint;
+}
+
+interface TradeQuote {
+  cost: bigint;         // WAD, signed — negative on a sell
+  fee: bigint;          // WAD, non-negative
+  netCost: bigint;      // cost + fee
+  newYesPrice: bigint;  // WAD probability after the trade
+  priceImpact: bigint;  // WAD delta
+}
+
+interface BookSnapshot {
+  market: string; nextSeq: bigint;
+  orderCount: number; blockCount: number; capacity: number;
+  bids: BookOrder[];   // best first: highest price, then earliest
+  asks: BookOrder[];   // best first: lowest price, then earliest
+  seats: BookSeat[];
 }
 ```
 
-### Snippet 2: Place an orderbook trade
+`readMarketQuestion` walks transaction history because the program stores only
+`sha256(question)` on the `Market` account and re-emits the text in
+`MarketCreated`. That is what makes titles render with no indexer.
 
-```tsx
+---
+
+## 4. Builders
+
+Every builder returns a `SoothRequest`. Builders are pure — they perform the
+reads they need and then do no network work, so a request can be built once,
+inspected, serialized across a worker boundary, and submitted later.
+
+### AMM
+
+| Method | Args |
+| ------ | ---- |
+| `buildTrade(market, args)` | `TradeArgs { outcome: 0\|1, deltaShares, maxCostWad, side: "buy" }` |
+| `buildSell(market, args)` | `{ outcome: 0\|1, deltaShares, minProceedsWad?, user }` |
+| `buildClaim(market, args)` | `ClaimArgs { outcome } & { user, lockEntry? }` |
+| `buildClaimRefund(market, { user })` | refund from a dismissed market |
+| `buildDismissMarket(market, { user })` | creator-only, after the trial window |
+| `buildRedeemAmmPosition(market, { user })` | post-settlement payout |
+
+`buildTrade` is buy-only; passing `side: "sell"` throws with a "use
+`buildSell()`" hint. That mirrors the program, where buy and sell are separate
+instructions so a buyer never pays rent for a sell-cooldown escrow account.
+
+### Order book
+
+| Method | Args |
+| ------ | ---- |
+| `buildBookPlace(market, args)` | `PlaceArgs { side, limitTick, amount, matchLimit, postRemainder } & { user }` |
+| `buildBookCancel(market, { user, orderSeq })` | cancel one resting order |
+| `buildBookCancelMany(market, { user, orderSeqs })` | up to `MAX_CANCELS_PER_TX` (24) |
+| `buildBookWithdraw(market, { user })` | move seat credit to a token account |
+| `buildRedeemBookSeat(market, { user })` | post-settlement seat payout |
+
+`side` is `SIDE_BID` (0, buy YES) or `SIDE_ASK` (1, sell YES / buy NO).
+`limitTick` is `1..999` on a single YES price axis — a NO order at price `p` is
+a YES order at `1 − p`. `amount` is in book-token base units, where
+`ONE_SHARE = 1_000_000n`. `matchLimit` bounds compute, not correctness.
+
+Matching happens on chain. You do not read the book, predict a crossing
+sequence, and pass maker bundles in; there is nothing to go stale between your
+read and your submit.
+
+### Lifecycle, fees, LP
+
+| Method | Args |
+| ------ | ---- |
+| `buildCreateMarket(args)` | `CreateMarketArgs` — see below |
+| `buildSeedLp(market, { creator })` | posts the `b·ln(2)` LMSR subsidy |
+| `buildRedeemLp(market, { user, lpAmount })` | burn LP for pro-rata yield |
+| `buildDistributeFees(market, { venue, cranker })` | `venue: "amm" \| "book"` |
+| `buildRequestLock(market, { user })` | move `Open → Locked` |
+| `buildAttestOutcome(market, { user, winningOutcome })` | `0 \| 1 \| 2` |
+| `buildSettle(market, { user })` | permissionless, after the veto window |
+| `buildReclaimSubsidy(market, { creator })` | repeatedly callable |
+| `buildSweepResidual(market, { cranker })` | dust to treasury |
+| `buildCloseMarket(market, { creator })` | reclaim rent, leave a tombstone |
+
+```ts
+interface CreateMarketArgs {
+  question: string;
+  deadline: bigint;
+  user: string;             // creator + fee payer; required in practice
+  marketId?: Uint8Array;    // 16 bytes; default sha256(question).slice(0, 16)
+  questionHash?: Uint8Array;// 32 bytes; default sha256(question)
+  startTime?: bigint;       // default: current chain time
+  adjudicator?: string;     // default: the creator
+  initialB?: bigint;        // WAD; default 1000 * 1e18
+}
+```
+
+`marketIdForQuestion(question)` is exported so you can derive the default id —
+and therefore every per-market PDA — before the market exists.
+
+Creating a market is not free: `seed_lp` requires the creator to post at least
+`b·ln(2)` as the LMSR subsidy, which is roughly 693 units at `b = 1000`.
+
+---
+
+## 5. Submission
+
+```ts
+const req = await adapter.buildBookPlace(market, {
+  side: SIDE_BID, limitTick: 620, amount: 50n * ONE_SHARE,
+  matchLimit: 64, postRemainder: true,
+  user: encodePubkeyRef(wallet.publicKey),
+});
+
+const sim = await adapter.preflight(req);
+if (!sim.ok) throw sim.error;
+
+const receipt = await adapter.submit(req, {
+  publicKey: wallet.publicKey.toBase58(),
+  signTransaction: async (bytes) => {
+    const tx = Transaction.from(bytes);
+    const signed = await wallet.signTransaction(tx);
+    return signed.serialize();
+  },
+});
+```
+
+**The adapter never holds a key.** You pass a `SolanaSigner` — `publicKey` plus
+`signTransaction` (or `signAllTransactions`) over raw bytes.
+
+`submit(req, signer, options?)` resolves on confirmation, or throws a
+`SoothError` after retries are exhausted. It returns:
+
+```ts
+interface SubmitReceipt {
+  txId: TxId;            // "sol:<signature>"
+  confirmedAt: bigint;   // Unix ms
+  fills: Fill[];
+  attempts?: number;     // 1..5
+}
+```
+
+Guarantees:
+
+- **The compute budget and heap frame are handled for you.** Every path the
+  adapter builds prepends `setComputeUnitLimit`, `requestHeapFrame(256 KB)`, and
+  `setComputeUnitPrice`. The program runs a custom 256 KB allocator and aborts
+  without the frame — if you hand-roll a transaction against `sooth_core`, you
+  must add it yourself.
+- **Retry is bounded and never doubles a trade.** Up to five attempts with
+  exponential backoff, and only for transient network failures. A program error
+  is terminal; a rejected trade is not retried into a filled one.
+- **Priority fees are estimated, capped, and paid by the user.** The p50 of
+  recent fees on the market account, cached briefly, capped at 50 000
+  microlamports (decision D11).
+- **Confirmation is HTTP-only.** Deliberately polled rather than subscribed:
+  several providers serve reads but answer `-32601` to `signatureSubscribe`, and
+  a subscription-based confirm hangs forever against them.
+
+`preflight(req)` mirrors the same assembly and simulates, returning
+`{ ok: true, gasEstimate }` from `unitsConsumed` or a typed error with program
+logs attached. Run it before the wallet popup if you want to show cost or catch
+a revert early.
+
+---
+
+## 6. Errors
+
+Everything the SDK throws is a `SoothError` with a `kind` you can switch on:
+
+```
+InsufficientShares · OrderNotActive · MarketNotActive · InvalidTick ·
+SlippageExceeded · InsufficientApproval · BookMoved · ProgramError ·
+NetworkError · NotImplemented · AccountNotFound · TradingNotStarted ·
+TradingClosed · SellNotImplemented · LockNotElapsed · LockVaultMismatch ·
+TrialNotExpired · AlreadyGraduated · AlreadyDismissed · MarketNotDismissed ·
+NotGraduated
+```
+
+Anchor errors and raw RPC failures do not escape. The classifier scopes program
+codes to the program that actually failed, so a foreign `6xxx` from the token
+program is not mistaken for a Sooth error, and it appends the last few program
+log lines to the message. Two common causes — no SOL for fees, insufficient
+token balance — get a plain-language hint.
+
+`classifyOrderbookError` is a coarser second classifier that buckets an error as
+`validation | state | auth | protocol-internal | unknown` and marks it retriable
+or not, for callers deciding about a retry without switching on every code.
+
+`NotGraduated` is the one worth handling explicitly: the book is closed until
+the market graduates, and the program enforces it.
+
+---
+
+## 7. Constants, math, and PDAs
+
+```ts
 import {
-  useOrderbook,
-  computeSoothBookMaxCost,
-  classifyTradeError,
-  OUTCOME,
-  parseWad,
-} from "@sooth/sdk";
-
-export function BuyButton({ market }: { market: MarketRef }) {
-  const orderbook = useOrderbook(market);
-
-  const handleBuy = async () => {
-    try {
-      const args = {
-        side: OUTCOME.YES,
-        tick: 600,
-        amount: parseWad("100"),
-        escrow: false,
-        matchLimit: 100,
-      };
-      const maxCost = computeSoothBookMaxCost(args);
-
-      const receipt = await orderbook.mutateAsync({ ...args, maxCost });
-
-      // attempts may be present on Solana; ignore safely on EVM
-      console.log(
-        `Filled in ${receipt.attempts ?? 1} attempt(s):`,
-        receipt.fills,
-      );
-    } catch (e) {
-      const err = classifyTradeError(e);
-      switch (err.kind) {
-        case "InsufficientShares":
-          return alert(`Need ${err.needed}, have ${err.available}`);
-        case "BookMoved":
-          return alert("Market moved, please retry");
-        case "SlippageExceeded":
-          return alert(`Price moved past your limit`);
-        default:
-          return alert(`Trade failed: ${JSON.stringify(err)}`);
-      }
-    }
-  };
-
-  return <button onClick={handleBuy}>Buy YES</button>;
-}
+  OUTCOME, WAD, WAD_TO_USDC_SCALAR, LN2_WAD,
+  NUM_TICKS, SIDE_BID, SIDE_ASK, ONE_SHARE, MAX_ORDERS,
+  MAX_CANCELS_PER_TX, BOOK_INIT_HEAP_BYTES,
+} from "@sooth/sdk-solana";
 ```
 
-### Snippet 3: Subscribe to fills for a market
+| Symbol | Value |
+| ------ | ----- |
+| `OUTCOME` | `{ NO: 0, YES: 1, INVALID: 2 }` |
+| `WAD` | `10n ** 18n` |
+| `WAD_TO_USDC_SCALAR` | `10n ** 12n` — both venue mints are 6-decimal |
+| `LN2_WAD` | `693147180559945309n` |
+| `NUM_TICKS` | `1000`; valid ticks `1..999` |
+| `ONE_SHARE` | `1_000_000n` book-token base units |
+| `MAX_ORDERS` | `4096` — a cap on **blocks**, shared by resting orders and seats |
+| `MAX_CANCELS_PER_TX` | `24` |
 
-```tsx
-import { useEffect, useState } from "react";
-import { createSoothClient, type Fill, type MarketRef } from "@sooth/sdk";
+**Math.** `costDelta`, `lmsrCost`, `yesPriceWad`, `expWad`, `lnWad`, `wadMul`,
+`wadDiv`, `wadToUsdcCeil`, `wadToUsdcFloor` are exported and match the program
+bit for bit — including the rounding asymmetry, where inflows ceil and outflows
+floor. Use them to quote locally; a quote computed any other way will disagree
+with the transaction it precedes.
 
-export function FillFeed({
-  client,
-  market,
-}: {
-  client: ReturnType<typeof createSoothClient>;
-  market: MarketRef;
-}) {
-  const [fills, setFills] = useState<Fill[]>([]);
+**PDAs.** One helper per seed family, all exported:
+`deriveMarketPda`, `deriveAmmStatePda`, `derivePositionPda`,
+`deriveVaultAuthorityPda`, `deriveLockAuthorityPda`, `deriveLockEntryPda`,
+`deriveAdjudicatorEntryPda`, `deriveLpYieldAuthority`, `deriveMarketVaultAta`,
+`deriveLockVaultAta`, `deriveUserUsdcAta`, `feePoolAmmPda`, `feePoolBookPda`,
+plus `bookPda` for the book account itself.
 
-  useEffect(() => {
-    const unsubscribe = client.subscribeMarketEvents(market, (event) => {
-      if (event.kind === "OrderFilled") {
-        setFills((prev) => [event, ...prev].slice(0, 50));
-      }
-    });
-    return unsubscribe;
-  }, [client, market]);
+`bookPda` — seeds `["book", market_id]` — is the live book. `marketBookPda`,
+`bookSidePda`, and `orderbookPositionPda` are left over from the per-tick book
+the program no longer has; do not derive against them for new work.
 
-  return (
-    <ul>
-      {fills.map((f) => (
-        <li key={`${f.orderId}-${f.timestamp}`}>
-          {new Date(Number(f.timestamp) * 1000).toLocaleTimeString()} —{" "}
-          {f.takerSide === 1 ? "YES" : "NO"} × {f.amount.toString()} (surplus:{" "}
-          {f.surplus.toString()})
-        </li>
-      ))}
-    </ul>
-  );
-}
-```
+**Book client.** `decodeBook`, `ladder`, `seatOf`, `bookSpace`, and the raw
+instruction builders (`buildBookInit`, `buildBookInitIxs`, `buildBookGrow`,
+`buildBookPlace`, `buildBookCancel`, `buildBookWithdraw`) are exported for
+callers who want to work below the adapter.
 
----
+**Events.** `decodeBookEvent` and `decodeBookEventsFromInner` parse the book's
+`emit_cpi!` inner instructions into `BookOrderPlacedEvent`, `BookFilledEvent`,
+and `BookOrderCancelledEvent`. Decoding is version-gated on
+`BOOK_EVENT_VERSION` and rejects trailing bytes, so a layout change fails loudly
+rather than yielding wrong fills.
 
-## §9. How This Contract Is Implemented
-
-Briefly, for integrators curious about what's underneath (full detail in `./implementation-guide.md`):
-
-- All contract symbols live in `@sooth/sdk/core/*` and `@sooth/sdk/react/*`. These directories are frozen at the import-path level.
-- Contract methods dispatch to a `ChainAdapter` interface (also in `core/`). The interface is SDK-internal — integrators never import it.
-- Each chain (EVM via viem, Solana via Anchor) ships a `ChainAdapter` implementation under `evm/` or `solana/`. These are SDK-internal subdirectories.
-- The adapter is selected at `createSoothClient` time based on `node.chainKind` from the registry.
-- New chain backends ship by adding a new adapter implementation; the contract surface is unchanged.
+**IDL.** `soothCoreIdl` is exported so you can build your own Anchor `Program`
+for read paths the adapter does not expose.
 
 ---
 
-## §10. Reporting Contract Violations
+## 8. Not implemented
 
-If you observe behavior that violates this contract — different signatures, leaked chain-specific types, non-atomic escrow, missing error variants, anything that breaks the single-line guarantee — please file an issue at the Sooth SDK repository with:
+These throw `SoothError({ kind: "NotImplemented" })` rather than returning empty
+values, so you find out at the call site:
 
-1. The contract symbol involved
-2. The expected behavior per this doc
-3. The observed behavior
-4. A minimal reproduction (preferably with both chains compared)
+| Method | Why |
+| ------ | ---- |
+| `readPortfolio` | needs cross-market enumeration; there is no Solana indexer. Build it from `readSnapshots` + `readPosition` + `readPendingUnlocks`. |
+| `subscribeMarketEvents`, `subscribePositionEvents` | no live event stream. Poll, or decode `emit_cpi!` inner instructions from transaction history. |
+| `getCollateralBalance`, `buildApprove` | SPL has no allowance step in these flows; read the token account directly. |
+| `buildTrade({ side: "sell" })` | deliberate — use `buildSell`. |
 
-Contract violations are SDK bugs, not protocol features. They are P0.
+Also absent, because the protocol does not have them: complete-set mint/merge,
+outcome-token mints, three-outcome markets, off-chain signed orders, and zkTLS
+adjudication.
 
 ---
 
-_Last updated: 2026-05-05. Companion docs: `./implementation-guide.md` (implementation guide), `../../programs-core/docs/architecture.md` (Solana program design)._
+## 9. Versioning
+
+The package is `private` and versioned with the repo rather than published to a
+registry; both in-repo frontends consume it through the pnpm workspace. Treat
+the surface as stable-but-not-frozen: it moves with the program, and the program
+and the SDK change in the same commit.
+
+Two mechanical guards exist for anyone extending it:
+`tests/idl-freshness.test.ts` fails when the bundled IDL drifts from the built
+one, and `bookLayoutSelfCheck()` runs at import and throws if the book layout
+constants stop agreeing.
+
+---
+
+## Related reading
+
+- [`./implementation-guide.md`](./implementation-guide.md) — how the package is built, for contributors
+- [`./orderbook-cancel-ux.md`](./orderbook-cancel-ux.md) — what cancel returns and when
+- [`../../programs-core/docs/architecture.md`](../../programs-core/docs/architecture.md) — the program underneath
+- [`../../../docs/decision-log.md`](../../../docs/decision-log.md) — settled decisions and open questions
+- [`../../../docs/glossary.md`](../../../docs/glossary.md) — WAD, OUTCOME, tick, CU, PDA, ATA

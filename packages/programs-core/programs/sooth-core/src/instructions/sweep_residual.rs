@@ -6,10 +6,10 @@
 //! The LMSR collects more than it pays out: the cost function's curvature is
 //! the traders' aggregate loss, and fees' `b_base` slice is returned to the
 //! vault by `distribute_fees`. After every winner has redeemed and the
-//! creator has reclaimed their subsidy, the vault still holds that surplus —
-//! and no instruction could touch it. `reclaim_subsidy` is capped at what the
-//! creator posted, redemptions are capped at shares held. The money was
-//! stranded by construction, which also stranded `close_market` forever.
+//! creator has reclaimed their subsidy, the vault still holds that surplus,
+//! and no other instruction can touch it: `reclaim_subsidy` is capped at what
+//! the creator posted, redemptions are capped at shares held. Without this
+//! sweep the money would be stranded, and `close_market` blocked with it.
 //!
 //! ## Why sweeping is safe — the outstanding-claims gate
 //!
@@ -19,7 +19,7 @@
 //!
 //!   `AmmState.q_<winner>` counts winning shares outstanding, and
 //!   `seed_q_<winner>` is the virtual floor seeded at creation that no
-//!   Position ever backs. `redeem_amm_position` now decrements `q` as it
+//!   Position ever backs. `redeem_amm_position` decrements `q` as it
 //!   pays, so `q_winner == seed_q_winner` holds exactly when every real
 //!   winning share has been redeemed — and only then is the remaining
 //!   balance provably owed to nobody.

@@ -67,11 +67,9 @@ function truncate(addr?: string): string {
 /**
  * The fee this market actually charges, not a guess from its stage.
  *
- * This used to return a hardcoded "1%" or "5%" based on `stage` alone, while
- * the program charged whatever `ProtocolConfig` said — so the rate displayed
- * was not the rate charged, and the two only agreed by coincidence. The venues
- * have separate rates now (`amm_fee_bps` / `book_fee_bps`), which makes a
- * stage-derived guess wrong more often rather than less.
+ * The rate comes from on-chain config: the venues carry separate rates
+ * (`amm_fee_bps` / `book_fee_bps`), so any stage-derived guess would display
+ * a rate other than the one the program charges.
  *
  * Falls back to an em dash rather than a plausible number: showing no fee is
  * honest about not knowing, showing "5%" is not.

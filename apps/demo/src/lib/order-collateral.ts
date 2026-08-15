@@ -1,26 +1,16 @@
 // What an order costs the trader, and whether they can afford it.
 //
-// ## Why a sell no longer needs shares
+// ## Why a sell does not need shares
 //
-// On the EVM book, selling YES means delivering YES shares: the order is
-// collateralised by the tokens themselves, so you must hold them first — which
-// in turn means minting a YES+NO pair for $1 and selling off the leg you do
-// not want. The demo carried that rule over as a hard gate:
+// A YES share and a NO share always sum to $1, so selling YES at p IS buying
+// NO at (1 - p), and the order is collateralised by posting (1 - p) in USDC.
+// Nothing is delivered and no shares need to exist beforehand — the trader's
+// seat carries a negative position, which is the same economic object as
+// holding NO. Verified on chain: a wallet holding only USDC placed a sell and
+// ended at net -2 shares, having never held a YES or NO token.
 //
-//   "Sell burns shares (escrow). Short selling without shares is not supported
-//    by the demo flow today — block any sell where requested > held."
-//
-// The redesigned book does not work that way. A YES share and a NO share
-// always sum to $1, so selling YES at p IS buying NO at (1 - p), and the order
-// is collateralised by posting (1 - p) in USDC. Nothing is delivered and no
-// shares need to exist beforehand — the trader's seat simply carries a
-// negative position, which is the same economic object as holding NO.
-//
-// Verified on chain: a wallet holding only USDC placed a sell and ended at
-// net -2 shares, having never held a YES or NO token.
-//
-// So the gate was blocking a trade the program accepts. Both directions are
-// funded from USDC now; only the amount differs.
+// So both directions are funded from USDC; only the amount differs. Gating a
+// sell on token balance would block a trade the program accepts.
 
 /** Which resource an order consumes. */
 export type CollateralKind = "usdc" | "shares";

@@ -10,27 +10,19 @@ pub const USDC_MINT_MAINNET: Pubkey =
 
 /// Project-controlled mock USDC on devnet (decision D19).
 ///
-/// This overrides the original "no need for our own mock; use real USDC"
-/// decision. Circle's devnet USDC (`4zMMC9srt…`) is only obtainable through
-/// faucet.circle.com — captcha + GitHub-auth gated, with no programmatic call
-/// — which makes demo and e2e funding flows impossible to automate. Mainnet
-/// remains real Circle USDC.
+/// Devnet uses a project-controlled mock rather than Circle's devnet USDC
+/// (`4zMMC9srt…`), which is only obtainable through faucet.circle.com —
+/// captcha + GitHub-auth gated, with no programmatic call — and so makes demo
+/// and e2e funding flows impossible to automate. Mainnet uses real Circle
+/// USDC.
 ///
 /// Authority: `apps/demo/.localnet/mint-authority.json`
 /// (`EXJ7ZiAXvSpNGzhHEFBewUaJ4fdZtAfuFBRhYsQPV5Y9`, untracked — back it up,
 /// losing it means minting stops and this constant has to change again).
 ///
-/// This is deliberately NOT main's mint. main pinned
-/// `H7hBn9A1MDuKLhLji26bkRv5P3zMnp9jQmxNo76wsGyK`, which does exist on devnet
-/// with ~1.3M supply, but its authority (`6PfiTm…`) lives only in main's
-/// untracked `.localnet/` and was never shared. Without it no new tokens can
-/// be minted, so devnet funding was impossible — a mint you cannot mint from
-/// is worse than a fresh one. The cost of diverging is that devnet token
-/// balances are not shared between the two branches.
-///
-/// Note this is pinned by `address = BASE_TOKEN_MINT` account constraints
-/// throughout the program, so a mismatch is a hard transaction failure, not a
-/// UI inconsistency — every off-chain reference must move in lockstep, and
+/// Pinned by `address = BOOK_TOKEN_MINT` account constraints throughout the
+/// program, so a mismatch is a hard transaction failure, not a UI
+/// inconsistency — every off-chain reference must move in lockstep, and
 /// changing it requires redeploying the program.
 pub const USDC_MINT_DEVNET: Pubkey =
     anchor_lang::pubkey!("ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX");
@@ -69,7 +61,7 @@ pub const AMM_TOKEN_MINT: Pubkey =
 pub const AMM_TOKEN_MINT: Pubkey = AMM_TOKEN_MINT_DEVNET;
 
 /// The orderbook venue's token: real USDC on mainnet, the project mock on
-/// devnet. Unchanged from the single-token `BASE_TOKEN_MINT` it replaces.
+/// devnet.
 #[cfg(feature = "mainnet")]
 pub const BOOK_TOKEN_MINT: Pubkey = USDC_MINT_MAINNET;
 #[cfg(not(feature = "mainnet"))]

@@ -282,12 +282,9 @@ export async function dispatchAmmRead(
       try {
         // Pass the SIGNED delta. `readQuote` feeds it straight to `costDelta`,
         // which is direction-aware, so a sell quotes the curve in the
-        // direction it will actually move.
-        //
-        // This used to send `abs(delta)` with the note "assume buy here" — so
-        // a sell was priced as the cost of buying MORE, which differs from the
-        // proceeds of selling out by the price impact. The demo's slippage
-        // buffer hid that until the fee grew large enough to consume it.
+        // direction it will actually move. Sending `abs(delta)` would price a
+        // sell as the cost of buying MORE, which differs from the proceeds of
+        // selling out by the price impact.
         const q = await ctx.adapter.readQuote(marketRef, outcome, delta);
         // Upstream's tuple is EVM-shaped and unsigned. `readQuote` is signed
         // (negative = proceeds), so hand back magnitudes: for a sell that is
@@ -379,17 +376,13 @@ export async function dispatchAmmRead(
 
     case "preGradFeeBps":
     case "postGradFeeBps": {
-      // The rates the program actually charges, not the EVM defaults this
-      // used to return.
+      // The rates the program actually charges, read from ProtocolConfig.
       //
       // Upstream names these pre/post-graduation because on EVM the venue and
       // the phase coincide. Here they are per-VENUE — `amm_fee_bps` and
       // `book_fee_bps` — and the mapping holds because the AMM is the
-      // pre-graduation venue and the book opens at graduation.
-      //
-      // Hardcoding them meant the displayed fee was independent of the
-      // charged one; they agreed only by coincidence, and stopped agreeing
-      // the moment the venues got separate rates.
+      // pre-graduation venue and the book opens at graduation. Hardcoding a
+      // rate would make the displayed fee independent of the charged one.
       try {
         const { amm, book } = await ctx.adapter.readVenueFeeBps();
         return BigInt(call.functionName === "preGradFeeBps" ? amm : book);
@@ -627,17 +620,12 @@ export async function dispatchAmmRead(
       // EVM SoothBook.getOrdersAtTick(marketKey, side, tick) →
       // (totalAmount: u128, makers: Order[]).
       //
-      // This used to return `[0n, []]` unconditionally — the depth panel
-      // always read "no liquidity" — because the legacy book stores one
-      // account per price level and there was no way to enumerate them
-      // without 999 RPC round trips.
+      // The book is a SINGLE account, so the whole ladder comes from one
+      // `getAccountInfo`. `useOrderbook` issues 999 of these through its
+      // multicall loop, but every one after the first is served from a
+      // short-lived cache of that one fetch, not the network.
       //
-      // The redesigned book is a SINGLE account, so the whole ladder comes
-      // from one `getAccountInfo`. `useOrderbook` still issues 999 of these
-      // through its multicall loop, but every one after the first is now
-      // served from a short-lived cache of that one fetch, not the network.
-      //
-      // The non-empty tuple shape stays load-bearing:
+      // The non-empty tuple shape is load-bearing:
       // `useOrderbook.scanTickDepth` destructures `[totalAmount] =
       // result.result`, and a bare `undefined` throws inside the multicall
       // loop, leaving `isLoading` stuck on the first poll.
@@ -697,9 +685,7 @@ export async function dispatchAmmRead(
         return false;
       }
       try {
-        // A market is "registered" if its account exists. The second path
-        // here used to resolve a lazily-created MarketBook PDA, which the
-        // single-account book removed.
+        // A market is "registered" if its account exists.
         const direct = await ctx.connection.getAccountInfo(candidate);
         return direct !== null;
       } catch {
@@ -1180,16 +1166,13 @@ async function dispatchAddAdjudicator(
   const explicit = typeof args[0] === "string" ? args[0] : undefined;
   const adjudicatorPk = new PublicKey(explicit ?? ctx.userBase58);
 
-  // The allowlist this used to write no longer exists.
+  // There is no global adjudicator allowlist to write.
   //
-  // Upstream EVM has `AdjudicatorRegistry.addAdjudicator`, and the pre-merge
-  // Solana port mirrored it with a global 16-slot `AdjudicatorAllowlist` PDA
-  // (seed "adjudicator_allowlist") plus authority-gated add/remove
-  // instructions. The 5→1 merge deleted all of that: sooth_core registers
-  // adjudicators PER MARKET via `register_adjudicator`, gated by the single
-  // `ProtocolConfig.permissionless_adjudicators` flag.
+  // Upstream EVM has `AdjudicatorRegistry.addAdjudicator`; sooth_core instead
+  // registers adjudicators PER MARKET via `register_adjudicator`, gated by
+  // the single `ProtocolConfig.permissionless_adjudicators` flag.
   //
-  // So the precondition this call existed to establish — "this adjudicator is
+  // So the precondition this call exists to establish — "this adjudicator is
   // permitted" — is already true whenever `permissionless_adjudicators` is
   // set, which it is on our devnet and localnet configs. Registration itself
   // happens at market creation, not here.
@@ -1455,11 +1438,11 @@ async function dispatchBookCancel(
 /**
  * `bookCancelMany(market, seqs)` — cancel many orders together.
  *
- * The panel's "Cancel Selected" used to loop the single-cancel path, so N
- * orders meant N transactions: N wallet prompts, N fees, and a half-finished
- * run leaving the trader to work out which ones went. Cancelling is what people
- * do when they want out quickly, which is the worst moment to ask for
- * approvals one at a time.
+ * Batching matters: looping the single-cancel path would mean N transactions
+ * for N orders — N wallet prompts, N fees, and a half-finished run leaving the
+ * trader to work out which ones went. Cancelling is what people do when they
+ * want out quickly, which is the worst moment to ask for approvals one at a
+ * time.
  *
  * Chunked at `MAX_CANCELS_PER_TX`, which is measured rather than assumed — a
  * transaction de-duplicates its account list, so each extra cancel costs only

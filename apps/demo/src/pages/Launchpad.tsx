@@ -287,9 +287,8 @@ export const Launchpad = () => {
         });
 
         // Map oracle-explorer taxonomy → Sooth's 7 launchpad categories.
-        // Updated alongside the 7-category expansion — previously politics
-        // landed in cultures, weather / science / economics / macro all
-        // fell through to others, and equities was lumped with crypto.
+        // Every source label must land in one of the 7; anything unmapped
+        // falls through to "others".
         const catMap: Record<string, string> = {
           crypto: "crypto",
           defi: "crypto",

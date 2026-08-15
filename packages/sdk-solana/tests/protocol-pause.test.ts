@@ -50,8 +50,7 @@ const TICK = 400;
 describe("protocol pause (circuit-breaker)", () => {
   it("blocks a book order while paused, and allows it again after unpause", async () => {
     // The pause is the protocol's circuit breaker, so it has to reach the book
-    // as well as the AMM. This used to exercise the legacy CLOB `buy`; the
-    // instruction is gone, the property is not.
+    // as well as the AMM.
     const smoke = await bootSmoke();
     const { ctx, creator } = smoke;
     const program = anchorProgram(ctx, creator);

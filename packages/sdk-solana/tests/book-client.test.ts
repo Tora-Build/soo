@@ -367,9 +367,8 @@ describe("adapter book surface", () => {
   }, 60_000);
 
   it("readBook decodes the live account in one fetch", async () => {
-    // The whole ladder in a single getAccountInfo. The legacy UI issued 999
-    // getOrdersAtTick calls through a multicall because the old book stores
-    // one account per price level.
+    // The whole ladder in a single getAccountInfo — the book is one account,
+    // not one account per price level.
     const smoke = await boot();
     const adapter = await adapterFor(smoke);
     const { encodePubkeyRef } = await import("../src/refs.js");

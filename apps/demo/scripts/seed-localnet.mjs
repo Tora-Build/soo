@@ -752,10 +752,10 @@ async function init() {
 
   // ─── LP yield vaults are PER-MARKET now ──────────────────────────────
   //
-  // The global singleton ATA this block used to create was a cross-market
-  // theft: every market's yield in one pot, paid out against any one
-  // market's LP supply. `init_market_fee_pool` creates the per-market
-  // vaults; nothing global needs seeding here.
+  // A global singleton yield ATA would be a cross-market theft: every
+  // market's yield in one pot, paid out against any one market's LP supply.
+  // `init_market_fee_pool` creates the per-market vaults; nothing global
+  // needs seeding here.
   const [lpYieldAuthorityPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("lp_yield_authority")],
     SOOTH_CORE_ID,
@@ -786,8 +786,8 @@ async function init() {
   // `addAdjudicator` is gone with the allowlist; nothing to allow-list.
 
   // Overridable so `seed-fixture.sh` can give its two markets distinct
-  // questions — with the text now on chain, seeded markets are no longer
-  // indistinguishable base58 in the UI.
+  // questions — the text rides on chain, so seeded markets show as questions
+  // rather than indistinguishable base58 in the UI.
   const seedQuestion =
     process.env.SEED_QUESTION ??
     `Sooth demo market ${marketPda.toBase58().slice(0, 8)} — will YES resolve?`;
@@ -1054,10 +1054,9 @@ async function init() {
     `# at apps/demo/src/hooks/indexer/config.ts to silence the dead-URL`,
     `# error storm (was ~261k console errors per page session).`,
     `VITE_USE_INDEXER=false`,
-    `# ONE program id since the merge. \`src/lib/config.ts\` reads exactly`,
-    `# this key — the pre-merge VITE_SOOTH_AMM_ID / _MARKET_ID / _ADJUDICATOR_ID`,
-    `# it used to write are read by nothing, so every override was silently`,
-    `# ignored and the demo fell back to the SDK's compiled-in default id.`,
+    `# ONE program id. \`src/lib/config.ts\` reads exactly this key; any other`,
+    `# name (VITE_SOOTH_AMM_ID / _MARKET_ID / _ADJUDICATOR_ID) is read by`,
+    `# nothing and would leave the demo on the SDK's compiled-in default id.`,
     `VITE_SOOTH_CORE_ID=${SOOTH_CORE_ID.toBase58()}`,
     ...(bookSingletons ? bookSingletonEnvLines(bookSingletons) : []),
     `VITE_USDC_MINT=${USDC_MINT_DEVNET.toBase58()}`,

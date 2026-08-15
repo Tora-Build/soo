@@ -1804,8 +1804,7 @@
         "yourPosition": "your position",
         "closed": "Closed {{shares}} {{side}}",
         "closeCta": "Close {{shares}} {{side}}",
-        "paysIfNo": "Pays if NO",
-        "cooldownShort": "Proceeds unlock after cooldown — claim in portfolio"
+        "paysIfNo": "Pays if NO"
       }
     },
     "mechanism": {

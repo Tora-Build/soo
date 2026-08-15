@@ -30,23 +30,20 @@ pub struct ProtocolConfig {
     /// Total per-trade fee in basis points (1 bp = 0.01 %).
     /// Taker fee on the AMM, in bps. The incubation venue.
     ///
-    /// Split from the book's rate because the two are different products at
-    /// different stages — and, once they are denominated in different tokens,
-    /// cannot share a rate at all. Before the split a single `fee_bps` served
-    /// both while the UI displayed "5% bonding / 1% live", so the rate shown
-    /// was not the rate charged.
+    /// Separate from the book's rate because the two are different products at
+    /// different stages — and, being denominated in different tokens, cannot
+    /// share a rate at all.
     pub amm_fee_bps: u16,
     /// Taker fee on the orderbook, in bps. The mature venue.
     pub book_fee_bps: u16,
     /// Graduation threshold as a fraction of the creator's deposit, in bps.
     ///
-    /// The threshold was `b · ln(2)` — the LMSR's maximum loss, and therefore
-    /// exactly what the creator posted. That is the same as `deposit × 100%`,
-    /// so this generalises it to "earn back N% of capital at risk" without
-    /// changing the meaning at 10 000.
+    /// The deposit is `b · ln(2)` — the LMSR's maximum loss, and therefore
+    /// exactly what the creator posted — so this reads as "earn back N% of
+    /// capital at risk", 100% at 10 000.
     ///
-    /// Zero is read as 10 000, so a config written before this field existed
-    /// keeps today's behaviour rather than graduating every market instantly.
+    /// Zero is read as 10 000, so a config account laid out without this field
+    /// keeps the 100% behaviour rather than graduating every market instantly.
     pub graduation_bps: u16,
 
     /// 4-way fee-destination split bps — must sum to 10_000.
@@ -76,7 +73,7 @@ pub struct ProtocolConfig {
     ///
     /// Configurable rather than a constant so localnet can run a few seconds
     /// while devnet runs 24h — same binary in both places. A build flag would
-    /// have meant the artifact under test was not the artifact deployed.
+    /// mean the artifact under test is not the artifact deployed.
     ///
     /// Zero is rejected at `initialize_protocol` — see the guard there for
     /// why (an omitted Anchor arg encodes as 0).
@@ -87,11 +84,8 @@ pub struct ProtocolConfig {
     /// Solana accounts are fixed-length buffers, and an `#[account]` struct
     /// that outgrows its buffer fails to deserialize on every instruction
     /// that loads it. (Unlike EVM, where appending a storage slot is free.)
-    ///
-    /// This account learned that the hard way: `veto_period_secs` was an
-    /// 8-byte addition that stranded the live devnet singleton at 93 bytes
-    /// with no way to grow it, because nothing in the program can realloc or
-    /// close a `ProtocolConfig`.
+    /// Nothing in the program can realloc or close a `ProtocolConfig`, so a
+    /// deployed singleton that is too short for the struct is unrecoverable.
     ///
     /// When you add a field, shrink this by exactly its serialized size and
     /// leave `SPACE` unchanged.
@@ -101,26 +95,21 @@ pub struct ProtocolConfig {
 /// Reject the call if the protocol circuit-breaker is engaged.
 ///
 /// Deliberately scoped to a **trading halt**, not a total freeze. Gated:
-/// `buy`, `trade_positions`, `sell_positions`, `seed_lp`, `create_market` —
-/// i.e. anything that opens a new position, adds liquidity, or creates a
-/// market.
+/// `book_place`, `trade_positions`, `sell_positions`, `seed_lp` — i.e.
+/// anything that opens a new position or adds liquidity.
 ///
 /// NOT gated, by design:
-///   - `cancel` / `cancel_by_id` — a maker must always be able to pull a
-///     resting order; blocking this strands collateral in the book.
-///   - `redeem*`, `claim_unlocked`, `claim_refund`, `redeem_lp`,
-///     `merge_complete_set*` — exit paths. A pause that traps user funds is
-///     its own failure mode, so exits stay open.
+///   - `book_cancel` — a maker must always be able to pull a resting order;
+///     blocking this strands collateral in the book.
+///   - `redeem_amm_position`, `redeem_book_seat`, `book_withdraw`,
+///     `claim_unlocked`, `claim_refund`, `redeem_lp`, `reclaim_subsidy` —
+///     exit paths. A pause that traps user funds is its own failure mode, so
+///     exits stay open.
 ///   - resolution and admin flow (`request_lock`, `lock_for_resolution`,
 ///     `attest_outcome`, `dispute`, `settle`, `dismiss_market`) — a paused
 ///     protocol must still be able to wind markets down.
 ///   - `distribute_fees*` — cranks that move already-accrued fees; halting
 ///     them protects nothing and can strand balances.
-///
-/// `mint_complete_set*` is also ungated. It is economically neutral (deposit
-/// N, receive N YES + N NO, always worth N together) and its account structs
-/// do not currently carry `ProtocolConfig`; adding it would change the frozen
-/// instruction shape. Revisit if that account is ever added for other reasons.
 pub fn require_not_paused(config: &ProtocolConfig) -> Result<()> {
     require!(!config.paused, SoothCoreError::ProtocolPaused);
     Ok(())

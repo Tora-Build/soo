@@ -138,7 +138,7 @@ export function useLPPositions() {
           ceilingValueFormatted: formatUnits(ceilingValue, USDC_DECIMALS),
           floorValue,
           floorValueFormatted: formatUnits(floorValue, USDC_DECIMALS),
-          // Legacy support
+          // Alias kept for consumers that read `estimatedValue`.
           estimatedValue: floorValue,
           estimatedValueFormatted: formatUnits(floorValue, USDC_DECIMALS),
           totalSupply,

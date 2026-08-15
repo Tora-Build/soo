@@ -99,8 +99,8 @@ export const megaethFrontier = defineChain({
 
 // Canonical list of allowed chains with metadata.
 //
-// Solana fork: the EVM entries (Eth Sepolia, MegaETH, etc.) from upstream
-// are removed since this fork only ships against Solana. Numeric IDs use
+// This fork ships against Solana only, so no EVM chains are listed. Numeric
+// IDs use
 // the "Solana namespace" convention from `docs/decision-log.md` P3
 // (900-series) so the EVM-typed `id: number` slot in `AllowedChain` keeps
 // round-tripping through wagmi-shaped hooks without adding string-typing.
@@ -364,13 +364,11 @@ export function isSolanaChain(chain: AllowedChain): boolean {
 //   localnet → 902, devnet → 901, mainnet → 900
 //
 // The fallback MUST match `demoConfig.node.rpcUrl`'s fallback (config.ts uses
-// devnet). It previously returned 900 when VITE_SOLANA_RPC_URL was unset,
-// while the node defaulted to devnet — so the two disagreed, and 900 has no
-// entry in deployments.json at all (present: 901, 902, plus the EVM chains).
-// Every contract address then resolved to undefined, which silently disabled
-// every engine-gated hook: the AMM page mounted but no quote, liquidity or
-// market-state read ever fired. That is exactly how the demo integration
-// tests fail, since vitest sets no env.
+// devnet), and it must be a chain id deployments.json actually carries — only
+// 901 and 902 are present. A fallback the two disagree on resolves every
+// contract address to undefined, which silently disables every engine-gated
+// hook: the AMM page mounts but no quote, liquidity or market-state read ever
+// fires. Vitest sets no env, so the tests take this path.
 const DEVNET_FALLBACK_CHAIN_ID = 901;
 
 function defaultChainIdFromConfig(): number {

@@ -6,9 +6,9 @@
 //
 //   TypeError: this.program.methods.redeemBookSeat is not a function
 //
-// from inside a builder, at the moment a user clicks the button. That is
-// exactly how `redeem_book_seat` and `reclaim_subsidy` appeared wired, type-
-// checked, built, and did not work: the bundled copy was three days old.
+// from inside a builder, at the moment a user clicks the button — a builder
+// can appear wired, typecheck, and build, while the instruction it names is
+// absent from the bundled copy.
 //
 // The reverse drift is worse in a quieter way. A stale copy keeps DELETED
 // instructions callable from the SDK's perspective, so a builder constructs a

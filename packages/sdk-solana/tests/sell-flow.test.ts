@@ -29,7 +29,7 @@ import {
 import { bootSmoke } from "./fixtures/setup.js";
 import { LiteSvmConnection } from "./fixtures/svm.js";
 
-// Wave 1B fix landed: `sell_positions` (and `claim_unlocked`) now CPI into
+// `sell_positions` (and `claim_unlocked`) CPI into
 // `sooth_market::transfer_to_lock` / `::transfer_from_lock_vault` for the
 // PDA-signed transfers. The `vault_authority` and `lock_authority` PDAs
 // are owned by `sooth_market`, so only that program can `invoke_signed`

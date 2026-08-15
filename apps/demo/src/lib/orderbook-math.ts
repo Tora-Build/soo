@@ -24,15 +24,14 @@ export function clampUnit(v: number): number {
 /**
  * Convert a resting order's tick to a YES-denominated price.
  *
- * The legacy book is **two-sided**: side 1 (YES) quotes its own price, side 0
- * (NO) quotes the complement, so a NO order at tick 400 is YES at 0.60. Every
- * display surface has to perform that flip, and forgetting it renders the
- * wrong side of the market.
+ * `side` here is the EVM-shaped **two-sided** convention that shim consumers
+ * still speak: side 1 (YES) quotes its own price, side 0 (NO) quotes the
+ * complement, so a NO order at tick 400 is YES at 0.60. This function is the
+ * single place that flip happens; performing it again at a call site renders
+ * the wrong side of the market.
  *
- * The redesigned book removes the flip: it quotes one axis, so `tick / 1000`
- * is the YES price for both sides. When that lands, this function collapses to
- * its `side === 1` branch — and these tests are what will show that the change
- * is a simplification rather than a silent inversion.
+ * The on-chain book itself quotes ONE axis, so callers holding a book-native
+ * tick pass `side === 1` and get `tick / 1000` unchanged.
  */
 export function tickToYesPrice(tick: number, side: 0 | 1): number {
   return side === 1
@@ -49,7 +48,7 @@ export function tickToYesPrice(tick: number, side: 0 | 1): number {
  *
  * Note it deliberately does NOT apply the complement flip — a resting buy
  * escrows its own tick's worth regardless of side, because side 0 orders are
- * already quoted in their own terms on the legacy book.
+ * already quoted in their own terms.
  */
 export function refundAmountWad(tick: bigint, amountWad: bigint): bigint {
   return (tick * amountWad) / BigInt(NUM_TICKS);

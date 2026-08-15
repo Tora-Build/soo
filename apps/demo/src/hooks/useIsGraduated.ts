@@ -3,23 +3,18 @@
 // ## Why this exists as its own read
 //
 // Whether a market shows the orderbook or the AMM is one on-chain fact:
-// `AmmState.is_graduated`, which the program itself gates `book_place` on. The
-// demo had been deriving it instead — through `useOnChainMarkets`, into a
-// `stage` string, into a cached list, searched by address at click time — and
-// every hop was a chance to answer "not graduated" for a reason that had
-// nothing to do with the chain:
-//
-//   - the list had not loaded yet;
-//   - the market was filtered out of it;
-//   - one of the market's OTHER reads failed, dropping the whole entry;
-//   - `isGraduated` itself failed and was swallowed into `false`.
-//
-// All four look identical to a user: a graduated market that opens on the AMM.
+// `AmmState.is_graduated`, which the program itself gates `book_place` on.
+// Deriving it from a cached market list instead — through `useOnChainMarkets`,
+// into a `stage` string, searched by address at click time — makes every hop
+// a chance to answer "not graduated" for a reason that has nothing to do
+// with the chain (list not loaded, market filtered out, an unrelated read
+// failure dropping the entry, a swallowed error). All of those look identical
+// to a user: a graduated market that opens on the AMM.
 //
 // So this asks the one question directly and answers in three states, not two.
 // `undefined` means "not known yet" and must never be collapsed into `false` —
-// that collapse is exactly what made a graduated market open on the wrong
-// panel while the answer was still in flight.
+// that collapse would open a graduated market on the wrong panel while the
+// answer is still in flight.
 
 import { useQuery } from "@tanstack/react-query";
 

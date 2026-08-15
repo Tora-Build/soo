@@ -280,22 +280,19 @@ export function useLaunchpadMarket(marketAddress?: `0x${string}`) {
     [ammEngineAddress, marketAddress, writeContract],
   );
 
-  // Trial / dismiss / refund functions no longer exist on the deployed
-  // v0.1.2 LaunchpadEngine (see BUG-003). These write actions are kept
-  // as no-ops so consumers can mount conditionally without crashing.
-  const dismissMarket = useCallback(() => {
-    // removed in v0.1.2
-  }, []);
-  const claimRefund = useCallback(() => {
-    // removed in v0.1.2
-  }, []);
+  // The deployed v0.1.2 LaunchpadEngine has no trial / dismiss / refund
+  // functions. These write actions stay as no-ops so consumers can mount
+  // conditionally without crashing.
+  const dismissMarket = useCallback(() => {}, []);
+  const claimRefund = useCallback(() => {}, []);
 
   const launchpadData = useMemo(() => {
     if (!dataMarket || !marketAddress) return null;
 
     const marketResults = dataMarket as any[];
-    // Slot 0 / 3 / 4 are placeholders (see readMarket comment) — getMarketState,
-    // trialStates, userLockedCost no longer exist on v0.1.2 LaunchpadEngine.
+    // Slot 0 / 3 / 4 are placeholders (see readMarket comment) — v0.1.2
+    // LaunchpadEngine exposes no getMarketState / trialStates /
+    // userLockedCost.
     const marketsMappingResult = marketResults[1];
     const graduationProgressResult = marketResults[2];
     const lpBalanceResult = dataLpBalance;

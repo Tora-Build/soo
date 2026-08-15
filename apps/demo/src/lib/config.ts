@@ -1,7 +1,6 @@
-// Demo runtime config. Hard-coded for the Solana-only fork — upstream's
-// `scripts/sync-deployments.js` (per-deployment .env wiring) is intentionally
-// dropped. When pointing the demo at a real cluster, override
-// `VITE_SOLANA_RPC_URL` and `VITE_USDC_MINT`.
+// Demo runtime config. Hard-coded for the Solana-only fork; there is no
+// per-deployment .env generation step. When pointing the demo at a real
+// cluster, override `VITE_SOLANA_RPC_URL` and `VITE_USDC_MINT`.
 //
 // `pnpm dev` (no flag) targets devnet by default, so the program IDs below
 // are the canonical devnet program IDs (mirrored from the Anchor IDLs which

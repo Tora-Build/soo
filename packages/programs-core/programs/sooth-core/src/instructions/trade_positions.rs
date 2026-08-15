@@ -58,7 +58,7 @@ pub struct TradePositions<'info> {
         token::mint = amm_mint,
         token::authority = vault_authority,
         // `VaultAuthorityMismatch`, not `MarketNotOpen`. This fires when the
-        // caller passes the wrong vault — which since the token split means the
+        // caller passes the wrong vault — with per-venue vaults that means the
         // BOOK's vault — and reporting a lifecycle error sends a debugger to
         // look at the market's state instead of at the account they passed.
         constraint = market_vault.key() == market.vault_amm
@@ -115,12 +115,12 @@ pub struct TradePositions<'info> {
 /// The fee total at which a market graduates, in WAD.
 ///
 /// `b · ln(2)` is the LMSR's maximum possible loss and therefore exactly what
-/// the creator deposited, so the old hardcoded rule was "earn back 100% of
-/// capital at risk". This generalises the 100% without changing it:
-/// `deposit × graduation_bps / 10_000`, identical at 10 000 bps.
+/// the creator deposited. The threshold is `deposit × graduation_bps /
+/// 10_000` — "earn back graduation_bps of the capital at risk", 100% at
+/// 10 000 bps.
 ///
-/// `graduation_bps == 0` means 10 000, not "graduate immediately". A zeroed
-/// field is what a config written before this existed deserialises to, and
+/// `graduation_bps == 0` means 10 000, not "graduate immediately". Zero is
+/// what a config account laid out without this field deserialises to, and
 /// reading that as zero would graduate every market on its first trade.
 fn graduation_threshold_wad(b: i128, graduation_bps: u16) -> Result<u128> {
     let deposit_wad: u128 = wad_mul(b, LN2_WAD)

@@ -1,39 +1,31 @@
 //! `redeem_amm_position` — pay out an AMM `Position` after settlement.
 //!
-//! ## Why this exists (bug B1)
-//!
-//! It did not. Before this instruction the AMM had **no exit after
-//! settlement**, and every winning AMM buyer's funds were permanently
-//! stranded on-chain.
+//! ## Why this exists
 //!
 //! `trade_positions` credits `Position.yes_shares` / `no_shares` and takes the
-//! user's USDC into `market.vault`. Nothing ever paid it back:
+//! user's USDC into the AMM vault; this instruction is the ONLY path that pays
+//! a settled AMM position back out:
 //!
-//!   - `redeem` reads SPL outcome-token ATA balances, which an AMM buyer never
-//!     receives (those come from `mint_complete_set`, a different path).
-//!   - `redeem_orderbook` drains `OrderbookPosition`, a separate ledger.
-//!   - `redeem_from_program_owned` handles program-owned complete sets.
 //!   - `claim_refund` is gated on `amm_state.is_dismissed`, so it does not
 //!     apply to a market that settled normally.
 //!   - `sell_positions` requires `market.is_open()`, so it stops working the
 //!     moment the market locks.
 //!
-//! The payout rule mirrors `redeem_orderbook` exactly — same winning-side
-//! logic, same INVALID split, same floor conversion — so the two ledgers pay
-//! out identically and neither can drift from the other.
+//! The payout rule mirrors the book's `redeem_book_seat` exactly — same
+//! winning-side logic, same INVALID split, same floor conversion — so the two
+//! ledgers pay out identically and neither can drift from the other.
 //!
 //! ## Why this does NOT close the Position account
 //!
 //! `claim_unlocked` requires the `Position` PDA to exist (it derives the
 //! `LockEntry` seeds from `position.key()` and checks `position.bump`). A user
 //! who sold before settlement has outstanding `LockEntry` accounts holding real
-//! USDC; closing their `Position` here would strand that USDC exactly the way
-//! this instruction exists to fix.
+//! USDC; closing their `Position` here would strand that USDC.
 //!
 //! So the shares are zeroed and the account is left in place. That leaks the
 //! Position's rent (~0.00083 SOL), which is the strictly safer trade. Reclaiming
 //! it needs an outstanding-lock counter — cheap to add later, since `Position`
-//! now carries 32 reserved bytes.
+//! carries 32 reserved bytes.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};

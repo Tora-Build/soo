@@ -1,11 +1,9 @@
-//! Redesigned orderbook: a single per-market account holding both sides.
+//! Orderbook: a single per-market account holding both sides.
 //!
-//! Phase 1 of `docs/design/orderbook-redesign.md`. This module is pure data
+//! See `docs/design/orderbook-redesign.md`. This module is pure data
 //! structure — no instructions, no accounts, no CPI — so it can be exercised by
-//! ordinary `cargo test` without an SVM. Wiring it up is Phase 3.
-//!
-//! The existing `state/book_side.rs` + `matching.rs` book remains live and
-//! untouched until then.
+//! ordinary `cargo test` without an SVM; the instructions that drive it live
+//! in `instructions/book_*`.
 
 pub mod account;
 pub mod arena;

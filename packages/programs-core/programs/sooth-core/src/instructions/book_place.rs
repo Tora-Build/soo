@@ -1,16 +1,16 @@
-//! `book_place` — place an order on the redesigned book.
+//! `book_place` — place an order on the book.
 //!
-//! Phase 3 of `docs/design/orderbook-redesign.md`.
+//! See `docs/design/orderbook-redesign.md`.
 //!
-//! Account count is the headline: **flat, independent of how many orders the
-//! taker crosses**. Today the equivalent is 14 fixed accounts plus 3 more per
-//! fill, which caps a crossing buy at 5 against the 1232-byte packet limit.
+//! Account count is **flat, independent of how many orders the taker
+//! crosses**: a per-fill account list would cap a crossing buy at 5 against
+//! the 1232-byte packet limit.
 //!
 //! Token movement is **netted to one transfer per transaction**, not one per
 //! fill. Fills credit `SeatNode::credit` inside the book; the taker's own
 //! collateral in and out are accumulated across the whole match and settled
 //! once at the end. That is Phoenix's seat model, and it is why the measured
-//! marginal cost of a fill is ~821 CU rather than ~29,510.
+//! marginal cost of a fill is ~821 CU.
 
 use anchor_lang::prelude::*;
 use anchor_lang::{emit_cpi, event_cpi};
@@ -27,11 +27,8 @@ use crate::state::{require_not_paused, Market, ProtocolConfig};
 /// self-invoke, putting the payload in an inner instruction instead of a
 /// program log.
 ///
-/// This is what `sooth_log` exists to do. It was built on the belief that a
-/// program cannot CPI into itself — but Solana permits **direct self
-/// recursion**, which is exactly the mechanism Anchor uses here. So the whole
-/// second program, its `declare_id` mismatch, and its deploy are avoidable.
-/// The legacy `buy` path still uses it; deleting it is gated on that going.
+/// No helper program is needed for this: Solana permits **direct self
+/// recursion**, which is exactly the mechanism Anchor uses here.
 #[event_cpi]
 #[derive(Accounts)]
 pub struct BookPlace<'info> {
@@ -90,14 +87,11 @@ pub fn handler(
 
     // Trading stops when the market does.
     //
-    // `book_place` checked only the pause flag, so orders matched on a LOCKED
-    // or SETTLED market — one whose outcome is already known. That is free
-    // money against anyone with a stale resting order: once YES has won, buy
-    // YES from them at any price below 1.00 and redeem it for the full dollar.
-    // The maker did nothing wrong except fail to cancel in time.
-    //
-    // Every other trading path already gates on this (`trade_positions`,
-    // `sell_positions` both require `is_open`); the book was the gap.
+    // Matching on a LOCKED or SETTLED market — one whose outcome is already
+    // known — would be free money against anyone with a stale resting order:
+    // once YES has won, buy YES from them at any price below 1.00 and redeem
+    // it for the full dollar. Every trading path gates on this
+    // (`trade_positions` and `sell_positions` both require `is_open`).
     // `book_cancel` stays ungated on purpose — a maker must always be able to
     // get out, and after settlement that is the only way to recover escrow.
     require!(
@@ -105,10 +99,9 @@ pub fn handler(
         SoothCoreError::MarketNotOpen
     );
 
-    // The book opens at graduation, and not before.
+    // The book opens at graduation, and not before. Enforced on chain, not
+    // by the front end declining to show the panel.
     //
-    // This was a UI convention until now: the program accepted orders on an
-    // ungraduated market and only the front end declined to show the panel.
     // A market's incubation happens on the AMM — that is what graduation
     // measures and what the creator's subsidy pays for — so a book that trades
     // alongside it splits liquidity out of the venue being incubated.

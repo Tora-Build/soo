@@ -1,7 +1,7 @@
 //! The `Book` account: layout, zero-copy load, and growth.
 //!
-//! Phase 3 of `docs/design/orderbook-redesign.md`. This is the bridge between
-//! the pure arena in [`super::arena`] and a real Solana account.
+//! See `docs/design/orderbook-redesign.md`. This is the bridge between the
+//! pure arena in [`super::arena`] and a real Solana account.
 //!
 //! ## Layout
 //!
@@ -286,11 +286,10 @@ mod tests {
         // instruction entry, so a single step may not exceed it — reaching the
         // cap from empty always takes several calls.
         //
-        // This used to assert "two steps reach 256", which stopped being true
-        // the moment the cap moved. The invariants that actually matter are
-        // that no step overshoots, that every step makes progress, and that the
-        // walk terminates exactly at capacity — so assert those instead of a
-        // step count, and the test survives the next change to MAX_ORDERS.
+        // The invariants that matter are that no step overshoots, that every
+        // step makes progress, and that the walk terminates exactly at
+        // capacity. Asserted instead of a fixed step count, so the test holds
+        // across changes to MAX_ORDERS.
         let mut len = book_space(0);
         let mut steps = 0;
         while let Some(next) = grow_target(len, MAX_ORDERS as usize) {

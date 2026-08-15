@@ -72,12 +72,11 @@ pub struct SeedLp<'info> {
     )]
     pub lp_position: UncheckedAccount<'info>,
 
-    // ── LMSR subsidy deposit (bug B0) ───────────────────────────────────
+    // ── LMSR subsidy deposit ────────────────────────────────────────────
     //
-    // These three accounts are new. `seed_lp` used to take a
-    // `seed_deposit_wad` argument, write it to LpPosition, and transfer
-    // nothing — so the LMSR subsidy was never funded and the vault could not
-    // pay its winners. See the handler for the arithmetic.
+    // These three accounts move the creator's LMSR subsidy into the AMM
+    // vault; `seed_deposit_wad` must actually be funded, not just recorded
+    // on LpPosition. See the handler for the arithmetic.
 
     #[account(
         mut,
@@ -118,17 +117,12 @@ pub fn handler(ctx: Context<SeedLp>, args: SeedLpArgs) -> Result<()> {
     // A binary LMSR starting at q = (0, 0) has cost C(0,0) = b*ln(2), and that
     // is exactly its worst-case loss: the market maker is guaranteed to pay
     // out more than it collects, by up to b*ln(2). That difference IS the
-    // liquidity it provides, and it has to be posted up front.
+    // liquidity it provides, and it has to be posted up front — otherwise the
+    // vault holds only trader deposits and cannot pay a winning position.
     //
-    // It was not. `seed_deposit_wad` was recorded on LpPosition and never
-    // transferred, so a market's vault held only trader deposits and a winning
-    // position could not be paid at all — the SPL transfer aborted with
-    // InsufficientFunds. Nobody hit it because there was no AMM redeem path
-    // either (B1); fixing that one surfaced this one.
-    //
-    // The rest of the program already assumes this money exists:
-    // `trade_positions` graduates a market once accumulated fees reach
-    // wad_mul(b, LN2_WAD) — i.e. once fees have repaid exactly this subsidy.
+    // The rest of the program assumes this money exists: `trade_positions`
+    // graduates a market once accumulated fees reach wad_mul(b, LN2_WAD) —
+    // i.e. once fees have repaid exactly this subsidy.
     let required_wad = wad_mul(ctx.accounts.amm_state.b, LN2_WAD)
         .map_err(|_| error!(SoothCoreError::MathOverflow))?;
     require!(required_wad >= 0, SoothCoreError::InvalidLiquidity);

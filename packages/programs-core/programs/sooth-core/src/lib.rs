@@ -246,10 +246,8 @@ pub mod sooth_core {
         lock_for_resolution::handler(ctx)
     }
 
-    /// Pay out an AMM `Position` after settlement. Before this existed the
-    /// AMM had no post-settlement exit at all — see the module docs.
     /// Return the unspent LMSR subsidy to the creator after settlement.
-    /// See `reclaim_subsidy` — bug B0's residual half.
+    /// See `reclaim_subsidy`.
     pub fn reclaim_subsidy(ctx: Context<ReclaimSubsidy>) -> Result<()> {
         reclaim_subsidy::handler(ctx)
     }
@@ -258,11 +256,8 @@ pub mod sooth_core {
         redeem_amm_position::handler(ctx)
     }
 
-    /// Pay out a book position after settlement. See `redeem_book_seat`.
-    ///
-    /// The book's fifth-and-a-half instruction, and the one that was missing:
-    /// place/cancel/withdraw moved collateral, but nothing turned a winning
-    /// seat position into money.
+    /// Pay out a winning book seat position after settlement. See
+    /// `redeem_book_seat`.
     pub fn redeem_book_seat(ctx: Context<RedeemBookSeat>) -> Result<()> {
         redeem_book_seat::handler(ctx)
     }
@@ -270,7 +265,7 @@ pub mod sooth_core {
 
     // ── CLOB ──────────────────────────────────────────────────────────────────
 
-    /// Place an order on the redesigned book. See `book_place` module docs.
+    /// Place an order on the book. See `book_place` module docs.
     pub fn book_place(
         ctx: Context<BookPlace>,
         side: u8,

@@ -1,14 +1,11 @@
 // The real-market trading surface, routed by venue.
 //
-// Upstream rendered its CLOB for every activated cell because on the EVM
-// deployment an activated market was book-tradeable immediately. Here the
-// venues are staged: a market trades on the AMM (in the AMM's token) until it
+// Venues are staged: a market trades on the AMM (in the AMM's token) until it
 // graduates, and only then does the book (USDC) open — the program enforces
 // it, so a book UI on a bonding cell could only produce rejected orders.
 //
-// Both panels are the demo's devnet-proven components, not ports: the same
-// SimpleTradingPanel that serves /amm/:addr and the same SoothBookTerminal
-// that serves /orderbook/:addr.
+// The graduated panel is the same SoothBookTerminal that serves
+// /orderbook/:addr.
 import { BondingTrade } from "./BondingTrade";
 import { SoothBookTerminal } from "../../../components/features/pro/SoothBookTerminal";
 import type { OptionChainCell } from "../../hooks/useOptionChain";
@@ -33,7 +30,7 @@ export function CanonicalBook({
       </div>
     );
   }
-  // Pre-graduation: the drawer's OWN simplified panel — upstream's design
-  // made real — not the classic demo panel it used to embed.
+  // Pre-graduation: the drawer's OWN simplified panel, not the classic demo
+  // panel.
   return <BondingTrade cell={cell} />;
 }

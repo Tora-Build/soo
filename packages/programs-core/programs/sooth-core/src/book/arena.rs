@@ -1,4 +1,4 @@
-//! Block arena for the redesigned orderbook.
+//! Block arena for the orderbook.
 //!
 //! One account per market holds a fixed header followed by a flat array of
 //! uniform 80-byte blocks. Orders are allocated from a free list inside that
@@ -7,20 +7,21 @@
 //!
 //! ## Why this shape
 //!
-//! Today's book is one PDA per `(market, side, tick)`. Rent on Solana is
-//! `(128 + bytes) * 6960` lamports, so **every account carries a 128-byte
-//! surcharge** — about $0.178. A thin book of 10 orders across 8 ticks is 19
-//! accounts and ~$7.06, of which $3.38 is pure per-account overhead. Splitting
-//! state across accounts is what costs money, not the bytes.
+//! One account per market, rather than a PDA per `(market, side, tick)`. Rent
+//! on Solana is `(128 + bytes) * 6960` lamports, so **every account carries a
+//! 128-byte surcharge** — about $0.178. Split across accounts, a thin book of
+//! 10 orders over 8 ticks would be 19 accounts and ~$7.06, of which $3.38 is
+//! pure per-account overhead. Splitting state across accounts is what costs
+//! money, not the bytes.
 //!
-//! Worse, each of those accounts must be named, locked, and passed into the
-//! transaction, which is what caps a crossing buy at 5 fills: 3 accounts and 99
-//! bytes per fill against a 1232-byte packet limit.
+//! Each such account would also have to be named, locked, and passed into the
+//! transaction, capping a crossing buy at 5 fills: 3 accounts and 99 bytes per
+//! fill against a 1232-byte packet limit.
 //!
 //! Consolidating into one account removes both problems at once. Phoenix does
 //! this but preallocates (0.59-12 SOL per market); Manifest does it with
-//! uniform blocks grown by `realloc` (0.0073 SOL). We are a launchpad with many
-//! thin markets, so we follow Manifest.
+//! uniform blocks grown by `realloc` (0.0073 SOL). This is a launchpad with
+//! many thin markets, so it follows Manifest.
 //!
 //! ## Ordering
 //!
@@ -29,10 +30,10 @@
 //! ascending `seq` — so at equal price the earlier order is always closer to
 //! the head, and the matcher can simply walk from the head.
 //!
-//! Today FIFO is a free consequence of appending to a per-tick `Vec`. Here it
-//! is real logic, so it gets a real test: `insert_remove_preserves_price_time`
-//! drives thousands of randomised operations and re-verifies the ordering, the
-//! free list, and the block count after every single one.
+//! FIFO here is explicit logic rather than a side effect of a per-tick `Vec`,
+//! so it gets a real test: `insert_remove_preserves_price_time` drives
+//! thousands of randomised operations and re-verifies the ordering, the free
+//! list, and the block count after every single one.
 //!
 //! ## Why a linked list and not a red-black tree
 //!
@@ -863,18 +864,17 @@ mod tests {
 
     // ── Seat lifecycle ──────────────────────────────────────────────────────
     //
-    // Seats used to be permanent. Because they share the block arena with
-    // orders and the arena is capped, that made the cap a LIFETIME limit —
-    // "orders + everyone who ever traded" — rather than a depth one, and gave
-    // any signer a way to consume it.
+    // Seats are reclaimed when they go empty. They share the block arena with
+    // orders and the arena is capped, so permanent seats would turn that cap
+    // into a LIFETIME limit — "orders + everyone who ever traded" — rather
+    // than a depth one, and give any signer a way to consume it.
 
     #[test]
     fn withdrawing_from_a_wallet_that_never_traded_costs_no_block() {
-        // The griefing vector. `take_credit` used the ALLOCATING seat lookup,
-        // so calling `book_withdraw` from a fresh keypair recorded a zero
-        // balance in a block that was never reclaimed. ~256 throwaway signers
-        // could fill the arena and stop the market accepting orders forever,
-        // for the price of transaction fees.
+        // `take_credit` must not use the ALLOCATING seat lookup: if
+        // `book_withdraw` from a fresh keypair recorded a zero balance in a
+        // block, throwaway signers could fill the arena and stop the market
+        // accepting orders forever, for the price of transaction fees.
         let mut f = Fixture::new(8);
         let mut b = f.book();
         for i in 0..8u8 {

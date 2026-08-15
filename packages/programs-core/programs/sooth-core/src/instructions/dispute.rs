@@ -5,7 +5,7 @@
 //! disputed; it does NOT settle. `settle` still finalizes, so the lifecycle
 //! changes in exactly one place.
 //!
-//! Until the attest/settle split this handler was dead code — see
+//! Reachable only because attest and settle are separate instructions — see
 //! `attest_outcome`'s module docs.
 
 use anchor_lang::prelude::*;

@@ -57,13 +57,12 @@ const VENUES = [
 /**
  * Say what actually went wrong.
  *
- * This used to read `err.shortMessage` — a wagmi/viem field that a plain
- * `Error` from the Solana bridge never has — and fall back to "Failed to mint
- * tokens" for everything else. So the one message users saw was the one
- * carrying no information, and the commonest cause by far is not a broken
- * faucet at all: the public devnet RPC rate-limits a browser that has already
- * loaded a market page, and `getLatestBlockhash` throws 429 before anything is
- * even sent. That is a fixable environment problem, but only if it is named.
+ * `err.shortMessage` is a wagmi/viem field that a plain `Error` from the
+ * Solana bridge never carries, so this falls through to `err.message` and
+ * classifies from the raw text. The commonest failure is not a broken faucet
+ * at all: the public devnet RPC rate-limits a browser that has already loaded
+ * a market page, and `getLatestBlockhash` throws 429 before anything is even
+ * sent. That is a fixable environment problem, but only if it is named.
  */
 function faucetErrorMessage(err: unknown): string {
   const short =

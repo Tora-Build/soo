@@ -39,20 +39,20 @@ Indexer status pill in the footer renders "pending (P3)" — the Solana indexer 
 
 ## Quick start
 
-`pnpm dev` (no flag) targets devnet by default — the four Sooth programs
-are deployed at the IDs pinned in `src/lib/config.ts` (sourced from the
-SDK's IDL JSON), and the protocol singletons (`ProtocolConfig`,
-`fee_pool_vault`, `AdjudicatorAllowlist`) are bootstrapped already. To
-re-bootstrap (e.g. after a fresh program redeploy) or to seed a fresh
-demo market, run:
+`pnpm dev` (no flag) targets devnet by default — `sooth_core` is deployed at
+the ID pinned in `src/lib/config.ts` (sourced from the SDK's IDL JSON), and
+the protocol singletons (`ProtocolConfig`, `fee_pool_vault`) are bootstrapped
+already. To re-bootstrap (e.g. after a fresh program redeploy) or to seed a
+fresh demo market, point the seed script at devnet:
 
 ```sh
-node apps/demo/scripts/seed-devnet.mjs --keypair apps/demo/.deploy-payer.json [--with-market]
+SOLANA_RPC_URL=https://api.devnet.solana.com node apps/demo/scripts/seed-localnet.mjs init
 ```
 
-`--with-market` requires the signing wallet to hold devnet USDC at the
-canonical mint (`4zMM…ncDU`). Without it the script still bootstraps the
-singletons (idempotent, safe to re-run).
+The same script seeds any cluster; `prepare` is the localnet-only phase that
+builds the USDC mint dump. Seeding a market requires the signing wallet to
+hold devnet USDC at the canonical mint (`4zMM…ncDU`). Bootstrapping the
+singletons is idempotent and safe to re-run.
 
 For offline iteration, `pnpm dev:localnet` boots a fresh
 `solana-test-validator`, deploys the programs, mints USDC, and seeds a

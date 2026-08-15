@@ -28,9 +28,7 @@ import {
   TransactionInstruction,
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
-  SYSVAR_INSTRUCTIONS_PUBKEY,
   ComputeBudgetProgram,
-  type AccountMeta as SolanaAccountMeta,
 } from "@solana/web3.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -53,7 +51,6 @@ import {
   deriveAmmStatePda,
   deriveAdjudicatorEntryPda,
   deriveFeePoolAuthorityPda,
-  deriveFeePoolVaultAta,
   deriveLockAuthorityPda,
   deriveLockEntryPda,
   deriveLockVaultAta,
@@ -62,21 +59,16 @@ import {
   deriveLpYieldAuthority,
   deriveMarketPda,
   deriveMarketVaultAta,
-  deriveNoMintPda,
   deriveLpPositionPda,
   derivePositionPda,
   deriveProtocolConfigPda,
   deriveUserLpAta,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
-  deriveYesMintPda,
-  bookSidePda,
-  marketBookPda,
   feePoolAmmPda,
   lpYieldAmmPda,
   lpYieldBookPda,
   feePoolBookPda,
-  orderbookPositionPda,
   SOOTH_CORE_PROGRAM_ID,
   type ProgramIds,
 } from "./pdas.js";
@@ -99,7 +91,6 @@ import { decodePubkeyRef, encodeSignatureRef } from "./refs.js";
 import { SoothError, notImplemented } from "./errors.js";
 import type {
   AddressRef,
-  BuyArgs,
   ChainAdapter,
   ClaimArgs,
   ClaimRequest,
@@ -107,13 +98,10 @@ import type {
   CreateMarketRequest,
   MarketEvent,
   MarketRef,
-  OrderbookCancelOptions,
-  OrderbookRequest,
   Portfolio,
   Position,
   PositionEvent,
   PreflightResult,
-  SellArgs,
   SignerRef,
   SoothCoreSnapshot,
   SoothNode,
@@ -137,78 +125,6 @@ export interface SolanaAdapterOptions {
   // Pre-built `Connection` to reuse (e.g. when running under the test SVM where
   // the connection is replaced by a custom client).
   connection?: Connection;
-}
-
-export interface MintIntoBookArgs {
-  user: AddressRef;
-  bookMarketPda: AddressRef;
-  soothMarketPda: AddressRef;
-  priceYes: bigint;
-  stake: bigint;
-  distinctSeedYes: bigint;
-  distinctSeedNo: bigint;
-}
-
-export interface SettleRestingOrdersArgs {
-  caller: AddressRef;
-  bookMarketPda: AddressRef;
-  soothMarketPda: AddressRef;
-  orderPda: AddressRef;
-  // Optional test/operator fast path. When omitted, the adapter fetches the
-  // Order account and reads its purchaser field.
-  orderPurchaser?: AddressRef;
-}
-
-export interface CreateBookMarketArgs {
-  creator: AddressRef;
-  soothMarketPda: AddressRef;
-  eventAccount?: AddressRef;
-  marketType?: AddressRef;
-  marketTypeName?: string;
-  marketTypeDiscriminator?: string | null;
-  marketTypeValue?: string | null;
-  title: string;
-  maxDecimals?: number;
-  marketLockTimestamp: bigint;
-  eventStartTimestamp: bigint;
-  marketLockOrderBehaviour?: "none" | "cancelUnmatched";
-  existingBookMarketPda?: AddressRef;
-  mint?: AddressRef;
-}
-
-export interface ProcessOrderRequestArgs {
-  crankOperator: AddressRef;
-  bookMarketPda: AddressRef;
-  purchaser: AddressRef;
-  distinctSeed: Uint8Array;
-  marketOutcomeIndex: number;
-  expectedPrice: bigint;
-  forOutcome: boolean;
-}
-
-export interface MatchOrdersArgs {
-  crankOperator: AddressRef;
-  bookMarketPda: AddressRef;
-  orderForPda: AddressRef;
-  orderAgainstPda: AddressRef;
-  orderForPurchaser: AddressRef;
-  orderAgainstPurchaser: AddressRef;
-  marketOutcomeIndex: number;
-  orderForExpectedPrice: bigint;
-  orderAgainstExpectedPrice: bigint;
-  tradeForSeed: Uint8Array;
-  tradeAgainstSeed: Uint8Array;
-}
-
-// Solana-only meta channel for `buildOrderbookBuy` / `buildOrderbookSell`.
-// The umbrella `BuyArgs` shape is intentionally narrow (chain-agnostic
-// tick + amount), so Solana-specific inputs (payer/signer) are surfaced here as
-// optional extensions — same convention as `TradeArgs.user`.
-export interface OrderbookOrderArgsExt {
-  // User pubkey (also payer + signer). Required — the umbrella
-  // `BuyArgs` doesn't carry a wallet identity, so callers must thread it
-  // through this meta channel.
-  user: AddressRef;
 }
 
 // Resolved-once cache key — `Market` PDA layout is invariant across reads.
@@ -236,256 +152,9 @@ interface PriorityFeeCacheEntry {
 // Anchor's IDL types are loose; we re-narrow at the boundary.
 type AnyProgram = Program<Idl>;
 
-type AnchorIxBuilder = {
-  accounts(accounts: Record<string, PublicKey | null>): {
-    instruction(): Promise<TransactionInstruction>;
-  };
-};
-
-type BookMarketOrderBehaviourWire =
-  | { none: Record<string, never> }
-  | { cancelUnmatched: Record<string, never> };
-
-interface SoothBookMethods {
-  mintIntoBook(
-    priceYes: BN,
-    stake: BN,
-    distinctSeedYes: BN,
-    distinctSeedNo: BN,
-  ): AnchorIxBuilder;
-  settleRestingOrders(): AnchorIxBuilder;
-  createMarket(
-    soothMarketPda: PublicKey,
-    eventAccount: PublicKey,
-    marketTypeDiscriminator: string | null,
-    marketTypeValue: string | null,
-    title: string,
-    maxDecimals: number,
-    marketLockTimestamp: BN,
-    eventStartTimestamp: BN,
-    marketLockOrderBehaviour: BookMarketOrderBehaviourWire,
-  ): AnchorIxBuilder;
-  processOrderRequest(): AnchorIxBuilder;
-  matchOrders(
-    tradeForSeed: number[],
-    tradeAgainstSeed: number[],
-  ): AnchorIxBuilder;
-  // `create_order_request` takes a single `OrderRequestData` struct arg.
-  // Anchor auto-camelCases the struct fields (`market_outcome_index` →
-  // `marketOutcomeIndex`, etc.) on the JS side.
-  createOrderRequest(data: {
-    marketOutcomeIndex: number;
-    forOutcome: boolean;
-    stake: BN;
-    price: BN;
-    distinctSeed: number[]; // 16 bytes
-    expiresOn: BN | null;
-  }): AnchorIxBuilder;
-  cancelOrder(): AnchorIxBuilder;
-}
-
 const INIT_MARKET_FEE_POOL_DISCRIMINATOR = Buffer.from([
   51, 19, 251, 120, 171, 91, 138, 115,
 ]);
-
-// Adapter-private helper for legacy Monaco-book PDA derivations.
-function legacySoothBookProgramId(
-  programs: { soothBook: PublicKey },
-): PublicKey {
-  return programs.soothBook;
-}
-
-function legacyU64Bytes(value: bigint, name: string): Buffer {
-  if (value < 0n || value > 0xffffffffffffffffn) {
-    throw new Error(`${name} must fit in u64, got ${value.toString()}`);
-  }
-  const out = Buffer.alloc(8);
-  out.writeBigUInt64LE(value, 0);
-  return out;
-}
-
-function legacyU128Bytes(value: bigint, name: string): Buffer {
-  if (value < 0n || value > 0xffffffffffffffffffffffffffffffffn) {
-    throw new Error(`${name} must fit in u128, got ${value.toString()}`);
-  }
-  const out = Buffer.alloc(16);
-  out.writeBigUInt64LE(value & 0xffffffffffffffffn, 0);
-  out.writeBigUInt64LE(value >> 64n, 8);
-  return out;
-}
-
-function legacySeed16(seed: Uint8Array, name: string): Buffer {
-  if (seed.length !== 16) {
-    throw new Error(`${name} must be exactly 16 bytes, got ${seed.length}`);
-  }
-  return Buffer.from(seed);
-}
-
-function deriveBookMarketPda(
-  soothMarketPda: PublicKey,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), soothMarketPda.toBuffer()],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookEscrowPda(
-  bookMarketPda: PublicKey,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("escrow"), bookMarketPda.toBuffer()],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookFundingPda(
-  bookMarketPda: PublicKey,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("funding"), bookMarketPda.toBuffer()],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookMarketLiquiditiesPda(
-  bookMarketPda: PublicKey,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("liquidities"), bookMarketPda.toBuffer()],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookMarketMatchingQueuePda(
-  bookMarketPda: PublicKey,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("matching"), bookMarketPda.toBuffer()],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookOrderRequestQueuePda(
-  bookMarketPda: PublicKey,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("order_request"), bookMarketPda.toBuffer()],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookMarketPositionPda(
-  bookMarketPda: PublicKey,
-  user: PublicKey,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("position"), bookMarketPda.toBuffer(), user.toBuffer()],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookLegacyMarketPositionPda(
-  bookMarketPda: PublicKey,
-  purchaser: PublicKey,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [purchaser.toBuffer(), bookMarketPda.toBuffer()],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookOrderPda(
-  bookMarketPda: PublicKey,
-  distinctSeed: bigint,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("order"), bookMarketPda.toBuffer(), legacyU64Bytes(distinctSeed, "distinctSeed")],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookOrderRequestOrderPda(
-  bookMarketPda: PublicKey,
-  purchaser: PublicKey,
-  distinctSeed: Uint8Array,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [bookMarketPda.toBuffer(), purchaser.toBuffer(), legacySeed16(distinctSeed, "distinctSeed")],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookMarketOutcomePda(
-  bookMarketPda: PublicKey,
-  outcomeIndex: number,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [bookMarketPda.toBuffer(), Buffer.from(String(outcomeIndex))],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookMarketMatchingPoolPda(
-  bookMarketPda: PublicKey,
-  outcomeIndex: number,
-  expectedPrice: bigint,
-  forOutcome: boolean,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [
-      bookMarketPda.toBuffer(),
-      Buffer.from(String(outcomeIndex)),
-      Buffer.from("-"),
-      legacyU128Bytes(expectedPrice, "expectedPrice"),
-      Buffer.from(forOutcome ? "true" : "false"),
-    ],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookTradePda(
-  orderPda: PublicKey,
-  tradeSeed: Uint8Array,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [orderPda.toBuffer(), legacySeed16(tradeSeed, "tradeSeed")],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookMarketTypePda(
-  name: string,
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("market_type"), Buffer.from(name)],
-    legacySoothBookProgramId(programs),
-  );
-}
-
-function deriveBookAuthorisedOperatorsPda(
-  role: "MARKET" | "CRANK",
-  programs: { soothBook: PublicKey },
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("authorised_operators"), Buffer.from(role)],
-    legacySoothBookProgramId(programs),
-  );
-}
 
 /** Mirrors `MAX_QUESTION_LEN` in the program's `constants.rs`. */
 const MAX_QUESTION_LEN = 300;
@@ -496,8 +165,7 @@ export class SolanaChainAdapter implements ChainAdapter {
 
   // Program IDs and connection are resolved once at construction.
   readonly programIds: ProgramIds;
-  /// The book venue's token — USDC. Renamed from `usdcMint` when the venues
-  /// split, deliberately: the rename makes the compiler visit every use, and
+  /// The book venue's token — USDC. Named distinctly from `ammMint` because
   /// handing an instruction the other venue's mint is the one mistake here
   /// that fails silently.
   readonly bookMint: PublicKey;
@@ -668,7 +336,7 @@ export class SolanaChainAdapter implements ChainAdapter {
     const dYes = outcome === 1 ? deltaShares : 0n;
     const dNo = outcome === 0 ? deltaShares : 0n;
     const cost = costDelta(qYes, qNo, b, dYes, dNo);
-    // Fee router live (Wave 1C-fee). Read `fee_bps` from `ProtocolConfig`
+    // Read `fee_bps` from `ProtocolConfig`
     // and mirror the on-chain floor formula:
     //   fee_wad = cost_wad * fee_bps / 10_000
     // The on-chain handler uses `cost_wad as u128 * fee_bps / 10_000`;
@@ -678,13 +346,10 @@ export class SolanaChainAdapter implements ChainAdapter {
     const feeBps = await this.readProtocolFeeBps();
     // Fee is charged on the MAGNITUDE, both directions. `sell_positions`
     // takes `proceeds_wad = cost_wad.unsigned_abs()` and charges the same bps
-    // on it, so a sell is fee-bearing exactly like a buy.
-    //
-    // This used to be `cost > 0n ? ... : 0n`, which reported a zero fee on
-    // every sell. The quote then overstated what a seller would receive by
-    // the whole fee, and the demo's slippage buffer silently absorbed the
-    // error — until the fee grew past the buffer and every sell failed with
-    // SlippageExceeded on a market that had not moved.
+    // on it, so a sell is fee-bearing exactly like a buy. A quote that
+    // reported zero fee on sells would overstate seller proceeds by the whole
+    // fee and surface later as SlippageExceeded on a market that had not
+    // moved.
     const magnitude = cost < 0n ? -cost : cost;
     const fee = (magnitude * BigInt(feeBps)) / 10_000n;
     // Signed, and correct in both directions because `fee` is positive:
@@ -996,25 +661,10 @@ export class SolanaChainAdapter implements ChainAdapter {
   }
 
   /**
-   * Fetch the singleton `ProtocolConfig` and return its `fee_bps`.
-   *
-   * Reads via the launchpad Anchor account decoder so changes to
-   * `ProtocolConfig`'s field list trip a decode error rather than a
-   * silently-misaligned offset (the on-chain side guards the same way
-   * via the `sooth-account-offsets` cross-crate assertion).
-   *
-   * Returns 0 if the config PDA hasn't been initialized — the on-chain
-   * `trade_positions` will then reject the build because the same PDA
-   * is in the account list with `seeds=[b"protocol_config"]`. The
-   * graceful 0 here means `readQuote` previews zero fee on a fresh
-   * cluster instead of throwing during the read path.
-   */
-  /**
    * Both venues' taker fee rates, in bps, as the program has them.
    *
    * Public because the UI needs to DISPLAY a rate and the only honest source
-   * is the config the program charges from. The demo used to hardcode
-   * "5% bonding / 1% live", which was a guess that happened to be wrong.
+   * is the config the program charges from.
    *
    * Zeroes on an uninitialised config, matching `readProtocolFeeBps`.
    */
@@ -1032,9 +682,15 @@ export class SolanaChainAdapter implements ChainAdapter {
 
   private async readProtocolFeeBps(): Promise<number> {
     // The AMM's rate specifically. `readQuote` prices an AMM trade, and the
-    // two venues charge different rates since the fee split — reading the
-    // wrong one makes a quote disagree with what the program charges, which
-    // shows up as a slippage failure rather than as a wrong number.
+    // two venues charge different rates — reading the wrong one makes a quote
+    // disagree with what the program charges, which shows up as a slippage
+    // failure rather than as a wrong number.
+    //
+    // Returns 0 if the config PDA hasn't been initialized — the on-chain
+    // `trade_positions` will then reject the build because the same PDA is in
+    // the account list with `seeds=[b"protocol_config"]`. The graceful 0 here
+    // means `readQuote` previews zero fee on a fresh cluster instead of
+    // throwing during the read path.
     const [cfgPda] = deriveProtocolConfigPda(this.programIds);
     const raw = await (
       this.program.account as any
@@ -1051,8 +707,8 @@ export class SolanaChainAdapter implements ChainAdapter {
 
   async buildTrade(market: MarketRef, args: TradeArgs): Promise<TradeRequest> {
     if (args.side === "sell") {
-      // Wave 1A landed `sell_positions` as a separate on-chain ix from
-      // `trade_positions`; the SDK split mirrors that. Sell callers must use
+      // `sell_positions` is a separate on-chain ix from `trade_positions`;
+      // the SDK split mirrors that. Sell callers must use
       // `buildSell()` so the EVM-parity wire shape on this method stays
       // buy-only and the demo's chain-shim router can dispatch on the
       // operation type rather than `delta_shares` sign.
@@ -1096,8 +752,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       this.ammMint,
       this.programIds,
     );
-    // W7 fee routing: AMM buys credit the per-market fee pool owned by
-    // sooth_core, not the old singleton fee_pool_vault ATA. The
+    // AMM buys credit the per-market fee pool owned by sooth_core. The
     // on-chain trade ix requires the token account to exist; the SDK adds
     // the init ix only for fresh markets.
     const [protocolConfig] = deriveProtocolConfigPda(this.programIds);
@@ -1214,7 +869,7 @@ export class SolanaChainAdapter implements ChainAdapter {
     // Cost estimate via the same off-chain LMSR port the program runs.
     const cost = await this.readQuote(market, args.outcome, args.deltaShares);
 
-    // Codex 2nd-pass review: derive `accounts` from the instruction's `keys`
+    // Derive `accounts` from the instruction's `keys`
     // directly rather than a hand-curated subset. Anchor's instruction builder
     // emits the exact list the on-chain program expects (vault authority,
     // USDC mint, system/token/rent — everything), so this is the source of
@@ -1247,7 +902,7 @@ export class SolanaChainAdapter implements ChainAdapter {
     };
   }
 
-  // ─── Sell path (Wave 1A `sell_positions` ix) ───────────────────────────
+  // ─── Sell path (`sell_positions` ix) ───────────────────────────────────
   //
   // Returns the same `TradeRequest` shape as `buildTrade` so call-sites that
   // submit through `adapter.submit()` are unchanged. The split at this
@@ -1418,13 +1073,13 @@ export class SolanaChainAdapter implements ChainAdapter {
   // outflows that share the "claim" semantic surface:
   //
   //   1. `kind: 'unlock'` — drain a `LockEntry` from the AMM sell-with-lock
-  //      cooldown (Wave 1A `sooth_amm::claim_unlocked`). This is the EVM
+  //      cooldown (`sooth_amm::claim_unlocked`). This is the EVM
   //      `claimUnlocked(maxClaims)` analogue. One LockEntry per call mirrors
   //      the on-chain handler (see `claim_unlocked.rs`).
   //
-  // The `kind: 'redeem'` variant is gone with the complete-set instructions
-  // (`docs/design/dual-token-venues.md` §4). Post-settlement payouts now go
-  // through `buildRedeemBookSeat` / `buildRedeemAmmPosition`, one per ledger.
+  //   2. Post-settlement payouts, which go through `buildRedeemBookSeat` /
+  //      `buildRedeemAmmPosition`, one per ledger
+  //      (`docs/design/dual-token-venues.md` §4).
   async buildClaim(
     market: MarketRef,
     args: ClaimArgs & {
@@ -1632,10 +1287,9 @@ export class SolanaChainAdapter implements ChainAdapter {
     const ix: TransactionInstruction = await (this.program.methods as any)
       .redeemLp(bigIntToBn(args.lpAmount))
       .accounts({
-        // `market` is new: redeem_lp used to accept an unconstrained lp_mint
-        // and any graduated amm_state, which let anyone drain the global LP
-        // yield vault with a self-created mint (bug B6). Everything is now
-        // bound to one market.
+        // Everything is bound to one market: an unconstrained lp_mint
+        // accepted alongside any graduated amm_state would let anyone drain
+        // the LP yield vault with a self-created mint (bug B6).
         market: marketPda,
         ammState: ammPda,
         lpMint,
@@ -1823,7 +1477,7 @@ export class SolanaChainAdapter implements ChainAdapter {
     };
   }
 
-  // ─── Redesigned book (docs/design/orderbook-redesign.md) ──────────────
+  // ─── The book (docs/design/orderbook-redesign.md) ──────────────────────
   //
   // Thin wrappers over the raw instruction builders in `./book`, in the same
   // TradeRequest shape as every other path so the demo's chain-shim can submit
@@ -1831,9 +1485,8 @@ export class SolanaChainAdapter implements ChainAdapter {
   //
   // There is no planner or simulator here, and that is the point: the program
   // walks its own book, so a taker sends one instruction with a `matchLimit`
-  // and nothing has to be predicted off-chain. The legacy `matching-driver`
-  // had to precompute the exact crossing sequence, which is where audit
-  // finding H1 comes from.
+  // and nothing has to be predicted off-chain — no client-side match plan
+  // exists to go stale (the failure class of audit finding H1).
 
   private bookRefs(marketPda: PublicKey, marketId: Uint8Array): BookRefs {
     return {
@@ -1876,24 +1529,13 @@ export class SolanaChainAdapter implements ChainAdapter {
   }
 
   /**
-   * Pay out a book position after settlement (`redeem_book_seat`).
-   *
-   * The book's own claim path. `book_withdraw` moves seat CREDIT — USDC
-   * already released by a cancel or a closing fill — while this converts the
-   * seat's signed net into money against the resolved outcome. Both exist
-   * because they answer different questions, and only this one requires the
-   * market to be settled.
-   */
-  /**
    * Idempotent create for a user's USDC ATA, as a pre-instruction.
    *
-   * Every book instruction that moves USDC constrains `user_usdc_ata` with
+   * Every instruction that moves USDC constrains `user_usdc_ata` with
    * `token::authority = user`, which requires the account to already exist. A
-   * wallet that has never held USDC has no ATA, so its FIRST order failed at
-   * simulation with nothing on screen naming the cause — the wallet looked
-   * funded, because it had plenty of SOL.
-   *
-   * `buildTrade` already did this for the AMM path; the book paths did not.
+   * wallet that has never held USDC has no ATA, so without this its FIRST
+   * order fails at simulation with nothing on screen naming the cause — the
+   * wallet looks funded, because it has plenty of SOL.
    *
    * Idempotent, so it is a no-op for everyone else, and data-only, so `submit`
    * can replay the identical bytes under a fresh blockhash.
@@ -1911,6 +1553,15 @@ export class SolanaChainAdapter implements ChainAdapter {
     );
   }
 
+  /**
+   * Pay out a book position after settlement (`redeem_book_seat`).
+   *
+   * The book's own claim path. `book_withdraw` moves seat CREDIT — USDC
+   * already released by a cancel or a closing fill — while this converts the
+   * seat's signed net into money against the resolved outcome. Both exist
+   * because they answer different questions, and only this one requires the
+   * market to be settled.
+   */
   async buildRedeemBookSeat(
     market: MarketRef,
     args: { user: AddressRef },
@@ -1961,10 +1612,6 @@ export class SolanaChainAdapter implements ChainAdapter {
    * used both has to claim from both — `redeemBookSeat` pays the seat and
    * knows nothing about `Position.yes_shares`.
    *
-   * The instruction landed with bug B1 (an AMM buyer had no exit after
-   * settlement) but had no builder, so it stayed unreachable from the app and
-   * the funds stayed stranded for exactly the reason it was written to fix.
-   *
    * Callable more than once: the handler zeroes both legs before transferring,
    * so a second call pays nothing rather than double-paying. It deliberately
    * does not close the `Position` account — `claim_unlocked` still needs it.
@@ -1990,7 +1637,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       .redeemAmmPosition()
       .accounts({
         market: marketPda,
-        // Redeeming now retires the shares from AmmState's outstanding count
+        // Redeeming retires the shares from AmmState's outstanding count
         // — the bookkeeping `sweep_residual` gates on.
         ammState: deriveAmmStatePda(resolved.marketId, this.programIds)[0],
         vaultAuthority,
@@ -2020,23 +1667,13 @@ export class SolanaChainAdapter implements ChainAdapter {
   }
 
   /**
-   * Return the unspent LMSR subsidy to the creator (`reclaim_subsidy`).
-   *
-   * Reads every ledger that can still owe the vault — mint supply, AMM
-   * aggregate, and the book's seats — so it needs all three accounts even
-   * though it only moves USDC.
-   */
-  /**
    * Drain a market's fee pool and split it (`distribute_fees_amm` /
    * `distribute_fees_book`).
    *
    * Permissionless — `cranker` is any signer, and every destination is pinned
-   * on-chain, so who calls it cannot change where the money goes. That
-   * pinning is load-bearing: before it, three of the four destinations were
-   * constrained only by mint, and anyone could have routed 90% of a market's
-   * fees to themselves. It was unreachable only because no client built the
-   * instruction, which is not a security property — hence this builder and
-   * that fix landing together.
+   * on-chain, so who calls it cannot change where the money goes. That pinning
+   * is load-bearing: a destination constrained only by mint would let any
+   * caller route a market's fees to themselves.
    *
    * The two venues are separate instructions because their splits differ: the
    * book has no `b_base` share (that grows AMM liquidity, denominated in the
@@ -2288,10 +1925,9 @@ export class SolanaChainAdapter implements ChainAdapter {
 
   /**
    * Fund a market's LMSR curve: the creator posts the b·ln2 subsidy and
-   * receives the LP allocation. Without this a created market LOOKS alive
-   * but cannot trade — `trade_positions` mints LP to every buyer, and only
-   * seed_lp creates the LP mint. The UI creation flows skipped it for
-   * months and every wizard-created market was an untradeable orphan.
+   * receives the LP allocation. Required for every created market: without it
+   * the market LOOKS alive but cannot trade — `trade_positions` mints LP to
+   * every buyer, and only `seed_lp` creates the LP mint.
    */
   async buildSeedLp(
     market: MarketRef,
@@ -2352,6 +1988,13 @@ export class SolanaChainAdapter implements ChainAdapter {
     };
   }
 
+  /**
+   * Return the unspent LMSR subsidy to the creator (`reclaim_subsidy`).
+   *
+   * Reads every ledger that can still owe the vault — mint supply, AMM
+   * aggregate, and the book's seats — so it needs all three accounts even
+   * though it only moves USDC.
+   */
   async buildReclaimSubsidy(
     market: MarketRef,
     args: { creator: AddressRef },
@@ -2403,11 +2046,11 @@ export class SolanaChainAdapter implements ChainAdapter {
   /**
    * Cancel several orders in ONE transaction, then sweep the refunds.
    *
-   * The panel's "Cancel Selected" used to loop `buildBookCancel`, so N orders
-   * meant N transactions: N signatures, N fees, N chances to half-finish and
-   * leave the trader guessing which ones went. Cancelling is the action people
-   * take when they want out quickly, which is the worst time to make them
-   * approve prompts one at a time.
+   * One transaction rather than one per order: N separate cancels would mean
+   * N signatures, N fees, and N chances to half-finish and leave the trader
+   * guessing which ones went. Cancelling is the action people take when they
+   * want out quickly, which is the worst time to make them approve prompts one
+   * at a time.
    *
    * Batching is cheap here because a transaction de-duplicates its account
    * list: every cancel touches the same book, market and signer, so the second
@@ -2524,22 +2167,6 @@ export class SolanaChainAdapter implements ChainAdapter {
   }
 
   /**
-   * Order history for a market, reconstructed from the book's own events.
-   *
-   * There is no indexer on the Solana fork (`VITE_USE_INDEXER=false`), and the
-   * legacy history path replays EVM-shaped ORDER_PLACED / ORDER_CANCELLED /
-   * ORDER_FILLED logs through `getLogs` — signatures the redesigned book does
-   * not emit, so it always returned nothing.
-   *
-   * The book emits versioned CPI events instead (`emit_cpi!`), which land as
-   * inner instructions on the transaction. So history is: walk the book PDA's
-   * signatures, decode the events, keep them in chain order.
-   *
-   * Bounded by `limit` signatures — this is a read over transaction history,
-   * not an index, and the cost is one `getTransaction` per signature. Callers
-   * wanting deep history need a real indexer.
-   */
-  /**
    * The question a market asked, recovered from its creation transaction.
    *
    * `Market` stores only `question_hash`, so the text lives in exactly one
@@ -2555,9 +2182,9 @@ export class SolanaChainAdapter implements ChainAdapter {
    * traffic than that returns undefined rather than a wrong answer, and the
    * caller should cache what it finds.
    *
-   * Returns undefined for markets created before the event carried the
-   * question — those are not recoverable at all, which is the reason the field
-   * was added.
+   * Returns undefined when no `MarketCreated` event on the account carries a
+   * question that hashes to the stored `question_hash` — such a market's text
+   * is not recoverable from chain data.
    */
   async readMarketQuestion(
     market: MarketRef,
@@ -2604,16 +2231,14 @@ export class SolanaChainAdapter implements ChainAdapter {
         if (typeof q !== "string" || !q.trim()) continue;
         // Prove it before returning it.
         //
-        // A market created BEFORE the event carried a question emits the old
-        // layout, and decoding those bytes against the current schema does not
-        // fail — it reads the length prefix out of what used to be `market:
-        // Pubkey` and hands back binary garbage that is still a `string`.
-        // Rendering that as a title is worse than rendering the address, and
-        // caching it is worse again.
+        // Decoding an event of a different layout against this schema does not
+        // fail — it reads a length prefix out of unrelated bytes and hands back
+        // binary garbage that is still a `string`. Rendering that as a title is
+        // worse than rendering the address, and caching it is worse again.
         //
         // The program guarantees `sha256(question) == question_hash`, so the
-        // stored hash is an independent witness: recompute and compare. Old
-        // events fail this and return undefined, which is the honest answer.
+        // stored hash is an independent witness: recompute and compare. A
+        // mismatch returns undefined, which is the honest answer.
         const digest = await sha256(q);
         if (Buffer.from(digest).equals(Buffer.from(resolved.questionHash))) {
           return q;
@@ -2744,9 +2369,9 @@ export class SolanaChainAdapter implements ChainAdapter {
       }
 
       // Book fills ride inner instructions (`emit_cpi!`) — decoded by the
-      // same versioned parser `readBookHistory` trusts, because the framing
-      // (event-CPI discriminator + versioned body) is its specialty and a
-      // hand-rolled offset here silently dropped real fills.
+      // same versioned parser `readBookHistory` uses. The framing (event-CPI
+      // discriminator + versioned body) belongs in one decoder: a hand-rolled
+      // offset here would drop real fills silently.
       if (tx.meta.innerInstructions) {
         const inner = tx.meta.innerInstructions.flatMap((group) =>
           group.instructions.map((ix) =>
@@ -2760,7 +2385,7 @@ export class SolanaChainAdapter implements ChainAdapter {
             out.push({
               signature: sig.signature,
               ts: Number(event.ts) || blockTs,
-              // The redesigned book has ONE price axis, so the maker's tick
+              // The book has ONE price axis, so the maker's tick
               // IS the YES price: 1..999 ticks = tenths of a cent.
               yesPriceWad: (BigInt(fill.priceTick) * 10n ** 18n) / 1000n,
               sizeWad: BigInt(fill.amount) * 10n ** 12n,
@@ -2773,6 +2398,18 @@ export class SolanaChainAdapter implements ChainAdapter {
     return out;
   }
 
+  /**
+   * Order history for a market, reconstructed from the book's own events.
+   *
+   * There is no indexer on the Solana fork (`VITE_USE_INDEXER=false`). The
+   * book emits versioned CPI events (`emit_cpi!`), which land as inner
+   * instructions on the transaction rather than as logs. So history is: walk
+   * the book PDA's signatures, decode the events, keep them in chain order.
+   *
+   * Bounded by `limit` signatures — this is a read over transaction history,
+   * not an index, and the cost is one `getTransaction` per signature. Callers
+   * wanting deep history need a real indexer.
+   */
   async readBookHistory(
     market: MarketRef,
     opts?: { limit?: number },
@@ -2976,11 +2613,11 @@ export class SolanaChainAdapter implements ChainAdapter {
    * reaches `confirmed`/`finalized` (or carries an error).
    *
    * Deliberately NOT `connection.confirmTransaction`, which subscribes via
-   * `signatureSubscribe` over a websocket. Alchemy's HTTP endpoint rejects
-   * that with "Method not found", so confirmation threw a spurious timeout
-   * and `submit` retried a transaction that had ALREADY landed. The replayed
-   * non-idempotent `InitMarketFeePool` preIx then failed with `Custom(0)`,
-   * surfacing a false "trade failed" for a trade that actually executed.
+   * `signatureSubscribe` over a websocket. HTTP-only endpoints (Alchemy's, for
+   * one) reject that with "Method not found", which turns into a spurious
+   * confirmation timeout and makes `submit` retry a transaction that has
+   * ALREADY landed — the replayed non-idempotent `InitMarketFeePool` preIx
+   * then fails with `Custom(0)`, reporting a failure for a trade that executed.
    *
    * Returns the same `{ value: { err } }` shape the caller inspects. Throws
    * only on genuine expiry/timeout, so a retry is safe: the transaction
@@ -3113,10 +2750,10 @@ export class SolanaChainAdapter implements ChainAdapter {
       );
       const tx = new Transaction();
       // 400k suits a single instruction. A batch does not: each `book_cancel`
-      // walks the book to find its order, so a 24-cancel transaction ran out
-      // partway through and failed with "Program failed to complete" — which
-      // names neither the limit nor the instruction that hit it. Builders that
-      // know they are batching say so; everything else is unchanged.
+      // walks the book to find its order, so a 24-cancel transaction exhausts
+      // the default partway through and fails with "Program failed to
+      // complete" — which names neither the limit nor the instruction that hit
+      // it. Builders that know they are batching set `computeUnitLimit`.
       const requested = (meta as unknown as { computeUnitLimit?: unknown })
         .computeUnitLimit;
       const unitLimit = typeof requested === "number" ? requested : 400_000;
@@ -3128,9 +2765,9 @@ export class SolanaChainAdapter implements ChainAdapter {
       // Unconditional: the merged program means every instruction shares it.
       tx.add(ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }));
       // Priority fee = recent p50 for this market's locked writable account
-      // plus the existing byte-level salt. The salt remains load-bearing:
-      // two identical writes in the same blockhash window must still hash
-      // differently even if the fee cache returns the same p50 value.
+      // plus a byte-level salt. The salt is load-bearing: two identical writes
+      // in the same blockhash window must still hash differently even when the
+      // fee cache returns the same p50 value.
       tx.add(
         ComputeBudgetProgram.setComputeUnitPrice({
           microLamports,
@@ -3197,8 +2834,7 @@ export class SolanaChainAdapter implements ChainAdapter {
           // Rebuild from the INNER text, not `error.message`. The latter is
           // already "SoothError: NetworkError attempt=1 msg=…", so feeding it
           // back in as `msg` nests the prefix and pushes the useful part off
-          // the end of a toast — which is exactly how this diagnostic failed
-          // to reach the person who needed it.
+          // the end of a toast.
           const inner =
             (classified.error.fields as { msg?: string }).msg ??
             classified.error.message;
@@ -3246,11 +2882,10 @@ export class SolanaChainAdapter implements ChainAdapter {
         throw lastError;
       }
 
-      // H5 (Codex): inspect confirmation.value.err. `confirmTransaction`
-      // resolves successfully even for transactions whose execution
-      // reverted — the failure surface is the `value.err` field, not a
-      // thrown exception. Without this branch failed trades returned a
-      // "success" SubmitReceipt.
+      // Inspect confirmation.value.err. Confirmation resolves successfully
+      // even for transactions whose execution reverted — the failure surface
+      // is the `value.err` field, not a thrown exception, so a failed trade
+      // reaches here looking like a success.
       if (
         confirmation.value.err !== null &&
         confirmation.value.err !== undefined
@@ -3506,29 +3141,6 @@ export class SolanaChainAdapter implements ChainAdapter {
     return acc.amount;
   }
 
-  private bookProgramIds(): { soothBook: PublicKey } {
-    return {
-      soothBook: this.programIds.soothCore,
-    };
-  }
-
-  private async fetchBookOrderPurchaser(
-    orderPda: PublicKey,
-  ): Promise<PublicKey> {
-    const accounts = this.program.account as unknown as {
-      order: {
-        fetchNullable(pda: PublicKey): Promise<{ purchaser: PublicKey } | null>;
-      };
-    };
-    const order = await accounts.order.fetchNullable(orderPda);
-    if (!order) {
-      throw new SoothError({
-        kind: "AccountNotFound",
-        msg: `Order PDA not found at ${orderPda.toBase58()}`,
-      });
-    }
-    return order.purchaser;
-  }
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -3631,202 +3243,6 @@ function bigIntToBn(v: bigint): BN {
   return new BN(v.toString());
 }
 
-function programIdOrFallback(
-  value: string | undefined,
-  fallback: PublicKey,
-): PublicKey {
-  return value && value.length > 0 ? new PublicKey(value) : fallback;
-}
-
-function assertU64(v: bigint, name: string): void {
-  if (v < 0n || v > 0xffffffffffffffffn) {
-    throw new SoothError({
-      kind: "ProgramError",
-      msg: `${name} must fit in u64, got ${v.toString()}`,
-    });
-  }
-}
-
-function assertU128(v: bigint, name: string): void {
-  if (v < 0n || v > 0xffffffffffffffffffffffffffffffffn) {
-    throw new SoothError({
-      kind: "ProgramError",
-      msg: `${name} must fit in u128, got ${v.toString()}`,
-    });
-  }
-}
-
-function assertOrderbookTick(tick: number, name: string): void {
-  if (!Number.isInteger(tick) || tick < 1 || tick > 999) {
-    throw new SoothError({
-      kind: "ProgramError",
-      msg: `${name} must be an integer in 1..999, got ${String(tick)}`,
-    });
-  }
-}
-
-
-function decodeOrderId(orderId: bigint): { side: 0 | 1; tick: number } {
-  assertU64(orderId, "order_id");
-  const side = Number((orderId >> 56n) & 0xffn);
-  const tick = Number((orderId >> 40n) & 0xffffn);
-  if (side !== 0 && side !== 1) {
-    throw new SoothError({
-      kind: "ProgramError",
-      msg: `order_id side must be 0 or 1, got ${side}`,
-    });
-  }
-  assertOrderbookTick(tick, "order_id tick");
-  return { side, tick };
-}
-
-// Discriminators for sooth_core orderbook instructions (from the IDL).
-// `buy` discriminator: [102, 6, 61, 18, 1, 218, 235, 234]
-const SOOTH_CORE_SIGHASH = {
-  buy: Buffer.from([102, 6, 61, 18, 1, 218, 235, 234]),
-  cancel: Buffer.from("e8dbdf29dbecdcbe", "hex"),
-  cancel_by_id: Buffer.from("bcf1f0325f86217f", "hex"),
-} as const;
-
-function anchorSighash(name: keyof typeof SOOTH_CORE_SIGHASH): Buffer {
-  return Buffer.from(SOOTH_CORE_SIGHASH[name]);
-}
-
-function concatBuffers(parts: readonly Buffer[]): Buffer {
-  return Buffer.concat(parts);
-}
-
-function encodeBool(value: boolean): Buffer {
-  return Buffer.from([value ? 1 : 0]);
-}
-
-function encodeU8(value: number): Buffer {
-  if (!Number.isInteger(value) || value < 0 || value > 0xff) {
-    throw new SoothError({
-      kind: "ProgramError",
-      msg: `u8 value out of range: ${String(value)}`,
-    });
-  }
-  return Buffer.from([value]);
-}
-
-function encodeU16(value: number): Buffer {
-  if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
-    throw new SoothError({
-      kind: "ProgramError",
-      msg: `u16 value out of range: ${String(value)}`,
-    });
-  }
-  const buf = Buffer.alloc(2);
-  buf.writeUInt16LE(value);
-  return buf;
-}
-
-function encodeU32(value: number): Buffer {
-  if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) {
-    throw new SoothError({
-      kind: "ProgramError",
-      msg: `u32 value out of range: ${String(value)}`,
-    });
-  }
-  const buf = Buffer.alloc(4);
-  buf.writeUInt32LE(value);
-  return buf;
-}
-
-function encodeU64(value: bigint): Buffer {
-  assertU64(value, "u64 value");
-  const buf = Buffer.alloc(8);
-  buf.writeBigUInt64LE(value);
-  return buf;
-}
-
-function encodeU128(value: bigint): Buffer {
-  assertU128(value, "u128 value");
-  const buf = Buffer.alloc(16);
-  let remaining = value;
-  for (let i = 0; i < 16; i += 1) {
-    buf[i] = Number(remaining & 0xffn);
-    remaining >>= 8n;
-  }
-  return buf;
-}
-
-function readonly(pubkey: PublicKey): SolanaAccountMeta {
-  return { pubkey, isSigner: false, isWritable: false };
-}
-
-function writable(pubkey: PublicKey): SolanaAccountMeta {
-  return { pubkey, isSigner: false, isWritable: true };
-}
-
-function writableSigner(pubkey: PublicKey): SolanaAccountMeta {
-  return { pubkey, isSigner: true, isWritable: true };
-}
-
-
-
-function readBitmap(data: Uint8Array, offset: number): bigint[] {
-  return Array.from({ length: 16 }, (_, i) => readU64(data, offset + i * 8));
-}
-
-function readU16(data: Uint8Array, offset: number): number {
-  return Buffer.from(data.buffer, data.byteOffset + offset, 2).readUInt16LE();
-}
-
-function readU32(data: Uint8Array, offset: number): number {
-  return Buffer.from(data.buffer, data.byteOffset + offset, 4).readUInt32LE();
-}
-
-function readU64(data: Uint8Array, offset: number): bigint {
-  return Buffer.from(data.buffer, data.byteOffset + offset, 8).readBigUInt64LE();
-}
-
-function readU128(data: Uint8Array, offset: number): bigint {
-  let value = 0n;
-  for (let i = 15; i >= 0; i -= 1) {
-    value = (value << 8n) | BigInt(data[offset + i] ?? 0);
-  }
-  return value;
-}
-
-function assertI64(v: bigint, name: string): void {
-  if (v < -0x8000000000000000n || v > 0x7fffffffffffffffn) {
-    throw new SoothError({
-      kind: "ProgramError",
-      msg: `${name} must fit in i64, got ${v.toString()}`,
-    });
-  }
-}
-
-function assertSeed16(seed: Uint8Array, name: string): void {
-  if (seed.length !== 16) {
-    throw new SoothError({
-      kind: "ProgramError",
-      msg: `${name} must be exactly 16 bytes, got ${seed.length}`,
-    });
-  }
-}
-
-function assertPublicKeyEquals(
-  actual: PublicKey,
-  expected: PublicKey,
-  name: string,
-): void {
-  if (!actual.equals(expected)) {
-    throw new SoothError({
-      kind: "ProgramError",
-      msg: `${name} mismatch: expected ${expected.toBase58()}, got ${actual.toBase58()}`,
-    });
-  }
-}
-
-function bookMarketOrderBehaviour(
-  value: CreateBookMarketArgs["marketLockOrderBehaviour"],
-): BookMarketOrderBehaviourWire {
-  return value === "cancelUnmatched" ? { cancelUnmatched: {} } : { none: {} };
-}
-
 // Generate a 16-byte random market id. Architecture §2.2 specifies this as
 // the truncated keccak256 of `question || creator || nonce`; the SDK
 // surfaces a permissive default (random bytes) so callers without a
@@ -3841,14 +3257,6 @@ function randomMarketId(): Uint8Array {
   return bytes;
 }
 
-// Same shape as `randomMarketId`, separate name to make call sites read
-// cleanly. Used as the default `distinctSeed` for `create_order_request`
-// when the caller doesn't pin one (tests do; UIs typically don't).
-function randomSeed16(): Uint8Array {
-  const bytes = new Uint8Array(16);
-  globalThis.crypto.getRandomValues(bytes);
-  return bytes;
-}
 
 /**
  * `init_market_fee_pool` — creates BOTH venue fee pools in one instruction.

@@ -78,9 +78,9 @@ pub struct DistributeFeesBook<'info> {
     pub lp_mint: Box<Account<'info, Mint>>,
 
     /// THIS market's book-side yield vault, in the BOOK's token. `redeem_lp`
-    /// now pays from both venues' vaults in one burn, so this balance has a
+    /// pays from both venues' vaults in one burn, so this balance has a
     /// claim path — and it is per-market for the same reason the AMM's is:
-    /// a global vault let one market's LPs take every market's yield.
+    /// a global vault would let one market's LPs take every market's yield.
     #[account(
         mut,
         seeds = [b"lp_yield_book", market.market_id.as_ref()],
@@ -99,7 +99,7 @@ pub struct DistributeFeesBook<'info> {
     pub adjudicator_fee_vault: Box<Account<'info, TokenAccount>>,
 
     /// The treasury's OWNER — see the AMM's counterpart. `address =` here
-    /// would have made this venue and the AMM's mutually exclusive.
+    /// would make this venue and the AMM's mutually exclusive.
     #[account(
         mut,
         token::authority = config.treasury,

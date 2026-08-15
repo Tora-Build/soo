@@ -1,11 +1,9 @@
-// Ported from options-core with an honest downgrade.
+// Evidence hashing for the simulation portfolio.
 //
-// Upstream computed keccak256 over the evidence because the EVM attestation
-// contract VERIFIED that hash on-chain. Nothing on Solana consumes it — the
-// evidence record exists only in the simulation portfolio's display — and the
-// demo ships no real keccak. So this is a deterministic content TAG, not a
-// cryptographic commitment, and anything that starts verifying it must bring
-// a real hash first.
+// Nothing on Solana consumes this hash — the evidence record exists only in
+// the simulation portfolio's display — and the demo ships no real keccak. So
+// this is a deterministic content TAG, not a cryptographic commitment, and
+// anything that starts verifying it must bring a real hash first.
 export function canonicalEvidence(rawValue: string): string {
   return JSON.stringify({ value: rawValue });
 }

@@ -72,7 +72,7 @@ export const ChainSelector: React.FC = () => {
     }
   };
 
-  // If selected chain is invalid (e.g., removed from allowedChains), reset to default
+  // A selected chain absent from allowedChains resets to the default.
   React.useEffect(() => {
     if (!selectedChain && isConnected) {
       setSelectedChain(DEFAULT_CHAIN_ID);

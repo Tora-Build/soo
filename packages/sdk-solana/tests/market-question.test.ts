@@ -134,9 +134,9 @@ describe("create_market binds the question to its hash", () => {
 
 describe("the SDK will not build a market without a question", () => {
   it("rejects a missing question rather than emitting an untitled market", async () => {
-    // `buildCreateMarket` used to accept a bare `questionHash`. That now
-    // produces a market whose title nothing can ever recover, so it is a
-    // client-side error with a message naming why.
+    // A bare `questionHash` with no text produces a market whose title nothing
+    // can ever recover, so `buildCreateMarket` rejects it client-side with a
+    // message naming why.
     const { SolanaChainAdapter } = await import("../src/adapter.js");
     const { encodePubkeyRef } = await import("../src/refs.js");
     const adapter = new SolanaChainAdapter({

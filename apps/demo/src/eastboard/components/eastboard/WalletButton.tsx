@@ -1,5 +1,4 @@
-// Solana wallet button — replaces upstream's wagmi/MOSS connector button with
-// the same connect flow every other demo surface uses.
+// Solana wallet button — the same connect flow every other demo surface uses.
 import { useAccount, useAppKit } from "@/lib/chain-shim";
 
 export function WalletButton() {
