@@ -1382,5 +1382,534 @@
     "ack1": "LP tokens are not guaranteed to profit",
     "ack2": "Your deposit seeds liquidity for traders",
     "ack3": "Smart contract risks exist despite audits"
+  },
+  "eastboard": {
+    "nav": {
+      "chain": "Option chain",
+      "positions": "Positions",
+      "faucet": "Faucet",
+      "connect": "Connect wallet",
+      "classic": "Classic"
+    },
+    "header": {
+      "tagline": "Close-price options",
+      "fixtureBalance": "Fixture {{amount}} MUSDC",
+      "primaryNavigation": "Primary navigation",
+      "mobileNavigation": "Mobile navigation",
+      "changeLanguage": "Change language"
+    },
+    "shell": {
+      "testnetBanner": "No-value Solana devnet research prototype — outcomes and funds are for testing only",
+      "networkFooter": "Solana Devnet · Sooth Core"
+    },
+    "wallet": {
+      "connectedTitle": "Connected with {{connector}}. Click to disconnect.",
+      "fallbackName": "wallet",
+      "connecting": "Connecting",
+      "connect": "Connect",
+      "mossPasskey": "MOSS Passkey",
+      "connectionFailed": "Wallet connection failed.",
+      "technicalDetails": "Technical details",
+      "mobileFrameHelp": "On mobile, the browser may be blocking the wallet’s embedded frame. Retry on a slower connection or disable cross-site tracking prevention for this page. MOSS needs third-party frame storage and passkey access to load.",
+      "authorityNotice": "MegaETH testnet only. MOSS is never used for resolver or guardian authority."
+    },
+    "toast": {
+      "viewReceipt": "View receipt",
+      "dismiss": "Dismiss"
+    },
+    "hero": {
+      "eyebrow": "Daily close / binary settlement",
+      "title": "A clear board for Asia’s closing bell",
+      "body": "Select a pre-set strike and expiry. Unactivated cells open a guided funding preview; ready markets trade through Sooth’s central limit order book."
+    },
+    "metrics": {
+      "cells": "Template cells",
+      "live": "Live markets",
+      "close": "Session close"
+    },
+    "chain": {
+      "underlying": "Underlying",
+      "displayedOutcome": "Displayed outcome",
+      "filterMarkets": "Filter markets",
+      "outcome": "OUTCOME",
+      "outcomeCallRule": "Close >= strike",
+      "outcomePutRule": "Close < strike",
+      "outcomeCallAria": "Show CALL prices: official close greater than or equal to strike",
+      "outcomePutAria": "Show PUT prices: official close below strike",
+      "payoff": {
+        "eyebrow": "Binary payoff contract",
+        "body": "Prices are shown in cents. Your limit price is the collateral at risk per share; the order ticket adds the live crossing fee before you sign.",
+        "correct": "If correct",
+        "wrong": "If wrong",
+        "invalid": "If INVALID",
+        "perShare": "per share",
+        "eitherSide": "either side"
+      },
+      "activeOnly": "Active only",
+      "active": "Active",
+      "all": "All",
+      "syncing": "Syncing chain metadata",
+      "synced": "Chain metadata synced",
+      "fixtureNotice": "Local fixture mode is on. Filled cells exercise UI states only; canonical chain matching remains fail-closed.",
+      "hiddenMarkets_one": "{{count}} market hidden pending verification",
+      "hiddenMarkets_other": "{{count}} markets hidden pending verification",
+      "indexerUnavailable": "Indexer unavailable. No live markets are being inferred.",
+      "verificationUnavailable": "Chain verification unavailable. No live markets are being inferred.",
+      "priceUnavailable": "Live price refresh unavailable. Displayed grid prices may be out of date.",
+      "retry": "Retry",
+      "emptyTitle": "No templates available",
+      "emptyBody": "The session calendar produced no eligible expiries.",
+      "optionsAria": "Options chain",
+      "loadingAria": "Loading option chain",
+      "strike": "Strike",
+      "today": "Today",
+      "nextSession": "Next session",
+      "status": {
+        "available": "Activate",
+        "activating": "Activate",
+        "closed": "Closed",
+        "live": "Trade",
+        "settled": "Settled"
+      },
+      "meta": {
+        "available": "new",
+        "fixture": "fixture",
+        "activating": "resume",
+        "live": "reference",
+        "settled": "chain"
+      },
+      "rules": {
+        "outcome": "YES settles when the official close is greater than or equal to the strike. NO settles when the official close is below the strike. Full-session suspensions, qualifying corporate actions, missing closes, or fewer than two agreeing evidence sources resolve INVALID.",
+        "timingPrefix": "Trading freezes at the exchange close.",
+        "fixtureTiming": "Explicit fixtures settle locally and immediately.",
+        "canonicalTiming": "Canonical testnet markets collect close evidence on the session pass, then wait through the deployed ManualAdjudicator’s 60-minute veto period.",
+        "invalidation": "Every clone’s invalidation deadline is read live."
+      }
+    },
+    "activation": {
+      "steps": {
+        "funding": {
+          "label": "Approve exact creator deposit",
+          "detail": "Allowance only; funds remain in your wallet until creation."
+        },
+        "creating": {
+          "label": "Create canonical market",
+          "detail": "The deposit backs the market’s worst-case payout."
+        },
+        "bonding": {
+          "label": "Seed executable liquidity",
+          "detail": "Quote-bounded trades seed inventory; you receive outcome shares and a liquidity token."
+        },
+        "graduated": {
+          "label": "Open trading",
+          "detail": "Confirm order-book registration; activation assets remain claimable."
+        }
+      },
+      "economics": {
+        "title": "Capital decision",
+        "maximumCommitted": "Maximum committed",
+        "maximumCommittedUnit": "test MUSDC + gas · locked across market assets",
+        "recoverable": "Est. recoverable",
+        "feesCost": "Est. fees / cost",
+        "creatorDeposit": "Creator deposit",
+        "seedingCollateral": "Liquidity-seeding collateral",
+        "activationFee": "Activation fee · 5%",
+        "formula": "Deposit formula",
+        "assetExplanation": "Activation trades mint YES/NO shares and liquidity tokens to the activator. After settlement, winning/INVALID shares can be claimed and liquidity tokens can be redeemed pro-rata.",
+        "recoverableWarning": "Recoverable is an estimate, not cash in your wallet: it unlocks only after settlement and depends on the resolved outcome and LP floor."
+      },
+      "sequence": "Receipt-backed sequence",
+      "stepState": {
+        "mined": "mined",
+        "current": "current",
+        "next": "next",
+        "queued": "queued"
+      },
+      "frame": {
+        "eyebrow": "Testnet activation",
+        "closes": "closes {{close}}"
+      },
+      "fixture": {
+        "notice": "Explicit fixture mode. These controls do not sign or broadcast and are available only through the fixture flag.",
+        "openTrade": "Open fixture trade drawer",
+        "start": "Start fixture simulation",
+        "continue": "Continue fixture simulation",
+        "reset": "Reset fixture"
+      },
+      "canonical": {
+        "notice": "MegaETH testnet broadcasts are enabled. Manual simulation · verified=false · Primus is not live. Every approval is exact and every state transition waits for a successful receipt.",
+        "resuming": "Resuming this cell’s existing market — mined steps are skipped and no new deposit is taken.",
+        "market": "Market {{address}}",
+        "receipt": "Receipt {{hash}}",
+        "tooLate": "Activation locked: fewer than two hours remain before close.",
+        "openOrderbook": "Open chain order book",
+        "waitingReceipts": "Waiting for receipts",
+        "approveCreate": "Approve and create on testnet",
+        "connectHeader": "Connect wallet in header",
+        "waitingReceipt": "Waiting for receipt",
+        "submitSeed": "Submit next liquidity seed",
+        "resetAllowance": "Reset exact seeding allowance"
+      },
+      "status": {
+        "mossSession": "Approve the 4-hour MOSS EastBoard session (single popup)",
+        "approveCreation": "Approve exactly {{amount}} raw test MUSDC for creation",
+        "createMarket": "Create the canonical ManualAdjudicator market",
+        "approveSetupBudget": "Approve the capped 370 test-MUSDC market setup budget",
+        "marketCreated": "Market {{address}} created; continue liquidity setup",
+        "tradingReady": "Trading readiness is confirmed on-chain",
+        "resetSetupBudget": "Setup allowance exhausted; resetting the capped 370 test-MUSDC budget",
+        "submittingRound": "Submitting {{outcome}} liquidity round at a 1% quote bound",
+        "finalRound": "Round mined; liquidity setup is 99.99% complete — submit the final rounding transaction",
+        "roundProgress": "Round mined; liquidity setup is {{progress}}% complete",
+        "mossBatchedApproval": "MOSS batches an exact approval with each quoted setup transaction",
+        "setupAllowanceSet": "Setup allowance is set to the exact capped budget"
+      },
+      "errors": {
+        "registryMissing": "{{label}} is missing from the MegaETH deployment registry",
+        "liquiditySetup": "Liquidity setup could not be completed",
+        "connectWallet": "Connect a wallet first",
+        "wrongNetwork": "Switch the wallet to MegaETH testnet",
+        "rpcUnavailable": "MegaETH RPC client is unavailable",
+        "transactionReverted": "Transaction {{hash}} reverted",
+        "mossBatch": "MOSS approvals must be batched with their consuming call",
+        "approvalMismatch": "Approval receipt did not set the exact test MUSDC allowance",
+        "twoHourLead": "Activation requires at least two hours before close",
+        "creationEvent": "Creation receipt did not contain MarketCreated",
+        "createFirst": "Create or resume a market first",
+        "trialWindow": "Fewer than 15 minutes remain in the market setup window",
+        "registrationPending": "Liquidity target reached but order-book registration is not confirmed",
+        "noSetupFee": "No remaining market setup fee was found"
+      },
+      "solanaNote": "One signature: create_market initializes the vaults, AMM state and lifecycle in a single Solana transaction, with the question stored and verified on-chain.",
+      "liquidity": "Liquidity (b)",
+      "title": "Activate market",
+      "strike": "Strike",
+      "expiry": "Expiry",
+      "close": "Session close",
+      "cancel": "Cancel",
+      "trade": "Trade",
+      "pending": "Signing…",
+      "activate": "Activate",
+      "activateFixture": "Activate (simulation)"
+    },
+    "trade": {
+      "drawer": {
+        "fixtureBook": "Fixture order book",
+        "canonicalBook": "Canonical order book",
+        "stateFixture": "Fixture",
+        "stateLive": "Live CLOB",
+        "stateClosed": "Trading frozen",
+        "stateSettled": "Settled"
+      },
+      "depth": {
+        "title": "CLOB depth",
+        "liveTitle": "Live CLOB depth",
+        "spread": "spread {{spread}}",
+        "instruction": "Select an ask to buy YES. Select a bid to sell YES.",
+        "bids": "YES bids · buyers",
+        "asks": "YES asks · sellers",
+        "sizePrice": "Size · Price",
+        "priceSize": "Price · Size",
+        "empty": "Empty",
+        "unavailable": "Unavailable",
+        "syncing": "Syncing…",
+        "tradeBidAria": "Trade against bid at {{price}}",
+        "tradeAskAria": "Trade against ask at {{price}}",
+        "openSpread": "{{count}} open · spread {{spread}}",
+        "open": "{{count}} open",
+        "loadError": "Order-book depth and open-order status could not be loaded. This is not an empty market. Retry after the indexer reconnects."
+      },
+      "fixture": {
+        "notice": "Simulated attestation mode · verified=false. Quotes and fills are local fixtures; no wallet signature or transaction can be produced here.",
+        "midpoint": "Midpoint",
+        "impliedYes": "YES reference · {{value}}",
+        "buyYes": "Buy YES",
+        "sellYes": "Sell YES",
+        "simBalance": "Sim balance {{amount}} MUSDC",
+        "yesLimitPrice": "YES limit price (¢)",
+        "sellHelper": "Equivalent NO price: {{noPrice}}¢ · collateralized below exposure",
+        "limitPrice": "Limit price, cents",
+        "shares": "Shares",
+        "risk": "You risk",
+        "pays": "Pays if right",
+        "invalidPayout": "INVALID pays 50¢ per share · {{amount}} MUSDC",
+        "submit": "Submit simulated order",
+        "invalidInput": "Enter a whole-cent price from 1 to 99 and shares within the simulated balance.",
+        "filled": "Simulated {{action}} filled for {{amount}} test MUSDC.",
+        "appendixBody": "The template stops trading at {{close}}. Local settlement is immediate; a future mined ManualAdjudicator simulation must also wait through its deployed 60-minute veto period. INVALID follows the market deadline plus the clone’s live invalidation buffer."
+      },
+      "live": {
+        "bannerTitle": "MegaETH testnet · verified=false",
+        "bannerBody": "Orders and receipts are on-chain. Settlement is manually operated and the published close is not cryptographically verified.",
+        "bestBid": "Best bid",
+        "priceReference": "Price reference",
+        "bestAsk": "Best ask",
+        "protocolOnly": "Protocol reference only · order book unavailable",
+        "bookUnavailable": "Order book unavailable",
+        "syncingBook": "Syncing order book",
+        "clobMidpoint": "CLOB midpoint · {{value}}",
+        "protocolReference": "Protocol reference · {{state}}",
+        "emptyBook": "empty book",
+        "oneSidedBook": "one-sided book",
+        "midpointExplanation": "This number is the midpoint between the best indexed CLOB bid and ask; it is a reference, not a guaranteed fill.",
+        "protocolExplanation": "The order book cannot form a midpoint, so this number comes from the live protocol state. Your order still executes on SoothBook.",
+        "unavailableExplanation": "Indexed depth is unavailable, so this reference cannot be treated as an executable price. Order submission is paused.",
+        "loadingExplanation": "Reading indexed depth before presenting an executable price reference.",
+        "noReference": "No chain or indexer price reference is available yet. The app is not inventing one."
+      },
+      "position": {
+        "title": "Your position",
+        "connect": "Connect a wallet to see your position.",
+        "reading": "Reading position…",
+        "empty": "No shares held in this market.",
+        "includesActivation": "Includes activation inventory · {{yes}} YES / {{no}} NO"
+      },
+      "orders": {
+        "title": "Your open orders",
+        "unavailable": "Open-order status is unavailable while the indexer is offline.",
+        "reading": "Reading open orders…",
+        "empty": "No resting orders.",
+        "cancel": "Cancel #{{id}}"
+      },
+      "ticket": {
+        "buyYes": "Buy YES",
+        "sellYes": "Sell YES",
+        "yesLimitPrice": "YES limit price (¢)",
+        "sellHelper": "Equivalent NO price: {{noPrice}}¢",
+        "collateralizedBelow": "Collateralized below exposure",
+        "limitPrice": "Limit price, cents",
+        "shares": "Shares",
+        "currentFee": "Current order fee",
+        "unavailable": "Unavailable",
+        "reading": "Reading…"
+      },
+      "risk": {
+        "beforeSign": "Before you sign",
+        "youRisk": "You risk",
+        "riskUnit": "MUSDC incl. crossing fee",
+        "netWin": "Net win if right",
+        "winUnit": "MUSDC after max debit",
+        "invalid": "INVALID · 50¢/share",
+        "details": "Order details",
+        "viewBreakdown": "View breakdown",
+        "collateral": "Collateral · price × shares",
+        "crossingFee": "Crossing fee · {{fee}}",
+        "maximumDebit": "Maximum debit",
+        "payout": "Payout if right · 100¢/share",
+        "walletBalance": "Wallet balance",
+        "explanation": "A binary share pays 100¢ if correct and 0¢ if wrong. The fee is charged on top when this order crosses and fills as taker; the ticket reserves that worst case."
+      },
+      "actions": {
+        "waitingReceipt": "Waiting for receipt",
+        "claim": "Claim settled payout",
+        "tradingClosed": "Trading closed at the exchange close",
+        "bookUnavailable": "Order book unavailable",
+        "feeUnavailable": "Fee schedule unavailable",
+        "readingFee": "Reading current fee",
+        "submit": "Submit on-chain order",
+        "connect": "Connect wallet"
+      },
+      "appendix": {
+        "title": "Rules, fees, custody & settlement",
+        "subtitle": "Manual settlement · verified=false · INVALID pays 50¢/share",
+        "view": "View details",
+        "onchainMarket": "On-chain market",
+        "walletRouting": "{{address}} · orders sign through the connected MegaETH testnet wallet"
+      },
+      "status": {
+        "mossSession": "Approve the 4-hour MOSS EastBoard session…",
+        "connectWallet": "Connect a MegaETH testnet wallet first.",
+        "settlementUnavailable": "Settlement contracts are unavailable.",
+        "claiming": "Claiming settled positions…",
+        "nothingToClaim": "Nothing to claim in this market.",
+        "claimed": "Claimed {{amount}} test MUSDC",
+        "claimNoChange": "Claim confirmed; no balance change was recorded",
+        "tradingClosed": "Trading is closed for this market.",
+        "submissionPaused": "The order book is unavailable. Order submission is paused until indexed depth returns.",
+        "feeScheduleUnavailable": "Live FeeRouter schedule is unavailable; refusing to quote or sign an order.",
+        "invalidOrder": "Use a whole-cent tick from 1 to 99 and positive shares.",
+        "checkingAllowance": "Checking exact collateral allowance…",
+        "approveExact": "Approve exactly {{amount}} test MUSDC…",
+        "submitting": "Submitting {{action}}…",
+        "orderConfirmed": "Order confirmed: {{hash}}",
+        "cancelling": "Cancelling order {{id}}…",
+        "cancelConfirmed": "Cancellation confirmed: {{hash}}"
+      },
+      "errors": {
+        "operationFailed": "Operation failed: {{detail}}",
+        "lifecycleClient": "Market lifecycle client is unavailable",
+        "balanceClient": "Balance client is unavailable",
+        "positionClient": "Position client unavailable",
+        "feeClient": "Fee client unavailable",
+        "mossConfig": "MOSS session contract configuration is unavailable",
+        "claimReceipt": "Claim receipt failed",
+        "claimStep": "Claim step {{step}} reverted",
+        "approvalReceipt": "Collateral approval receipt failed",
+        "approvalMismatch": "Approval receipt did not set the exact order allowance",
+        "orderReceipt": "Order receipt failed",
+        "cancelReceipt": "Cancel receipt failed",
+        "shortfall": "{{purpose}} needs {{required}} test MUSDC, but this wallet has {{balance}}. Mint test MUSDC from Faucet first.",
+        "purposeOrder": "Order"
+      },
+      "fees": {
+        "eyebrow": "Live FeeRouter",
+        "title": "What fees you pay, and where they go",
+        "current": "Current order fee {{fee}}",
+        "readError": "The deployed fee schedule could not be read. Order signing is disabled instead of presenting an assumed fee.",
+        "applied": "Applied to crossing orders",
+        "description": "A crossing order pays the current fee on top of collateral. The deployed split below applies to that fee.",
+        "marketReserve": "Market reserve",
+        "lpYield": "LP yield",
+        "adjudicator": "Adjudicator",
+        "protocol": "Protocol"
+      },
+      "custody": {
+        "eyebrow": "Custody map",
+        "title": "Where your assets are now",
+        "claimsUnlocked": "claims unlocked",
+        "live": "live custody",
+        "connect": "Connect a wallet to read custody balances and unlock conditions.",
+        "wallet": "Wallet",
+        "readingBalance": "Reading balance…",
+        "walletDescription": "Available now; approvals do not move funds.",
+        "orderEngine": "OrderEngine",
+        "bookBalance": "{{yes}} YES · {{no}} NO · ≈{{escrow}} MUSDC resting",
+        "readingBook": "Reading CLOB custody…",
+        "bookDescription": "Resting collateral unlocks on cancel/fill; outcome shares claim after settlement.",
+        "activation": "Activation inventory",
+        "activationBalance": "{{yes}} YES · {{no}} NO",
+        "readingActivation": "Reading activation inventory…",
+        "activationDescription": "Shares acquired during activation become claimable after settlement.",
+        "lpToken": "LP token",
+        "lpBalance": "{{amount}} LP",
+        "readingLp": "Reading LP balance…",
+        "lpDescription": "Redeemable pro-rata only after settlement, after liabilities and reserved fees."
+      }
+    },
+    "mechanism": {
+      "loadingAria": "Loading market mechanism",
+      "unavailableTitle": "Mechanism status unavailable",
+      "unavailableBody": "Live market and adjudicator reads failed. No lifecycle timestamps or authority claims are being inferred.",
+      "unknownOutcome": "unknown outcome {{outcome}}",
+      "notSet": "Not set",
+      "phase": {
+        "notConfigured": "Not configured",
+        "trading": "Trading / awaiting close",
+        "proposed": "Outcome proposed / veto open",
+        "attested": "Attested / veto open",
+        "settled": "Settled",
+        "disputed": "Guardian disputed / re-resolution required",
+        "frozen": "Trading frozen / awaiting resolver",
+        "unknown": "Unknown {{phase}}"
+      },
+      "time": {
+        "days": "{{days}}d {{hours}}h {{minutes}}m",
+        "in": "in {{value}}",
+        "ago": "{{value}} ago"
+      },
+      "sources": {
+        "sse": "Shanghai Stock Exchange day-k close",
+        "szse": "Shenzhen Stock Exchange history close",
+        "tencent": "Tencent HK daily close feed",
+        "yahoo": "Yahoo Finance daily chart close",
+        "primary": "{{source}} primary",
+        "hsiCrossCheck": "Yahoo Finance HSI cross-check",
+        "tencentCrossCheck": "Tencent daily close cross-check"
+      },
+      "confirmed": "Confirmed on-chain",
+      "notScheduled": "Not scheduled until an outcome is proposed",
+      "eyebrow": "Live mechanism",
+      "title": "What happens next, and who controls it",
+      "phaseLabel": "Phase: {{phase}}",
+      "proposedOutcome": "Proposed {{outcome}}",
+      "warningTitle": "Manual simulation · verified=false",
+      "warningBody": "Primus is not live here. The resolver submits a human-operated ManualAdjudicator decision and evidence hash; the contract does not cryptographically verify the published close.",
+      "timeline": {
+        "tradingFreezes": "Trading freezes",
+        "firstEvidence": "First evidence pass",
+        "evidenceDeadline": "Evidence deadline",
+        "guardianVeto": "Guardian veto ends",
+        "settlement": "Earliest settlement",
+        "fallback": "Unresolved fallback",
+        "chain": "chain",
+        "schedule": "schedule",
+        "evidenceWindow": "{{timing}} · configured evidence window",
+        "priorDispute": "Prior proposal disputed · awaiting re-resolution",
+        "pendingProposal": "Pending proposal · {{minutes}} min window",
+        "invalidPath": "{{timing}} · permissionless INVALID path"
+      },
+      "evidence": {
+        "policy": "Evidence policy · 2-of-{{count}}",
+        "rules": "Two independent close observations must agree. Fewer than two, no published close, a full-session suspension, or a qualifying corporate action produces INVALID. INVALID redeems YES and NO at 50¢ per share."
+      },
+      "authority": {
+        "adjudicator": "ManualAdjudicator",
+        "resolver": "Resolver · only address that can propose",
+        "guardian": "Configured guardian",
+        "guardianApproved": "Approved on-chain to veto",
+        "guardianNotApproved": "Not approved on-chain",
+        "evidenceHash": "Proposed evidence hash"
+      }
+    },
+    "portfolio": {
+      "eyebrow": "Local positions and redemption",
+      "title": "Portfolio",
+      "simulatedBalance": "Simulated balance",
+      "notice": "Simulated attestation · verified=false. These positions, outcomes, and redemptions exist only in local memory and never touch MegaETH.",
+      "emptyEyebrow": "No local positions",
+      "emptyTitle": "Place a simulated order first",
+      "emptyBody": "Open a live fixture from the options grid and submit a local order.",
+      "status": {
+        "live": "live",
+        "settled": "settled",
+        "redeemed": "redeemed"
+      },
+      "summary": "{{expiry}} · YES {{yes}} · NO {{no}} · cost {{cost}}",
+      "evidence": "Simulated evidence: {{value}} · {{reason}}",
+      "redeemed": "Redeemed {{amount}} test MUSDC",
+      "runResolver": "Run simulated resolver",
+      "redeem": "Redeem locally",
+      "complete": "Complete",
+      "fixtureOnly": "Fixture-only route",
+      "disabledBodyBefore": "Local simulated positions are disabled in the default chain UI. Add the explicit",
+      "disabledBodyAfter": "flag only when testing non-broadcasting fixture flows."
+    },
+    "faucet": {
+      "title": "Faucet",
+      "testMusdc": "Test MUSDC",
+      "fixtureEyebrow": "Local simulation funding",
+      "fixtureNotice": "Local-only balance. This faucet never calls the MegaETH token contract.",
+      "fixtureBody": "Use this balance to exercise activation previews, local order fills, portfolio settlement, and redemption without a wallet.",
+      "simulatedBalance": "Simulated balance",
+      "addLocal": "Add 1,000 local MUSDC",
+      "addedLocal": "Added 1,000 local test MUSDC. No token was minted on-chain.",
+      "chainEyebrow": "MegaETH testnet funding",
+      "chainNotice": "This calls the deployed permissionless MockUSDC mint function on MegaETH testnet. Tokens have no value.",
+      "chainBody": "Activation needs about 381.23 test MUSDC. One faucet mint funds a complete activation rehearsal plus order testing.",
+      "walletBalance": "Wallet balance",
+      "connectWallet": "Connect wallet",
+      "waitingReceipt": "Waiting for receipt",
+      "mint": "Mint 1,000 test MUSDC",
+      "receipt": "Receipt {{hash}}",
+      "status": {
+        "connectFirst": "Connect a MegaETH testnet wallet first.",
+        "configUnavailable": "MegaETH test-token configuration is unavailable.",
+        "simulating": "Simulating the permissionless test-token mint…",
+        "mossSession": "Approve the 4-hour MOSS EastBoard session…",
+        "confirmMint": "Confirm minting 1,000 test MUSDC in your wallet…",
+        "confirmed": "Mint confirmed. Balance: {{balance}} test MUSDC."
+      },
+      "errors": {
+        "mossConfig": "MOSS session contract configuration is unavailable",
+        "receiptFailed": "Mint receipt failed",
+        "balanceUnchanged": "Mint receipt did not increase the wallet’s test MUSDC balance",
+        "operationFailed": "Mint failed: {{detail}}"
+      }
+    },
+    "errors": {
+      "operationFailed": "Operation failed: {{detail}}",
+      "unexpectedFailure": "The wallet or network request could not be completed.",
+      "technicalDetails": "Technical details"
+    }
   }
 }

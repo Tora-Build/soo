@@ -1382,5 +1382,534 @@
     "ack1": "LP 代币不保证盈利",
     "ack2": "您的存款为交易者提供流动性",
     "ack3": "尽管经过审计，智能合约风险仍然存在"
+  },
+  "eastboard": {
+    "nav": {
+      "chain": "期权链",
+      "positions": "持仓",
+      "faucet": "测试币",
+      "connect": "连接钱包",
+      "classic": "经典界面"
+    },
+    "header": {
+      "tagline": "收盘价期权",
+      "fixtureBalance": "模拟余额 {{amount}} MUSDC",
+      "primaryNavigation": "主导航",
+      "mobileNavigation": "移动端导航",
+      "changeLanguage": "切换语言"
+    },
+    "shell": {
+      "testnetBanner": "无价值 Solana devnet 研究原型——结算与资金仅用于测试",
+      "networkFooter": "Solana Devnet · Sooth Core"
+    },
+    "wallet": {
+      "connectedTitle": "已通过 {{connector}} 连接。点击即可断开。",
+      "fallbackName": "钱包",
+      "connecting": "连接中",
+      "connect": "连接",
+      "mossPasskey": "MOSS 通行密钥",
+      "connectionFailed": "钱包连接失败。",
+      "technicalDetails": "技术详情",
+      "mobileFrameHelp": "在移动端，浏览器可能拦截了钱包的嵌入式窗口。请在网络较慢时重试，或为本页面关闭跨站跟踪防护。MOSS 需要第三方窗口存储和通行密钥权限才能加载。",
+      "authorityNotice": "仅限 MegaETH 测试网。MOSS 不会获得结算执行者或守护者权限。"
+    },
+    "toast": {
+      "viewReceipt": "查看回执",
+      "dismiss": "关闭"
+    },
+    "hero": {
+      "eyebrow": "每日收盘 / 二元结算",
+      "title": "聚焦亚洲收盘价的期权盘面",
+      "body": "选择预设行权价和到期日。尚未开放的合约会显示资金配置引导；已上线市场通过 Sooth 中央限价订单簿交易。"
+    },
+    "metrics": {
+      "cells": "期权合约",
+      "live": "可交易市场",
+      "close": "收盘时间"
+    },
+    "chain": {
+      "underlying": "标的",
+      "displayedOutcome": "显示的结算方向",
+      "filterMarkets": "筛选市场",
+      "outcome": "结算方向",
+      "outcomeCallRule": "收盘价 >= 行权价",
+      "outcomePutRule": "收盘价 < 行权价",
+      "outcomeCallAria": "显示 CALL 价格：官方收盘价大于或等于行权价",
+      "outcomePutAria": "显示 PUT 价格：官方收盘价低于行权价",
+      "payoff": {
+        "eyebrow": "二元收益合约",
+        "body": "价格统一以分显示。限价就是每份合约承担风险的抵押金额；签名前，订单面板会计入实时吃单手续费。",
+        "correct": "判断正确",
+        "wrong": "判断错误",
+        "invalid": "结果为 INVALID",
+        "perShare": "每份合约",
+        "eitherSide": "任一方向"
+      },
+      "activeOnly": "仅看已上线",
+      "active": "已上线",
+      "all": "全部",
+      "syncing": "正在同步链上信息",
+      "synced": "链上信息已同步",
+      "fixtureNotice": "本地模拟模式已开启。已填充的合约格仅用于测试界面状态；正式链上匹配仍保持严格验证。",
+      "hiddenMarkets_one": "{{count}} 个市场正在等待验证，暂未显示",
+      "hiddenMarkets_other": "{{count}} 个市场正在等待验证，暂未显示",
+      "indexerUnavailable": "索引服务不可用，当前不会推断任何可交易市场。",
+      "verificationUnavailable": "链上验证不可用，当前不会推断任何可交易市场。",
+      "priceUnavailable": "实时价格刷新不可用，盘面中显示的价格可能已过期。",
+      "retry": "重试",
+      "emptyTitle": "暂无可用合约",
+      "emptyBody": "交易日历没有生成符合条件的到期日。",
+      "optionsAria": "期权链",
+      "loadingAria": "正在加载期权链",
+      "strike": "行权价",
+      "today": "今日",
+      "nextSession": "下一交易日",
+      "status": {
+        "available": "启动",
+        "activating": "继续启动",
+        "closed": "已收盘",
+        "live": "交易",
+        "settled": "已结算"
+      },
+      "meta": {
+        "available": "新合约",
+        "fixture": "模拟",
+        "activating": "继续",
+        "live": "参考价",
+        "settled": "链上"
+      },
+      "rules": {
+        "outcome": "官方收盘价大于或等于行权价时，YES 结算胜出。官方收盘价低于行权价时，NO 结算胜出。全天停牌、符合条件的公司行动、缺少收盘价，或不足两个独立数据源达成一致时，结果为 INVALID。",
+        "timingPrefix": "交易在交易所收盘时停止。",
+        "fixtureTiming": "明确启用的模拟合约会立即在本地结算。",
+        "canonicalTiming": "正式测试网市场会在当日取证批次中收集收盘数据，随后等待已部署 ManualAdjudicator 的 60 分钟异议期。",
+        "invalidation": "每个市场的失效截止时间均从链上实时读取。"
+      }
+    },
+    "activation": {
+      "steps": {
+        "funding": {
+          "label": "精确授权创建者保证金",
+          "detail": "此步骤仅设置额度；市场创建前，资金仍在钱包中。"
+        },
+        "creating": {
+          "label": "创建标准市场",
+          "detail": "保证金用于覆盖市场最不利情况下的兑付。"
+        },
+        "bonding": {
+          "label": "注入可成交流动性",
+          "detail": "按报价上限执行交易以提供初始库存；您会获得结果份额和流动性代币。"
+        },
+        "graduated": {
+          "label": "开放交易",
+          "detail": "确认订单簿已登记；启动过程中获得的资产仍可领取。"
+        }
+      },
+      "economics": {
+        "title": "资金决策",
+        "maximumCommitted": "最高投入",
+        "maximumCommittedUnit": "测试 MUSDC + Gas · 资金锁定于不同的市场资产",
+        "recoverable": "预计可收回",
+        "feesCost": "预计手续费 / 成本",
+        "creatorDeposit": "创建者保证金",
+        "seedingCollateral": "流动性注入抵押",
+        "activationFee": "启动手续费 · 5%",
+        "formula": "保证金公式",
+        "assetExplanation": "启动交易会向启动者铸造 YES/NO 份额和流动性代币。结算后，胜出或 INVALID 份额可领取，流动性代币可按比例赎回。",
+        "recoverableWarning": "可收回金额只是估算，并非钱包中的可用现金：只有结算后才能解锁，且取决于最终结果和 LP 保底价值。"
+      },
+      "sequence": "以链上回执为准的流程",
+      "stepState": {
+        "mined": "已上链",
+        "current": "当前",
+        "next": "下一步",
+        "queued": "等待中"
+      },
+      "frame": {
+        "eyebrow": "测试网市场启动",
+        "closes": "收盘 {{close}}"
+      },
+      "fixture": {
+        "notice": "当前为明确启用的模拟模式。这些控件不会签名或广播，只有带模拟参数时才可用。",
+        "openTrade": "打开模拟交易面板",
+        "start": "开始模拟启动流程",
+        "continue": "继续模拟启动流程",
+        "reset": "重置模拟流程"
+      },
+      "canonical": {
+        "notice": "MegaETH 测试网广播已开启。人工模拟 · verified=false · Primus 尚未启用。每次授权均为精确额度，每个状态变化都会等待成功回执。",
+        "resuming": "正在继续此合约格已有的市场 — 已上链步骤会跳过，也不会再次扣取保证金。",
+        "market": "市场 {{address}}",
+        "receipt": "回执 {{hash}}",
+        "tooLate": "市场启动已锁定：距离收盘不足两小时。",
+        "openOrderbook": "打开链上订单簿",
+        "waitingReceipts": "等待链上回执",
+        "approveCreate": "授权并在测试网创建",
+        "connectHeader": "请先在顶部连接钱包",
+        "waitingReceipt": "等待链上回执",
+        "submitSeed": "提交下一笔流动性注入",
+        "resetAllowance": "重设精确注入额度"
+      },
+      "status": {
+        "mossSession": "请批准 4 小时 MOSS EastBoard 会话（仅一个弹窗）",
+        "approveCreation": "请为创建市场精确授权 {{amount}} 个最小单位的测试 MUSDC",
+        "createMarket": "创建标准 ManualAdjudicator 市场",
+        "approveSetupBudget": "请授权上限为 370 测试 MUSDC 的市场启动预算",
+        "marketCreated": "市场 {{address}} 已创建；请继续注入流动性",
+        "tradingReady": "已在链上确认可交易状态",
+        "resetSetupBudget": "启动额度已用尽；正在重设上限为 370 测试 MUSDC 的预算",
+        "submittingRound": "正在按 1% 报价上限提交 {{outcome}} 流动性交易",
+        "finalRound": "交易已上链；流动性配置完成 99.99% — 请提交最后一笔取整交易",
+        "roundProgress": "交易已上链；流动性配置完成 {{progress}}%",
+        "mossBatchedApproval": "MOSS 会将精确授权与每笔报价交易一并提交",
+        "setupAllowanceSet": "启动额度已设为精确的预算上限"
+      },
+      "errors": {
+        "registryMissing": "MegaETH 部署注册表缺少 {{label}}",
+        "liquiditySetup": "流动性配置未能完成",
+        "connectWallet": "请先连接钱包",
+        "wrongNetwork": "请将钱包切换到 MegaETH 测试网",
+        "rpcUnavailable": "MegaETH RPC 客户端不可用",
+        "transactionReverted": "交易 {{hash}} 已回滚",
+        "mossBatch": "MOSS 授权必须与使用该额度的调用一并提交",
+        "approvalMismatch": "授权回执未设置精确的测试 MUSDC 额度",
+        "twoHourLead": "启动市场时，距离收盘必须至少还有两小时",
+        "creationEvent": "创建回执中没有 MarketCreated 事件",
+        "createFirst": "请先创建或继续一个市场",
+        "trialWindow": "市场启动窗口剩余不足 15 分钟",
+        "registrationPending": "流动性目标已达到，但订单簿登记尚未确认",
+        "noSetupFee": "没有剩余的市场启动手续费目标"
+      },
+      "solanaNote": "一次签名:create_market 在一笔 Solana 交易中初始化金库、AMM 状态与生命周期,问题文本上链并经程序校验。",
+      "liquidity": "流动性 (b)",
+      "title": "激活市场",
+      "strike": "行权价",
+      "expiry": "到期日",
+      "close": "收盘时间",
+      "cancel": "取消",
+      "trade": "交易",
+      "pending": "签名中…",
+      "activate": "激活",
+      "activateFixture": "激活(模拟)"
+    },
+    "trade": {
+      "drawer": {
+        "fixtureBook": "模拟订单簿",
+        "canonicalBook": "标准订单簿",
+        "stateFixture": "模拟",
+        "stateLive": "CLOB 交易中",
+        "stateClosed": "交易已停止",
+        "stateSettled": "已结算"
+      },
+      "depth": {
+        "title": "CLOB 深度",
+        "liveTitle": "实时 CLOB 深度",
+        "spread": "价差 {{spread}}",
+        "instruction": "选择卖价买入 YES；选择买价卖出 YES。",
+        "bids": "YES 买盘 · 买方",
+        "asks": "YES 卖盘 · 卖方",
+        "sizePrice": "数量 · 价格",
+        "priceSize": "价格 · 数量",
+        "empty": "暂无挂单",
+        "unavailable": "不可用",
+        "syncing": "同步中…",
+        "tradeBidAria": "按买价 {{price}} 交易",
+        "tradeAskAria": "按卖价 {{price}} 交易",
+        "openSpread": "{{count}} 笔挂单 · 价差 {{spread}}",
+        "open": "{{count}} 笔挂单",
+        "loadError": "无法加载订单簿深度和挂单状态。这不代表市场为空；请在索引服务恢复后重试。"
+      },
+      "fixture": {
+        "notice": "模拟证明模式 · verified=false。报价和成交均为本地模拟；这里不会生成钱包签名或链上交易。",
+        "midpoint": "中间价",
+        "impliedYes": "YES 参考价 · {{value}}",
+        "buyYes": "买入 YES",
+        "sellYes": "卖出 YES",
+        "simBalance": "模拟余额 {{amount}} MUSDC",
+        "yesLimitPrice": "YES 限价（分）",
+        "sellHelper": "等价 NO 价格：{{noPrice}}分 · 抵押式看跌敞口",
+        "limitPrice": "限价（分）",
+        "shares": "份额",
+        "risk": "最多承担",
+        "pays": "判断正确时兑付",
+        "invalidPayout": "INVALID 每份兑付 50¢ · 共 {{amount}} MUSDC",
+        "submit": "提交模拟订单",
+        "invalidInput": "请输入 1 至 99 的整数分价格和有效份额，且金额不能超过模拟余额。",
+        "filled": "模拟{{action}}已成交，使用 {{amount}} 测试 MUSDC。",
+        "appendixBody": "此模板在 {{close}} 停止交易。本地模拟会立即结算；未来的链上 ManualAdjudicator 模拟还必须等待已部署的 60 分钟异议期。INVALID 路径遵循市场截止时间与市场实例的实时失效缓冲。"
+      },
+      "live": {
+        "bannerTitle": "MegaETH 测试网 · verified=false",
+        "bannerBody": "订单和回执均在链上。结算由人工操作，已发布的收盘价未经过密码学验证。",
+        "bestBid": "最高买价",
+        "priceReference": "参考价格",
+        "bestAsk": "最低卖价",
+        "protocolOnly": "仅显示协议参考价 · 订单簿不可用",
+        "bookUnavailable": "订单簿不可用",
+        "syncingBook": "正在同步订单簿",
+        "clobMidpoint": "CLOB 中间价 · {{value}}",
+        "protocolReference": "协议参考价 · {{state}}",
+        "emptyBook": "订单簿为空",
+        "oneSidedBook": "仅有单边挂单",
+        "midpointExplanation": "该数值是索引到的最高买价与最低卖价的中间值，仅供参考，不保证成交。",
+        "protocolExplanation": "订单簿暂时无法形成中间价，因此这里显示实时协议状态。您的订单仍会在 SoothBook 上执行。",
+        "unavailableExplanation": "索引深度不可用，因此该参考值不能视为可成交价格；订单提交已暂停。",
+        "loadingExplanation": "正在读取索引深度，确认可成交的参考价格。",
+        "noReference": "目前没有可用的链上或索引参考价格，应用不会虚构价格。"
+      },
+      "position": {
+        "title": "您的持仓",
+        "connect": "连接钱包以查看持仓。",
+        "reading": "正在读取持仓…",
+        "empty": "该市场暂无持有份额。",
+        "includesActivation": "包含启动阶段获得的库存 · {{yes}} YES / {{no}} NO"
+      },
+      "orders": {
+        "title": "您的挂单",
+        "unavailable": "索引服务离线，暂时无法读取挂单状态。",
+        "reading": "正在读取挂单…",
+        "empty": "暂无未成交挂单。",
+        "cancel": "取消 #{{id}}"
+      },
+      "ticket": {
+        "buyYes": "买入 YES",
+        "sellYes": "卖出 YES",
+        "yesLimitPrice": "YES 限价（分）",
+        "sellHelper": "等价 NO 价格：{{noPrice}}分",
+        "collateralizedBelow": "抵押式看跌敞口",
+        "limitPrice": "限价（分）",
+        "shares": "份额",
+        "currentFee": "当前订单手续费",
+        "unavailable": "不可用",
+        "reading": "读取中…"
+      },
+      "risk": {
+        "beforeSign": "签名前确认",
+        "youRisk": "最多承担",
+        "riskUnit": "MUSDC，含吃单手续费",
+        "netWin": "判断正确时净收益",
+        "winUnit": "MUSDC，已扣最高支出",
+        "invalid": "INVALID · 每份 50¢",
+        "details": "订单明细",
+        "viewBreakdown": "查看计算",
+        "collateral": "抵押金额 · 价格 × 份额",
+        "crossingFee": "吃单手续费 · {{fee}}",
+        "maximumDebit": "最高支出",
+        "payout": "判断正确时兑付 · 每份 100¢",
+        "walletBalance": "钱包余额",
+        "explanation": "二元份额在判断正确时兑付 100¢，判断错误时兑付 0¢。订单跨价并以吃单方成交时，手续费会在抵押金额之外另行收取；面板会按最不利情况预留额度。"
+      },
+      "actions": {
+        "waitingReceipt": "等待链上回执",
+        "claim": "领取已结算收益",
+        "tradingClosed": "交易已在交易所收盘时停止",
+        "bookUnavailable": "订单簿不可用",
+        "feeUnavailable": "手续费配置不可用",
+        "readingFee": "正在读取当前手续费",
+        "submit": "提交链上订单",
+        "connect": "连接钱包"
+      },
+      "appendix": {
+        "title": "规则、手续费、托管与结算",
+        "subtitle": "人工结算 · verified=false · INVALID 每份兑付 50¢",
+        "view": "查看详情",
+        "onchainMarket": "链上市场",
+        "walletRouting": "{{address}} · 订单由已连接的 MegaETH 测试网钱包签名"
+      },
+      "status": {
+        "mossSession": "请批准 4 小时 MOSS EastBoard 会话…",
+        "connectWallet": "请先连接 MegaETH 测试网钱包。",
+        "settlementUnavailable": "结算合约不可用。",
+        "claiming": "正在领取已结算持仓…",
+        "nothingToClaim": "该市场没有可领取资产。",
+        "claimed": "已领取 {{amount}} 测试 MUSDC",
+        "claimNoChange": "领取已确认，但未记录到余额变化",
+        "tradingClosed": "该市场已停止交易。",
+        "submissionPaused": "订单簿不可用；索引深度恢复前，订单提交已暂停。",
+        "feeScheduleUnavailable": "无法读取实时 FeeRouter 配置；为避免错误报价，当前不会签署订单。",
+        "invalidOrder": "请输入 1 至 99 的整数分价格和大于 0 的份额。",
+        "checkingAllowance": "正在检查精确抵押额度…",
+        "approveExact": "请精确授权 {{amount}} 测试 MUSDC…",
+        "submitting": "正在提交{{action}}…",
+        "orderConfirmed": "订单已确认：{{hash}}",
+        "cancelling": "正在取消订单 {{id}}…",
+        "cancelConfirmed": "取消已确认：{{hash}}"
+      },
+      "errors": {
+        "operationFailed": "操作失败：{{detail}}",
+        "lifecycleClient": "市场生命周期客户端不可用",
+        "balanceClient": "余额客户端不可用",
+        "positionClient": "持仓客户端不可用",
+        "feeClient": "手续费客户端不可用",
+        "mossConfig": "MOSS 会话合约配置不可用",
+        "claimReceipt": "领取回执失败",
+        "claimStep": "领取步骤 {{step}} 已回滚",
+        "approvalReceipt": "抵押授权回执失败",
+        "approvalMismatch": "授权回执未设置精确的订单额度",
+        "orderReceipt": "订单回执失败",
+        "cancelReceipt": "取消回执失败",
+        "shortfall": "{{purpose}}需要 {{required}} 测试 MUSDC，但该钱包只有 {{balance}}。请先从测试币页面领取。",
+        "purposeOrder": "订单"
+      },
+      "fees": {
+        "eyebrow": "实时 FeeRouter",
+        "title": "您支付多少手续费，以及手续费流向",
+        "current": "当前订单手续费 {{fee}}",
+        "readError": "无法读取已部署的手续费配置。系统已禁用订单签名，不会展示假定费率。",
+        "applied": "适用于吃单成交",
+        "description": "订单跨价成交时，当前手续费会在抵押金额之外另行收取。下方为已部署的手续费分配比例。",
+        "marketReserve": "市场储备",
+        "lpYield": "LP 收益",
+        "adjudicator": "裁决方",
+        "protocol": "协议"
+      },
+      "custody": {
+        "eyebrow": "资产托管图",
+        "title": "您的资产当前在哪里",
+        "claimsUnlocked": "可领取",
+        "live": "交易中托管",
+        "connect": "连接钱包以读取托管余额和解锁条件。",
+        "wallet": "钱包",
+        "readingBalance": "正在读取余额…",
+        "walletDescription": "当前可用；授权不会转移资金。",
+        "orderEngine": "OrderEngine",
+        "bookBalance": "{{yes}} YES · {{no}} NO · 约 {{escrow}} MUSDC 挂单抵押",
+        "readingBook": "正在读取 CLOB 托管…",
+        "bookDescription": "挂单抵押会在取消或成交时解锁；结果份额在结算后可领取。",
+        "activation": "启动阶段库存",
+        "activationBalance": "{{yes}} YES · {{no}} NO",
+        "readingActivation": "正在读取启动阶段库存…",
+        "activationDescription": "启动过程中获得的份额会在结算后开放领取。",
+        "lpToken": "LP 代币",
+        "lpBalance": "{{amount}} LP",
+        "readingLp": "正在读取 LP 余额…",
+        "lpDescription": "结算后，在扣除负债和预留手续费后，才可按比例赎回。"
+      }
+    },
+    "mechanism": {
+      "loadingAria": "正在加载市场机制",
+      "unavailableTitle": "市场机制状态不可用",
+      "unavailableBody": "实时市场或裁决合约读取失败。系统不会推断生命周期时间或权限状态。",
+      "unknownOutcome": "未知结果 {{outcome}}",
+      "notSet": "未设置",
+      "phase": {
+        "notConfigured": "尚未配置",
+        "trading": "交易中 / 等待收盘",
+        "proposed": "结果已提出 / 异议期开放",
+        "attested": "证明已提交 / 异议期开放",
+        "settled": "已结算",
+        "disputed": "守护者已提出异议 / 等待重新裁决",
+        "frozen": "交易已停止 / 等待结算执行者",
+        "unknown": "未知阶段 {{phase}}"
+      },
+      "time": {
+        "days": "{{days}}天 {{hours}}小时 {{minutes}}分",
+        "in": "{{value}} 后",
+        "ago": "{{value}} 前"
+      },
+      "sources": {
+        "sse": "上海证券交易所日 K 收盘价",
+        "szse": "深圳证券交易所历史收盘价",
+        "tencent": "腾讯港股日线收盘数据",
+        "yahoo": "Yahoo Finance 日线收盘数据",
+        "primary": "{{source}} 主数据源",
+        "hsiCrossCheck": "Yahoo Finance 恒生指数交叉验证",
+        "tencentCrossCheck": "腾讯日线收盘数据交叉验证"
+      },
+      "confirmed": "已在链上确认",
+      "notScheduled": "提出结果后才会确定时间",
+      "eyebrow": "实时市场机制",
+      "title": "接下来会发生什么，由谁控制",
+      "phaseLabel": "阶段：{{phase}}",
+      "proposedOutcome": "拟议结果 {{outcome}}",
+      "warningTitle": "人工模拟 · verified=false",
+      "warningBody": "这里尚未启用 Primus。结算执行者通过 ManualAdjudicator 提交人工判断和证据哈希；合约不会以密码学方式验证已发布的收盘价。",
+      "timeline": {
+        "tradingFreezes": "交易停止",
+        "firstEvidence": "首次取证",
+        "evidenceDeadline": "证据截止时间",
+        "guardianVeto": "守护者异议期结束",
+        "settlement": "最早结算时间",
+        "fallback": "未裁决时的备用路径",
+        "chain": "链上",
+        "schedule": "计划任务",
+        "evidenceWindow": "{{timing}} · 已配置的取证窗口",
+        "priorDispute": "上一结果已被质疑 · 等待重新裁决",
+        "pendingProposal": "等待提出结果 · {{minutes}} 分钟异议期",
+        "invalidPath": "{{timing}} · 任何人均可触发 INVALID"
+      },
+      "evidence": {
+        "policy": "证据规则 · {{count}} 个来源中至少 2 个一致",
+        "rules": "两个独立的收盘数据必须一致。少于两个来源、未发布收盘价、全天停牌或符合条件的公司行动，都会得到 INVALID。INVALID 时，YES 和 NO 每份均兑付 50¢。"
+      },
+      "authority": {
+        "adjudicator": "ManualAdjudicator",
+        "resolver": "结算执行者 · 唯一可提出结果的地址",
+        "guardian": "已配置守护者",
+        "guardianApproved": "已获链上异议权限",
+        "guardianNotApproved": "尚未获得链上权限",
+        "evidenceHash": "拟议证据哈希"
+      }
+    },
+    "portfolio": {
+      "eyebrow": "本地持仓与赎回",
+      "title": "持仓",
+      "simulatedBalance": "模拟余额",
+      "notice": "模拟证明 · verified=false。这些持仓、结果和赎回仅存在于本地内存，不会写入 MegaETH。",
+      "emptyEyebrow": "暂无本地持仓",
+      "emptyTitle": "请先提交一笔模拟订单",
+      "emptyBody": "从期权盘面打开一个可交易的模拟合约并提交本地订单。",
+      "status": {
+        "live": "交易中",
+        "settled": "已结算",
+        "redeemed": "已赎回"
+      },
+      "summary": "{{expiry}} · YES {{yes}} · NO {{no}} · 成本 {{cost}}",
+      "evidence": "模拟证据：{{value}} · {{reason}}",
+      "redeemed": "已赎回 {{amount}} 测试 MUSDC",
+      "runResolver": "运行模拟结算",
+      "redeem": "在本地赎回",
+      "complete": "已完成",
+      "fixtureOnly": "仅限模拟模式",
+      "disabledBodyBefore": "默认链上界面已禁用本地模拟持仓。只有测试不广播的模拟流程时，才可添加明确的",
+      "disabledBodyAfter": "参数。"
+    },
+    "faucet": {
+      "title": "测试币",
+      "testMusdc": "测试 MUSDC",
+      "fixtureEyebrow": "本地模拟资金",
+      "fixtureNotice": "仅限本地余额。此测试币页面不会调用 MegaETH 代币合约。",
+      "fixtureBody": "无需钱包，即可用此余额测试市场启动预览、本地成交、持仓结算和赎回。",
+      "simulatedBalance": "模拟余额",
+      "addLocal": "增加 1,000 本地 MUSDC",
+      "addedLocal": "已增加 1,000 本地测试 MUSDC，链上未铸造任何代币。",
+      "chainEyebrow": "MegaETH 测试网资金",
+      "chainNotice": "此操作会调用 MegaETH 测试网上已部署且无需许可的 MockUSDC 铸造函数。代币没有价值。",
+      "chainBody": "启动一个市场约需 381.23 测试 MUSDC。领取一次即可完成整套启动演练和订单测试。",
+      "walletBalance": "钱包余额",
+      "connectWallet": "连接钱包",
+      "waitingReceipt": "等待链上回执",
+      "mint": "铸造 1,000 测试 MUSDC",
+      "receipt": "回执 {{hash}}",
+      "status": {
+        "connectFirst": "请先连接 MegaETH 测试网钱包。",
+        "configUnavailable": "MegaETH 测试代币配置不可用。",
+        "simulating": "正在模拟无需许可的测试代币铸造…",
+        "mossSession": "请批准 4 小时 MOSS EastBoard 会话…",
+        "confirmMint": "请在钱包中确认铸造 1,000 测试 MUSDC…",
+        "confirmed": "铸造已确认。余额：{{balance}} 测试 MUSDC。"
+      },
+      "errors": {
+        "mossConfig": "MOSS 会话合约配置不可用",
+        "receiptFailed": "铸造回执失败",
+        "balanceUnchanged": "铸造回执未增加钱包的测试 MUSDC 余额",
+        "operationFailed": "铸造失败：{{detail}}"
+      }
+    },
+    "errors": {
+      "operationFailed": "操作失败：{{detail}}",
+      "unexpectedFailure": "钱包或网络请求未能完成。",
+      "technicalDetails": "技术详情"
+    }
   }
 }

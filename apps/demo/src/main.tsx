@@ -20,6 +20,9 @@
 // Polyfills first — wallet-adapter-base touches Buffer at module-init.
 
 import "./lib/polyfills";
+import { EastboardLayout } from "./eastboard/layouts/EastboardLayout";
+import { OptionsChain } from "./eastboard/pages/OptionsChain";
+import { EastboardPortfolio } from "./eastboard/pages/EastboardPortfolio";
 
 import React, { useMemo } from "react";
 import ReactDOM from "react-dom/client";
@@ -119,10 +122,19 @@ function Root() {
                       }}
                     />
                     <Routes>
+                      {/* Eastboard is the frontend now; the classic demo
+                          surfaces stay reachable under their own routes. */}
                       <Route
                         path="/"
-                        element={<Navigate to="/markets" replace />}
+                        element={<Navigate to="/options" replace />}
                       />
+                      <Route element={<EastboardLayout />}>
+                        <Route path="/options" element={<OptionsChain />} />
+                        <Route
+                          path="/positions"
+                          element={<EastboardPortfolio />}
+                        />
+                      </Route>
                       <Route path="/__check" element={<HealthCheckPage />} />
                       <Route element={<AppLayout />}>
                         <Route path="/learn" element={<Learn />} />
