@@ -1,6 +1,11 @@
 //! Error codes for `sooth_core`.
 //!
-//! Discriminants are ABI-stable — don't reorder once shipped.
+//! Discriminants are ABI-stable — don't reorder, delete, or insert into the
+//! middle once shipped. Anchor numbers these positionally from 6000, the
+//! deployed program reports those numbers, and the SDK's error classifier
+//! maps them back to names by ordinal. Removing a variant nothing raises
+//! today would renumber every variant after it, so unraised variants stay as
+//! reserved slots; append new ones at the end.
 
 use anchor_lang::prelude::*;
 

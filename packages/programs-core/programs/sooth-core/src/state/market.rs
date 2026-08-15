@@ -11,8 +11,10 @@ pub const OUTCOME_INVALID: u8 = 2;
 
 #[account]
 pub struct Market {
-    /// Deterministic 16-byte id (truncated keccak256 of question || creator
-    /// || nonce). Architecture §2.2.
+    /// Caller-supplied 16-byte id; the seed of this account's PDA and of
+    /// every account derived from it. The SDK defaults it to the first 16
+    /// bytes of `sha256(question)`, which makes one question resolve to one
+    /// market and lets any client derive the PDA from the text alone.
     pub market_id: [u8; 16],
     pub creator: Pubkey,
     /// The adjudicator pubkey recorded at `initialize_market` time. The

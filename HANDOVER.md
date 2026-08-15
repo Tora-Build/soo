@@ -1,112 +1,100 @@
 # Handover — sooth-solana
 
-> Briefing for a new contributor (human or AI) picking up this repo.
-> Read this first; it's an index of the focused docs.
+> Briefing for a new contributor (human or AI). Read this first; it indexes the
+> focused docs.
 
 ## What this repo is
 
-`sooth-solana` is the Solana-side of the Sooth Protocol — a prediction market protocol whose EVM implementation lives at [`Tora-Build/sooth-alpha`](https://github.com/Tora-Build/sooth-alpha) (private).
+`sooth-solana` is the Solana implementation of the Sooth Protocol — prediction
+markets whose EVM implementation lives at
+[`Tora-Build/sooth-alpha`](https://github.com/Tora-Build/sooth-alpha) (private).
 
-**Status (2026-05-08)**: protocol layer feature-complete for the AMM lifecycle (buy → sell → claim → graduate → settle/dismiss → redeem/refund/LP-redeem). 175 cargo tests across the four programs, 49 SDK vitest specs, 19/19 Playwright e2e specs green on a fresh Surfpool boot. Only `sooth_book` (the on-chain orderbook) remains, gated on P1.
+A market runs a **dual-venue lifecycle**:
 
-This repo houses three layers:
+1. **Bonding (AMM).** An LMSR AMM priced in the deployment's instance token
+   (EAST on devnet). The creator posts `b·ln(2)` as the LMSR subsidy in
+   `seed_lp`; fees repay it as the market trades.
+2. **Graduation.** When accumulated fees reach `b·ln(2)`, the market graduates
+   and the order book opens. The program enforces this — the venue is routed,
+   never chosen by the UI.
+3. **Order book (CLOB).** One account per market holding both sides on a single
+   YES-price axis in ticks `1..=999` (a NO order at price `p` is stored as a YES
+   order at `1 − p`), priced in USDC. Matching happens on-chain; no caller-side
+   fill prediction.
+4. **Settlement.** A per-market `AdjudicatorEntry` attests an outcome, a veto
+   window opens for `dispute`, then a permissionless `settle` finalizes. Payouts
+   run through `redeem_amm_position`, `redeem_book_seat`, `claim_unlocked`,
+   `claim_refund`, `reclaim_subsidy`, `sweep_residual`, and `close_market`.
 
-- **`packages/programs-core/`** — Anchor programs (Rust). Mirrors `sooth-alpha/packages/contracts-core/` (Solidity).
-- **`packages/sdk-solana/`** — `@sooth/sdk-solana` TypeScript adapter. Implements the vendored `ChainAdapter` interface; consumed directly by the demo (no umbrella SDK dependency under the current Solana-only scoping).
-- **`apps/demo/`** — Solana-only fork of `sooth-alpha/apps/demo`. Upstream's React tree runs unchanged via a `chain-shim` layer that translates EVM hook signatures (wagmi/viem) into Solana adapter calls. Validates D1 by construction.
+Market questions are self-describing: `create_market` verifies the question text
+against its sha256 hash and emits it in `MarketCreated`, so a client recovers the
+title from chain history with no indexer. The `Market` account keeps the hash.
+
+## Layers
+
+- **`packages/programs-core/programs/sooth-core/`** — one Anchor program,
+  `sooth_core`. Market lifecycle, LMSR AMM, CLOB, LP/fee flows, and adjudication
+  are Rust modules calling each other directly, not separate programs over CPI.
+- **`packages/sdk-solana/`** — `@sooth/sdk-solana`. Instruction builders,
+  account readers, PDA helpers, and client-side LMSR quote math.
+- **`apps/demo/`** — forked demo app. Classic pages plus the Eastboard shell at
+  `/options` and Arena at `/play`; reaches the program through a chain-shim.
+- **`apps/pulse/`** — standalone, shim-free frontend built directly on the SDK
+  (`/`, `/m/:pda`, `/me`, `/launch`).
 
 ## Where to look
 
-| Topic                                     | Doc                                                                                                    |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Program / SDK / demo / devnet state       | [`docs/status.md`](docs/status.md)                                                                     |
-| Build the demo locally (Phantom UX)       | [`docs/build.md`](docs/build.md)                                                                       |
-| What's left + pending decisions           | [`docs/roadmap.md`](docs/roadmap.md)                                                                   |
-| Resolved + pending decisions, append-only | [`docs/decision-log.md`](docs/decision-log.md)                                                         |
-| Terminology (WAD, OUTCOME, tick, …)       | [`docs/glossary.md`](docs/glossary.md)                                                                 |
-| 5-program design, synced with reality     | [`packages/programs-core/docs/architecture.md`](packages/programs-core/docs/architecture.md)           |
-| Frozen public API surface (CANONICAL)     | [`packages/sdk-solana/docs/integrator-contract.md`](packages/sdk-solana/docs/integrator-contract.md)   |
-| `ChainAdapter` interface, layout          | [`packages/sdk-solana/docs/implementation-guide.md`](packages/sdk-solana/docs/implementation-guide.md) |
-
-## Reading order for new contributors
-
-1. `README.md` — suite navigation
-2. [`docs/status.md`](docs/status.md) — what's wired, test scoreboard, devnet IDs
-3. [`docs/build.md`](docs/build.md) — get the dapp running locally
-4. [`docs/research/porting-evaluation.md`](docs/research/porting-evaluation.md) — code-first analysis of the EVM stack
-5. [`docs/research/orderbook-survey.md`](docs/research/orderbook-survey.md) — survey of 10 production Solana orderbooks
-6. [`docs/monaco-fork-analysis.md`](docs/monaco-fork-analysis.md) — deep dive on Monaco as a fork base
-7. [`docs/research/monaco-investigation-week-01.md`](docs/research/monaco-investigation-week-01.md) — P1 investigation output
-8. [`packages/programs-core/docs/architecture.md`](packages/programs-core/docs/architecture.md) — 5-program design
-9. [`packages/sdk-solana/docs/integrator-contract.md`](packages/sdk-solana/docs/integrator-contract.md) — frozen public API
-10. [`packages/sdk-solana/docs/implementation-guide.md`](packages/sdk-solana/docs/implementation-guide.md) — `ChainAdapter` interface, package layout
-11. [`docs/decision-log.md`](docs/decision-log.md) — running record
-12. [`docs/glossary.md`](docs/glossary.md) — terminology
-13. [`docs/roadmap.md`](docs/roadmap.md) — what to do next
+| Topic                                   | Doc                                                                                                  |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Current state, deployment, open items   | [`docs/status.md`](docs/status.md)                                                                   |
+| Build and run locally                   | [`docs/build.md`](docs/build.md)                                                                     |
+| Resolved vs open decisions              | [`docs/decision-log.md`](docs/decision-log.md)                                                        |
+| Terminology (WAD, OUTCOME, tick, …)     | [`docs/glossary.md`](docs/glossary.md)                                                               |
+| Per-subsystem specs                     | [`docs/spec/`](docs/spec/)                                                                           |
+| Order book design                       | [`docs/design/orderbook-redesign.md`](docs/design/orderbook-redesign.md)                             |
+| Two-token venue split                   | [`docs/design/dual-token-venues.md`](docs/design/dual-token-venues.md)                               |
+| Pulse frontend design                   | [`docs/design/pulse-fe.md`](docs/design/pulse-fe.md)                                                 |
+| How `develop` differs from `main`       | [`docs/develop-vs-main.md`](docs/develop-vs-main.md)                                                 |
+| SDK public surface                      | [`packages/sdk-solana/docs/integrator-contract.md`](packages/sdk-solana/docs/integrator-contract.md) |
 
 ## Repo layout
 
 ```
 sooth-solana/
-├── README.md                                # suite index
-├── HANDOVER.md                              # this file
-├── CLAUDE.md                                # session preamble
-├── LICENSE                                  # Apache-2.0
-├── package.json + pnpm-workspace.yaml       # JS workspace (apps/*, packages/*)
-├── Cargo.toml                               # Rust workspace (4 programs + 2 shared crates)
-├── _spikes/lmsr-cu/                         # LMSR CU-budget spike (D4 source data)
+├── README.md                     # suite index
+├── HANDOVER.md                   # this file
+├── CLAUDE.md                     # agent orientation
+├── CHANGELOG.md
+├── Anchor.toml                   # Anchor 0.30.1; sooth_core program id
+├── Cargo.toml                    # Rust workspace (sooth-core) + anchor-syn patch
+├── package.json / pnpm-workspace.yaml
 ├── apps/
-│   └── demo/                                # Solana-only forked demo + dev:localnet flow
-├── docs/
-│   ├── status.md                            # program / SDK / demo / devnet state
-│   ├── build.md                             # local build + wallet rules
-│   ├── roadmap.md                           # active items + pending decisions
-│   ├── decision-log.md                      # 5 resolved + remaining pending
-│   ├── glossary.md                          # WAD, OUTCOME, tick, CU, PDA, ATA
-│   ├── monaco-fork-analysis.md              # Monaco eval + 60-cap finding
-│   └── research/
-│       ├── porting-evaluation.md
-│       ├── orderbook-survey.md
-│       └── monaco-investigation-week-01.md  # P1 research output (recommend fork)
+│   ├── demo/                     # forked demo + Eastboard + Arena + dev/seed scripts
+│   └── pulse/                    # standalone shim-free frontend
+├── docs/                         # specs, design docs, decision log, status, glossary
 ├── packages/
-│   ├── programs-core/
-│   │   ├── README.md                        # per-program status + toolchain
-│   │   ├── docs/architecture.md             # 5-program design (synced with reality)
-│   │   ├── crates/
-│   │   │   ├── sooth-account-offsets/       # compile-time layout drift guards
-│   │   │   └── sooth-protocol-types/        # cross-program IDs + discriminators
-│   │   └── programs/
-│   │       ├── sooth_amm/
-│   │       ├── sooth_market/
-│   │       ├── sooth_launchpad/
-│   │       └── sooth_adjudicator/
+│   ├── programs-core/programs/sooth-core/
 │   └── sdk-solana/
-│       ├── README.md
-│       ├── src/                             # adapter, pdas, math/lmsr, anchor IDLs, types
-│       ├── tests/                           # litesvm-backed; 49 specs across 15 files
-│       └── docs/
-│           ├── integrator-contract.md       # CANONICAL — third-party API frozen surface
-│           └── implementation-guide.md      # ChainAdapter + Phase A migration plan
-└── target/                                  # cargo + .so build outputs (gitignored)
+└── vendor/anchor-syn-0.30.1-fork # rustc-compat patch for IDL generation
 ```
 
-## Sooth context that lives in `sooth-alpha`
+## Running it
 
-- **EVM contracts source**: `sooth-alpha/packages/contracts-core/src/` (`LaunchpadEngine.sol`, `AMMEngine.sol`, `SoothBook.sol`, `OrderEngine.sol`, `TruthMarket.sol`, `FeeRouter.sol`, `AdjudicatorRegistry.sol`, `libraries/LMSRMath.sol`, `libraries/TickBitmap.sol`).
-- **Existing TypeScript SDK**: `sooth-alpha/packages/sdk/src/` (the umbrella `@sooth/sdk` — Phase A extraction has not happened; the Solana adapter vendors the interface per `implementation-guide.md §2`).
-- **Indexer schema** (Postgres tables to mirror): `sooth-alpha/packages/indexer/ponder.schema.ts`.
-- **Project rules**: `sooth-alpha/.claude/rules/knowledge.md` and `lessons.md`.
+```bash
+pnpm install
+anchor build                            # produces target/deploy/sooth_core.so
+pnpm --filter @sooth/demo dev:localnet  # validator + seed + vite on :5175
+```
 
-If you don't have access to `sooth-alpha`, the relevant facts are summarized in `docs/research/porting-evaluation.md` and `packages/programs-core/docs/architecture.md`.
+`pnpm dev` without a flag targets devnet. See [`docs/build.md`](docs/build.md)
+for wallet setup, the Surfpool path, and the seeding flow.
+
+Every transaction must prepend
+`ComputeBudgetInstruction::request_heap_frame(256 * 1024)`; the program runs a
+custom 256 KB bump allocator and aborts without it. The SDK adapter does this
+automatically.
 
 ## Authority and access
 
-- **License**: Apache-2.0 (matches Monaco if forking).
-- **Visibility**: private at the time of writing.
-- **Repo URL**: https://github.com/Tora-Build/sooth-solana
-- **Maintainer org**: Tora-Build.
-- **Created**: 2026-05-05 by extraction from `sooth-alpha/solana/`.
-
----
-
-_Welcome. Start with `git log --oneline main | head -30`, then `docs/status.md`, then whichever architectural doc maps to your role. The dapp works locally via `pnpm --filter @sooth/demo dev:localnet`._
+- **License**: Apache-2.0.
+- **Repo**: https://github.com/Tora-Build/sooth-solana (private), org Tora-Build.

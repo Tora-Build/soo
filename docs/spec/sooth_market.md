@@ -1,294 +1,253 @@
-# sooth_market — Market Lifecycle + Custody (Solana)
+# Market — lifecycle, custody, settlement, end of life
 
-> Status: **shipped (devnet)**; under maintenance.
+> Subsystem: `state/market.rs`, `state/lifecycle.rs`, `state/protocol_config.rs`,
+> and the lifecycle instructions (`initialize_protocol`, `pause`/`unpause`,
+> `lock_for_resolution`, `settle`, `redeem_amm_position`, `dismiss_market`,
+> `claim_refund`, `sweep_residual`, `close_market`).
 > Canon law: [`law/lifecycle.md`](https://github.com/Tora-Build/sooth-canon/blob/main/law/lifecycle.md),
-> [`law/settlement-redemption.md`](https://github.com/Tora-Build/sooth-canon/blob/main/law/settlement-redemption.md),
-> [`law/atomicity.md`](https://github.com/Tora-Build/sooth-canon/blob/main/law/atomicity.md).
-> EVM source mirrored: `sooth-alpha/packages/contracts-core/src/TruthMarket.sol` + parts of `OrderEngine.sol` (`_mint`, `_merge`, `settlePosition`).
-> Architecture context: [`packages/programs-core/docs/architecture.md`](../../packages/programs-core/docs/architecture.md) §2.2, §4.1, §4.4, §4.5.
+> [`law/settlement-redemption.md`](https://github.com/Tora-Build/sooth-canon/blob/main/law/settlement-redemption.md).
 
 ---
 
-## 1. What this program does
+## 1. What this covers
 
-`sooth_market` owns per-market lifecycle, custody (USDC vault + lock vault),
-the YES / NO outcome SPL mints, complete-set mint/merge, settle, redeem,
-and trial-period refund paths. It is the EVM `TruthMarket` + the custody
-half of `OrderEngine` collapsed into one Solana program (per architecture
-§1: Solana program upgrades are native, so the EVM split is unnecessary).
+The `Market` account is the spine every other subsystem hangs off: it owns the
+lifecycle state, the three vault addresses, the outcome, and the flag that opens
+the order book. This spec covers that account, the protocol-level config above
+it, and the paths that end a market's life — settlement and redemption, the
+trial-expiry refund path, and the terminal close.
 
-Devnet program id: `ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n` (D6).
+## 2. `ProtocolConfig`
 
-## 2. Status
+**Seeds:** `[b"protocol_config"]`. Singleton, `SPACE = 165`. The full field list
+is below; how the fee-split fields are consumed is in
+[`sooth_launchpad.md`](./sooth_launchpad.md) §5.
 
-| Surface                                                            | Status                                                  |
-| ------------------------------------------------------------------ | ------------------------------------------------------- |
-| Three-leg `initialize_*` flow                                      | shipped (split for SBF stack budget)                    |
-| `mint_complete_set` + `merge_complete_set`                         | shipped                                                 |
-| `mint_complete_set_to_program_owned` + `redeem_from_program_owned` | shipped (escrow CPI flows)                              |
-| `lock_for_resolution`                                              | shipped — adjudicator-CPI gated                         |
-| `settle`                                                           | shipped — adjudicator-CPI gated                         |
-| `redeem` (post-settle)                                             | shipped — INVALID half-payout supported                 |
-| `claim_refund` (trial-expiry)                                      | shipped                                                 |
-| `transfer_to_lock` + `transfer_from_lock_vault`                    | shipped (CPI helpers for `sooth_amm`)                   |
-| `AdjudicatorAllowlist` (allowlist mgmt)                            | shipped                                                 |
-| `OrderbookPosition` (for orderbook fills)                          | **not yet** — landing in `sooth_book` port W2 (per D15) |
+| Field                         | Type     | Meaning                                                     |
+| ----------------------------- | -------- | ------------------------------------------------------------ |
+| `authority`                   | `Pubkey` | may pause, unpause, and register adjudicators when gated      |
+| `treasury`                    | `Pubkey` | the **owner** of treasury token accounts, not an account itself |
+| `amm_fee_bps`                 | `u16`    | AMM taker fee                                                 |
+| `book_fee_bps`                | `u16`    | book taker fee                                                |
+| `graduation_bps`              | `u16`    | graduation threshold as a fraction of the `b·ln(2)` deposit; **`0` reads as `10_000`** |
+| `b_base_share_bps`            | `u16`    | fee split — LMSR liquidity                                    |
+| `lp_yield_share_bps`          | `u16`    | fee split — LP yield                                          |
+| `adjudicator_share_bps`       | `u16`    | fee split — adjudicator                                       |
+| `protocol_share_bps`          | `u16`    | fee split — treasury (descriptive; the code pays the remainder) |
+| `default_trial_period`        | `i64`    | seconds; input to each market's trial window                  |
+| `paused`                      | `bool`   | trading circuit breaker                                       |
+| `permissionless_adjudicators` | `bool`   | true → the market creator may register; false → only `authority` |
+| `veto_period_secs`            | `i64`    | guardian veto window                                          |
 
-## 3. Account / state model
+`initialize_protocol` is one-shot and validates: both fee rates `<= MAX_FEE_BPS`
+(`10_000`), `treasury != default`, `default_trial_period > 0`,
+`0 < veto_period_secs <= MAX_VETO_PERIOD_SECS` (30 days), and the four share bps
+summing to exactly `10_000` (`FeeSplitMismatch`). `graduation_bps` has no
+argument and no setter, so it stays `0` and is read as full repayment — zero must
+mean 10 000 rather than "graduate immediately", because a config account laid out
+without the field deserializes to zero.
 
-### 3.1 `MarketLifecycle` enum
+### 2.1 Pause scope
+
+`pause`/`unpause` require `config.authority` and are idempotent, emitting
+`ProtocolPausedEvent`. `require_not_paused` is a **trading** halt, not a freeze:
+
+| Paused                                                           | Never paused                                                                                  |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `trade_positions`, `sell_positions`, `book_place`, `seed_lp`, `create_market` | every exit — `redeem_amm_position`, `redeem_book_seat`, `book_cancel`, `book_withdraw`, `claim_unlocked`, `claim_refund`, `redeem_lp`, `reclaim_subsidy` — plus the whole resolution path and the fee cranks |
+
+A pause that trapped funds would be a worse failure than whatever it was invoked
+to contain.
+
+## 3. `Market`
+
+**Seeds:** `[b"market", market_id]`.
+
+| Field                  | Type              | Meaning                                                     |
+| ---------------------- | ----------------- | ------------------------------------------------------------ |
+| `market_id`            | `[u8; 16]`        | caller-supplied; the SDK derives it from `sha256(question)[..16]` |
+| `creator`              | `Pubkey`          | pays rent, gets it back on close; gates `seed_lp`, `dismiss_market`, `close_market` |
+| `adjudicator`          | `Pubkey`          | designated resolver identity; pins the adjudicator fee destination |
+| `question_hash`        | `[u8; 32]`        | sha256 of the question text (see [`sqf.md`](./sqf.md))        |
+| `vault_book`           | `Pubkey`          | book collateral vault, `BOOK_TOKEN_MINT`                      |
+| `vault_amm`            | `Pubkey`          | AMM collateral vault, `AMM_TOKEN_MINT`                        |
+| `lock_vault`           | `Pubkey`          | sell-cooldown escrow, `AMM_TOKEN_MINT`                        |
+| `start_time`           | `i64`             | trading opens                                                 |
+| `deadline`             | `i64`             | trading closes                                                |
+| `lifecycle`            | `MarketLifecycle` | see below                                                     |
+| `winning_outcome`      | `u8`              | written by `settle`; meaningful only when `Settled`           |
+| `bump`, `vault_authority_bump`, `lock_authority_bump` | `u8` | PDA bumps                                     |
+| `book_enabled`         | `bool`            | mirror of `AmmState.is_graduated`; opens the book             |
+
+Outcome encoding is protocol-wide: `OUTCOME_NO = 0`, `OUTCOME_YES = 1`,
+`OUTCOME_INVALID = 2`.
+
+The three vaults are named per venue because picking the wrong one is the single
+mistake here that could fail quietly rather than loudly; an SPL token account
+holds exactly one mint, so they cannot be merged.
+
+Both venue mints are **compile-time constants** (`AMM_TOKEN_MINT`,
+`BOOK_TOKEN_MINT`) pinned by `address =` constraints throughout the program. A
+mismatch is a hard transaction failure, never a UI inconsistency. One deployment
+serves one instance token; two instance tokens are two program IDs.
+
+### 3.1 Lifecycle
 
 ```rust
-// packages/programs-core/programs/sooth_market/src/state/lifecycle.rs:23
-pub enum MarketLifecycle {
-    Initializing,  // mints + vault created; transient
-    Open,          // EVM LIVE — trading + mint/merge active
-    Locked,        // EVM RESOLVING + ATTESTED (collapsed)
-    Settled,       // EVM SETTLED — terminal
-}
+pub enum MarketLifecycle { Initializing, Open, Locked, Settled }
 ```
 
-Permitted transitions (state machine):
+`can_transition_to` permits exactly `Initializing → Open`, `Open → Locked`,
+`Locked → Settled`. Nothing else is legal, and `Settled` is terminal.
 
-```text
-Initializing → Open → Locked → Settled
-```
+There is no `Dismissed` lifecycle state: trial expiry is
+`AmmState.is_dismissed`, a separate axis, because a dismissed market still has to
+support refunds and eventual close.
 
-`Settled` is terminal. No `Bonding` / `Live` distinction; Solana uses
-`Open` for the whole pre-settle range. See canon mapping in §8 below.
+### 3.2 The account graph
 
-### 3.2 `Market` struct (one per market)
+| Account              | Seeds                                            | Kind                     |
+| -------------------- | ------------------------------------------------ | ------------------------ |
+| `Market`             | `[b"market", market_id]`                         | data                     |
+| `AmmState`           | `[b"amm", market_id]`                            | data                     |
+| `Position`           | `[b"pos", market_id, user]`                      | data                     |
+| `LockEntry`          | `[b"lock_entry", position, nonce_le]`            | data                     |
+| `LpPosition`         | `[b"lp_position", market_id, creator]`           | data                     |
+| `AdjudicatorEntry`   | `[b"adjudicator", market]`                       | data (market **pubkey**) |
+| `Book`               | `[b"book", market_id]`                           | raw zero-copy            |
+| `vault_authority`    | `[b"vault", market_id]`                          | signer-only PDA          |
+| `lock_authority`     | `[b"lock", market_id]`                           | signer-only PDA          |
+| `vault_book`         | ATA of `vault_authority` for `BOOK_TOKEN_MINT`   | token                    |
+| `vault_amm`          | ATA of `vault_authority` for `AMM_TOKEN_MINT`    | token                    |
+| `lock_vault`         | ATA of `lock_authority` for `AMM_TOKEN_MINT`     | token                    |
+| `fee_pool_authority` | `[b"fee_pool_authority"]`                        | signer-only PDA, global  |
+| `fee_pool_amm`       | `[b"fee_pool_amm", market_id]`                   | token, AMM mint          |
+| `fee_pool_book`      | `[b"fee_pool_book", market_id]`                  | token, book mint         |
+| `lp_yield_authority` | `[b"lp_yield_authority"]`                        | signer-only PDA, global  |
+| `lp_yield_amm`       | `[b"lp_yield_amm", market_id]`                   | token, AMM mint          |
+| `lp_yield_book`      | `[b"lp_yield_book", market_id]`                  | token, book mint         |
+| `lp_mint`            | `[b"lp", market_id]`                             | SPL mint, 6 decimals     |
+| `lp_mint_authority`  | `[b"lp_mint_authority", market_id]`              | signer-only PDA          |
+
+Fee pools and yield vaults are **per market**, in both venue tokens. There is no
+global fee pool.
+
+## 4. Resolution
+
+Both halves are covered in detail in
+[`sooth_adjudicator.md`](./sooth_adjudicator.md); from the market's side:
+
+| Instruction           | Signer                             | Effect                                            |
+| --------------------- | ---------------------------------- | ------------------------------------------------- |
+| `request_lock`        | `AdjudicatorEntry.authority`       | `Open → Locked`, but only once `now >= deadline`  |
+| `lock_for_resolution` | `AdjudicatorEntry.authority`       | `Open → Locked`, emits `MarketLocked`             |
+| `settle`              | anyone, after the veto window       | `Locked → Settled`, writes `winning_outcome`      |
+
+`settle` takes no outcome argument: it reads the attested value off the
+`AdjudicatorEntry`, which is what makes the veto window unroutable-around.
+
+## 5. Redemption
+
+`redeem_amm_position` requires `market.is_settled()` and pays the AMM position:
 
 ```rust
-// packages/programs-core/programs/sooth_market/src/state/market.rs:49
-pub struct Market {
-    pub market_id: [u8; 16],         // keccak256(question || creator || nonce)[..16]
-    pub creator: Pubkey,
-    pub adjudicator: Pubkey,         // bound at creation; immutable
-    pub question_hash: [u8; 32],     // see sqf.md §4
-    pub yes_mint: Pubkey,
-    pub no_mint: Pubkey,
-    pub vault: Pubkey,               // USDC ATA owned by vault_authority PDA
-    pub lock_vault: Pubkey,          // USDC ATA owned by lock_authority PDA
-    pub start_time: i64,
-    pub deadline: i64,
-    pub lifecycle: MarketLifecycle,
-    pub winning_outcome: u8,         // 0=NO, 1=YES, 2=INVALID; valid only when Settled
-    pub bump: u8,
-    pub vault_authority_bump: u8,
-    pub lock_authority_bump: u8,
-    pub yes_mint_bump: u8,
-    pub no_mint_bump: u8,
-}
+let payout_wad = match outcome {
+    OUTCOME_YES     => yes_shares,
+    OUTCOME_NO      => no_shares,
+    OUTCOME_INVALID => (yes_shares + no_shares) / 2,
+    _ => return err!(InvalidOutcome),
+};
+let usdc_payout = wad_to_base(payout_wad)?;  // floor
 ```
 
-**Seeds:** `[b"market", market_id.as_ref()]`.
+Both share legs are zeroed **before** the transfer, so a repeat call is a no-op;
+then `amm.q_yes` and `amm.q_no` are decremented with checked math, so an
+underflow is loud rather than silent. Payment is a PDA-signed transfer out of
+`vault_amm`. Emits `Redeemed`.
 
-### 3.3 `AdjudicatorAllowlist` (singleton)
+The `Position` account is deliberately **not** closed: outstanding `LockEntry`
+PDAs derive their seeds from `position.key()`, and closing the position would
+strand them. The cost is roughly 0.00083 SOL of rent per position, left
+uncollected.
+
+Book positions redeem separately through `redeem_book_seat`
+([`sooth_book.md`](./sooth_book.md) §5), from a different vault in a different
+token. The `INVALID` half-payout rule is identical on both sides so the two
+ledgers cannot drift.
+
+## 6. Trial expiry
+
+A market that never graduates can be wound down without an adjudicator:
+
+- `dismiss_market` — creator signs, requires `now >= amm.trial_end_at`,
+  `!is_graduated`, `!is_dismissed`. Sets `AmmState.is_dismissed`; the lifecycle
+  is untouched.
+- `claim_refund` — any user with a position, once the market is dismissed. The
+  refund is `Position.locked_cost_usdc`, the cumulative cost paid in, decremented
+  by any sells. It pays out of `vault_amm` under the vault authority and then
+  closes the `Position` inline.
+
+`claim_refund` reads the `Position` as an `UncheckedAccount` and validates it by
+hand — re-deriving the PDA, checking program ownership and length, and reading
+`user` and `market` at fixed byte offsets — because the refund amount is a single
+field and the account is closed in the same instruction.
+
+## 7. End of life
+
+**`sweep_residual`** is permissionless, with the destination pinned to the
+configured treasury. It requires `is_settled()` and an *exact* outstanding-claims
+gate rather than a heuristic: `q_yes == seed_q_yes` for a YES outcome,
+`q_no == seed_q_no` for NO, both for INVALID. It then reserves the creator's
+unreclaimed subsidy before sweeping what is left of `vault_amm`. The book venue
+needs no sweep — it is zero-sum between seats.
+
+**`close_market(market_id)`** is signed by the creator, who receives every
+reclaimed lamport. It requires `is_settled() || amm_state.is_dismissed`, all
+three vaults and all four fee/yield accounts at zero balance, and — if the book
+account exists — no live orders and no funded seats.
+
+It does not delete the `Market` account. Instead the account is shrunk to 8 bytes
+and stamped:
 
 ```rust
-// packages/programs-core/programs/sooth_market/src/state/adjudicator_allowlist.rs:61
-pub struct AdjudicatorAllowlist {
-    pub authority: Pubkey,                                // admin
-    pub entries:   [Pubkey; ADJUDICATOR_ALLOWLIST_CAPACITY],  // fixed cap = 16
-    pub entry_count: u8,                                  // populated entries [0, 16]
-    pub bump:        u8,
-}
+/// Written over the Market account's discriminator on close. Deliberately not
+/// a hash of any account name, so no Anchor account type will ever match it.
+pub const MARKET_TOMBSTONE: [u8; 8] = *b"MKTCLOSD";
 ```
 
-**Seeds:** `[b"adjudicator_allowlist"]`. Bootstrapped once at protocol
-init; managed via `add_adjudicator` / `remove_adjudicator`.
+Deleting it outright would be unsafe. Every per-market PDA derives from the
+caller-supplied `market_id`, so a deleted `Market` could be re-created at the same
+id, and stale `Position` accounts would deserialize against the fresh market — a
+trader whose losing shares expired worthless could re-create the id, seed a thin
+market, and sell those shares into somebody else's fresh collateral. With the
+tombstone in place, `create_market` fails at init because the account exists, and
+every `Account<Market>` load fails its discriminator check. The cost is roughly
+0.001 SOL locked forever out of ~0.017 reclaimed.
 
-The fixed-size array (cap **16** per `ADJUDICATOR_ALLOWLIST_CAPACITY`,
-`adjudicator_allowlist.rs:55`) means rent is constant — `add_adjudicator`
-never reallocs. `add_adjudicator` rejects on full; bumping the cap is a
-breaking layout change requiring a fresh-deploy migration.
+The `AmmState` account and the seven token accounts are closed properly; the book
+account's data is zeroed and its lamports drained after all CPIs, keeping the
+lamport-sum invariant. The LP mint cannot be closed — classic SPL mints have no
+close authority — so ~0.0015 SOL stays stranded there. Emits `MarketClosed`.
 
-## 4. Instruction surface
+## 8. Constraints
 
-### 4.1 Market creation (three legs)
+- **`Settled` is terminal and the transition table is total.** Every lifecycle
+  write goes through `can_transition_to`.
+- **Never delete the `Market` account.** The tombstone is what makes market-id
+  reuse impossible; see §7.
+- **Never close a `Position` in `redeem_amm_position`.** `LockEntry` seeds depend
+  on the position address.
+- **Never let `Market.adjudicator` change after creation.** It is recorded at
+  creation and pins the adjudicator's fee destination.
+- **Never gate an exit path on `paused`.** See §2.1.
+- **Never treat `INVALID` as an error.** It is a real outcome with a half-payout
+  rule, and both venues implement it identically.
 
-`initialize_market` was split into three ix because Anchor's `try_accounts`
-codegen for all three together exceeds the SBF 4 KB stack frame. The legs
-must be called in order in a single transaction.
+## 9. Cross-references
 
-| Ix                         | Purpose                                                                                     |
-| -------------------------- | ------------------------------------------------------------------------------------------- |
-| `initialize_market(args)`  | Creates `Market` PDA at `Initializing`; stores adjudicator binding, question hash, deadline |
-| `initialize_outcome_mints` | Creates `yes_mint` + `no_mint` SPL mints (mint authority = `vault_authority` PDA)           |
-| `initialize_market_vaults` | Creates `vault` + `lock_vault` ATAs; flips `Initializing → Open`                            |
-
-Called by `sooth_launchpad::create_market` via CPI; the launchpad bundles
-all three legs plus `sooth_amm::initialize_amm_state` in one client tx.
-
-### 4.2 Complete-set mint / merge
-
-| Ix                                                | Args       | EVM equivalent                                   |
-| ------------------------------------------------- | ---------- | ------------------------------------------------ |
-| `mint_complete_set(amount: u64)`                  | base units | `OrderEngine._mint` (`OrderEngine.sol:680-694`)  |
-| `mint_complete_set_to_program_owned(amount: u64)` | base units | split-authority variant for CPI flows            |
-| `merge_complete_set(amount: u64)`                 | base units | `OrderEngine._merge` (`OrderEngine.sol:696-712`) |
-
-`mint`: pulls `amount` USDC from user → market vault; mints `amount` YES
-
-- `amount` NO into user's outcome ATAs.
-
-`merge`: burns `amount` YES + `amount` NO; transfers `amount` USDC from
-market vault → user.
-
-Both gated on `lifecycle == Open`.
-
-### 4.3 Lifecycle transitions (adjudicator-CPI gated)
-
-| Ix                            | Caller                                          | Transition                                   |
-| ----------------------------- | ----------------------------------------------- | -------------------------------------------- |
-| `lock_for_resolution`         | `sooth_adjudicator` via parent-ix introspection | `Open → Locked`                              |
-| `settle(winning_outcome: u8)` | `sooth_adjudicator` via parent-ix introspection | `Locked → Settled`; writes `winning_outcome` |
-
-Both ix run `verify_market_authority(parent_ix, market.adjudicator)`. A
-non-adjudicator caller is rejected. The introspection helper lives in
-`instructions/instruction_introspection.rs` (the same file used by the
-`sooth_book` filler-only ix gate).
-
-### 4.4 Redemption
-
-| Ix                                                 | Args                            | EVM equivalent                                           | Notes                                                                                               |
-| -------------------------------------------------- | ------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `redeem`                                           | (none — uses user ATA balances) | `OrderEngine.settlePosition` (`OrderEngine.sol:399-431`) | Branches on `winning_outcome`: 1.0 USDC per winning share, 0 per losing, 0.5 per share on `INVALID` |
-| `redeem_from_program_owned(amount_yes, amount_no)` | base units each                 | split-destination variant                                | for CPI escrow flows                                                                                |
-
-Gated on `lifecycle == Settled`.
-
-### 4.5 Trial-expiry refund
-
-| Ix             | Purpose                                                                                                                   |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `claim_refund` | Returns AMM trial-period collateral to user; then CPIs `sooth_amm::close_dismissed_position` to clean up the AMM Position |
-
-`claim_refund` is the trial-expiry analog of redemption. Called after
-`sooth_amm::dismiss_market` flips the AMM to `dismissed`. The body uses
-parent-ix introspection to bind the `sooth_amm` cleanup CPI.
-
-### 4.6 PDA-signed transfer helpers
-
-| Ix                                 | Direction                | Caller                      |
-| ---------------------------------- | ------------------------ | --------------------------- |
-| `transfer_to_lock(amount)`         | `vault → lock_vault`     | `sooth_amm::sell_positions` |
-| `transfer_from_lock_vault(amount)` | `lock_vault → recipient` | `sooth_amm::claim_unlocked` |
-
-These exist because Solana PDA signing requires the signing PDA to be
-owned by the correct program. The `vault_authority` and `lock_authority`
-PDAs are owned by `sooth_market`; `sooth_amm` CPIs into these helpers to
-move USDC under the correct authority. Both helpers are gated by
-parent-ix introspection against the `sooth_amm` program id.
-
-### 4.7 Allowlist management
-
-| Ix                                        | Args                   | Caller                    |
-| ----------------------------------------- | ---------------------- | ------------------------- |
-| `initialize_adjudicator_allowlist`        | —                      | bootstrap (protocol init) |
-| `add_adjudicator(adjudicator: Pubkey)`    | adjudicator program id | allowlist authority       |
-| `remove_adjudicator(adjudicator: Pubkey)` | adjudicator program id | allowlist authority       |
-
-Drives `sooth_launchpad::create_market`'s gate on which adjudicator a
-new market may bind.
-
-## 5. Cross-program wiring
-
-| Caller                              | Callee                                                                                                                       | Mechanism                                                      |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `sooth_launchpad::create_market`    | `initialize_market` + `initialize_outcome_mints` + `initialize_market_vaults`                                                | CPI bundle                                                     |
-| `sooth_adjudicator::attest_outcome` | `lock_for_resolution` + `settle`                                                                                             | parent-ix introspection                                        |
-| `sooth_amm::sell_positions`         | `transfer_to_lock`                                                                                                           | parent-ix introspection                                        |
-| `sooth_amm::claim_unlocked`         | `transfer_from_lock_vault`                                                                                                   | parent-ix introspection                                        |
-| `sooth_market::claim_refund`        | `sooth_amm::close_dismissed_position`                                                                                        | parent-ix introspection (reverse)                              |
-| `sooth_book` (planned)              | `fill_order`, `deposit_for_order`, `withdraw_for_order`, `credit_shares_for_order`, `debit_shares_for_order_before_deadline` | new filler-only ix per [`sooth_book.md`](./sooth_book.md) §4.2 |
-
-## 6. Canon lifecycle mapping
-
-Canon `law/lifecycle.md` defines six states:
-`BONDING / LIVE / TRIAL_EXPIRED / RESOLVING / ATTESTED / SETTLED`. Solana
-collapses these into four:
-
-| Canon state     | Solana mapping                                                                                                                                                                     |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BONDING`       | `Open` (with `sooth_launchpad::AmmState.is_graduated == false`)                                                                                                                    |
-| `LIVE`          | `Open` (with `is_graduated == true`)                                                                                                                                               |
-| `TRIAL_EXPIRED` | not an explicit state; surfaced via `sooth_amm::dismiss_market` flipping the AMM and `lifecycle` staying at `Open` until adjudicator settles as `INVALID` (or `claim_refund` path) |
-| `RESOLVING`     | `Locked`                                                                                                                                                                           |
-| `ATTESTED`      | `Locked` (collapsed with `RESOLVING` per architecture §4.4 — Solana adjudicator does not split these phases)                                                                       |
-| `SETTLED`       | `Settled`                                                                                                                                                                          |
-
-The collapse is a **deviation from canon**. Severity:
-`partial-conformance`. Justification: Solana adjudicator pattern (D5)
-attests + settles in one transaction; canon's two-phase split was added
-in canon law/adjudicator.md after the Solana implementation shipped.
-
-Deviation should be filed in `host-kb/solana/deviations.json` once that
-file exists. Remediation: `track-for-future-canon-change` — canon may
-allow hosts to collapse `RESOLVING + ATTESTED` when their adjudicator
-does not need a veto window.
-
-## 7. Settlement payout rules
-
-Per canon `law/settlement-redemption.md`:
-
-```text
-winning_outcome = YES (1)   → payout = yes_position_atoms
-winning_outcome = NO  (0)   → payout = no_position_atoms
-winning_outcome = INVALID(2)→ payout = floor((yes + no) / 2)
-```
-
-Solana implementation matches per `instructions/redeem.rs` (branches on
-`market.winning_outcome`). Rounding direction: floor for all three
-branches per canon. Rounding residue stays in the market vault.
-
-Three-outcome (`MAYBE`) payout is canon-defined but Solana programs are
-binary-only; the third-payout case is structurally unreachable and
-unimplemented. Self-attested settlement level: **`S4`** for binary
-markets only; `S4` for three-outcome blocked by AMM binary-only design.
-
-## 8. Capability claim
-
-Per canon `law/capability-matrix.md`:
-
-| Lane        | Level claim                                                                             |
-| ----------- | --------------------------------------------------------------------------------------- |
-| Lifecycle   | `L3` (resolve → attest → settle works) with deviation: `RESOLVING + ATTESTED` collapsed |
-| Settlement  | `S4` for binary markets; INVALID half-payout works                                      |
-| Adjudicator | gated on `sooth_adjudicator` (see [`sooth_adjudicator.md`](./sooth_adjudicator.md))     |
-
-Self-attested aggregate post-verification: **`L3 / S4`**.
-
-## 9. Forbidden shortcuts
-
-- Do **not** bypass the three-leg initialization order. Each ix expects the
-  prior leg to have flipped state.
-- Do **not** allow non-adjudicator callers to `lock_for_resolution` or
-  `settle`. The parent-ix introspection gate is the only auth path; relaxing
-  it breaks the security model.
-- Do **not** convert `winning_outcome = 2` (`INVALID`) into a generic
-  error. Canon requires `INVALID` to flow through the same redeem path
-  with the half-payout rule.
-- Do **not** push payouts. `redeem` is pull-based per canon (caller
-  redeems their own position).
-- Do **not** allow `Market.adjudicator` to mutate after `initialize_market`.
-  Immutability is load-bearing for the audit story.
-
-## 10. Out of scope
-
-- `OrderbookPosition` PDA — coming in W2 of the `sooth_book` port per D15.
-- Three-outcome (`MAYBE`) support — blocked by `sooth_amm` binary-only design.
-- `RESOLVING / ATTESTED` phase split — deviation; canon-side change needed.
-- T\* retroactive settlement root storage — adjudicator J4; deferred.
-- Permissionless `invalidate()` after `deadline + invalidation_buffer` — gap
-  exists today per `lifecycle.rs:15-18`; per `evm-direct-port.md` §15 the
-  fix is recommended to land in the same audit window as the `sooth_book`
-  port.
-
-## 11. Cross-references
-
-- Architecture: `packages/programs-core/docs/architecture.md` §2.2, §4.1, §4.4, §4.5
-- Decision-log: D5 (escrow atomicity), D6 (devnet ids), D15 (position-model split)
-- Sibling specs: [`sooth_amm.md`](./sooth_amm.md), [`sooth_launchpad.md`](./sooth_launchpad.md),
-  [`sooth_adjudicator.md`](./sooth_adjudicator.md), [`sooth_book.md`](./sooth_book.md), [`sqf.md`](./sqf.md)
+- Decision log: D18 (attest and settle are separate), D21 (two venues, two
+  tokens), D25 (a market's life can end)
+- Sibling specs: [`sooth_amm.md`](./sooth_amm.md),
+  [`sooth_book.md`](./sooth_book.md),
+  [`sooth_launchpad.md`](./sooth_launchpad.md),
+  [`sooth_adjudicator.md`](./sooth_adjudicator.md), [`sqf.md`](./sqf.md)

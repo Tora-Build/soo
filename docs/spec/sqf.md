@@ -1,58 +1,113 @@
-# SQF — Sooth Question Format (Solana mapping)
+# SQF — Sooth Question Format on Solana
 
-> Status: **shipped (TS)**; on-chain question-string mapping deferred.
+> Subsystem: market question text — `create_market` argument, `MarketCreated`
+> event, and the TypeScript parser/generator.
 > Canon law: [`law/question-format.md`](https://github.com/Tora-Build/sooth-canon/blob/main/law/question-format.md).
-> Reference implementation: [`apps/demo/src/lib/sqf.ts`](../../apps/demo/src/lib/sqf.ts).
-> Companion: shared with EVM via canon; the EVM-side parser is the demo's vendored copy.
 
 ---
 
 ## 1. What this spec covers
 
-SQF is the canonical structured encoding for human-readable market metadata
-— question text, resolution rule, event id, category, and free-form meta —
-that travels with every market. It is host-neutral: the same parser and
-emitter work on EVM, Solana, and TON.
+SQF is the structured encoding for human-readable market metadata — question
+text, resolution rule, event id, category, free-form meta — carried in a single
+string. It is host-neutral: the same grammar is used on EVM and Solana.
 
-This Solana-side spec describes:
+This spec covers the Solana host's handling of that string: how it reaches the
+chain, how it is proven, where it can be read back from, and where the parser
+lives. It does not restate the grammar; canon `law/question-format.md` owns
+that.
 
-- The local implementation (parser + generator + safe parse + extract).
-- The on-chain storage path (currently `question_hash` only; full-string
-  storage deferred).
-- The deviations from canon law and how the SDK + demo work around them.
+## 2. On-chain model
 
-For the format itself (grammar, section semantics, parser/generator rules,
-canon field mapping), refer to canon `law/question-format.md`. This
-document does NOT restate the format — it documents the Solana host's
-implementation of it.
+`create_market` takes the question **text**, not just a hash:
 
-## 2. Status
+```rust
+pub struct CreateMarketArgs {
+    pub market_id: [u8; 16],
+    pub question: String,
+    pub question_hash: [u8; 32],
+    pub start_time: i64,
+    pub deadline: i64,
+    pub adjudicator: Pubkey,
+    pub initial_b: u128,
+}
+```
 
-| Surface                                | Status                                         |
-| -------------------------------------- | ---------------------------------------------- |
-| Parser (`parseSQF`)                    | shipped in `apps/demo/src/lib/sqf.ts:24-93`    |
-| Generator (`generateSQF`)              | shipped in `apps/demo/src/lib/sqf.ts:98-139`   |
-| Safe parse (`parseSQFSafe`)            | shipped — accepts legacy plain-text questions  |
-| Extract question (`extractQuestion`)   | shipped — first-line accessor for UIs          |
-| SDK adapter integration                | not yet — adapter currently passes raw string  |
-| On-chain full SQF in `Market.question` | not yet — `Market` stores `question_hash` only |
-| Off-chain SQF registry / cache         | not yet — apps render from off-chain feed      |
+The handler enforces two things before anything is written
+(`instructions/create_market.rs`):
 
-## 3. Solana implementation
+```rust
+require!(
+    !args.question.is_empty() && args.question.len() <= MAX_QUESTION_LEN,
+    SoothCoreError::InvalidQuestion
+);
+require!(
+    hash(args.question.as_bytes()).to_bytes() == args.question_hash,
+    SoothCoreError::QuestionHashMismatch
+);
+```
 
-### 3.1 File location
+`hash` is `solana_program::hash::hash`, i.e. **sha256**. `MAX_QUESTION_LEN` is
+`300` bytes (`constants.rs`) — the text rides in the instruction and again in
+the event, so it is bounded twice over: to keep the transaction inside its size
+limit and the event inside what a client can read back off the creation
+transaction.
 
-`apps/demo/src/lib/sqf.ts` is the production Solana implementation. It is
-vendored from the EVM reference. The two files MUST stay byte-identical
-within the grammar handling — diverging silently is the worst-case bug
-(canon's "host leakage rule" forbids unilateral SQF parser changes).
+Where the text ends up:
 
-### 3.2 Surface
+| Location                | Content                             |
+| ----------------------- | ----------------------------------- |
+| `Market.question_hash`  | 32-byte sha256 digest               |
+| `MarketCreated.question` | the full string                    |
+| `Market` account body   | nothing else — the text is not persisted |
+
+The `Market` account stores only the digest; rent is paid per byte and the
+program never reads the text. The `MarketCreated` event is the one place on
+chain where the words exist, and the hash check above is what makes that event
+trustworthy: without it a creator could commit the hash of one question and
+broadcast the text of another.
+
+### 2.1 Deterministic market ids
+
+The SDK derives `market_id` from the question by default: the first 16 bytes of
+`sha256(question)` (`sdk-solana/src/adapter.ts`, `buildCreateMarket`). One
+question, one market — a second create of the same text fails at account init,
+and any client can derive the market PDA from the words alone, which makes
+wizard-created markets discoverable without a registry or indexer. Callers that
+genuinely want two markets with identical text pass an explicit `marketId`.
+
+`buildCreateMarket` rejects a missing question outright: a market created from a
+bare hash has no recoverable title.
+
+## 3. Reading the question back
+
+`SolanaChainAdapter.readMarketQuestion(market, { maxPages })`:
+
+1. Walks `getSignaturesForAddress` on the market PDA to the **oldest**
+   signature (creation is the oldest write to that account).
+2. Fetches that transaction and scans `Program data:` log lines for a decoded
+   `MarketCreated` event.
+3. Recomputes `sha256(question)` and compares against the stored
+   `question_hash`, returning the text only on a match.
+
+Step 3 is not redundant. Decoding an event of a different layout against this
+schema does not fail — it reads a length prefix out of unrelated bytes and hands
+back binary garbage that is still a `string`. The stored hash is an independent
+witness.
+
+This is a transaction-history read, not an index. It is bounded by `maxPages`
+(default 5 × 1000 signatures); a market with more traffic than that returns
+`undefined` rather than a wrong answer, and callers should cache what they find.
+
+## 4. Parser and generator
+
+`apps/demo/src/lib/sqf.ts` is the TypeScript implementation, vendored from the
+EVM reference:
 
 ```ts
 interface SQFRule {
   description?: string;
-  [key: string]: string | undefined;  // arbitrary lowercase ASCII keys
+  [key: string]: string | undefined; // arbitrary lowercase ASCII keys
 }
 
 interface SQFData {
@@ -64,170 +119,39 @@ interface SQFData {
 }
 
 parseSQF(raw: string): SQFData
-parseSQFSafe(raw: string): SQFData    // backwards-compat for plain-text
+parseSQFSafe(raw: string): SQFData    // untagged plain text → { question: raw, rule: {} }
 generateSQF(data: SQFData): string
 extractQuestion(raw: string): string  // first §question line, or raw if untagged
 ```
 
-All four functions are pure. No state, no async, no IO.
+All four are pure — no state, no async, no IO. `generateSQF` is what the demo's
+market-creation wizard feeds into `buildCreateMarket`; `parseSQFSafe` is what
+rendering paths call, so plain-text questions keep working.
 
-### 3.3 Parser disambiguation rule
+### 4.1 Parser disambiguation rule
 
-The single non-obvious rule (per `apps/demo/src/lib/sqf.ts:52-54`):
+The one non-obvious rule: a line inside `§rule` is a key-value pair only when it
+matches `^[a-z][a-z0-9-]*:` **and** does not start with `http`. Otherwise it
+joins `rule.description`. This is what keeps URLs (which contain `:`) from being
+split. The rule is canon-owned; the two host copies must not diverge.
 
-```ts
-if (
-  colonIdx > 0 &&
-  !line.startsWith("http") &&
-  /^[a-z][a-z0-9-]*:/.test(line)
-) {
-  // key:value line
-}
-```
+## 5. Constraints
 
-A line is a `§rule` key-value only when it matches `^[a-z][a-z0-9-]*:`
-**and** does not begin with `http`. Otherwise it is treated as part of
-`rule.description`. This protects URLs (which contain `:`) from being
-split by the parser. Per canon law, this disambiguation is canonical.
+- The 300-byte cap applies to the **whole SQF string**, not just the first line.
+  A verbose `§rule` section can push a question over the limit; the wizard has to
+  budget for it.
+- The parser is canon-owned. Changing `sqf.ts` grammar handling unilaterally
+  forks the format; it requires a canon edit and a synchronized update on every
+  host.
+- `parseSQFSafe`'s plain-text fallback is load-bearing for markets created
+  before the wizard emitted SQF.
+- Treating `question_hash` as authoritative and the event text as advisory is
+  the correct trust order — always verify the text against the hash before
+  displaying or caching it.
 
-## 4. On-chain storage model
-
-### 4.1 Current state
-
-`sooth_market::Market` stores **`question_hash`**, not the full SQF string.
-The hash is a 32-byte keccak256 of the original question text, computed
-off-chain at market creation and committed in
-`sooth_market::instructions::initialize_market`.
-
-```rust
-// packages/programs-core/programs/sooth_market/src/state/...
-pub struct Market {
-    // ...
-    pub question_hash: [u8; 32],
-    // ...
-}
-```
-
-This is a deliberate Solana-side decision: Solana account rent is paid
-per byte, and storing the full SQF string (typically 100–500 bytes) would
-add per-market rent without on-chain semantic value (the chain never
-reads the question text).
-
-### 4.2 Deviation from canon
-
-Canon `law/question-format.md` says "Hosts must serialize the
-`market.question` storage field as the full SQF string. Hosts must not
-split SQF sections across multiple storage fields."
-
-Solana's `question_hash`-only model is a **`partial-conformance`
-deviation**:
-
-| Field             | Canon expected                        | Solana actual       |
-| ----------------- | ------------------------------------- | ------------------- |
-| `market.question` | Full SQF string on-chain              | 32-byte keccak hash |
-| `market.rule`     | Parsed from `§rule` in stored SQF     | Off-chain only      |
-| `market.event_id` | Parsed from `§event` in stored SQF    | Off-chain only      |
-| `market.category` | Parsed from `§category` in stored SQF | Off-chain only      |
-| `market.meta`     | Parsed from `§meta` in stored SQF     | Off-chain only      |
-
-The deviation should be filed in `host-kb/solana/deviations.json` once
-that file exists. Severity: `accepted-tradeoff`. Justification: Solana
-rent-per-byte makes on-chain string storage economically wasteful when
-indexers can serve the full string off-chain. Remediation plan:
-`track-for-future-canon-change` (canon may want to formalize a
-hash-on-chain + string-off-chain split as a host-allowed configuration).
-
-### 4.3 Off-chain feed (recommended path forward)
-
-When the full-SQF-on-chain gap is closed via an off-chain feed, the
-expected shape is a registry account or indexer endpoint keyed by
-`market_id`:
-
-```text
-GET /markets/{market_id}/question  →  full SQF string
-```
-
-The on-chain `question_hash` then verifies the off-chain string:
-`keccak256(string) == on_chain_hash`. Apps that don't trust the feed can
-recompute and compare. This preserves canon's spirit (full SQF available
-to UIs) without paying rent for unread bytes.
-
-This feed does not yet exist. Open work item per `docs/roadmap.md`.
-
-## 5. SDK adapter integration
-
-### 5.1 Current state
-
-`packages/sdk-solana` currently reads `Market.question_hash` and exposes
-it raw in market snapshots. The adapter does NOT parse SQF — that
-happens in `apps/demo` (the consumer).
-
-### 5.2 Expected post-feed integration
-
-Once the off-chain feed lands:
-
-```ts
-// packages/sdk-solana/src/adapter.ts (planned)
-async readSnapshot(marketRef: MarketRef): Promise<Snapshot> {
-  // ... existing reads ...
-  const rawSqf = await this.questionFeed?.fetch(marketRef.marketId);
-  const parsed = rawSqf ? parseSQFSafe(rawSqf) : undefined;
-  return {
-    // ...
-    question_hash: market.question_hash,
-    question: parsed?.question,
-    rule: parsed?.rule,
-    event_id: parsed?.event,
-    category: parsed?.category,
-    meta: parsed?.meta,
-  };
-}
-```
-
-The `parseSQFSafe` path preserves backwards compatibility: untagged
-plain-text questions pass through as `{ question: raw, rule: {} }`.
-
-## 6. Cross-host parity
-
-| Concern                     | EVM                                            | Solana                         | TON                                                                         |
-| --------------------------- | ---------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------- |
-| Storage of full SQF         | on-chain string in `TruthMarket.question`      | off-chain feed (hash on-chain) | `offchainMetadata.{question, deadline}` flat sidecar; SQF migration pending |
-| Parser canonicalness        | `apps/demo` TS impl (shared via `sooth-alpha`) | same TS impl, vendored         | TS impl in `sooth-ton` SDK; not yet aligned                                 |
-| Legacy plain-text questions | accepted via `parseSQFSafe`                    | accepted via `parseSQFSafe`    | accepted (no SQF parsing yet)                                               |
-
-The three hosts agree on the parser; they differ on storage. Canon's
-host-leakage rule explicitly allows this kind of storage divergence as
-long as the wire format (the SQF string itself) round-trips identically.
-
-## 7. Forbidden shortcuts
-
-- Do **not** modify `apps/demo/src/lib/sqf.ts` parser semantics
-  unilaterally. The parser is canon-owned (per
-  `law/question-format.md`); changes require a canon edit and synchronized
-  updates across all hosts.
-- Do **not** store SQF fields split across multiple Solana account
-  fields (e.g. a separate `rule` PDA). Canon forbids this.
-- Do **not** drop the `parseSQFSafe` backwards-compat path. Legacy
-  plain-text questions must continue to work.
-- Do **not** lowercase keys silently in `meta` when re-emitting. Preserve
-  insertion order and case per canon's parser rules.
-- Do **not** treat `question_hash` as opaque without recomputing against
-  the off-chain string when present. The hash is a verification anchor,
-  not a substitute.
-
-## 8. Out of scope
-
-- On-chain full-string storage (will require a separate `MarketMetadata`
-  PDA or string-bearing extension; rent-cost analysis owed)
-- Pluggable adjudicator metadata fields (`§rule adjudicator:<type-id>`
-  conventions). Reserved for future canon extension.
-- Cross-host meta-key namespace (`§meta source:`, `§meta ui-color:`).
-  Canon does not yet standardize these; hosts may emit and consume
-  freely.
-
-## 9. Cross-references
+## 6. Cross-references
 
 - Canon law: [`law/question-format.md`](https://github.com/Tora-Build/sooth-canon/blob/main/law/question-format.md)
-- Implementation: [`apps/demo/src/lib/sqf.ts`](../../apps/demo/src/lib/sqf.ts)
-- Canon decision: `sooth-canon` `DECISIONS.md` 0013 (SQF promotion to canon law)
-- Market storage: [`sooth_market.md`](./sooth_market.md) §3.2 (`Market.question_hash`)
+- Parser: [`apps/demo/src/lib/sqf.ts`](../../apps/demo/src/lib/sqf.ts)
+- Creation path: [`sooth_launchpad.md`](./sooth_launchpad.md) §3
+- Decision log: D24 (the question text lives on chain)

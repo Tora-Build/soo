@@ -1,193 +1,164 @@
-# @sooth/demo — Faithful Solana fork of `sooth-alpha/apps/demo`
+# @sooth/demo
 
-This is a **faithful** fork of `sooth-alpha/apps/demo`, not a clean reimplementation. Upstream's React tree (pages, components, hooks, stores, validation, toast UX, i18n, error boundaries) is preserved as-is; only the chain integration layer is swapped via `src/lib/chain-shim/`.
+> The forked demo app. Classic pages, the Eastboard shell at `/options`, and
+> Arena at `/play`, all driven by `@sooth/sdk-solana` through a chain-shim.
 
-The TDD value of this fork comes from **running upstream's actual UX flows against `@sooth/sdk-solana`**. A lean rebuild would only validate what we already know works — it wouldn't surface the gaps real-world consumer code triggers.
+This is a **faithful** fork of the EVM demo, not a clean reimplementation.
+Upstream's React tree — pages, components, hooks, stores, validation, toast UX,
+i18n, error boundaries — is preserved as-is; only the chain integration layer is
+swapped, under `src/lib/chain-shim/`. Running upstream's real UX flows against
+the Solana SDK is the point: a lean rebuild would only validate what we already
+know works.
+
+`apps/pulse` is the other frontend — standalone, shim-free, built directly on
+the SDK. This one exists to exercise the fork.
+
+## Routes
+
+| Route | What it is |
+| ----- | ---------- |
+| `/options` | **Eastboard** — the option-chain shell wrapping the main trading surfaces |
+| `/positions` | Eastboard portfolio |
+| `/play` | **Arena** — the gameplay surface over the same markets |
+| `/markets` | Market list |
+| `/amm`, `/amm/:marketAddress` | LMSR bonding venue: quote, buy, sell, sell-cooldown claims |
+| `/orderbook`, `/orderbook/:marketAddress` | The CLOB: ladder, place, cancel, withdraw, open orders |
+| `/portfolio` | Positions, pending unlocks, redemptions, LP, operator panel |
+| `/launchpad`, `/create` | Market creation and `seed_lp` |
+| `/liquidity`, `/lp-forecast` | LP holdings and yield forecasting |
+| `/operator` | Adjudicator console: request lock, attest, dispute, settle |
+| `/faucet` | Mint devnet/localnet venue tokens |
+| `/learn` | Static explainer content |
+| `/geek` | Command terminal over the adapter; unwired commands say so |
+| `/__check` | Health check |
+
+The book is gated closed until a market graduates — the program enforces it — so
+`/orderbook` shows the gate rather than a tradeable ladder on a market that is
+still bonding.
 
 ## How the chain-shim works
 
-`src/lib/chain-shim/` is the ONE place EVM-flavored hook signatures map to Solana primitives. Re-syncing from upstream is "copy upstream src/ in, re-run import substitutions" — see [How to re-sync](#how-to-re-sync-from-upstream).
+`src/lib/chain-shim/` is the one place EVM-flavoured hook signatures map onto
+Solana primitives. Re-syncing from upstream is "copy upstream `src/` in, re-run
+the import substitutions".
 
-| Shim file               | Surface                                                                                                                                                                                                        |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `viem-shim.ts`          | `Address`/`Hash`/`Hex` types, `formatUnits`, `parseUnits`, `keccak256`, `encodePacked`, `parseAbi*`, `defineChain`, `http`, `fallback`                                                                         |
-| `wagmi-shim.ts`         | `useAccount`, `useChainId`, `useDisconnect`, `useConnect`, `useReadContract*`, `useWriteContract`, `useWaitForTransactionReceipt`, `useWatchContractEvent`, `usePublicClient`, `useWalletClient`, `useBalance` |
-| `appkit-shim.ts`        | `useAppKit`, `useAppKitAccount`, `WagmiAdapter`, `createAppKit`                                                                                                                                                |
-| `wagmi-actions-shim.ts` | `waitForTransactionReceipt`, `getAccount`, `connect`, `reconnect`, `readContract`, `writeContract`                                                                                                             |
-| `sooth-sdk-shim.ts`     | `WAD`, `MAX_UINT256`, `OutputLine`, `CommandResult`, EVM ABI placeholders                                                                                                                                      |
+| Shim file | Surface |
+| --------- | ------- |
+| `viem-shim.ts` | `Address` / `Hash` / `Hex`, `formatUnits`, `parseUnits`, `keccak256`, `encodePacked`, `parseAbi*`, `defineChain`, `http`, `fallback` |
+| `wagmi-shim.ts` | `useAccount`, `useChainId`, `useDisconnect`, `useConnect`, `useReadContract*`, `useWriteContract`, `useWaitForTransactionReceipt`, `useWatchContractEvent`, `usePublicClient`, `useWalletClient`, `useBalance` |
+| `wagmi-actions-shim.ts` | `waitForTransactionReceipt`, `getAccount`, `connect`, `reconnect`, `readContract`, `writeContract` |
+| `appkit-shim.ts` | `useAppKit`, `useAppKitAccount`, `WagmiAdapter`, `createAppKit` |
+| `sooth-sdk-shim.ts` | `WAD`, `MAX_UINT256`, `OutputLine`, `CommandResult` |
+| `amm-bridge.ts` | AMM reads and writes onto the adapter |
+| `markets-bridge.ts` | Market list and metadata |
+| `orderbook-reads.ts` | Book ladder, depth, and a trader's open orders |
+| `portfolio-bridge.ts` | Positions, unlocks, redemptions |
+| `rpc-errors.ts` | RPC failure normalization for the toast layer |
 
-Hooks bound to wallet-adapter (`useAccount`, `useDisconnect`, `useAppKit`, `usePublicClient`) return real values backed by `@solana/wallet-adapter-react`. Hooks that read EVM contracts via ABI dispatch (`useReadContract`/`useReadContracts`/`useWatchContractEvent`/`useWriteContract`) return stable sentinel "no data / unsupported" values — the surrounding component renders, the empty state surfaces.
+Hooks bound to the wallet (`useAccount`, `useDisconnect`, `useAppKit`,
+`usePublicClient`) return real values from `@solana/wallet-adapter-react`. Hooks
+that would dispatch against an EVM ABI return stable "no data" sentinels, so the
+surrounding component still renders its empty state instead of crashing.
 
-## What's wired vs what throws NotImplemented
+If a re-sync from upstream turns into a wholesale rewrite, the shim is wrong —
+adjust the shim, not the copied tree.
 
-| Route          | Status                                                                                                                                                                                                                                                                                                                                             |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/markets`     | Wired. List + bridged metadata via `dispatchMarketsRead`.                                                                                                                                                                                                                                                                                          |
-| `/amm`         | Wired. Real `sooth_amm::trade_positions` (buy) and `sell_positions` end-to-end via the chain-shim → SDK → on-chain ix. Quote, position, lock-on-sell, claim_unlocked all functional.                                                                                                                                                               |
-| `/orderbook`   | Renders the "gated on P1" card directly — `sooth_book` is undeployed (heavy hooks only mount when the program is present, no inner-hook crash).                                                                                                                                                                                                    |
-| `/launchpad`   | Wired. Real `sooth_launchpad::create_market` (4-leg CPI init flow) via the shim.                                                                                                                                                                                                                                                                   |
-| `/portfolio`   | Wired. AMM positions + complete-set CTAs (mint / merge / **redeem**) + pending-unlocks panel with claim button + operator panel (REQUEST LOCK + ATTEST YES/NO/INVALID, self-gated on Adjudicator.authority). `readPortfolio` itself still `NotImplemented`; the page builds its view from `readSnapshots` + `readPosition` + `readPendingUnlocks`. |
-| `/operator`    | Renders. Operator actions surface on `/portfolio`; the legacy `/operator` page still calls upstream EVM `finalizeResolution`/`resolve` paths and shows "no data" until those routes are migrated.                                                                                                                                                  |
-| `/liquidity`   | Renders. LP holders / forecasts still depend on EVM event indexing.                                                                                                                                                                                                                                                                                |
-| `/lp-forecast` | Renders. Pure-function forecast helpers compile; live data points come from upstream EVM hooks → empty.                                                                                                                                                                                                                                            |
-| `/learn`       | Renders fully (static content).                                                                                                                                                                                                                                                                                                                    |
-| `/faucet`      | Wired. Real SPL `MintTo` against the localnet USDC mint via `dispatchAmmWrite("mint")` (signs with `VITE_TEST_MINT_AUTHORITY_BYTES` from `.env.local` — localnet only).                                                                                                                                                                            |
-| `/geek`        | Renders. The terminal accepts commands; every command returns "Not available in Solana fork" (see `src/lib/sdk/index.ts`).                                                                                                                                                                                                                         |
-| `/__check`     | Replaced — EVM contract health-check is chain-locked.                                                                                                                                                                                                                                                                                              |
-
-Indexer status pill in the footer renders "pending (P3)" — the Solana indexer is gated on docs/decision-log.md P3 (namespace strategy).
-
-## Quick start
-
-`pnpm dev` (no flag) targets devnet by default — `sooth_core` is deployed at
-the ID pinned in `src/lib/config.ts` (sourced from the SDK's IDL JSON), and
-the protocol singletons (`ProtocolConfig`, `fee_pool_vault`) are bootstrapped
-already. To re-bootstrap (e.g. after a fresh program redeploy) or to seed a
-fresh demo market, point the seed script at devnet:
+## Running it
 
 ```sh
-SOLANA_RPC_URL=https://api.devnet.solana.com node apps/demo/scripts/seed-localnet.mjs init
-```
-
-The same script seeds any cluster; `prepare` is the localnet-only phase that
-builds the USDC mint dump. Seeding a market requires the signing wallet to
-hold devnet USDC at the canonical mint (`4zMM…ncDU`). Bootstrapping the
-singletons is idempotent and safe to re-run.
-
-For offline iteration, `pnpm dev:localnet` boots a fresh
-`solana-test-validator`, deploys the programs, mints USDC, and seeds a
-market — see [Localnet (offline)](#localnet-offline).
-
-## Localnet (offline)
-
-The dapp needs a running validator with both Sooth programs deployed and a market initialized. `pnpm dev:localnet` does all three.
-
-```sh
-# Prereqs (one time):
-#   - solana-cli installed (https://docs.anza.xyz/cli/install)
-#   - Phantom or Solflare browser extension
-#   - SDK + programs built:
-#       pnpm -F @sooth/sdk-solana build
-#       cd packages/programs-core && cargo build-sbf
-
-# From repo root:
 pnpm install
-pnpm --filter @sooth/demo dev:localnet
+pnpm --filter @sooth/demo dev            # devnet (default)
+pnpm --filter @sooth/demo dev:localnet   # solana-test-validator + seed + vite
+pnpm --filter @sooth/demo dev:surfpool   # Surfpool: sub-second boot, time-travel
 ```
 
-What it does, in order:
+`dev:localnet` boots `solana-test-validator --reset` with `sooth_core.so`
+deployed and both venue mints preloaded, airdrops SOL, mints tokens, bootstraps
+the protocol singletons, seeds a market, writes `.env.local`, and serves vite on
+`:5175`. Ctrl-C kills the validator it started.
 
-1. Pre-bakes a USDC mint JSON dump at the canonical address (`4zMM…ncDU`).
-2. Boots `solana-test-validator --reset` with the four production .so binaries (`sooth_amm`, `sooth_market`, `sooth_launchpad`, `sooth_adjudicator`) and the USDC mint preloaded via `--account`. Or: `pnpm dev:surfpool` for sub-second startup + the `surfnet_timeTravel` cheatcode (Surfpool auto-deploys all four programs from `Anchor.toml`).
-3. Waits for the validator to be healthy.
-4. Airdrops 10 SOL to a pre-generated creator + user keypair.
-5. Mints 1000 USDC to the user.
-6. Runs all four Anchor init instructions to create a market and an AMM state.
-7. Writes `apps/demo/.env.local` with the seeded `VITE_DEMO_MARKET_REF` etc.
-8. Starts vite on `:5175` (or `VITE_PORT` if set).
+`dev:surfpool` swaps in Surfpool for the same flow. Worth it for two things: it
+starts in under a second, and `surfnet_timeTravel` bridges the 24-hour
+sell-cooldown and post-deadline gates a stock validator cannot. Cheatcodes are
+surfaced through `pnpm --filter @sooth/demo cheats`.
 
-Stop the dev server with Ctrl-C — the script kills the validator it started.
-
-### Connecting a wallet against localnet
-
-The seeded user keypair is written to `apps/demo/.localnet/user-keypair.json`. To trade, import that keypair into your browser wallet and set the wallet's network to **Custom RPC** = `http://127.0.0.1:8899`.
-
-## Manual run (validator already up)
+Prerequisites for either local path: `solana-cli`, a browser wallet, and a built
+program plus SDK —
 
 ```sh
-# Terminal 1 — your validator (deploy all four production programs at their declare_id! pubkeys)
-solana-test-validator --reset \
-  --bpf-program 67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k target/deploy/sooth_amm.so \
-  --bpf-program ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n target/deploy/sooth_market.so \
-  --bpf-program HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3 target/deploy/sooth_launchpad.so \
-  --bpf-program 4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8 target/deploy/sooth_adjudicator.so \
-  --account 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU apps/demo/.localnet/usdc-mint-account.json
-
-# Terminal 2 — seed + dev
-pnpm --filter @sooth/demo seed:prepare   # writes the mint dump (one-time)
-pnpm --filter @sooth/demo seed:init       # creates a market, writes .env.local
-pnpm --filter @sooth/demo dev             # vite
+anchor build
+pnpm -F @sooth/sdk-solana build
 ```
 
-## How to re-sync from upstream
+To trade against localnet, import the seeded keypair from
+`apps/demo/.localnet/user-keypair.json` and point your wallet at
+`http://127.0.0.1:8899`.
 
-The shim is designed so that pulling new upstream code is mostly a copy + import-substitution exercise:
+Full wallet setup and the Surfpool path are in
+[`docs/build.md`](../../docs/build.md).
 
-```sh
-# 1. Mirror the upstream src/ wholesale (preserves new files):
-rsync -a --delete ../../../sooth-alpha/apps/demo/src/ src/
+### Seeding
 
-# 2. Re-run the import substitutions across the new files:
-find src -type f \( -name "*.ts" -o -name "*.tsx" \) | while read f; do
-  perl -i -0pe '
-    s|from "wagmi"|from "@/lib/chain-shim"|g;
-    s|from "wagmi/chains"|from "@/lib/chain-shim"|g;
-    s|from "wagmi/actions"|from "@/lib/chain-shim/wagmi-actions-shim"|g;
-    s|from "viem"|from "@/lib/chain-shim"|g;
-    s|from "viem/accounts"|from "@/lib/chain-shim"|g;
-    s|from "@reown/appkit/react"|from "@/lib/chain-shim"|g;
-    s|from "@reown/appkit/networks"|from "@/lib/chain-shim"|g;
-    s|from "@reown/appkit-adapter-wagmi"|from "@/lib/chain-shim"|g;
-    s|from "@sooth/sdk/core"|from "@/lib/chain-shim"|g;
-    s|from "@sooth/sdk/core/abis"|from "@/lib/chain-shim"|g;
-  ' "$f"
-done
+`scripts/seed-localnet.mjs` bootstraps any cluster via `SOLANA_RPC_URL` — it is
+what `dev:localnet` calls, and it is idempotent, so re-running it after a
+redeploy is safe. Alongside it: `seed-book.mjs` and `grow-book.mjs` populate a
+book, `graduate-market.mjs` trades a market past its `b·ln(2)` threshold, and
+`settle-e2e.mjs` walks attest → veto → settle.
 
-# 3. Restore the Solana-specific files from git (they live in src/ but
-#    are not in upstream):
-git restore -- src/main.tsx src/lib/polyfills.ts src/lib/config.ts \
-                src/lib/DemoContext.tsx src/lib/chain-shim/ \
-                src/lib/sdk/ src/pages/HealthCheckPage.tsx
+## Configuration
 
-# 4. Run typecheck; new wagmi/viem symbols upstream uses might need to
-#    be added to the shim:
-pnpm typecheck
-```
+| Env | Default | Purpose |
+| --- | ------- | ------- |
+| `VITE_SOLANA_RPC_URL` | `https://api.devnet.solana.com` | RPC endpoint |
+| `VITE_SOLANA_WS_URL` | public devnet WS | Subscription endpoint for confirms — kept separate because keyed providers often serve reads but not `signatureSubscribe` |
+| `VITE_SOOTH_CORE_ID` | from the bundled IDL | `sooth_core` program ID |
+| `VITE_USDC_MINT` | `ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX` | **Book** venue token |
+| `VITE_AMM_MINT` | `CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu` | **AMM** venue token |
+| `VITE_AMM_TOKEN_LABEL` / `VITE_AMM_TOKEN_SYMBOL` | `Mock EAST` / `EAST` | Display name for the AMM token — chosen per deployment, so it cannot be a constant |
+| `VITE_BOOK_TOKEN_LABEL` / `VITE_BOOK_TOKEN_SYMBOL` | `Mock USDC` / `USDC` | Display name for the book token |
+| `VITE_DEMO_MARKET_REF` | (none) | `sol:<base58>` of the seeded market |
+| `VITE_DEMO_EXTRA_MARKET_REFS` | (none) | Comma-separated extra markets to list |
+| `VITE_PORT` | `5175` | Vite port |
+| `VITE_TEST_MODE`, `VITE_TEST_KEYPAIR_BYTES` | (none) | Drive the app with a local keypair adapter; e2e only |
+| `VITE_TEST_MINT_AUTHORITY_BYTES` | set by `seed:init` | Signs faucet mints. **Localnet only** |
+| `VITE_TEST_AUTHORITY_BYTES` | set by `seed:init` | Protocol authority for auto-registration. Localnet only |
 
-If a re-sync is "wholesale rewrite," the shim layer is wrong — open an issue and adjust the shim, not the upstream copy.
+There is no on-chain market registry, so the market list is served from
+`VITE_DEMO_MARKET_REF` plus `VITE_DEMO_EXTRA_MARKET_REFS`. A market created
+outside that list is reachable by URL but will not appear in the feed. An
+indexer is the fix, when it matters.
 
 ## Tests
 
 ```sh
-pnpm -F @sooth/demo test
+pnpm -F @sooth/demo test        # vitest — 16 files
+pnpm -F @sooth/demo e2e         # Playwright, against a real validator
+pnpm -F @sooth/demo typecheck
 ```
 
-Vitest covers React-tree mount + bridged-data shape (6 specs across `render` / `markets-display` / `portfolio-display` / `amm-buy-flow` / `amm-sell-flow`). Several of the on-chain integration specs need a running localnet validator — they pass against `dev:localnet` but skip / fail in isolation.
+Vitest covers React-tree mount, bridged-data shapes, the book view and order
+mapping, order collateral, market-ref forms, RPC error normalization, and the
+AMM buy/sell flows.
 
-For full SDK validation, see `pnpm -F @sooth/sdk-solana test` (44 specs across 11 files, runs against `litesvm` in ~5s).
-
-The Playwright on-chain e2e suite at `e2e/onchain/` (`pnpm -F @sooth/demo test:e2e`) drives the dapp via vite + `LocalKeypairAdapter` against a real validator. 12 specs total; specs 08 (claim_unlocked) and 09 (trading-window) self-skip on stock test-validator and run real round-trips when booted via Surfpool (they use `surfnet_timeTravel` to bridge the 24h sell-lock and post-deadline gates — see `e2e/helpers/surfpool.ts`).
-
-## TODOs
-
-- Migrate `/operator` page upstream to call the chain-shim `requestLock` / `attestOutcome` dispatchers (currently the operator panel on `/portfolio` covers this; the legacy page itself still wires to EVM `finalizeResolution` / `resolve`).
-- When `buildOrderbook*` lands (gated on P1), wire the `/orderbook` page through it.
-- When the Solana indexer lands (gated on P3), replace the "pending (P3)" footer pill with real sync state.
-- Consider `manualChunks` config to break up the single-bundle output.
-
-## Configuration
-
-| Env                              | Default                                        | Purpose                                                                                                           |
-| -------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `VITE_SOLANA_RPC_URL`            | `https://api.devnet.solana.com`                | RPC endpoint                                                                                                      |
-| `VITE_USDC_MINT`                 | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` | Collateral mint (canonical devnet USDC)                                                                           |
-| `VITE_SOOTH_AMM_ID`              | `67zS8M81LATLxEgegm5jyYgwFYNTfbF3FnYqxjbZKp7k` | sooth_amm program ID (devnet)                                                                                     |
-| `VITE_SOOTH_MARKET_ID`           | `ByhA86BqTTrsZBDjSURWjRncojE6p7sxUqcWmHxfdd2n` | sooth_market program ID (devnet)                                                                                  |
-| `VITE_SOOTH_LAUNCHPAD_ID`        | `HkXeNGGCNcGRYvDLjb5i2wdycGfjVgXWs1C2H14YiYX3` | sooth_launchpad program ID (devnet)                                                                               |
-| `VITE_SOOTH_ADJUDICATOR_ID`      | `4fifRPBFebS12impdMvQGKZ9WZ96GgUunrw6iEx3KKV8` | sooth_adjudicator program ID (devnet)                                                                             |
-| `VITE_DEMO_MARKET_REF`           | (none)                                         | `sol:<base58>` of the demo market PDA                                                                             |
-| `VITE_DEMO_AIRDROP_RECIPIENT`    | (none)                                         | User pubkey the seed script funded with 1000 USDC                                                                 |
-| `VITE_TEST_MINT_AUTHORITY_BYTES` | (none, set by `seed:init`)                     | Localnet USDC mint authority secret key, signs Faucet `MintTo`. Localnet only — never set against devnet/mainnet. |
-| `VITE_TEST_AUTHORITY_BYTES`      | (none, set by `seed:init`)                     | Adjudicator allowlist authority, used by the auto-register-on-connect hook. Localnet only.                        |
-
-`pnpm dev:localnet` writes a `.env.local` that overrides `VITE_SOLANA_RPC_URL`
-to `http://127.0.0.1:8899` (and ditto for the program IDs if the local
-keypairs differ); the bare `pnpm dev` flow uses the devnet defaults
-above without touching `.env.local`.
+The Playwright suite in `e2e/onchain/` drives the real dapp through vite with a
+local keypair adapter and asserts on-chain state, not just the DOM: AMM buys and
+sells, slippage rejection, wallet-disconnected handling, sell-cooldown claims,
+the trading window, attest/settle, redemption, market creation, faucet mints,
+trading a market to graduation, dismiss and refund, LP redemption, and
+per-market book fees. Specs that need to cross the 24-hour cooldown or a
+deadline self-skip on a stock validator and run for real under Surfpool via
+`surfnet_timeTravel` — see `e2e/helpers/surfpool.ts`.
 
 ## Troubleshooting
 
-- **`port 8899 already in use`** — another validator is still listening. `lsof -nP -iTCP:8899 -sTCP:LISTEN` to identify, then kill.
-- **`port 5175 already in use`** — vite is already running. `VITE_PORT=5176 pnpm dev:localnet`.
-- **`missing target/deploy/sooth_amm.so`** — `cd packages/programs-core && cargo build-sbf` from repo root.
-- **Wallet shows no balance** — check the wallet's network is set to `http://127.0.0.1:8899` (not mainnet-beta).
+- **`port 8899 already in use`** — another validator is listening.
+  `lsof -nP -iTCP:8899 -sTCP:LISTEN`, then kill it.
+- **`port 5175 already in use`** — `VITE_PORT=5176 pnpm dev:localnet`.
+- **`missing target/deploy/sooth_core.so`** — run `anchor build` from the repo
+  root.
+- **Wallet shows no balance** — check the wallet's network is
+  `http://127.0.0.1:8899`, not mainnet-beta.
+- **A change to the SDK does nothing** — the demo imports `dist/`. Run
+  `pnpm -F @sooth/sdk-solana build`.
+- **Every write hangs at "confirming"** — the RPC provider serves reads but not
+  `signatureSubscribe`. Set `VITE_SOLANA_WS_URL` to an endpoint that does.

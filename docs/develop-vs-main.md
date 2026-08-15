@@ -1,9 +1,10 @@
 # `develop` vs `main` — what changed and why
 
-As of 2026-08-10. `develop` is 110 commits ahead of `main`.
+As of 2026-08-16. `develop` is **128 commits** ahead of `main`
+(`git rev-list --count main..develop`).
 
 This document exists because the two branches are no longer variations on the
-same design. `main` is the six-program port of the EVM contracts; `develop` is
+same design. `main` is the multi-program port of the EVM contracts; `develop` is
 one program with a different orderbook. Reading a diff top to bottom will not
 tell you that, so this explains the shape first and the details after.
 
@@ -11,14 +12,14 @@ tell you that, so this explains the shape first and the details after.
 
 ## 1. The short version
 
-Four things happened, in order of how much they matter.
+Five things happened, in order of how much they matter.
 
-**The six programs became one.** `main` splits the protocol across
-`sooth_market`, `sooth_amm`, `sooth_book`, `sooth_launchpad`,
-`sooth_adjudicator` and `sooth_log`, which talk to each other by CPI. Every
-call that touches two of them pays for the hop, and every account constraint
-has to be re-proved on the far side. `develop` is a single `sooth_core`. Half
-the Rust disappeared: 24,914 lines to 10,176.
+**The five programs became one.** `main` splits the protocol across
+`sooth_market`, `sooth_amm`, `sooth_book`, `sooth_launchpad` and
+`sooth_adjudicator`, which talk to each other by CPI. Every call that touches
+two of them pays for the hop, and every account constraint has to be re-proved
+on the far side. `develop` is a single `sooth_core`. Well over half the Rust
+disappeared: 24,514 lines to 10,678.
 
 **The orderbook was rebuilt.** `main` stores one account per price level, so a
 market with orders at forty ticks is forty accounts, and a trade that sweeps
@@ -36,6 +37,12 @@ trade on the book until it graduates. Two vaults, two fee pools, two fee rates.
 **A class of bug was closed.** Not a rewrite — specific, found defects, each of
 which could take or strand real money. They are listed in §6 because they are
 the part an auditor should read first.
+
+**A second frontend exists.** `main` ships one app, `apps/demo` — which on
+`develop` has since grown the Eastboard and Arena surfaces on top of its
+chain-shim. `apps/pulse` is new and shim-free: it talks to `@sooth/sdk-solana`
+directly, and it is the surface that renders the program as it actually is.
+§7a.
 
 The capacity consequence, since it is the question most often asked: a
 transaction goes from **5 fills to several hundred**, and a fill costs ~20×
@@ -58,41 +65,50 @@ actually better and which one scales.
 
 ```
                               main          develop
-Programs                      6             1
-Rust (packages/programs-core) 24,442        9,956
-Instructions                  51            27
+Programs                      5             1
+Rust (packages/programs-core) 24,514        10,678
+Instructions                  51            30
+Frontends                     apps/demo     apps/demo + apps/pulse
 Collateral tokens             1             2 (one per venue)
 Fee rates                     1 (fee_bps)   2 (amm / book) + graduation_bps
 Vaults per market             1             2 (vault_amm, vault_book)
 Outcome SPL mints             2 (YES/NO)    0
-TypeScript test files         65            36 (SDK) + e2e
-Rust #[test]                  247           120
+TypeScript test/spec files    53            81
+Rust #[test]                  244           120
 ```
 
-Overall: **507 files changed, +41,680 / −65,936**.
+Overall: **485 files changed, +57,982 / −50,501**
+(`git diff --shortstat main...develop`). Every figure in this section is
+measured against the two committed branch tips; uncommitted work in a worktree
+is not counted, so re-derive rather than trusting these after a busy week.
 
-By area:
+By area (`git diff --shortstat main...develop -- <area>`):
 
 | Area | Files | Added | Removed |
 |---|---:|---:|---:|
-| `packages/programs-core` | 198 | 9,483 | 24,722 |
-| `packages/sdk-solana` | 88 | 18,467 | 22,049 |
-| `apps/demo` | 162 | 8,755 | 12,063 |
-| `packages/sooth-data` | 24 | 2,793 | 70 |
-| `docs` | 25 | 2,321 | 3,469 |
+| `packages/programs-core` | 197 | 10,318 | 24,299 |
+| `packages/sdk-solana` | 64 | 20,324 | 20,551 |
+| `apps/demo` | 152 | 17,082 | 5,515 |
+| `packages/sooth-data` | 34 | 4,031 | 0 |
+| `apps/pulse` | 26 | 1,821 | 0 |
+| `docs` | 9 | 2,653 | 44 |
 
-Two of these need a caveat, because the raw figure misleads:
+Three of these need a caveat, because the raw figure misleads:
 
-- **Rust tests fell from 247 to 120.** No test was deleted from surviving code.
-  Five programs and the legacy orderbook were removed and their tests went with
+- **Rust tests fell from 244 to 120.** No test was deleted from surviving code.
+  Four programs and the legacy orderbook were removed and their tests went with
   them. Coverage per surviving line is higher, not lower — but the headline
-  number is down and it would be dishonest to present it otherwise.
-- **`sdk-solana` shows +17k/−19k** mostly because the generated Anchor IDL is
+  number is down and it would be dishonest to present it otherwise. The
+  TypeScript count moves the other way, 53 files to 81.
+- **`sdk-solana` shows +20k/−21k** mostly because the generated Anchor IDL is
   checked in and regenerates wholesale. The hand-written change is far smaller.
+- **`apps/demo` grew** rather than shrank: the Eastboard and Arena surfaces
+  landed there on top of the existing demo, so its diff is new UI, not book
+  work.
 
 ---
 
-## 3. Six programs to one
+## 3. Five programs to one
 
 On `main`, placing an order crossed three program boundaries: `sooth_book`
 matched, then CPI'd `sooth_market` to move shares, which CPI'd the SPL token
@@ -105,11 +121,14 @@ simulation with no useful message.
 `declare_id!`, one upgrade authority, one deploy.
 
 What was lost: the programs can no longer be upgraded independently. Nobody was
-doing that, and a single audited artifact is easier to reason about than six
+doing that, and a single audited artifact is easier to reason about than five
 that must be audited together anyway because they trust each other's CPI.
 
-`sooth_log` is gone entirely. Anchor's `#[event_cpi]` / `emit_cpi!` does what it
-existed for.
+There is also no separate event program. `develop` briefly carried a
+`sooth_log` alongside `sooth_core`, built on the belief that a program cannot
+CPI into itself; Solana permits direct self recursion, which is exactly what
+Anchor's `#[event_cpi]` / `emit_cpi!` uses, so the payload lands in an inner
+instruction with no second `declare_id` and no second deploy.
 
 ---
 
@@ -462,8 +481,11 @@ and is mutation-tested.
 to seed the AMM. Fees repay it as the market trades, but no instruction ever
 returned the unspent remainder, so it stayed in the vault forever. Added
 `reclaim_subsidy`, which pays only `vault − obligations` and never more than
-`posted − reclaimed`, counting all three ledgers (mint supply, AMM `q` above
-seed, book seats) so it cannot pay the creator money owed to a trader.
+`posted − reclaimed`, so it cannot pay the creator money owed to a trader. It
+counts one ledger — AMM `q` above seed — and draws on the AMM vault only,
+because the deposit was posted in the AMM token; the book's seats are owed from
+a different vault holding a different mint, and subtracting them here would
+strand the creator's own capital.
 
 **B1 — AMM buyers had no exit after settlement.** `trade_positions` credited
 `Position.yes_shares` and took the USDC, and nothing paid it back: `redeem`
@@ -509,21 +531,25 @@ mode is a passing test* — has now appeared three times in this codebase.
 
 ### Verified, not just written
 
-Settlement is driven end to end on a validator across YES / NO / INVALID:
+`apps/demo/scripts/settle-e2e.mjs` drives a market end to end on a validator
+across YES / NO / INVALID: a book trade and an AMM buy, then `request_lock` →
+`attest_outcome` → veto window → `settle`, then every claim path —
+`redeem_book_seat` for both sides, `redeem_amm_position`, `book_withdraw`,
+`reclaim_subsidy`, and `distribute_fees_amm` followed by `redeem_lp` against
+the yield vault.
 
 | | YES | NO | INVALID |
 |---|---|---|---|
 | `redeem_amm_position` (5 YES) | 5.000000 | 0 | 2.500000 |
 | replay | 0 | 0 | 0 |
-| `redeem` SPL (4 sets) | 4.000000 | 4.000000 | 4.000000 |
-| legs burned | YES | NO | both |
-| vault | solvent | solvent | solvent |
+| each venue's vault vs its own obligations | solvent | solvent | solvent |
 
 `reclaim_subsidy` returns exactly `b·ln(2)` = 34.657359 at b=50.
 
-This mattered: running it is how `reclaim_subsidy` was found to have invented
-its mint seeds — a bug no unit test could see, because unit tests do not check
-that Anchor can resolve an account constraint.
+This is the layer of check unit tests cannot reach: they prove the payout
+arithmetic, not that the account list is right, that the PDA seeds resolve,
+that the lifecycle gates admit the call, or that the vault authority can sign —
+and every one of those is a way for a settled market to strand funds.
 
 ---
 
@@ -546,6 +572,27 @@ It does **not** replace the event index. The archive is per slot; fills are per
 transaction. Two transactions in one slot collapse to one state, so a fill can
 be invisible in the archive while sitting plainly in an event. State answers
 "what was it then"; events answer "what happened, to whom, at what price".
+
+---
+
+## 7a. New: `apps/pulse`
+
+Does not exist on `main`. A second frontend, built directly on
+`@sooth/sdk-solana` with no chain-shim.
+
+`apps/demo` — including the Eastboard and Arena surfaces that grew on top of it
+— reaches the program through `src/lib/chain-shim/`, 3,810 lines translating
+Ethereum-shaped calls into Solana. That layer is a porting artifact and a real
+source of bugs (§9). Pulse constructs one `SolanaChainAdapter` and wraps the
+connected wallet as the signer every `build*` method takes; that is the whole
+integration.
+
+Five routes — feed (`/`), market (`/m/:pda`), positions (`/me`), launch
+(`/launch`) and a per-venue faucet (`/faucet`) — over four hooks. The venue is
+routed by the program's own `book_enabled` flag rather than chosen in the UI,
+prices are quoted client-side from the LMSR, and the chart is assembled
+incrementally from the market PDA's own events, so no indexer is required.
+Design notes: `docs/design/pulse-fe.md`.
 
 ---
 
@@ -591,10 +638,12 @@ not useful for deciding anything.
 
 - **The demo's chain-shim.** `apps/demo/src/lib/chain-shim/` is 3,810 lines
   translating Ethereum-shaped calls (`useReadContract`, `0x…` addresses) into
-  Solana. It is a porting artifact and a genuine source of bugs — hex-vs-base58
-  market keys, case-folded pubkeys, WAD-vs-base-unit confusion all came from
-  it. It is confined to the demo: nothing in `programs-core` or `sdk-solana`
-  imports it.
+  Solana, and the Eastboard and Arena surfaces sit on top of it. It is a
+  porting artifact and a genuine source of bugs — hex-vs-base58 market keys,
+  case-folded pubkeys, WAD-vs-base-unit confusion all came from it. It is
+  confined to `apps/demo`: nothing in `programs-core`, `sdk-solana` or
+  `apps/pulse` imports it. Pulse (§7a) is the shim-free path; the demo has not
+  been moved onto it.
 - **4,096 blocks is a real ceiling**, on live orders plus currently-seated
   traders (§5) — about 4,096 position holders or 2,048 makers. Large enough for
   the depth the public Polymarket books show, but a genuinely popular market
@@ -640,15 +689,17 @@ not useful for deciding anything.
 
 ### Suggested audit scope
 
-`packages/programs-core` and `packages/sdk-solana`. Exclude `apps/demo` and
-`packages/sooth-data`: a bug there costs a wrong chart, not funds.
+`packages/programs-core` and `packages/sdk-solana`. Exclude `apps/demo`,
+`apps/pulse` and `packages/sooth-data`: a bug there costs a wrong chart, not
+funds.
 
 ---
 
 ## 10. Running it
 
 ```bash
-cd apps/demo && pnpm dev        # http://localhost:5175
+cd apps/demo  && pnpm dev       # http://localhost:5175 — demo, Eastboard, Arena
+cd apps/pulse && pnpm dev       # http://localhost:5300 — the shim-free surface
 ```
 
 `.env.local` already points at devnet. Import `.localnet/user-keypair.json`
@@ -696,9 +747,9 @@ actually has. This section does, including where `main` wins.
 ### Where `main` is better
 
 - **Maturity.** More calendar time, more eyes, more Rust unit tests in absolute
-  terms (247 vs 120). Nothing in `develop` compensates for review time that has
+  terms (244 vs 120). Nothing in `develop` compensates for review time that has
   not happened yet.
-- **Independent upgrades.** Six programs can be upgraded, paused or
+- **Independent upgrades.** Five programs can be upgraded, paused or
   authority-rotated separately. `develop` has one upgrade authority and one
   deploy — a blast radius decision that goes the wrong way if you ever want to
   ship a fix to the book without touching settlement.
@@ -706,8 +757,8 @@ actually has. This section does, including where `main` wins.
   could integrate them without asking. `develop` deleted that surface. Nothing
   used it, but "nothing uses it yet" and "nothing can" are different positions.
 - **One collateral token.** Simpler in every client: one balance, one faucet,
-  one approval, no venue to get wrong. Most of the demo bugs found this month
-  would not exist under `main`'s model.
+  no venue to get wrong. A whole class of client-side bug does not exist under
+  `main`'s model.
 - **Smaller per-market rent for the book**, since `main` allocates price-level
   accounts on demand rather than one large book account up front. A market that
   never trades costs `main` less.
