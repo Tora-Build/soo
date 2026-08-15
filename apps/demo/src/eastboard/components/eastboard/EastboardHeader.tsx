@@ -16,6 +16,8 @@ export function EastboardHeader() {
   // eastboard one lives at /positions. The faucet is the demo's real
   // dual-token faucet — eastboard never had a Solana one, and the demo's
   // dispenses exactly the tokens these markets trade.
+  // The Eastboard shell IS the app now — its nav covers the whole Solana
+  // surface, not just the option chain.
   const navigation = fixtureMode
     ? [
         [route("/options"), t("eastboard.nav.chain")],
@@ -24,9 +26,10 @@ export function EastboardHeader() {
       ]
     : [
         ["/options", t("eastboard.nav.chain")],
-        ["/positions", t("eastboard.nav.positions")],
+        ["/markets", t("eastboard.nav.markets")],
+        ["/launchpad", t("eastboard.nav.launch")],
+        ["/portfolio", t("eastboard.nav.portfolio")],
         ["/faucet", t("eastboard.nav.faucet")],
-        ["/markets", t("eastboard.nav.classic")],
       ];
 
   return (

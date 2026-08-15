@@ -135,10 +135,10 @@ function Root() {
                           path="/positions"
                           element={<EastboardPortfolio />}
                         />
-                      </Route>
-                      <Route path="/__check" element={<HealthCheckPage />} />
-                      <Route element={<AppLayout />}>
-                        <Route path="/learn" element={<Learn />} />
+                        {/* The whole Solana surface wears the Eastboard
+                            shell — same design system underneath, one
+                            header, one banner, one app. */}
+                        <Route path="/markets" element={<Markets />} />
                         <Route path="/amm" element={<AMM />} />
                         <Route path="/amm/:marketAddress" element={<AMM />} />
                         <Route path="/orderbook" element={<Orderbook />} />
@@ -149,11 +149,14 @@ function Root() {
                         <Route path="/create" element={<Launchpad />} />
                         <Route path="/launchpad" element={<Launchpad />} />
                         <Route path="/portfolio" element={<Portfolio />} />
-                        <Route path="/operator" element={<Operator />} />
                         <Route path="/faucet" element={<Faucet />} />
-                        <Route path="/markets" element={<Markets />} />
-                        <Route path="/play" element={<ArenaPlay />} />
                         <Route path="/liquidity" element={<Liquidity />} />
+                      </Route>
+                      <Route path="/__check" element={<HealthCheckPage />} />
+                      <Route element={<AppLayout />}>
+                        <Route path="/learn" element={<Learn />} />
+                        <Route path="/operator" element={<Operator />} />
+                        <Route path="/play" element={<ArenaPlay />} />
                         <Route path="/lp-forecast" element={<LPForecast />} />
                         <Route path="/geek" element={<Geek />} />
                         <Route

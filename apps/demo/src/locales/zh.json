@@ -1389,7 +1389,10 @@
       "positions": "持仓",
       "faucet": "测试币",
       "connect": "连接钱包",
-      "classic": "经典界面"
+      "classic": "经典界面",
+      "markets": "市场",
+      "launch": "发行",
+      "portfolio": "持仓"
     },
     "header": {
       "tagline": "收盘价期权",

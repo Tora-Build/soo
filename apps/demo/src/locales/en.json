@@ -1389,7 +1389,10 @@
       "positions": "Positions",
       "faucet": "Faucet",
       "connect": "Connect wallet",
-      "classic": "Classic"
+      "classic": "Classic",
+      "markets": "Markets",
+      "launch": "Launch",
+      "portfolio": "Portfolio"
     },
     "header": {
       "tagline": "Close-price options",
