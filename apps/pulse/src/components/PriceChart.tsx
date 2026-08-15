@@ -22,13 +22,11 @@ const PAD = { l: 40, r: 12, t: 10, b: 22 };
 export function PriceChart({
   points,
   liveYesWad,
-  showNo,
 }: {
   points: PricePoint[];
   /** Current price, appended as the series' last point so the chart is never
    *  behind the number above it. */
   liveYesWad: bigint;
-  showNo: boolean;
 }) {
   const [range, setRange] = useState<(typeof RANGES)[number]>(RANGES[4]);
   const [hover, setHover] = useState<{ x: number; ts: number; yes: number } | null>(null);
@@ -122,11 +120,11 @@ export function PriceChart({
             </g>
           );
         })}
-        <path d={areaPath} fill="rgba(47,191,113,0.10)" />
+        {/* The prediction-market signature: two solid complement lines that
+            mirror around 50% and cross when the crowd flips. */}
+        <path d={areaPath} fill="rgba(47,191,113,0.08)" />
         <path d={yesPath} fill="none" stroke="#2fbf71" strokeWidth={2} />
-        {showNo && (
-          <path d={noPath} fill="none" stroke="#e5484d" strokeWidth={1.5} strokeDasharray="4 3" />
-        )}
+        <path d={noPath} fill="none" stroke="#e5484d" strokeWidth={2} />
         {hover && (
           <g>
             <line x1={hover.x} x2={hover.x} y1={PAD.t} y2={H - PAD.b} stroke="#566270" />
@@ -139,8 +137,8 @@ export function PriceChart({
               fill="#0e1216"
               stroke="#232a32"
             />
-            <text x={Math.min(hover.x + 14, W - 142)} y={PAD.t + 18} fontSize={11} fill="#e8edf2" fontFamily="monospace">
-              YES {hover.yes.toFixed(1)}¢
+            <text x={Math.min(hover.x + 14, W - 142)} y={PAD.t + 18} fontSize={11} fill="#2fbf71" fontFamily="monospace">
+              YES {hover.yes.toFixed(1)}¢ · NO {(100 - hover.yes).toFixed(1)}¢
             </text>
             <text x={Math.min(hover.x + 14, W - 142)} y={PAD.t + 32} fontSize={9} fill="#8b98a5" fontFamily="monospace">
               {new Date(hover.ts * 1000).toLocaleString()}
@@ -160,8 +158,14 @@ export function PriceChart({
             {r.label}
           </button>
         ))}
-        <span className="ml-auto font-mono text-[10px] text-faint">
-          {points.length} trades on-chain
+        <span className="ml-auto flex items-center gap-3 font-mono text-[10px] text-faint">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-0.5 w-3 bg-yes" /> YES
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-0.5 w-3 bg-no" /> NO
+          </span>
+          <span>{points.length} trades on-chain</span>
         </span>
       </div>
     </div>

@@ -99,7 +99,7 @@ export function Launch() {
           disabled={launch.isPending || question.trim().length < 8}
           className="mt-5 w-full rounded bg-accent py-3 font-semibold text-bg disabled:opacity-40"
         >
-          {launch.isPending ? "Signing…" : "Launch — one signature"}
+          {launch.isPending ? "Launching…" : "Launch market"}
         </button>
       ) : (
         <div className="mt-5">

@@ -1,22 +1,44 @@
-// The market page, Polymarket's information model: the chance as the
-// dominant element, the chart, the trade box, the tape.
+// The market page, prdt-classic shaped: question + countdown as the round
+// header, the dual-line chart, left/right YES-NO bet panels, the tape — and
+// the order book only when asked for.
 import { useParams } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { PriceChart } from "../components/PriceChart";
-import { TradeBox } from "../components/TradeBox";
+import { BetPanels } from "../components/BetPanels";
 import { GraduationBar } from "../components/GraduationBar";
+import { OrderBookPanel } from "../components/OrderBookPanel";
 import { useMarket } from "../hooks/useMarkets";
 import { usePriceSeries } from "../hooks/usePriceSeries";
 import { cents, pct, timeAgo } from "../lib/fmt";
 import { WAD } from "../config";
+
+function Countdown({ deadline }: { deadline: number }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const s = deadline - Math.floor(Date.now() / 1000);
+  if (s <= 0) return <span className="text-warn">closed</span>;
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  return (
+    <span className="tabular-nums">
+      {d > 0 ? `${d}d ` : ""}
+      {String(h).padStart(2, "0")}:{String(m).padStart(2, "0")}:
+      {String(ss).padStart(2, "0")}
+    </span>
+  );
+}
 
 export function Market() {
   const { pda } = useParams();
   const ref = pda ? `sol:${pda}` : undefined;
   const { market, isLoading } = useMarket(ref);
   const { points } = usePriceSeries(ref);
-  const [showNo, setShowNo] = useState(false);
 
   if (isLoading || !market) {
     return (
@@ -28,40 +50,34 @@ export function Market() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
-      <header className="mb-4">
+      {/* the round header: question, chance, lock timer */}
+      <header className="mb-4 rounded-md border border-line bg-panel p-4">
         <h1 className="text-lg font-semibold leading-snug text-ink">
           {market.question}
         </h1>
-        <div className="mt-2 flex items-baseline gap-3">
-          <span className="font-mono text-4xl font-bold text-yes">
-            {pct(market.yesPriceWad)}
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 font-mono">
+          <span className="text-3xl font-bold text-yes">{pct(market.yesPriceWad)}</span>
+          <span className="text-sm text-dim">chance</span>
+          <span className="ml-auto text-sm text-dim">
+            market locks in{" "}
+            <span className="text-ink">
+              <Countdown deadline={market.deadline} />
+            </span>
           </span>
-          <span className="font-mono text-sm text-dim">chance</span>
-          <button
-            onClick={() => setShowNo((v) => !v)}
-            className={`ml-auto rounded px-2 py-1 font-mono text-[10px] uppercase ${showNo ? "bg-no-soft text-no" : "text-faint hover:text-dim"}`}
-          >
-            NO line
-          </button>
+          <span className="text-[11px] text-faint">{points.length} plays</span>
         </div>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-4">
-          <PriceChart
-            points={points}
-            liveYesWad={market.yesPriceWad}
-            showNo={showNo}
-          />
-          <GraduationBar
-            progress={market.graduation}
-            graduated={market.isGraduated}
-          />
+          <PriceChart points={points} liveYesWad={market.yesPriceWad} />
+          <GraduationBar progress={market.graduation} graduated={market.isGraduated} />
+          <OrderBookPanel market={market} />
           <section className="rounded-md border border-line bg-panel">
             <h2 className="border-b border-line px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-widest text-dim">
               recent plays
             </h2>
-            <ul className="max-h-64 overflow-y-auto">
+            <ul className="max-h-56 overflow-y-auto">
               {[...points].reverse().slice(0, 30).map((p, i) => (
                 <li
                   key={i}
@@ -77,13 +93,15 @@ export function Market() {
               ))}
               {points.length === 0 && (
                 <li className="px-3 py-3 font-mono text-[11px] text-faint">
-                  no trades yet — be the first
+                  no plays yet — be the first
                 </li>
               )}
             </ul>
           </section>
         </div>
-        <TradeBox market={market} />
+        <div>
+          <BetPanels market={market} />
+        </div>
       </div>
     </div>
   );

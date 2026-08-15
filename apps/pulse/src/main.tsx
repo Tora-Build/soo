@@ -20,6 +20,7 @@ import { Feed } from "./pages/Feed";
 import { Market } from "./pages/Market";
 import { Portfolio } from "./pages/Portfolio";
 import { Launch } from "./pages/Launch";
+import { Faucet } from "./pages/Faucet";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     ["/", "Markets"],
     ["/me", "Portfolio"],
     ["/launch", "Launch"],
+    ["/faucet", "Faucet"],
   ] as const;
   return (
     <div className="min-h-dvh">
@@ -81,6 +83,7 @@ function App() {
                     <Route path="/m/:pda" element={<Market />} />
                     <Route path="/me" element={<Portfolio />} />
                     <Route path="/launch" element={<Launch />} />
+                    <Route path="/faucet" element={<Faucet />} />
                   </Routes>
                 </Shell>
               </BrowserRouter>
