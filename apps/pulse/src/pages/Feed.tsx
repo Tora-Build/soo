@@ -22,7 +22,7 @@ function Meta({ m }: { m: PulseMarket }) {
   return (
     <span className="flex shrink-0 items-center gap-2 font-mono text-[10px] text-faint">
       {m.isGraduated ? (
-        <span className="rounded bg-yes-soft px-1.5 py-0.5 font-semibold text-yes">LIVE</span>
+        <span className="bg-pos-soft px-1.5 py-0.5 font-semibold text-pos">LIVE</span>
       ) : (
         <span className="text-accent">{Math.round(m.graduation * 100)}%→book</span>
       )}
@@ -33,8 +33,8 @@ function Meta({ m }: { m: PulseMarket }) {
 
 function Row({ m }: { m: PulseMarket }) {
   return (
-    <div className="border-b border-line/60 py-3 last:border-b-0">
-      <div className="mb-1.5 flex items-baseline justify-between gap-3">
+    <div className="border border-rule bg-raised p-3 transition-colors hover:border-accent/50">
+      <div className="mb-2 flex items-baseline justify-between gap-3">
         <Link
           to={`/m/${m.ref.replace(/^sol:/, "")}`}
           className="min-w-0 truncate text-sm font-medium text-ink hover:text-accent"
@@ -54,23 +54,31 @@ export function Feed() {
   const settled = markets.filter((m) => m.isSettled);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-4">
+    <div className="mx-auto max-w-3xl px-4 py-6 md:px-7">
+      <div className="mb-3 flex items-baseline justify-between">
+        <h1 className="east-label">markets · one axis, two sides</h1>
+        <span className="font-mono text-[10px] text-faint">
+          {markets.length} on-chain
+        </span>
+      </div>
       {isLoading && (
         <p className="py-16 text-center font-mono text-xs text-faint">
           reading the chain…
         </p>
       )}
-      {open.map((m) => (
-        <Row key={m.ref} m={m} />
-      ))}
+      <div className="space-y-3">
+        {open.map((m) => (
+          <Row key={m.ref} m={m} />
+        ))}
+      </div>
       {settled.length > 0 && (
         <>
-          <h2 className="mt-6 mb-1 font-mono text-[10px] uppercase tracking-widest text-faint">
-            settled
-          </h2>
-          {settled.map((m) => (
-            <Row key={m.ref} m={m} />
-          ))}
+          <h2 className="east-label mt-8 mb-2">settled</h2>
+          <div className="space-y-3">
+            {settled.map((m) => (
+              <Row key={m.ref} m={m} />
+            ))}
+          </div>
         </>
       )}
       {!isLoading && markets.length === 0 && (

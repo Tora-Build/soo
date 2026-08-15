@@ -1,0 +1,13 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 64 64"
+  role="img"
+  aria-label="EastBoard"
+>
+  <rect width="64" height="64" fill="#121514" />
+  <rect x="1" y="1" width="62" height="62" fill="none" stroke="#282e2b" stroke-width="2" />
+  <rect x="12" y="12" width="17" height="17" fill="#d7ef69" />
+  <rect x="35" y="12" width="17" height="17" fill="none" stroke="#d7ef69" stroke-width="4" />
+  <rect x="12" y="35" width="17" height="17" fill="none" stroke="#d7ef69" stroke-width="4" />
+  <rect x="35" y="35" width="17" height="17" fill="#d7ef69" />
+</svg>

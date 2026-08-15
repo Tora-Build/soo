@@ -5,7 +5,7 @@ export function GraduationBar({ progress, graduated }: { progress: number; gradu
   if (graduated) {
     return (
       <div className="flex items-center gap-2 font-mono text-[11px]">
-        <span className="rounded bg-yes-soft px-2 py-0.5 font-semibold text-yes">LIVE</span>
+        <span className="bg-pos-soft px-2 py-0.5 font-semibold text-pos">LIVE</span>
         <span className="text-faint">graduated — trading on the {BOOK_SYMBOL} order book</span>
       </div>
     );
@@ -17,9 +17,9 @@ export function GraduationBar({ progress, graduated }: { progress: number; gradu
         <span>bonding · {AMM_SYMBOL}</span>
         <span>{pctv}% to graduation</span>
       </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded bg-inset">
+      <div className="mt-1 h-1.5 overflow-hidden bg-inset">
         <div
-          className="h-full rounded bg-accent transition-[width]"
+          className="h-full bg-accent transition-[width]"
           style={{ width: `${Math.max(2, pctv)}%` }}
         />
       </div>

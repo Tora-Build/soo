@@ -100,7 +100,7 @@ export function PriceChart({
   };
 
   return (
-    <div className="rounded-md border border-line bg-panel">
+    <div className="border border-rule bg-raised">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
@@ -146,13 +146,13 @@ export function PriceChart({
           </g>
         )}
       </svg>
-      <div className="flex items-center gap-1 border-t border-line px-3 py-2">
+      <div className="flex items-center gap-1 border-t border-rule px-3 py-2">
         {RANGES.map((r) => (
           <button
             key={r.label}
             onClick={() => setRange(r)}
-            className={`rounded px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${
-              range.label === r.label ? "bg-inset text-ink" : "text-faint hover:text-dim"
+            className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${
+              range.label === r.label ? "bg-inset text-ink" : "text-faint hover:text-muted"
             }`}
           >
             {r.label}
@@ -160,10 +160,10 @@ export function PriceChart({
         ))}
         <span className="ml-auto flex items-center gap-3 font-mono text-[10px] text-faint">
           <span className="flex items-center gap-1">
-            <span className="inline-block h-0.5 w-3 bg-yes" /> YES
+            <span className="inline-block h-0.5 w-3 bg-pos" /> YES
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block h-0.5 w-3 bg-no" /> NO
+            <span className="inline-block h-0.5 w-3 bg-neg" /> NO
           </span>
           <span>{points.length} trades on-chain</span>
         </span>

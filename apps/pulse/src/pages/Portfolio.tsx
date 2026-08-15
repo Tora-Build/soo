@@ -53,8 +53,8 @@ export function Portfolio() {
 
   const rows = positions.data ?? [];
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
-      <h1 className="mb-4 font-mono text-sm font-semibold uppercase tracking-widest text-dim">
+    <div className="mx-auto max-w-3xl px-4 py-6 md:px-7">
+      <h1 className="east-label mb-4 text-[11px]">
         your positions
       </h1>
       <div className="space-y-2">
@@ -67,15 +67,15 @@ export function Portfolio() {
           return (
             <div
               key={market.ref}
-              className="flex items-center gap-3 rounded-md border border-line bg-panel p-3"
+              className="flex items-center gap-3 border border-rule bg-raised p-3"
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm text-ink">{market.question}</p>
                 <p className="font-mono text-[11px] text-faint">
                   {yes > 0n && (
-                    <span className="text-yes">YES {tokens(yes, 1)} </span>
+                    <span className="text-pos">YES {tokens(yes, 1)} </span>
                   )}
-                  {no > 0n && <span className="text-no">NO {tokens(no, 1)}</span>}
+                  {no > 0n && <span className="text-neg">NO {tokens(no, 1)}</span>}
                 </p>
               </div>
               {market.isSettled ? (
@@ -83,7 +83,7 @@ export function Portfolio() {
                   <button
                     onClick={() => void claim.mutateAsync(market.ref)}
                     disabled={claim.isPending}
-                    className="rounded bg-yes px-4 py-2 font-mono text-xs font-semibold text-bg disabled:opacity-50"
+                    className="bg-pos px-4 py-2 font-mono text-xs font-semibold text-canvas disabled:opacity-50"
                   >
                     {claim.isPending ? "…" : `Claim ${AMM_SYMBOL}`}
                   </button>

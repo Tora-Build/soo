@@ -49,16 +49,16 @@ export function Market() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
+    <div className="mx-auto max-w-4xl px-4 py-6 md:px-7">
       {/* the round header: question, chance, lock timer */}
-      <header className="mb-4 rounded-md border border-line bg-panel p-4">
+      <header className="mb-4 border border-rule bg-raised p-4 md:p-5">
         <h1 className="text-lg font-semibold leading-snug text-ink">
           {market.question}
         </h1>
         <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 font-mono">
-          <span className="text-3xl font-bold text-yes">{pct(market.yesPriceWad)}</span>
-          <span className="text-sm text-dim">chance</span>
-          <span className="ml-auto text-sm text-dim">
+          <span className="text-3xl font-bold text-pos">{pct(market.yesPriceWad)}</span>
+          <span className="text-sm text-muted">chance</span>
+          <span className="ml-auto text-sm text-muted">
             market locks in{" "}
             <span className="text-ink">
               <Countdown deadline={market.deadline} />
@@ -75,17 +75,15 @@ export function Market() {
           <PriceChart points={points} liveYesWad={market.yesPriceWad} />
           <GraduationBar progress={market.graduation} graduated={market.isGraduated} />
           <OrderBookPanel market={market} />
-          <section className="rounded-md border border-line bg-panel">
-            <h2 className="border-b border-line px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-widest text-dim">
-              recent plays
-            </h2>
+          <section className="border border-rule bg-raised">
+            <h2 className="east-label border-b border-rule px-3 py-2">recent plays</h2>
             <ul className="max-h-56 overflow-y-auto">
               {[...points].reverse().slice(0, 30).map((p, i) => (
                 <li
                   key={i}
-                  className="flex justify-between border-b border-line/50 px-3 py-1.5 font-mono text-[11px]"
+                  className="flex justify-between border-b border-rule/50 px-3 py-1.5 font-mono text-[11px]"
                 >
-                  <span className={p.yesPriceWad >= WAD / 2n ? "text-yes" : "text-no"}>
+                  <span className={p.yesPriceWad >= WAD / 2n ? "text-pos" : "text-neg"}>
                     YES {cents(p.yesPriceWad)}
                   </span>
                   <span className="text-faint">

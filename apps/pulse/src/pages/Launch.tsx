@@ -42,8 +42,8 @@ export function Launch() {
   });
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-6">
-      <h1 className="mb-4 font-mono text-sm font-semibold uppercase tracking-widest text-dim">
+    <div className="mx-auto max-w-xl px-4 py-6 md:px-7">
+      <h1 className="east-label mb-4 text-[11px]">
         launch a market
       </h1>
       <label className="block font-mono text-[11px] text-faint">
@@ -55,7 +55,7 @@ export function Launch() {
         maxLength={300}
         rows={3}
         placeholder="Will …?"
-        className="mt-1 w-full rounded-md border border-line bg-inset p-3 text-sm text-ink outline-none focus:border-accent"
+        className="mt-1 w-full border border-rule bg-inset p-3 text-sm text-ink outline-none focus:border-accent"
       />
       <div className="mt-4 grid grid-cols-2 gap-4">
         <div>
@@ -65,7 +65,7 @@ export function Launch() {
               <button
                 key={d}
                 onClick={() => setDays(d)}
-                className={`flex-1 rounded px-2 py-2 font-mono text-xs ${days === d ? "bg-inset text-ink ring-1 ring-line" : "text-dim"}`}
+                className={`flex-1 px-2 py-2 font-mono text-xs ${days === d ? "bg-inset text-ink ring-1 ring-rule" : "text-muted"}`}
               >
                 {d}d
               </button>
@@ -82,7 +82,7 @@ export function Launch() {
                 key={s.label}
                 onClick={() => setSize(s)}
                 title={`${s.cost} ${AMM_SYMBOL} max loss`}
-                className={`flex-1 rounded px-2 py-2 font-mono text-xs ${size === s ? "bg-inset text-ink ring-1 ring-line" : "text-dim"}`}
+                className={`flex-1 px-2 py-2 font-mono text-xs ${size === s ? "bg-inset text-ink ring-1 ring-rule" : "text-muted"}`}
               >
                 {s.label}
               </button>
@@ -97,7 +97,7 @@ export function Launch() {
         <button
           onClick={() => void launch.mutateAsync()}
           disabled={launch.isPending || question.trim().length < 8}
-          className="mt-5 w-full rounded bg-accent py-3 font-semibold text-bg disabled:opacity-40"
+          className="mt-5 w-full bg-accent py-3 font-semibold text-canvas disabled:opacity-40"
         >
           {launch.isPending ? "Launching…" : "Launch market"}
         </button>
@@ -107,7 +107,7 @@ export function Launch() {
         </div>
       )}
       {launch.error && (
-        <p className="mt-2 font-mono text-[11px] text-no">
+        <p className="mt-2 font-mono text-[11px] text-neg">
           {(launch.error as Error).message.slice(0, 160)}
         </p>
       )}

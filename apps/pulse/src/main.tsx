@@ -27,39 +27,67 @@ const queryClient = new QueryClient();
 function Shell({ children }: { children: React.ReactNode }) {
   const nav = [
     ["/", "Markets"],
-    ["/me", "Portfolio"],
+    ["/me", "Positions"],
     ["/launch", "Launch"],
     ["/faucet", "Faucet"],
   ] as const;
   return (
-    <div className="min-h-dvh">
-      <header className="sticky top-0 z-10 border-b border-line bg-bg/90 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-5xl items-center gap-6 px-4">
-          <Link to="/" className="font-mono text-sm font-bold tracking-widest text-ink">
-            PULSE<span className="text-accent">·</span>
-          </Link>
-          <nav className="flex gap-4">
-            {nav.map(([to, label]) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === "/"}
-                className={({ isActive }) =>
-                  `font-mono text-xs uppercase tracking-wider ${isActive ? "text-ink" : "text-faint hover:text-dim"}`
-                }
-              >
-                {label}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="ml-auto">
-            <ConnectButton />
+    <div className="min-h-dvh bg-canvas text-ink">
+      <header className="sticky top-0 z-10 border-b border-rule bg-canvas/90 backdrop-blur-xl">
+        <div className="mx-auto flex h-[72px] w-full max-w-[1200px] items-center justify-between gap-4 px-4 md:px-7">
+          <div className="flex min-w-0 items-center gap-7">
+            <Link to="/" className="group flex items-center gap-3">
+              <img
+                src="/eastboard-icon.svg"
+                alt=""
+                aria-hidden="true"
+                className="h-9 w-9 transition-transform group-active:scale-[0.98]"
+              />
+              <span className="font-mono text-sm font-bold uppercase tracking-[0.2em] text-ink">
+                East<span className="text-accent">·</span>Solana
+              </span>
+            </Link>
+            <nav className="hidden gap-5 sm:flex">
+              {nav.map(([to, label]) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === "/"}
+                  className={({ isActive }) =>
+                    `font-mono text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors ${
+                      isActive ? "text-ink" : "text-faint hover:text-muted"
+                    }`
+                  }
+                >
+                  {label}
+                </NavLink>
+              ))}
+            </nav>
           </div>
+          <ConnectButton />
         </div>
       </header>
+      <div className="border-b border-rule bg-warn-soft px-4 py-2 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.13em] text-warn">
+        No-value research prototype — one axis: buy YES or buy NO, nothing else
+      </div>
       {children}
-      <footer className="mx-auto max-w-5xl border-t border-line px-4 py-6 font-mono text-[10px] text-faint">
-        pulse · sooth on solana · no approvals, no escrow, one signature per action
+      <nav className="flex justify-around border-t border-rule py-2 sm:hidden">
+        {nav.map(([to, label]) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={to === "/"}
+            className={({ isActive }) =>
+              `font-mono text-[10px] uppercase tracking-widest ${isActive ? "text-ink" : "text-faint"}`
+            }
+          >
+            {label}
+          </NavLink>
+        ))}
+      </nav>
+      <footer className="mx-auto flex w-full max-w-[1200px] flex-col gap-2 border-t border-rule px-4 py-7 font-mono text-[10px] uppercase tracking-[0.12em] text-faint md:flex-row md:items-center md:justify-between md:px-7">
+        <span>East / Sooth Protocol on Solana</span>
+        <span>no approvals · no escrow · one signature per action</span>
       </footer>
     </div>
   );

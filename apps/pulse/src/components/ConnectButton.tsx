@@ -11,7 +11,7 @@ export function ConnectButton({ full }: { full?: boolean }) {
   return (
     <button
       onClick={() => setVisible(true)}
-      className={`rounded border border-line bg-inset px-4 py-2 font-mono text-xs text-ink hover:border-accent ${full ? "w-full py-3" : ""}`}
+      className={`border border-rule bg-inset px-4 py-2 font-mono text-xs text-ink hover:border-accent ${full ? "w-full py-3" : ""}`}
     >
       {label}
     </button>

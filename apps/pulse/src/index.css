@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-html { background: #0b0e11; }
-body { @apply bg-bg text-ink antialiased; }
-* { scrollbar-width: thin; scrollbar-color: #232a32 transparent; }
+html { background: #0d0d0c; }
+body { @apply bg-canvas text-ink antialiased; }
+* { scrollbar-width: thin; scrollbar-color: #333330 transparent; }
+
+/* Eastboard's section-header idiom, used everywhere a panel needs a name. */
+.east-label {
+  @apply font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-muted;
+}

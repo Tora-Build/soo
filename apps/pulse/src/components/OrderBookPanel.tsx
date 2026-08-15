@@ -53,27 +53,27 @@ export function OrderBookPanel({ market }: { market: PulseMarket }) {
   if (!market.isGraduated) return null;
 
   return (
-    <section className="rounded-md border border-line bg-panel">
+    <section className="border border-rule bg-raised">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-widest text-dim hover:text-ink"
+        className="east-label flex w-full items-center justify-between px-3 py-2 hover:text-ink"
       >
         <span>advanced · order book</span>
         <span>{open ? "−" : "+"}</span>
       </button>
       {open && (
-        <div className="border-t border-line p-3">
+        <div className="border-t border-rule p-3">
           <div className="grid grid-cols-2 gap-4 font-mono text-[11px]">
             <div>
-              <div className="mb-1 text-yes">bids</div>
+              <div className="mb-1 text-pos">bids</div>
               {(book.data?.bids ?? []).slice(0, 8).map((o) => (
                 <div key={String(o.seq)} className="flex justify-between">
-                  <span className="text-yes">{(o.priceTick / 10).toFixed(1)}¢</span>
-                  <span className="text-dim">{(Number(o.amount) / 1e6).toFixed(0)}</span>
+                  <span className="text-pos">{(o.priceTick / 10).toFixed(1)}¢</span>
+                  <span className="text-muted">{(Number(o.amount) / 1e6).toFixed(0)}</span>
                   {userRef && o.trader === userRef.replace(/^sol:/, "") && (
                     <button
                       onClick={() => void cancel.mutateAsync(o.seq)}
-                      className="text-faint hover:text-no"
+                      className="text-faint hover:text-neg"
                     >
                       ✕
                     </button>
@@ -85,19 +85,19 @@ export function OrderBookPanel({ market }: { market: PulseMarket }) {
               )}
             </div>
             <div>
-              <div className="mb-1 text-right text-no">asks</div>
+              <div className="mb-1 text-right text-neg">asks</div>
               {(book.data?.asks ?? []).slice(0, 8).map((o) => (
                 <div key={String(o.seq)} className="flex justify-between">
                   {userRef && o.trader === userRef.replace(/^sol:/, "") && (
                     <button
                       onClick={() => void cancel.mutateAsync(o.seq)}
-                      className="text-faint hover:text-no"
+                      className="text-faint hover:text-neg"
                     >
                       ✕
                     </button>
                   )}
-                  <span className="text-dim">{(Number(o.amount) / 1e6).toFixed(0)}</span>
-                  <span className="text-no">{(o.priceTick / 10).toFixed(1)}¢</span>
+                  <span className="text-muted">{(Number(o.amount) / 1e6).toFixed(0)}</span>
+                  <span className="text-neg">{(o.priceTick / 10).toFixed(1)}¢</span>
                 </div>
               ))}
               {book.data && book.data.asks.length === 0 && (
@@ -107,11 +107,11 @@ export function OrderBookPanel({ market }: { market: PulseMarket }) {
           </div>
 
           {signer && (
-            <div className="mt-3 flex items-center gap-2 border-t border-line pt-3 font-mono text-[11px]">
+            <div className="mt-3 flex items-center gap-2 border-t border-rule pt-3 font-mono text-[11px]">
               <select
                 value={side}
                 onChange={(e) => setSide(Number(e.target.value) as 0 | 1)}
-                className="rounded border border-line bg-inset px-2 py-1 text-ink"
+                className="border border-rule bg-inset px-2 py-1 text-ink"
               >
                 <option value={0}>bid</option>
                 <option value={1}>ask</option>
@@ -122,7 +122,7 @@ export function OrderBookPanel({ market }: { market: PulseMarket }) {
                 max={999}
                 value={tick}
                 onChange={(e) => setTick(Number(e.target.value))}
-                className="w-20 rounded border border-line bg-inset px-2 py-1 text-ink"
+                className="w-20 border border-rule bg-inset px-2 py-1 text-ink"
               />
               <span className="text-faint">ticks</span>
               <input
@@ -130,20 +130,20 @@ export function OrderBookPanel({ market }: { market: PulseMarket }) {
                 min={1}
                 value={size}
                 onChange={(e) => setSize(Number(e.target.value))}
-                className="w-20 rounded border border-line bg-inset px-2 py-1 text-ink"
+                className="w-20 border border-rule bg-inset px-2 py-1 text-ink"
               />
               <span className="text-faint">{BOOK_SYMBOL}</span>
               <button
                 onClick={() => void place.mutateAsync()}
                 disabled={place.isPending}
-                className="ml-auto rounded bg-inset px-3 py-1.5 text-ink ring-1 ring-line hover:ring-accent disabled:opacity-50"
+                className="ml-auto bg-inset px-3 py-1.5 text-ink ring-1 ring-rule hover:ring-accent disabled:opacity-50"
               >
                 {place.isPending ? "…" : "place limit"}
               </button>
             </div>
           )}
           {(place.error || cancel.error) && (
-            <p className="mt-2 text-[10px] text-no">
+            <p className="mt-2 text-[10px] text-neg">
               {String((place.error ?? cancel.error) as Error).slice(0, 120)}
             </p>
           )}

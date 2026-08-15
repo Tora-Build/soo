@@ -91,21 +91,21 @@ export function Faucet() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6">
-      <h1 className="mb-4 font-mono text-sm font-semibold uppercase tracking-widest text-dim">
+    <div className="mx-auto max-w-2xl px-4 py-6 md:px-7">
+      <h1 className="east-label mb-4 text-[11px]">
         faucet · test tokens
       </h1>
       {!authority && (
-        <p className="mb-4 rounded border border-warn/40 bg-panel p-3 font-mono text-[11px] text-warn">
+        <p className="mb-4 border border-warn/40 bg-raised p-3 font-mono text-[11px] text-warn">
           No faucet authority configured (VITE_TEST_MINT_AUTHORITY_BYTES) — this
           cluster's faucet is unavailable here.
         </p>
       )}
       <div className="grid gap-4 sm:grid-cols-2">
         {VENUES.map((v) => (
-          <div key={v.key} className="rounded-md border border-line bg-panel p-4">
+          <div key={v.key} className="border border-rule bg-raised p-4">
             <div className="font-mono text-xs font-bold text-ink">{v.symbol}</div>
-            <p className="mt-1 min-h-[2.2rem] text-[11px] leading-snug text-dim">{v.role}</p>
+            <p className="mt-1 min-h-[2.2rem] text-[11px] leading-snug text-muted">{v.role}</p>
             <div className="mt-2 font-mono text-[11px] text-faint">
               balance{" "}
               <span className="text-ink">
@@ -116,7 +116,7 @@ export function Faucet() {
               <button
                 onClick={() => void drip(v)}
                 disabled={!authority || busy !== null}
-                className="mt-3 w-full rounded bg-inset py-2.5 font-mono text-xs text-ink ring-1 ring-line hover:ring-accent disabled:opacity-40"
+                className="mt-3 w-full bg-inset py-2.5 font-mono text-xs text-ink ring-1 ring-rule hover:ring-accent disabled:opacity-40"
               >
                 {busy === v.key ? "Minting…" : `Get 100,000 ${v.symbol}`}
               </button>
@@ -128,7 +128,7 @@ export function Faucet() {
           </div>
         ))}
       </div>
-      {msg && <p className="mt-3 font-mono text-[11px] text-dim">{msg}</p>}
+      {msg && <p className="mt-3 font-mono text-[11px] text-muted">{msg}</p>}
     </div>
   );
 }

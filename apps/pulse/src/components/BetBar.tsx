@@ -36,9 +36,9 @@ export function BetBar({ market }: { market: PulseMarket }) {
 
   if (market.isSettled) {
     return (
-      <div className="flex h-10 items-center justify-center rounded-md border border-line bg-panel font-mono text-[11px] text-dim">
+      <div className="flex h-10 items-center justify-center border border-rule bg-raised font-mono text-[11px] text-muted">
         settled ·{" "}
-        <span className={market.winningOutcome === 1 ? "ml-1 text-yes" : "ml-1 text-no"}>
+        <span className={market.winningOutcome === 1 ? "ml-1 text-pos" : "ml-1 text-neg"}>
           {market.winningOutcome === 1 ? "YES" : market.winningOutcome === 0 ? "NO" : "INVALID"}
         </span>
       </div>
@@ -54,15 +54,16 @@ export function BetBar({ market }: { market: PulseMarket }) {
 
   return (
     <div>
-      {/* the bar itself — two clickable halves, divider at the price */}
-      <div className="flex h-10 overflow-hidden rounded-md border border-line">
+      {/* the bar itself — two clickable halves, divider at the price.
+          Eastboard cell treatment: square, ruled, uppercase mono. */}
+      <div className="flex h-11 overflow-hidden border border-rule bg-inset">
         <button
           onClick={() => setArmed(armed === "yes" ? null : "yes")}
           style={{ width: `${yesPct}%` }}
-          className={`flex items-center justify-between px-3 font-mono text-[11px] font-semibold transition-colors ${
+          className={`flex items-center justify-between px-3 font-mono text-[11px] font-bold uppercase tracking-[0.08em] transition-colors ${
             armed === "yes"
-              ? "bg-yes text-bg"
-              : "bg-yes-soft text-yes hover:bg-yes hover:text-bg"
+              ? "bg-pos text-canvas"
+              : "bg-pos-soft text-pos hover:bg-pos hover:text-canvas"
           }`}
         >
           <span>YES</span>
@@ -73,10 +74,10 @@ export function BetBar({ market }: { market: PulseMarket }) {
         <button
           onClick={() => setArmed(armed === "no" ? null : "no")}
           style={{ width: `${100 - yesPct}%` }}
-          className={`flex items-center justify-between px-3 font-mono text-[11px] font-semibold transition-colors ${
+          className={`flex items-center justify-between px-3 font-mono text-[11px] font-bold uppercase tracking-[0.08em] transition-colors ${
             armed === "no"
-              ? "bg-no text-bg"
-              : "bg-no-soft text-no hover:bg-no hover:text-bg"
+              ? "bg-neg text-canvas"
+              : "bg-neg-soft text-neg hover:bg-neg hover:text-canvas"
           }`}
         >
           <span>
@@ -88,13 +89,13 @@ export function BetBar({ market }: { market: PulseMarket }) {
 
       {/* the armed strip — compact, inline, one confirm */}
       {armed && (
-        <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1.5">
+        <div className="mt-1.5 flex items-center gap-1.5 border border-rule bg-raised px-2 py-1.5">
           {PRESETS.map((p) => (
             <button
               key={String(p)}
               onClick={() => setAmount(p)}
-              className={`rounded px-2 py-1 font-mono text-[10px] ${
-                amount === p ? "bg-inset text-ink ring-1 ring-line" : "text-dim hover:text-ink"
+              className={`px-2 py-1 font-mono text-[10px] ${
+                amount === p ? "bg-inset text-ink ring-1 ring-rule" : "text-muted hover:text-ink"
               }`}
             >
               {String(p)}
@@ -107,8 +108,8 @@ export function BetBar({ market }: { market: PulseMarket }) {
             <button
               onClick={() => void submit(armed)}
               disabled={pending}
-              className={`ml-auto rounded px-3 py-1.5 font-mono text-[10px] font-bold text-bg disabled:opacity-50 ${
-                armed === "yes" ? "bg-yes" : "bg-no"
+              className={`ml-auto px-3 py-1.5 font-mono text-[10px] font-bold text-canvas disabled:opacity-50 ${
+                armed === "yes" ? "bg-pos" : "bg-neg"
               }`}
             >
               {pending ? "…" : `BET ${armed.toUpperCase()} ${mult(armed === "yes" ? yesWad : noWad)}`}
@@ -120,8 +121,8 @@ export function BetBar({ market }: { market: PulseMarket }) {
           )}
         </div>
       )}
-      {error && <p className="mt-1 font-mono text-[10px] text-no">{error.message.slice(0, 120)}</p>}
-      {done && <p className="mt-1 font-mono text-[10px] text-yes">{done}</p>}
+      {error && <p className="mt-1 font-mono text-[10px] text-neg">{error.message.slice(0, 120)}</p>}
+      {done && <p className="mt-1 font-mono text-[10px] text-pos">{done}</p>}
     </div>
   );
 }
