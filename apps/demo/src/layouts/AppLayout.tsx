@@ -1,4 +1,6 @@
 import { Outlet } from 'react-router-dom';
+import { ArenaDock } from '../components/layout/ArenaDock';
+import { ArenaPlayerProvider } from '../features/arena/ArenaPlayerProvider';
 import { Navbar } from '../components/layout/Navbar';
 import { Footer } from '../components/layout/Footer';
 import { ActivityListener } from '../components/features/ActivityListener';
@@ -16,6 +18,7 @@ export const AppLayout = () => {
   }, [accent]);
 
   return (
+    <ArenaPlayerProvider>
     <div className="min-h-dvh flex flex-col pb-safe text-ink">
       <Navbar />
       <ActivityListener />
@@ -26,5 +29,7 @@ export const AppLayout = () => {
 
       <Footer />
     </div>
+    <ArenaDock />
+    </ArenaPlayerProvider>
   );
 };

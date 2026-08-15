@@ -20,6 +20,7 @@
 // Polyfills first — wallet-adapter-base touches Buffer at module-init.
 
 import "./lib/polyfills";
+import { ArenaPlay } from "./pages/ArenaPlay";
 import { EastboardLayout } from "./eastboard/layouts/EastboardLayout";
 import { OptionsChain } from "./eastboard/pages/OptionsChain";
 import { EastboardPortfolio } from "./eastboard/pages/EastboardPortfolio";
@@ -151,6 +152,7 @@ function Root() {
                         <Route path="/operator" element={<Operator />} />
                         <Route path="/faucet" element={<Faucet />} />
                         <Route path="/markets" element={<Markets />} />
+                        <Route path="/play" element={<ArenaPlay />} />
                         <Route path="/liquidity" element={<Liquidity />} />
                         <Route path="/lp-forecast" element={<LPForecast />} />
                         <Route path="/geek" element={<Geek />} />
