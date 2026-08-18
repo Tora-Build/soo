@@ -24,7 +24,7 @@ Devnet. One program id for the whole protocol:
 Both venue tokens are compile-time constants, so a deployment is bound to its
 token pair (`packages/programs-core/programs/sooth-core/src/constants.rs`):
 
-- AMM venue token (devnet mock, "EAST"): `CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu`
+- Venue token, both roles (devnet mock USDC): `ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX`
 - Book venue token (devnet mock USDC): `ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX`
 - Mainnet builds (`--features mainnet`) use real Circle USDC for the book and
   require `AMM_TOKEN_MINT` to be set before they will compile.

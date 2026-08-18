@@ -61,7 +61,6 @@ import {
   MINT_SIZE,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountIdempotentInstruction,
-  createAssociatedTokenAccountInstruction,
   createMintToInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
@@ -101,6 +100,23 @@ async function sendAndConfirmTransaction(connection, tx, signers, opts) {
     const msg = String(err?.transactionMessage ?? err?.message ?? err);
     if (/already been processed/i.test(msg)) {
       return null;
+    }
+    // Websocket-based confirmation can report expiry for a transaction that
+    // in fact landed (an RPC whose subscription endpoint differs from its
+    // HTTP one never delivers the notification). Before trusting the error,
+    // poll the signature's status over HTTP.
+    const sig = err?.signature;
+    if (sig && /expired|block height exceeded/i.test(msg)) {
+      for (let i = 0; i < 15; i++) {
+        const st = (
+          await connection.getSignatureStatuses([sig], {
+            searchTransactionHistory: true,
+          })
+        ).value?.[0];
+        if (st && !st.err) return sig;
+        if (st?.err) throw new Error(`${sig} failed: ${JSON.stringify(st.err)}`);
+        await new Promise((r) => setTimeout(r, 2000));
+      }
     }
     throw err;
   }
@@ -145,6 +161,7 @@ const {
   deriveLockVaultAta,
   deriveMarketPda,
   deriveMarketVaultAta,
+  deriveMarketVaultAmm,
   deriveNoMintPda,
   deriveProtocolConfigPda,
   deriveVaultAuthorityPda,
@@ -218,8 +235,10 @@ const USDC_MINT_DEVNET = new PublicKey(
 // constants.rs. Pinned by `address = ...` constraints on every AMM account, so
 // a mismatch is a hard transaction failure rather than a display bug — this and
 // the Rust constant must move together.
+// Same mint as the book venue: this deployment fills both roles with the
+// mock USDC, so seeding funds one token and the UI runs one faucet.
 const AMM_MINT_DEVNET = new PublicKey(
-  "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu",
+  "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX",
 );
 
 const MINT_AUTHORITY_PATH = resolve(LOCALNET_DIR, "mint-authority.json");
@@ -519,7 +538,7 @@ async function init() {
   const ataInfo = await connection.getAccountInfo(userAta);
   if (!ataInfo) {
     const tx = new Transaction().add(
-      createAssociatedTokenAccountInstruction(
+      createAssociatedTokenAccountIdempotentInstruction(
         creator.publicKey,
         userAta,
         user.publicKey,
@@ -556,7 +575,7 @@ async function init() {
     await sendAndConfirmTransaction(
       connection,
       new Transaction().add(
-        createAssociatedTokenAccountInstruction(
+        createAssociatedTokenAccountIdempotentInstruction(
           creator.publicKey,
           creatorUsdcAta,
           creator.publicKey,
@@ -661,7 +680,7 @@ async function init() {
   const [vaultAuthority] = deriveVaultAuthorityPda(marketId, PROGRAMS);
   const [lockAuthority] = deriveLockAuthorityPda(marketId, PROGRAMS);
   const vaultBook = deriveMarketVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
-  const vaultAmm = deriveMarketVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);
+  const vaultAmm = deriveMarketVaultAmm(marketId, PROGRAMS);
   // The sell-lock escrow follows the AMM's token: only the AMM sells on a
   // cooldown.
   const lockVault = deriveLockVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);

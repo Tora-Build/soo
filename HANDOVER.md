@@ -12,7 +12,8 @@ markets whose EVM implementation lives at
 A market runs a **dual-venue lifecycle**:
 
 1. **Bonding (AMM).** An LMSR AMM priced in the deployment's instance token
-   (EAST on devnet). The creator posts `b·ln(2)` as the LMSR subsidy in
+   (this devnet deployment fills both venue roles with one mock USDC). The
+   creator posts `b·ln(2)` as the LMSR subsidy in
    `seed_lp`; fees repay it as the market trades.
 2. **Graduation.** When accumulated fees reach `b·ln(2)`, the market graduates
    and the order book opens. The program enforces this — the venue is routed,

@@ -11,7 +11,7 @@ use anchor_lang::solana_program::program::invoke_signed;
 use anchor_lang::solana_program::system_instruction;
 use anchor_lang::Discriminator;
 use anchor_spl::associated_token::{self, AssociatedToken, Create};
-use anchor_spl::token::{Mint, Token};
+use anchor_spl::token::{self, InitializeAccount3, Mint, Token};
 
 use anchor_lang::solana_program::hash::hash;
 
@@ -92,8 +92,13 @@ pub struct CreateMarket<'info> {
 
     /// CHECK: AMM-token ATA owned by `vault_authority`; init'd in handler.
     ///
-    /// Same authority as the book vault — a signer-only PDA can own one ATA
-    /// per mint, so the split needs no new authority and no new seeds.
+    /// Seeds `[b"vault_amm", market_id]` — its own address, NOT an ATA. The
+    /// book vault is the vault authority's ATA, and an ATA is one account
+    /// per (authority, mint) pair: a deployment that fills both venue roles
+    /// with the same mint would collapse the two vaults into one and merge
+    /// venue accounting. Own seeds keep the vaults distinct under any mint
+    /// pairing. Token-account authority is still `vault_authority`, so every
+    /// downstream transfer path signs exactly as before.
     #[account(mut)]
     pub vault_amm: UncheckedAccount<'info>,
 
@@ -217,17 +222,44 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
                 token_program: ctx.accounts.token_program.to_account_info(),
             },
         ))?;
-        associated_token::create(CpiContext::new(
-            ctx.accounts.associated_token_program.to_account_info(),
-            Create {
-                payer: ctx.accounts.creator.to_account_info(),
-                associated_token: ctx.accounts.vault_amm.to_account_info(),
-                authority: ctx.accounts.vault_authority.to_account_info(),
-                mint: ctx.accounts.amm_mint.to_account_info(),
-                system_program: ctx.accounts.system_program.to_account_info(),
-                token_program: ctx.accounts.token_program.to_account_info(),
-            },
-        ))?;
+        {
+            // The AMM vault at its own seeds. create_account must be signed
+            // by the new account itself, so the vault PDA's seeds sign.
+            let (vault_amm_key, vault_amm_bump) = Pubkey::find_program_address(
+                &[b"vault_amm", market_id.as_ref()],
+                &crate::ID,
+            );
+            require_keys_eq!(
+                vault_amm_key,
+                ctx.accounts.vault_amm.key(),
+                SoothCoreError::VaultAuthorityMismatch
+            );
+            let space = anchor_spl::token::TokenAccount::LEN;
+            let lamports = ctx.accounts.rent.minimum_balance(space);
+            invoke_signed(
+                &system_instruction::create_account(
+                    &creator_key,
+                    &vault_amm_key,
+                    lamports,
+                    space as u64,
+                    &anchor_spl::token::ID,
+                ),
+                &[
+                    ctx.accounts.creator.to_account_info(),
+                    ctx.accounts.vault_amm.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                &[&[b"vault_amm", market_id.as_ref(), &[vault_amm_bump]]],
+            )?;
+            token::initialize_account3(CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                InitializeAccount3 {
+                    account: ctx.accounts.vault_amm.to_account_info(),
+                    mint: ctx.accounts.amm_mint.to_account_info(),
+                    authority: ctx.accounts.vault_authority.to_account_info(),
+                },
+            ))?;
+        }
         associated_token::create(CpiContext::new(
             ctx.accounts.associated_token_program.to_account_info(),
             Create {

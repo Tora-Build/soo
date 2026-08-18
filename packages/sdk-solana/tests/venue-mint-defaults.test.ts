@@ -24,14 +24,17 @@ const CONSTANTS = resolve(
   "../../programs-core/programs/sooth-core/src/constants.rs",
 );
 
-/** The pubkey literal `constants.rs` assigns to a `pubkey!(...)` constant. */
+/** The pubkey `constants.rs` assigns to a constant — following one level of
+ * `= OTHER_CONST;` aliasing, which is how a venue role points at a shared
+ * mint (this deployment fills both roles with the mock USDC). */
 function constantMint(source: string, name: string): string {
-  const re = new RegExp(
-    `pub const ${name}\\s*:\\s*Pubkey\\s*=\\s*[\\s\\S]*?pubkey!\\(\\s*"([1-9A-HJ-NP-Za-km-z]+)"`,
+  const decl = new RegExp(
+    `pub const ${name}\\s*:\\s*Pubkey\\s*=\\s*(?:anchor_lang::)?(?:pubkey!\\(\\s*"([1-9A-HJ-NP-Za-km-z]+)"|([A-Z_][A-Z0-9_]*)\\s*;)`,
   );
-  const m = source.match(re);
+  const m = source.match(decl);
   if (!m) throw new Error(`could not find ${name} in constants.rs`);
-  return m[1];
+  if (m[1]) return m[1];
+  return constantMint(source, m[2]);
 }
 
 /** The adapter as the demo builds it: no mints supplied, defaults in play. */
@@ -51,10 +54,11 @@ describe("venue mint defaults track the program", () => {
   const source = readFileSync(CONSTANTS, "utf8");
 
   it("the AMM default matches AMM_TOKEN_MINT", () => {
-    // Non-mainnet builds alias `AMM_TOKEN_MINT` to the devnet constant, which
+    // Non-mainnet builds alias `AMM_TOKEN_MINT` to the shared devnet mint;
+    // constantMint follows the alias, which
     // is the one the SDK ships as its default.
     expect(defaultAdapter().ammMint.toBase58()).toBe(
-      constantMint(source, "AMM_TOKEN_MINT_DEVNET"),
+      constantMint(source, "AMM_TOKEN_MINT"),
     );
   });
 
@@ -64,12 +68,14 @@ describe("venue mint defaults track the program", () => {
     );
   });
 
-  it("the two venues are different mints", () => {
-    // The premise of the whole split. If a deployment ever set both to the
-    // same token, every venue-separation guarantee would still "pass" while
-    // meaning nothing.
+  it("both venue roles are filled by the same mint", () => {
+    // This deployment's choice: one mock USDC fills the AMM and book roles,
+    // so users hold one balance and the UI runs one faucet. The roles stay
+    // architecturally distinct — separate vaults, separate constraints — and
+    // this pin makes the single-token choice a test failure to change
+    // silently, in either direction.
     const a = defaultAdapter();
-    expect(a.ammMint.equals(a.bookMint)).toBe(false);
+    expect(a.ammMint.equals(a.bookMint)).toBe(true);
   });
 
   it("mainnet has not silently inherited the devnet AMM token", () => {

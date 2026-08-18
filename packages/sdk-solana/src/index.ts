@@ -3,7 +3,7 @@
 // package when `node.chainKind === "solana"` and route ChainAdapter calls
 // through `SolanaChainAdapter`.
 
-export { marketIdForQuestion } from "./adapter";
+export { marketIdForQuestion } from "./adapter.js";
 export {
   SolanaChainAdapter,
   type SolanaAdapterOptions,

@@ -206,7 +206,7 @@ collateral token; `develop` has one per venue.
 
 ```
                     main                     develop
-AMM collateral      USDC                     instance token (EAST on devnet)
+AMM collateral      USDC                     instance token (devnet: the mock USDC fills both roles)
 Book collateral     USDC                     USDC
 Book before grad.   open                     refused by the program
 Fee rate            fee_bps                  amm_fee_bps / book_fee_bps

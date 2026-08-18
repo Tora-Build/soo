@@ -101,7 +101,7 @@ const USDC = new PublicKey(ev("VITE_USDC_MINT"));
 // and the run still printed success.
 const AMM_MINT = new PublicKey(
   process.env.VITE_AMM_MINT ??
-    "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu",
+    "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX",
 );
 const marketRef = `sol:${marketArg}`;
 const marketPda = new PublicKey(marketArg);

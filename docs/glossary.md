@@ -7,7 +7,7 @@
 
 - **OUTCOME** — Encoding for binary outcomes plus invalid: `NO=0`, `YES=1`, `INVALID=2`.
 - **WAD** — Fixed-point precision constant, `1e18`. Internal math (LMSR, fees, position accounting) uses WAD; conversion to token decimals happens at the boundaries.
-- **AMM venue** — The bonding phase: an LMSR market maker priced in the deployment's instance token (EAST on devnet).
+- **AMM venue** — The bonding phase: an LMSR market maker priced in the deployment's instance token. The devnet deployment fills both venue roles with one mock USDC; the roles stay architecturally distinct.
 - **book venue** — The mature phase: the on-chain order book, priced in USDC. Closed until the market graduates.
 - **graduation** — The point where accumulated AMM fees reach `b·ln(2)` — the LMSR subsidy the creator posted. Flips `book_enabled` and switches fee distribution to the post-graduation split.
 - **subsidy** — The `b·ln(2)` the creator deposits in `seed_lp`. It is what LMSR gives away as liquidity; fees repay it, and `reclaim_subsidy` returns whatever is left after settlement.

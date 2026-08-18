@@ -1,7 +1,8 @@
 # CLAUDE.md — sooth-solana
 
 Solana implementation of the Sooth Protocol — prediction markets with a dual-venue
-lifecycle: LMSR AMM bonding in the deployment's instance token (EAST on devnet),
+lifecycle: LMSR AMM bonding in the deployment's instance token (this devnet
+deployment fills both venue roles with one mock USDC),
 graduation, then an on-chain order book in USDC, settled by a manual adjudicator.
 Companion repo to [`Tora-Build/sooth-alpha`](https://github.com/Tora-Build/sooth-alpha)
 (the EVM home). Deployed to Solana devnet.

@@ -122,7 +122,9 @@ hard transaction failure rather than a UI inconsistency.
 
 ### D21. Two venues, two tokens (2026-08-10)
 
-**Decision**: the AMM prices in the deployment's instance token (EAST on
+**Decision**: the AMM prices in the deployment's instance token (the devnet
+deployment currently fills both venue roles with one mock USDC — see the
+`AMM_TOKEN_MINT` alias in constants.rs; the roles stay distinct on
 devnet); the order book prices in USDC. Each market holds two vaults, two fee
 pools, and two fee rates, and the book is gated closed until the market
 graduates.

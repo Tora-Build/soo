@@ -201,6 +201,20 @@ export function deriveMarketVaultAta(
   );
 }
 
+// The AMM venue's vault. Program-derived at its own seeds — not an ATA — so
+// it stays distinct from the book vault even when one mint fills both venue
+// roles. Token-account authority is the `vault_authority` PDA.
+export function deriveMarketVaultAmm(
+  marketId: MarketId,
+  programs: ProgramIds,
+): PublicKey {
+  const id = assertMarketId(marketId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("vault_amm"), id],
+    programs.soothCore,
+  )[0];
+}
+
 export function deriveLockVaultAta(
   marketId: MarketId,
   usdcMint: PublicKey,

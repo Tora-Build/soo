@@ -939,14 +939,14 @@
       "creator": {
         "example": {
           "pnlLabel": "Estimated Net P&L",
-          "pnlValue": "+807 EAST",
-          "text": "Carol creates a 50/50 market with a **693 EAST deposit** (b=1,000 EAST). Volume generates **150 EAST in fees**. As the 50% LP holder, she earns from every trade. Skewed odds would require a higher deposit.",
+          "pnlValue": "+807 USDC",
+          "text": "Carol creates a 50/50 market with a **693 USDC deposit** (b=1,000 USDC). Volume generates **150 USDC in fees**. As the 50% LP holder, she earns from every trade. Skewed odds would require a higher deposit.",
           "title": "Creator Example"
         },
         "plItems": {
           "0": {
             "event": "Market Created",
-            "impact": "-693 EAST Deposit",
+            "impact": "-693 USDC Deposit",
             "pos": "False"
           },
           "1": {
@@ -968,23 +968,23 @@
         "plTitle": "Creator P&L Analysis",
         "tiers": {
           "0": {
-            "b": "100 EAST",
-            "dep": "69 EAST",
+            "b": "100 USDC",
+            "dep": "69 USDC",
             "tier": "Micro"
           },
           "1": {
-            "b": "1k EAST",
-            "dep": "693 EAST",
+            "b": "1k USDC",
+            "dep": "693 USDC",
             "tier": "Small"
           },
           "2": {
-            "b": "10k EAST",
-            "dep": "6.9k EAST",
+            "b": "10k USDC",
+            "dep": "6.9k USDC",
             "tier": "Med"
           },
           "3": {
-            "b": "100k EAST",
-            "dep": "69k EAST",
+            "b": "100k USDC",
+            "dep": "69k USDC",
             "tier": "Large"
           }
         },

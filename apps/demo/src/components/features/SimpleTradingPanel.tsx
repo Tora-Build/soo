@@ -1366,9 +1366,9 @@ export const SimpleTradingPanel = ({
                 href="/faucet"
                 className="font-mono text-[10px] uppercase tracking-[0.12em] text-accent hover:underline shrink-0"
               >
-                {/* This panel spends the AMM's token, not the book's — a
-                    "get USDC" prompt would send the user for the wrong one. */}
-                Get {tokenLabels.amm} →
+                {/* Both venues share the same mock USDC mint, so the
+                    faucet's one token covers this panel too. */}
+                Get {tokenLabels.book} →
               </a>
             </div>
           )}

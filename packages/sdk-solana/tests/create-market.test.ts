@@ -42,6 +42,7 @@ import {
   deriveLockVaultAta,
   deriveMarketPda,
   deriveMarketVaultAta,
+  deriveMarketVaultAmm,
   deriveProtocolConfigPda,
   deriveVaultAuthorityPda,
   SOOTH_CORE_PROGRAM_ID,
@@ -85,7 +86,7 @@ describe("sooth_core::create_market end-to-end", () => {
     // `address = <venue>_TOKEN_MINT`, so both mints must exist at exactly
     // those keys or the instruction fails before doing anything.
     const AMM_MINT_DEVNET = new PublicKey(
-      "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu",
+      "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX",
     );
     const mintAuthority = Keypair.generate();
     await writeMint(ctx, USDC_MINT_DEVNET, mintAuthority.publicKey);
@@ -221,7 +222,7 @@ describe("sooth_core::create_market end-to-end", () => {
     const [vaultAuthority] = deriveVaultAuthorityPda(marketId, PROGRAMS);
     const [lockAuthority] = deriveLockAuthorityPda(marketId, PROGRAMS);
     const vaultBook = deriveMarketVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
-    const vaultAmm = deriveMarketVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);
+    const vaultAmm = deriveMarketVaultAmm(marketId, PROGRAMS);
     // The sell-lock escrow follows the AMM's token: only the AMM has a
     // sell-with-cooldown path.
     const lockVault = deriveLockVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);

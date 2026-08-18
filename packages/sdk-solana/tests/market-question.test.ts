@@ -33,6 +33,7 @@ import {
   deriveLockVaultAta,
   deriveMarketPda,
   deriveMarketVaultAta,
+  deriveMarketVaultAmm,
   deriveProtocolConfigPda,
   deriveVaultAuthorityPda,
 } from "../src/pdas.js";
@@ -82,7 +83,7 @@ async function createWith(question: string, questionHash: number[]) {
       vaultAuthority: deriveVaultAuthorityPda(marketId, programs)[0],
       lockAuthority: deriveLockAuthorityPda(marketId, programs)[0],
       vaultBook: deriveMarketVaultAta(marketId, usdcMint, programs),
-      vaultAmm: deriveMarketVaultAta(marketId, ammMint, programs),
+      vaultAmm: deriveMarketVaultAmm(marketId, programs),
       lockVault: deriveLockVaultAta(marketId, ammMint, programs),
       bookMint: usdcMint,
       ammMint,

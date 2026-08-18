@@ -67,7 +67,7 @@ recompiling and redeploying, and every market on a deployment shares the pair.
 
 **The names are roles, never tickers.** Which token fills the AMM role is a
 per-deployment decision and not the program's business. On devnet a mock SPL
-mint (`CUsiEVc2…`, symbol EAST in the clients) stands in for the instance token,
+mint (the mock USDC, `ByF1KoXg…`) stands in for the instance token,
 exactly as the project's mock USDC (`ByF1KoXg…`) stands in for Circle's;
 mainnet builds take real USDC for the book and `compile_error!` until an AMM
 token is chosen, so a placeholder cannot ship by accident.

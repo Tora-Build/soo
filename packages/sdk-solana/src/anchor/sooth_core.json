@@ -50,7 +50,7 @@
         {
           "name": "market",
           "docs": [
-            "Read-only: attestation no longer changes the lifecycle. `settle` does",
+            "Read-only: attestation does not change the lifecycle. `settle` does",
             "that, after the veto window."
           ],
           "pda": {
@@ -354,7 +354,7 @@
     {
       "name": "book_place",
       "docs": [
-        "Place an order on the redesigned book. See `book_place` module docs."
+        "Place an order on the book. See `book_place` module docs."
       ],
       "discriminator": [
         166,
@@ -775,7 +775,7 @@
         },
         {
           "name": "amm_mint",
-          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "token_program",
@@ -915,7 +915,7 @@
         },
         {
           "name": "amm_mint",
-          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "user",
@@ -1393,7 +1393,7 @@
         },
         {
           "name": "amm_mint",
-          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "vault_book",
@@ -1403,8 +1403,13 @@
           "name": "vault_amm",
           "docs": [
             "",
-            "Same authority as the book vault — a signer-only PDA can own one ATA",
-            "per mint, so the split needs no new authority and no new seeds."
+            "Seeds `[b\"vault_amm\", market_id]` — its own address, NOT an ATA. The",
+            "book vault is the vault authority's ATA, and an ATA is one account",
+            "per (authority, mint) pair: a deployment that fills both venue roles",
+            "with the same mint would collapse the two vaults into one and merge",
+            "venue accounting. Own seeds keep the vaults distinct under any mint",
+            "pairing. Token-account authority is still `vault_authority`, so every",
+            "downstream transfer path signs exactly as before."
           ],
           "writable": true
         },
@@ -1713,7 +1718,7 @@
         },
         {
           "name": "venue_mint",
-          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "fee_pool",
@@ -1821,8 +1826,8 @@
           "docs": [
             "THIS market's AMM-side yield vault — the same account `redeem_lp`",
             "pays LP holders from, so the share lands where the claim path expects",
-            "it. Seeded by market_id: a global vault here was a cross-market theft,",
-            "since redeem paid the whole pool out against one market's LP supply."
+            "it. Seeded by market_id: a global vault here would allow cross-market",
+            "theft, since redeem pays out against one market's LP supply."
           ],
           "writable": true,
           "pda": {
@@ -1865,13 +1870,13 @@
           "docs": [
             "`config.treasury` is the treasury's OWNER, not one token account.",
             "",
-            "It was `address = config.treasury`, which cannot work once there are two",
-            "venues: that pins one account, and the same account cannot also satisfy",
-            "`token::mint = venue_mint` for two different mints. Whichever venue the",
-            "treasury account did not hold could never distribute — its pool would",
-            "fill and never drain. Binding the authority instead pins the",
-            "destination just as tightly (the caller still cannot choose an owner)",
-            "while letting the treasury hold one account per venue."
+            "Bound by authority rather than `address = config.treasury` because",
+            "with two venues a single pinned account cannot satisfy",
+            "`token::mint = venue_mint` for two different mints — whichever venue",
+            "the treasury account did not hold could never distribute, and its pool",
+            "would fill and never drain. Binding the authority pins the destination",
+            "just as tightly (the caller still cannot choose an owner) while",
+            "letting the treasury hold one account per venue."
           ],
           "writable": true
         },
@@ -2078,9 +2083,9 @@
           "name": "lp_yield_vault",
           "docs": [
             "THIS market's book-side yield vault, in the BOOK's token. `redeem_lp`",
-            "now pays from both venues' vaults in one burn, so this balance has a",
+            "pays from both venues' vaults in one burn, so this balance has a",
             "claim path — and it is per-market for the same reason the AMM's is:",
-            "a global vault let one market's LPs take every market's yield."
+            "a global vault would let one market's LPs take every market's yield."
           ],
           "writable": true,
           "pda": {
@@ -2122,7 +2127,7 @@
           "name": "protocol_treasury_vault",
           "docs": [
             "The treasury's OWNER — see the AMM's counterpart. `address =` here",
-            "would have made this venue and the AMM's mutually exclusive."
+            "would make this venue and the AMM's mutually exclusive."
           ],
           "writable": true
         },
@@ -2209,7 +2214,7 @@
         },
         {
           "name": "amm_mint",
-          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "fee_pool_book",
@@ -2573,10 +2578,8 @@
     {
       "name": "reclaim_subsidy",
       "docs": [
-        "Pay out an AMM `Position` after settlement. Before this existed the",
-        "AMM had no post-settlement exit at all — see the module docs.",
         "Return the unspent LMSR subsidy to the creator after settlement.",
-        "See `reclaim_subsidy` — bug B0's residual half."
+        "See `reclaim_subsidy`."
       ],
       "discriminator": [
         168,
@@ -2865,11 +2868,8 @@
     {
       "name": "redeem_book_seat",
       "docs": [
-        "Pay out a book position after settlement. See `redeem_book_seat`.",
-        "",
-        "The book's fifth-and-a-half instruction, and the one that was missing:",
-        "place/cancel/withdraw moved collateral, but nothing turned a winning",
-        "seat position into money."
+        "Pay out a winning book seat position after settlement. See",
+        "`redeem_book_seat`."
       ],
       "discriminator": [
         223,
@@ -3625,7 +3625,7 @@
         },
         {
           "name": "amm_mint",
-          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "creator",
@@ -3840,7 +3840,7 @@
         },
         {
           "name": "amm_mint",
-          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "protocol_config",
@@ -3983,7 +3983,8 @@
         {
           "name": "adjudicator_entry",
           "docs": [
-            "Per-market adjudicator record. Used to authenticate the caller."
+            "Per-market adjudicator record; supplies the attested outcome and",
+            "timestamp."
           ],
           "pda": {
             "seeds": [
@@ -4155,7 +4156,7 @@
         },
         {
           "name": "venue_mint",
-          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "vault_amm",
@@ -4345,7 +4346,7 @@
         },
         {
           "name": "amm_mint",
-          "address": "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
           "name": "protocol_config",
@@ -5615,8 +5616,8 @@
         "All fills from one `book_place`, batched into a single event.",
         "",
         "Batched rather than emitted per fill because a 20-fill cross would otherwise",
-        "produce 20 inner instructions, and the per-event overhead would show up in",
-        "exactly the marginal cost this redesign exists to shrink."
+        "produce 20 inner instructions, and per-event overhead would dominate the",
+        "marginal cost of a fill."
       ],
       "type": {
         "kind": "struct",
@@ -5766,9 +5767,8 @@
               "",
               "Only its hash is stored — `Market` keeps 32 bytes and the text is not",
               "persisted anywhere on chain. But it IS emitted in `MarketCreated`, so a",
-              "client can recover it from the creation transaction without an indexer.",
-              "Before that event was carried, the words a market asked existed nowhere",
-              "retrievable and every market rendered as its own address.",
+              "client can recover it from the creation transaction without an indexer;",
+              "the event is the only retrievable copy of the words a market asked.",
               "",
               "Verified against `question_hash` below, which is what makes the event",
               "trustworthy: without the check, a creator could store the hash of one",
@@ -6152,6 +6152,17 @@
           {
             "name": "reclaimed_base",
             "docs": [
+              "Subsidy already reclaimed after settlement, in USDC base units.",
+              "",
+              "A running total, because `reclaim_subsidy` is callable more than once:",
+              "obligations shrink as traders redeem, so the free residual grows over",
+              "time and a creator should not have to guess when to make a single call."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
               "instead of changing the account's length, so no migration is needed:",
               "Solana accounts are fixed-length buffers, and an `#[account]` struct",
@@ -6159,19 +6170,8 @@
               "that loads it. (Unlike EVM, where appending a storage slot is free.)",
               "",
               "When you add a field, shrink this by exactly its serialized size and",
-              "leave `SPACE` unchanged.",
-              "Subsidy already reclaimed after settlement, in USDC base units.",
-              "",
-              "Carved out of `_reserved` (32 -> 24), so `SPACE` is unchanged and no",
-              "account needs migrating. Tracks the running total because",
-              "`reclaim_subsidy` is callable more than once: obligations shrink as",
-              "traders redeem, so the free residual grows over time and a creator",
-              "should not have to guess when to make their single call."
+              "leave `SPACE` unchanged."
             ],
-            "type": "u64"
-          },
-          {
-            "name": "_reserved",
             "type": {
               "array": [
                 "u8",
@@ -6198,7 +6198,7 @@
           {
             "name": "usdc_paid",
             "docs": [
-              "AMM-venue yield paid, in the AMM token. Field name predates the split."
+              "AMM-venue yield paid, in the AMM token."
             ],
             "type": "u64"
           },
@@ -6261,8 +6261,10 @@
           {
             "name": "market_id",
             "docs": [
-              "Deterministic 16-byte id (truncated keccak256 of question || creator",
-              "|| nonce). Architecture §2.2."
+              "Caller-supplied 16-byte id; the seed of this account's PDA and of",
+              "every account derived from it. The SDK defaults it to the first 16",
+              "bytes of `sha256(question)`, which makes one question resolve to one",
+              "market and lets any client derive the PDA from the text alone."
             ],
             "type": {
               "array": [
@@ -6299,11 +6301,9 @@
             "docs": [
               "Book-venue collateral vault (`BOOK_TOKEN_MINT`).",
               "",
-              "Renamed from `vault` when the venues split tokens, deliberately: a",
-              "rename makes the compiler visit every use, and picking the wrong vault",
-              "is the one mistake in this change that fails silently rather than",
-              "loudly. An SPL token account holds exactly one mint, so these cannot be",
-              "merged even if someone wanted to."
+              "Named per venue: picking the wrong vault is the one mistake here that",
+              "fails silently rather than loudly. An SPL token account holds exactly",
+              "one mint, so the two vaults cannot be merged."
             ],
             "type": "pubkey"
           },
@@ -6370,11 +6370,10 @@
               "`trade_positions`. It lives here rather than being read from",
               "`AmmState` because `book_place` already loads `Market` and does NOT",
               "load `AmmState` — checking the real flag would mean adding an account",
-              "and 32 bytes to every order, permanently, to read one bit. The book",
-              "redesign's headline property is that a fill costs zero extra accounts;",
-              "this keeps it.",
+              "and 32 bytes to every order, permanently, to read one bit, and a fill",
+              "must cost zero extra accounts.",
               "",
-              "The cost of mirroring is that two places now hold the same fact. They",
+              "The cost of mirroring is that two places hold the same fact. They",
               "cannot drift: graduation is one-way and set at exactly one site."
             ],
             "type": "bool"
@@ -6612,9 +6611,9 @@
     {
       "name": "MarketLocked",
       "docs": [
-        "Mirror of EVM `TruthMarket.MarketResolved` (LIVE → RESOLVING). Renamed to",
-        "\"Locked\" to match Solana lifecycle names — the semantic intent is the same:",
-        "trading halts pending adjudicator outcome. See `state/lifecycle.rs`."
+        "Emitted on the LIVE → RESOLVING transition: trading halts pending the",
+        "adjudicator outcome. Counterpart of EVM `TruthMarket.MarketResolved`.",
+        "See `state/lifecycle.rs`."
       ],
       "type": {
         "kind": "struct",
@@ -6686,8 +6685,7 @@
             "docs": [
               "Unfilled amount at the moment of cancellation. An indexer cannot",
               "reconstruct this after the fact: `cancel` zeroes the order in place, so",
-              "the size that was withdrawn is gone from state. Ported from main",
-              "(a1f3964)."
+              "the size that was withdrawn is gone from state."
             ],
             "type": "u128"
           }
@@ -6735,9 +6733,9 @@
       "docs": [
         "All fills from one `buy`, batched into a single event.",
         "",
-        "Batched deliberately: the P0.1 spike showed per-fill emission OOMs the",
-        "32 KB heap. Emitted with `emit_cpi!` (a self-CPI), not `emit!` —",
-        "see that program's docs for why. Consumers must verify this arrives as a",
+        "Batched deliberately: per-fill emission exhausts the 32 KB heap. Emitted",
+        "with `emit_cpi!` (a self-CPI), not `emit!` — see the versioned-book-events",
+        "section below for why. Consumers must verify this arrives as a",
         "direct inner instruction of a successful `sooth_core::buy`; the event",
         "itself is permissionless."
       ],
@@ -6987,11 +6985,9 @@
               "Total per-trade fee in basis points (1 bp = 0.01 %).",
               "Taker fee on the AMM, in bps. The incubation venue.",
               "",
-              "Split from the book's rate because the two are different products at",
-              "different stages — and, once they are denominated in different tokens,",
-              "cannot share a rate at all. Before the split a single `fee_bps` served",
-              "both while the UI displayed \"5% bonding / 1% live\", so the rate shown",
-              "was not the rate charged."
+              "Separate from the book's rate because the two are different products at",
+              "different stages — and, being denominated in different tokens, cannot",
+              "share a rate at all."
             ],
             "type": "u16"
           },
@@ -7007,13 +7003,12 @@
             "docs": [
               "Graduation threshold as a fraction of the creator's deposit, in bps.",
               "",
-              "The threshold was `b · ln(2)` — the LMSR's maximum loss, and therefore",
-              "exactly what the creator posted. That is the same as `deposit × 100%`,",
-              "so this generalises it to \"earn back N% of capital at risk\" without",
-              "changing the meaning at 10 000.",
+              "The deposit is `b · ln(2)` — the LMSR's maximum loss, and therefore",
+              "exactly what the creator posted — so this reads as \"earn back N% of",
+              "capital at risk\", 100% at 10 000.",
               "",
-              "Zero is read as 10 000, so a config written before this field existed",
-              "keeps today's behaviour rather than graduating every market instantly."
+              "Zero is read as 10 000, so a config account laid out without this field",
+              "keeps the 100% behaviour rather than graduating every market instantly."
             ],
             "type": "u16"
           },
@@ -7076,7 +7071,7 @@
               "",
               "Configurable rather than a constant so localnet can run a few seconds",
               "while devnet runs 24h — same binary in both places. A build flag would",
-              "have meant the artifact under test was not the artifact deployed.",
+              "mean the artifact under test is not the artifact deployed.",
               "",
               "Zero is rejected at `initialize_protocol` — see the guard there for",
               "why (an omitted Anchor arg encodes as 0)."
@@ -7091,11 +7086,8 @@
               "Solana accounts are fixed-length buffers, and an `#[account]` struct",
               "that outgrows its buffer fails to deserialize on every instruction",
               "that loads it. (Unlike EVM, where appending a storage slot is free.)",
-              "",
-              "This account learned that the hard way: `veto_period_secs` was an",
-              "8-byte addition that stranded the live devnet singleton at 93 bytes",
-              "with no way to grow it, because nothing in the program can realloc or",
-              "close a `ProtocolConfig`.",
+              "Nothing in the program can realloc or close a `ProtocolConfig`, so a",
+              "deployed singleton that is too short for the struct is unrecoverable.",
               "",
               "When you add a field, shrink this by exactly its serialized size and",
               "leave `SPACE` unchanged."

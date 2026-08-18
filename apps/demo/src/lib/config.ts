@@ -15,7 +15,7 @@ const USDC_MINT_DEVNET = "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX";
 // The AMM's token. Distinct from the book's on purpose: the AMM prices in the
 // instance token chosen at deploy, the book in USDC. Must match
 // `AMM_TOKEN_MINT` in the program's `constants.rs` and the SDK's default.
-const AMM_MINT_DEVNET = "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu";
+const AMM_MINT_DEVNET = "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX";
 
 // Sourced from the IDL `address` field, which mirrors the program's
 // `declare_id!`. Keeps the config in lockstep with deploy keypair rotations
@@ -93,7 +93,7 @@ export const tokenLabels = {
  * across deployments, so its amounts carry a trailing ticker instead.
  */
 export const tokenSymbols = {
-  amm: env?.VITE_AMM_TOKEN_SYMBOL ?? "EAST",
+  amm: env?.VITE_AMM_TOKEN_SYMBOL ?? "USDC",
   book: env?.VITE_BOOK_TOKEN_SYMBOL ?? "USDC",
 } as const;
 

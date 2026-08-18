@@ -42,23 +42,20 @@ pub const USDC_MINT_DEVNET: Pubkey =
 // The names are ROLES, never tickers. Which token fills the AMM role is a
 // per-deployment decision and not the program's business.
 
-/// Mock AMM-venue token on devnet, standing in for a real instance token.
-///
-/// Created by `apps/demo/scripts/seed-localnet.mjs` (localnet, preloaded via
-/// `--account`) and by a one-off `spl-token create-token` on devnet. Its mint
-/// authority is backed up alongside the USDC one — losing it means minting
-/// stops and this constant has to change again.
-pub const AMM_TOKEN_MINT_DEVNET: Pubkey =
-    anchor_lang::pubkey!("CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu");
-
 /// The AMM venue's token. Pinned by `address = AMM_TOKEN_MINT` constraints on
 /// every AMM path, so a mismatch is a hard transaction failure rather than a
 /// UI inconsistency.
+///
+/// This deployment fills BOTH venue roles with the same mock USDC: bonding
+/// prices, LP subsidies and book collateral are all one token, so the UI has
+/// one faucet and one balance. The dual-venue architecture is unchanged —
+/// the roles stay distinct in every account and instruction, and a mainnet
+/// instance may fill them with two different mints again.
 #[cfg(feature = "mainnet")]
 pub const AMM_TOKEN_MINT: Pubkey =
     compile_error!("set AMM_TOKEN_MINT for mainnet before building with --features mainnet");
 #[cfg(not(feature = "mainnet"))]
-pub const AMM_TOKEN_MINT: Pubkey = AMM_TOKEN_MINT_DEVNET;
+pub const AMM_TOKEN_MINT: Pubkey = USDC_MINT_DEVNET;
 
 /// The orderbook venue's token: real USDC on mainnet, the project mock on
 /// devnet.

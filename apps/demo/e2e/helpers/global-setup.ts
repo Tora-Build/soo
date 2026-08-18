@@ -96,7 +96,7 @@ export default async function globalSetup(): Promise<void> {
   // The AMM's token. Falls back to the SDK/program default rather than dying:
   // .env.local files written before the venue split do not carry the key.
   const ammMintStr =
-    env.VITE_AMM_MINT ?? "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu";
+    env.VITE_AMM_MINT ?? "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX";
   // The app reads VITE_SOOTH_CORE_ID; the AMM alias is still written by the
   // seed for this assertion's benefit and points at the same program.
   const ammIdStr =

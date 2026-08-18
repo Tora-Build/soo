@@ -14,7 +14,7 @@ import {
 } from "@coral-xyz/anchor";
 import {
   TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountInstruction,
+  createAssociatedTokenAccountIdempotentInstruction,
   createTransferInstruction,
   getAccount,
 } from "@solana/spl-token";
@@ -125,16 +125,18 @@ export async function createFundedMaker(
     rentEpoch: 0n as unknown as number,
   });
 
-  // Funded in BOTH venue tokens. A maker who only holds USDC can quote the
-  // book and cannot touch the AMM, so a test that funds one and trades the
-  // other fails on balance rather than on what it meant to assert.
+  // Funded in BOTH venue roles. With one mint filling both roles the
+  // idempotent create is a no-op the second time and the amounts accumulate;
+  // with two mints it funds the second balance. Either way the maker can
+  // quote the book AND touch the AMM, so tests fail on what they assert,
+  // not on balance.
   for (const mint of [usdcMint, ammMint]) {
     const makerAta = deriveUserUsdcAta(maker.publicKey, mint);
     await sendTx(
       ctx,
       [creator],
       new Transaction().add(
-        createAssociatedTokenAccountInstruction(
+        createAssociatedTokenAccountIdempotentInstruction(
           creator.publicKey,
           makerAta,
           maker.publicKey,

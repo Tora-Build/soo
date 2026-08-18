@@ -8,6 +8,7 @@
 
 import { useTranslation } from "react-i18next";
 
+import { tokenSymbols } from "@/lib/config";
 import type { OptionTemplate } from "../../core";
 import { useCanonicalActivation } from "../../hooks/useCanonicalActivation";
 import { useSimulationStore } from "../../store/useSimulationStore";
@@ -79,8 +80,10 @@ export function ActivationWizard({
         </div>
         <div>
           <dt className="text-faint">{t("eastboard.activation.liquidity")}</dt>
-          {/* b, in the AMM venue's token — never dollars. */}
-          <dd className="text-ink">{formatWadTokens(template.bBaseWad)} EAST</dd>
+          {/* b, in the AMM venue's collateral token. */}
+          <dd className="text-ink">
+            {formatWadTokens(template.bBaseWad)} {tokenSymbols.amm}
+          </dd>
         </div>
       </dl>
 

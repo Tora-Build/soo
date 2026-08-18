@@ -43,11 +43,9 @@ export function formatCurrencyCompact(
 /**
  * Money in the AMM venue's token.
  *
- * NOT dollars. The AMM prices in an instance token chosen at deploy — EAST on
- * this deployment — so a `$` prefix here states the wrong unit: it tells a
- * trader their position is worth some number of dollars when it is worth that
- * number of a token with its own price. The book keeps `$` because its
- * collateral really is USDC.
+ * The AMM's collateral token is chosen per deployment via config — this
+ * deployment fills both venue roles with the same mock USDC mint, so the
+ * ticker comes from `tokenSymbols.amm` rather than being hardcoded here.
  *
  * Probabilities are a separate thing and stay as ¢ or %: a share price of 50¢
  * is the market's odds, not an amount of any token.

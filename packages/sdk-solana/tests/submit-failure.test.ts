@@ -46,6 +46,7 @@ import {
   deriveLpMintAuthorityPda,
   deriveLpMintPda,
   deriveMarketVaultAta,
+  deriveMarketVaultAmm,
   derivePositionPda,
   deriveProtocolConfigPda,
   deriveUserLpAta,
@@ -94,11 +95,7 @@ describe("submit failure surfacing", () => {
       smoke.programs,
     );
     const userUsdcAta = deriveUserUsdcAta(smoke.user.publicKey, smoke.ammMint);
-    const marketVault = deriveMarketVaultAta(
-      smoke.marketId,
-      smoke.ammMint,
-      smoke.programs,
-    );
+    const marketVault = deriveMarketVaultAmm(smoke.marketId, smoke.programs);
 
     // We need a real `tradePositions` ix with bad outcome. Easiest path is
     // through the same Anchor `Program` the adapter uses internally — so

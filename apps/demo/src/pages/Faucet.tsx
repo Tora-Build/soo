@@ -22,39 +22,6 @@ const MOCK_ERC20_ABI = parseAbi([
 ]);
 
 /**
- * The two venues price in different tokens, so the faucet dispenses both.
- *
- * One faucet is not enough under the split: a wallet holding only the book's
- * token cannot trade the AMM, and every market trades on the AMM until it
- * graduates — so a single-token faucet leaves a new user unable to make their
- * first trade.
- *
- * Each card shows a NAME and a ROLE. The name comes from config because the
- * AMM's token is chosen per deployment — hardcoding "EAST" here would be wrong
- * for the next deployment. The role is the part that never changes, and it is
- * what the user actually needs: which venue this token can trade. Keeping both
- * means a stale name is cosmetic instead of misleading.
- */
-const VENUES = [
-  {
-    key: "amm",
-    role: "AMM",
-    title: tokenLabels.amm,
-    blurb:
-      "Collateral for the bonding-curve venue. Every market trades here until it graduates, so this is the token you need first.",
-    mintKey: "ammMint",
-  },
-  {
-    key: "book",
-    role: "Book",
-    title: tokenLabels.book,
-    blurb:
-      "Collateral for the order book. Only usable on markets that have already graduated.",
-    mintKey: "usdcMint",
-  },
-] as const;
-
-/**
  * Say what actually went wrong.
  *
  * `err.shortMessage` is a wagmi/viem field that a plain `Error` from the
@@ -86,29 +53,25 @@ function faucetErrorMessage(err: unknown): string {
   return raw ? `Mint failed: ${raw}` : "Failed to mint tokens";
 }
 
-function VenueFaucetCard({
-  venue,
-  mintAddress,
-  address,
-  isConnected,
-  decimals,
-  isMinting,
-  balanceLabel,
-  onMint,
-}: {
-  venue: (typeof VENUES)[number];
-  mintAddress: string | undefined;
-  address: string | undefined;
-  isConnected: boolean;
-  decimals: number;
-  isMinting: boolean;
-  balanceLabel: string;
-  onMint: (
-    venue: (typeof VENUES)[number],
-    mintAddress: string | undefined,
-    refetch: () => void,
-  ) => void;
-}) {
+/**
+ * Single-token faucet: every venue in this deployment — the bonding curve and
+ * the order book — trades in the same mock USDC mint, so one card funds
+ * everything a wallet needs to trade.
+ */
+export const Faucet = () => {
+  const { t } = useTranslation();
+  const { address, isConnected } = useAccount();
+
+  const [isMinting, setIsMinting] = useState(false);
+  const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient();
+  const decimals = useBaseTokenDecimals();
+
+  const programs = demoConfig.node.programs as
+    | Record<string, string | undefined>
+    | undefined;
+  const mintAddress = programs?.usdcMint;
+
   const { data: balance, refetch } = useReadContract({
     address: mintAddress as `0x${string}` | undefined,
     abi: MOCK_ERC20_ABI,
@@ -117,76 +80,18 @@ function VenueFaucetCard({
     query: { enabled: !!address && !!mintAddress },
   });
 
-  return (
-    <div className="panel p-6">
-      <h3 className="text-xl font-bold text-ink mb-1 flex items-center gap-2">
-        <Coins className="text-muted w-5 h-5" />
-        {venue.title}
-      </h3>
-      <div className="text-xs font-mono uppercase tracking-wide text-faint mb-4">
-        {venue.role} venue
-      </div>
-
-      <p className="text-muted text-sm mb-6">{venue.blurb}</p>
-
-      <div className="bg-inset p-4 mb-6 border border-rule">
-        <div className="flex justify-between items-center text-sm mb-1">
-          <span className="text-muted">{balanceLabel}</span>
-          <span className="text-ink font-mono font-bold">
-            {balance !== undefined
-              ? Number(
-                  formatUnits(balance as bigint, decimals),
-                ).toLocaleString()
-              : "0"}
-          </span>
-        </div>
-        <div className="text-xs text-faint font-mono truncate">
-          {mintAddress || "Not configured"}
-        </div>
-      </div>
-
-      <Button
-        data-testid={`faucet-mint-button-${venue.key}`}
-        className="btn btn-primary w-full"
-        onClick={() => onMint(venue, mintAddress, refetch)}
-        isLoading={isMinting}
-        disabled={!isConnected}
-      >
-        {isConnected ? `Request 100,000` : "Connect Wallet to Mint"}
-      </Button>
-    </div>
-  );
-}
-
-export const Faucet = () => {
-  const { t } = useTranslation();
-  const { address, isConnected } = useAccount();
-
-  const [mintingKey, setMintingKey] = useState<string | null>(null);
-  const { writeContractAsync } = useWriteContract();
-  const publicClient = usePublicClient();
-  const decimals = useBaseTokenDecimals();
-
-  const programs = demoConfig.node.programs as
-    | Record<string, string | undefined>
-    | undefined;
-
-  const handleMint = async (
-    venue: (typeof VENUES)[number],
-    mintAddress: string | undefined,
-    refetch: () => void,
-  ) => {
+  const handleMint = async () => {
     if (!address) {
       toast.error("Please connect your wallet first");
       return;
     }
     if (!mintAddress) {
-      toast.error(`${venue.title} mint not configured for this cluster`);
+      toast.error(`${tokenLabels.book} mint not configured for this cluster`);
       return;
     }
 
-    setMintingKey(venue.key);
-    const tid = toast.loading(`Requesting 100,000 ${venue.title}...`);
+    setIsMinting(true);
+    const tid = toast.loading(`Requesting 100,000 ${tokenLabels.book}...`);
 
     try {
       const amount = parseUnits("100000", decimals);
@@ -202,7 +107,7 @@ export const Faucet = () => {
 
       if (publicClient) {
         await publicClient.waitForTransactionReceipt({ hash });
-        toast.success(`100,000 ${venue.title} received!`, { id: tid });
+        toast.success(`100,000 ${tokenLabels.book} received!`, { id: tid });
         refetch();
       } else {
         toast.success("Transaction sent!", { id: tid });
@@ -211,7 +116,7 @@ export const Faucet = () => {
       logger.rpc.error("Faucet error:", err);
       toast.error(faucetErrorMessage(err), { id: tid });
     } finally {
-      setMintingKey(null);
+      setIsMinting(false);
     }
   };
 
@@ -223,19 +128,42 @@ export const Faucet = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {VENUES.map((venue) => (
-          <VenueFaucetCard
-            key={venue.key}
-            venue={venue}
-            mintAddress={programs?.[venue.mintKey]}
-            address={address}
-            isConnected={isConnected}
-            decimals={decimals}
-            isMinting={mintingKey === venue.key}
-            balanceLabel={t("faucet.yourBalance")}
-            onMint={handleMint}
-          />
-        ))}
+        <div className="panel p-6">
+          <h3 className="text-xl font-bold text-ink mb-1 flex items-center gap-2">
+            <Coins className="text-muted w-5 h-5" />
+            {tokenLabels.book}
+          </h3>
+
+          <p className="text-muted text-sm mb-6 mt-3">
+            Mints test USDC for trading on devnet.
+          </p>
+
+          <div className="bg-inset p-4 mb-6 border border-rule">
+            <div className="flex justify-between items-center text-sm mb-1">
+              <span className="text-muted">{t("faucet.yourBalance")}</span>
+              <span className="text-ink font-mono font-bold">
+                {balance !== undefined
+                  ? Number(
+                      formatUnits(balance as bigint, decimals),
+                    ).toLocaleString()
+                  : "0"}
+              </span>
+            </div>
+            <div className="text-xs text-faint font-mono truncate">
+              {mintAddress || "Not configured"}
+            </div>
+          </div>
+
+          <Button
+            data-testid="faucet-mint-button-usdc"
+            className="btn btn-primary w-full"
+            onClick={handleMint}
+            isLoading={isMinting}
+            disabled={!isConnected}
+          >
+            {isConnected ? `Request 100,000` : "Connect Wallet to Mint"}
+          </Button>
+        </div>
 
         {/* Native SOL Info */}
         <div className="panel p-6">
@@ -284,7 +212,7 @@ export const Faucet = () => {
         <Info className="text-faint w-4 h-4 shrink-0 mt-0.5" />
         <div className="text-faint font-mono text-xs space-y-1">
           <p>
-            Note: both faucet tokens are mocks with no real value, for protocol
+            Note: the faucet token is a mock with no real value, for protocol
             testing only.
           </p>
           <p>

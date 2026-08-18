@@ -939,14 +939,14 @@
       "creator": {
         "example": {
           "pnlLabel": "预计净盈亏",
-          "pnlValue": "+807 EAST",
-          "text": "Carol 以 **693 EAST 的存款** (b=1,000 EAST) 创建了一个 50/50 市场。交易量产生了 **150 EAST 的手续费**。作为 50% 的 LP 持有者，她从每笔交易中获利。非对称赔率需要更高的存款。",
+          "pnlValue": "+807 USDC",
+          "text": "Carol 以 **693 USDC 的存款** (b=1,000 USDC) 创建了一个 50/50 市场。交易量产生了 **150 USDC 的手续费**。作为 50% 的 LP 持有者，她从每笔交易中获利。非对称赔率需要更高的存款。",
           "title": "创建者示例"
         },
         "plItems": {
           "0": {
             "event": "市场创建",
-            "impact": "-693 EAST 存款",
+            "impact": "-693 USDC 存款",
             "pos": "False"
           },
           "1": {
@@ -968,23 +968,23 @@
         "plTitle": "创建者盈亏分析",
         "tiers": {
           "0": {
-            "b": "100 EAST",
-            "dep": "69 EAST",
+            "b": "100 USDC",
+            "dep": "69 USDC",
             "tier": "微型"
           },
           "1": {
-            "b": "1k EAST",
-            "dep": "693 EAST",
+            "b": "1k USDC",
+            "dep": "693 USDC",
             "tier": "小型"
           },
           "2": {
-            "b": "10k EAST",
-            "dep": "6.9k EAST",
+            "b": "10k USDC",
+            "dep": "6.9k USDC",
             "tier": "中型"
           },
           "3": {
-            "b": "100k EAST",
-            "dep": "69k EAST",
+            "b": "100k USDC",
+            "dep": "69k USDC",
             "tier": "大型"
           }
         },

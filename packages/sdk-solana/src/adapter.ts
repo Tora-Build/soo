@@ -59,6 +59,7 @@ import {
   deriveLpYieldAuthority,
   deriveMarketPda,
   deriveMarketVaultAta,
+  deriveMarketVaultAmm,
   deriveLpPositionPda,
   derivePositionPda,
   deriveProtocolConfigPda,
@@ -214,7 +215,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       opts.ammMint ??
       (opts.node.programs?.ammMint
         ? new PublicKey(opts.node.programs.ammMint)
-        : new PublicKey("CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"));
+        : new PublicKey("ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"));
 
     this.connection =
       opts.connection ?? new Connection(opts.node.rpcUrl, "confirmed");
@@ -747,11 +748,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       this.programIds,
     );
     const userUsdcAta = deriveUserUsdcAta(userPk, this.ammMint);
-    const marketVault = deriveMarketVaultAta(
-      resolved.marketId,
-      this.ammMint,
-      this.programIds,
-    );
+    const marketVault = deriveMarketVaultAmm(resolved.marketId, this.programIds);
     // AMM buys credit the per-market fee pool owned by sooth_core. The
     // on-chain trade ix requires the token account to exist; the SDK adds
     // the init ix only for fresh markets.
@@ -959,11 +956,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       resolved.marketId,
       this.programIds,
     );
-    const marketVault = deriveMarketVaultAta(
-      resolved.marketId,
-      this.ammMint,
-      this.programIds,
-    );
+    const marketVault = deriveMarketVaultAmm(resolved.marketId, this.programIds);
     const lockVault = deriveLockVaultAta(
       resolved.marketId,
       this.ammMint,
@@ -1181,11 +1174,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       resolved.marketId,
       this.programIds,
     );
-    const marketVault = deriveMarketVaultAta(
-      resolved.marketId,
-      this.ammMint,
-      this.programIds,
-    );
+    const marketVault = deriveMarketVaultAmm(resolved.marketId, this.programIds);
     const userUsdcAta = deriveUserUsdcAta(userPk, this.ammMint);
 
     const ix: TransactionInstruction = await (this.program.methods as any)
@@ -1642,11 +1631,7 @@ export class SolanaChainAdapter implements ChainAdapter {
         ammState: deriveAmmStatePda(resolved.marketId, this.programIds)[0],
         vaultAuthority,
         position,
-        vault: deriveMarketVaultAta(
-          resolved.marketId,
-          this.ammMint,
-          this.programIds,
-        ),
+        vault: deriveMarketVaultAmm(resolved.marketId, this.programIds),
         userAmmAta: getAssociatedTokenAddressSync(this.ammMint, userPk),
         user: userPk,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -1766,11 +1751,7 @@ export class SolanaChainAdapter implements ChainAdapter {
           .accounts({
             ...common,
             // The b_base share returns to the venue's own collateral vault.
-            bBaseYieldVault: deriveMarketVaultAta(
-              resolved.marketId,
-              this.ammMint,
-              this.programIds,
-            ),
+            bBaseYieldVault: deriveMarketVaultAmm(resolved.marketId, this.programIds),
           })
           .instruction()
       : await (this.program.methods as any)
@@ -1833,11 +1814,7 @@ export class SolanaChainAdapter implements ChainAdapter {
           this.programIds,
         )[0],
         venueMint: this.ammMint,
-        vaultAmm: deriveMarketVaultAta(
-          resolved.marketId,
-          this.ammMint,
-          this.programIds,
-        ),
+        vaultAmm: deriveMarketVaultAmm(resolved.marketId, this.programIds),
         protocolTreasuryVault: treasuryVault,
         cranker: crankerPk,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -1897,7 +1874,7 @@ export class SolanaChainAdapter implements ChainAdapter {
         ammState: deriveAmmStatePda(id, this.programIds)[0],
         book: bookInfo ? bookPdaKey : null,
         vaultBook: deriveMarketVaultAta(id, this.bookMint, this.programIds),
-        vaultAmm: deriveMarketVaultAta(id, this.ammMint, this.programIds),
+        vaultAmm: deriveMarketVaultAmm(id, this.programIds),
         lockVault: deriveLockVaultAta(id, this.ammMint, this.programIds),
         feePoolAmm: feePoolAmmPda(id, this.programIds)[0],
         feePoolBook: feePoolBookPda(id, this.programIds)[0],
@@ -1962,11 +1939,7 @@ export class SolanaChainAdapter implements ChainAdapter {
           creatorPk,
           this.programIds,
         )[0],
-        marketVault: deriveMarketVaultAta(
-          resolved.marketId,
-          this.ammMint,
-          this.programIds,
-        ),
+        marketVault: deriveMarketVaultAmm(resolved.marketId, this.programIds),
         creatorAmmAta: deriveUserUsdcAta(creatorPk, this.ammMint),
         ammMint: this.ammMint,
         creator: creatorPk,
@@ -2019,11 +1992,7 @@ export class SolanaChainAdapter implements ChainAdapter {
         ammState,
         lpPosition,
         vaultAuthority,
-        vaultAmm: deriveMarketVaultAta(
-          resolved.marketId,
-          this.ammMint,
-          this.programIds,
-        ),
+        vaultAmm: deriveMarketVaultAmm(resolved.marketId, this.programIds),
         creatorAmmAta: getAssociatedTokenAddressSync(this.ammMint, creatorPk),
         creator: creatorPk,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -2536,11 +2505,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       this.bookMint,
       this.programIds,
     );
-    const vaultAmm = deriveMarketVaultAta(
-      marketId,
-      this.ammMint,
-      this.programIds,
-    );
+    const vaultAmm = deriveMarketVaultAmm(marketId, this.programIds);
     const lockVault = deriveLockVaultAta(
       marketId,
       this.ammMint,
@@ -3136,7 +3101,7 @@ export class SolanaChainAdapter implements ChainAdapter {
     const resolved = await this.fetchMarket(marketPda);
     const acc = await getAccount(
       this.connection,
-      deriveMarketVaultAta(resolved.marketId, this.ammMint, this.programIds),
+      deriveMarketVaultAmm(resolved.marketId, this.programIds),
     );
     return acc.amount;
   }

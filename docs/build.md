@@ -44,7 +44,8 @@ must too.
 ## Two venue tokens
 
 The AMM prices in the deployment's instance token (a devnet mock standing in
-for EAST); the book prices in USDC (a project-controlled devnet mock). Both are
+for the instance token); the book prices in USDC (a project-controlled devnet
+mock). This deployment fills both roles with the same mock USDC, and both are
 compile-time constants pinned by `address =` account constraints, so a mismatch
 is a hard transaction failure rather than a UI inconsistency. The faucet page
 dispenses both.

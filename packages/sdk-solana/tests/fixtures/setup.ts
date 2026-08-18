@@ -35,7 +35,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   MintLayout,
   TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountInstruction,
+  createAssociatedTokenAccountIdempotentInstruction,
   createMintToInstruction,
 } from "@solana/spl-token";
 import {
@@ -62,6 +62,7 @@ import {
   deriveLpPositionPda,
   deriveMarketPda,
   deriveMarketVaultAta,
+  deriveMarketVaultAmm,
   deriveNoMintPda,
   deriveProtocolConfigPda,
   deriveUserUsdcAta,
@@ -176,7 +177,7 @@ export async function bootSmoke(
   // required for the same reason: the constraint is `address = …`, so the
   // account must exist at exactly that key.
   const AMM_MINT_DEVNET = new PublicKey(
-    "CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu",
+    "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX",
   );
   const mintAuthority = Keypair.generate();
   await writeMint(ctx, USDC_MINT_DEVNET, mintAuthority.publicKey);
@@ -199,7 +200,7 @@ export async function bootSmoke(
     ctx,
     [creator],
     new Transaction().add(
-      createAssociatedTokenAccountInstruction(
+      createAssociatedTokenAccountIdempotentInstruction(
         creator.publicKey,
         userAta,
         user.publicKey,
@@ -228,7 +229,7 @@ export async function bootSmoke(
     ctx,
     [creator],
     new Transaction().add(
-      createAssociatedTokenAccountInstruction(
+      createAssociatedTokenAccountIdempotentInstruction(
         creator.publicKey,
         creatorAta,
         creator.publicKey,
@@ -249,10 +250,11 @@ export async function bootSmoke(
     ),
   );
 
-  // The same two accounts again in the AMM's token. Every AMM path — trading,
-  // seeding the LMSR subsidy — moves that mint now, so a fixture that funds
-  // only USDC leaves the AMM untradeable and every AMM test fails on balance
-  // rather than on what it meant to assert.
+  // The same two accounts again in the AMM role's token. When the deployment
+  // fills both roles with one mint — as this one does — the idempotent create
+  // is a no-op and the amounts simply accumulate in the same account; with
+  // two mints it funds the second balance. Either way every AMM path is
+  // tradeable, so tests fail on what they meant to assert, not on balance.
   for (const [owner, amount] of [
     [user, userUsdc],
     [creator, 10_000_000_000n],
@@ -262,7 +264,7 @@ export async function bootSmoke(
       ctx,
       [creator],
       new Transaction().add(
-        createAssociatedTokenAccountInstruction(
+        createAssociatedTokenAccountIdempotentInstruction(
           creator.publicKey,
           ata,
           owner.publicKey,
@@ -348,7 +350,7 @@ export async function bootSmoke(
   const [vaultAuthority] = deriveVaultAuthorityPda(marketId, PROGRAMS);
   const [lockAuthority] = deriveLockAuthorityPda(marketId, PROGRAMS);
   const vaultBook = deriveMarketVaultAta(marketId, USDC_MINT_DEVNET, PROGRAMS);
-  const vaultAmm = deriveMarketVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);
+  const vaultAmm = deriveMarketVaultAmm(marketId, PROGRAMS);
   const lockVault = deriveLockVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);
   const [ammStatePda] = deriveAmmStatePda(marketId, PROGRAMS);
 
