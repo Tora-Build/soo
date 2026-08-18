@@ -41,4 +41,4 @@
 - **`SoothRequest`** — A built but unsubmitted transaction, returned from `build*` and consumed by `submit()`.
 - **`SoothError`** — Tagged union covering SDK errors, with a per-program classifier mapping Anchor error codes onto it.
 - **MarketRef** — Opaque, chain-prefixed market identifier (`sol:…`).
-- **chain-shim** — The `apps/demo` layer that translates the forked EVM app's hook signatures into SDK calls. `apps/pulse` has none.
+- **chain-shim** — The `apps/demo` layer that translates the forked EVM app's hook signatures into SDK calls. Every frontend surface goes through it.

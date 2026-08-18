@@ -5,9 +5,8 @@
 > ESM-only, Node ≥ 20.
 
 `SolanaChainAdapter` is the whole surface: it reads protocol state, builds every
-`sooth_core` instruction, simulates, signs, and submits. Frontends in this repo
-(`apps/pulse` directly, `apps/demo` through its chain-shim) use nothing else to
-reach the chain.
+`sooth_core` instruction, simulates, signs, and submits. The frontend in this
+repo (`apps/demo`, through its chain-shim) uses nothing else to reach the chain.
 
 The public API third parties build against is documented in
 [`docs/integrator-contract.md`](./docs/integrator-contract.md); how it is

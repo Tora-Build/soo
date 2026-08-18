@@ -6,7 +6,7 @@
 ## Active
 
 1. **Harden the devnet deployment.** Keep the program, the seed scripts, and
-   both frontends in lockstep across upgrades; the deployed buffer carries
+   both frontend surfaces in lockstep across upgrades; the deployed buffer carries
    headroom so an upgrade does not need a manual resize step.
 2. **Guardian allowlist for the veto.** `dispute` is held by a single
    `dispute_authority`. Widening it to an allowlist is the remaining gap in the

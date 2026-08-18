@@ -10,8 +10,8 @@ swapped, under `src/lib/chain-shim/`. Running upstream's real UX flows against
 the Solana SDK is the point: a lean rebuild would only validate what we already
 know works.
 
-`apps/pulse` is the other frontend — standalone, shim-free, built directly on
-the SDK. This one exists to exercise the fork.
+This app is the whole frontend: two surfaces, Eastboard and Arena, over one
+chain-shim.
 
 ## Routes
 

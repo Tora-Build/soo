@@ -37,10 +37,9 @@ title from chain history with no indexer. The `Market` account keeps the hash.
   are Rust modules calling each other directly, not separate programs over CPI.
 - **`packages/sdk-solana/`** — `@sooth/sdk-solana`. Instruction builders,
   account readers, PDA helpers, and client-side LMSR quote math.
-- **`apps/demo/`** — forked demo app. Classic pages plus the Eastboard shell at
-  `/options` and Arena at `/play`; reaches the program through a chain-shim.
-- **`apps/pulse/`** — standalone, shim-free frontend built directly on the SDK
-  (`/`, `/m/:pda`, `/me`, `/launch`).
+- **`apps/demo/`** — forked demo app, and the only frontend. It carries both
+  surfaces: the Eastboard shell at `/options`, wrapping the classic pages, and
+  Arena at `/play`. Both reach the program through a chain-shim.
 
 ## Where to look
 
@@ -53,7 +52,6 @@ title from chain history with no indexer. The `Market` account keeps the hash.
 | Per-subsystem specs                     | [`docs/spec/`](docs/spec/)                                                                           |
 | Order book design                       | [`docs/design/orderbook-redesign.md`](docs/design/orderbook-redesign.md)                             |
 | Two-token venue split                   | [`docs/design/dual-token-venues.md`](docs/design/dual-token-venues.md)                               |
-| Pulse frontend design                   | [`docs/design/pulse-fe.md`](docs/design/pulse-fe.md)                                                 |
 | How `develop` differs from `main`       | [`docs/develop-vs-main.md`](docs/develop-vs-main.md)                                                 |
 | SDK public surface                      | [`packages/sdk-solana/docs/integrator-contract.md`](packages/sdk-solana/docs/integrator-contract.md) |
 
@@ -69,8 +67,7 @@ sooth-solana/
 ├── Cargo.toml                    # Rust workspace (sooth-core) + anchor-syn patch
 ├── package.json / pnpm-workspace.yaml
 ├── apps/
-│   ├── demo/                     # forked demo + Eastboard + Arena + dev/seed scripts
-│   └── pulse/                    # standalone shim-free frontend
+│   └── demo/                     # forked demo + Eastboard + Arena + dev/seed scripts
 ├── docs/                         # specs, design docs, decision log, status, glossary
 ├── packages/
 │   ├── programs-core/programs/sooth-core/

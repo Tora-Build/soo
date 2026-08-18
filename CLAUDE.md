@@ -14,9 +14,9 @@ Companion repo to [`Tora-Build/sooth-alpha`](https://github.com/Tora-Build/sooth
   Program ID: `EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw` (devnet + localnet).
 - `packages/sdk-solana/` — `@sooth/sdk-solana` TypeScript adapter
   (instruction builders, readers, PDA helpers, LMSR quote math).
-- `apps/demo/` — forked demo app: classic pages, Eastboard shell at `/options`,
-  Arena at `/play`; talks to the program through a chain-shim layer.
-- `apps/pulse/` — standalone shim-free frontend (`/`, `/m/:pda`, `/me`, `/launch`).
+- `apps/demo/` — the only frontend, holding both surfaces: the Eastboard shell
+  at `/options` wrapping the classic pages, and Arena at `/play`. Talks to the
+  program through a chain-shim layer.
 - `docs/` — specs (`docs/spec/`), design docs (`docs/design/`), decision log,
   status snapshot, glossary, build guide.
 

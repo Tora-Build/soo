@@ -4,8 +4,8 @@
 > Audience: anyone building on Sooth's Solana deployment — frontends, bots,
 > aggregators, portfolio trackers.
 >
-> Status: shipped. The surface below is what `src/index.ts` exports today; both
-> in-repo frontends (`apps/demo`, `apps/pulse`) are built on it.
+> Status: shipped. The surface below is what `src/index.ts` exports today; the
+> in-repo frontend (`apps/demo`) is built on it.
 
 ---
 

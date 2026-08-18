@@ -21,9 +21,8 @@ and this project adheres to semantic versioning once tags are cut.
   pays out AMM positions.
 - Per-market `lp_yield_amm` and `lp_yield_book` vaults, with
   `distribute_fees_amm` / `distribute_fees_book` as separate cranks.
-- `apps/pulse` — a standalone frontend built directly on the SDK, with no
-  chain-shim. `apps/demo` gains the Eastboard shell at `/options` and the Arena
-  play deck at `/play`.
+- `apps/demo` gains two surfaces: the Eastboard shell at `/options`, wrapping
+  the classic pages, and the Arena play deck at `/play`.
 
 ### Changed
 
@@ -51,6 +50,10 @@ and this project adheres to semantic versioning once tags are cut.
   outcome tokens.
 
 ---
+
+> `apps/pulse`, a standalone shim-free frontend, also sat here unreleased. It was
+> dropped in favour of the two surfaces `apps/demo` now carries, so it has no
+> entry above.
 
 > The Monaco-fork line of work (vendored Monaco Protocol as `sooth_book`, the
 > sportsbook strip-down, the probability-WAD price ladder, and the cross-program

@@ -321,7 +321,7 @@ pnpm -F @sooth/sdk-solana typecheck
 ```
 
 The package is ESM-only and its `exports` map has a single `"."` entry pointing
-at `dist/`. Vitest hits `src/` directly, but any consumer — the demo, Pulse —
+at `dist/`. Vitest hits `src/` directly, but any consumer — the demo included —
 imports `dist/`. **After editing `src/`, build before reloading a frontend**, or
 you will debug the previous version.
 

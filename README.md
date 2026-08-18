@@ -12,7 +12,6 @@ Companion to `Tora-Build/sooth-alpha` (the EVM home). Deployed to Solana devnet.
 | [`packages/programs-core/programs/sooth-core/`](./packages/programs-core/) | `sooth_core` — one Anchor program: market lifecycle, LMSR AMM, CLOB, LP/fee flows, adjudication. No cross-program CPIs. |
 | [`packages/sdk-solana/`](./packages/sdk-solana/)                          | `@sooth/sdk-solana` — instruction builders, account readers, PDA helpers, client-side LMSR quote math.                  |
 | [`apps/demo/`](./apps/demo/)                                              | Forked demo: classic pages, the Eastboard shell at `/options`, Arena at `/play`. Talks to the program via a chain-shim. |
-| [`apps/pulse/`](./apps/pulse/)                                            | Standalone shim-free frontend built directly on the SDK.                                                                |
 
 ## Where to start
 
@@ -61,8 +60,7 @@ sooth-solana/
 ├── README.md / HANDOVER.md / CLAUDE.md / CHANGELOG.md
 ├── Anchor.toml / Cargo.toml / package.json / pnpm-workspace.yaml
 ├── apps/
-│   ├── demo/                      # forked demo + Eastboard + Arena
-│   └── pulse/                     # standalone shim-free frontend
+│   └── demo/                      # forked demo + Eastboard + Arena
 ├── docs/
 │   ├── status.md                  # current snapshot
 │   ├── build.md                   # local build + wallet rules
@@ -70,7 +68,7 @@ sooth-solana/
 │   ├── decision-log.md
 │   ├── glossary.md
 │   ├── develop-vs-main.md
-│   ├── design/                    # orderbook redesign, dual-token venues, pulse
+│   ├── design/                    # orderbook redesign, dual-token venues
 │   └── spec/                      # per-subsystem specs
 ├── packages/
 │   ├── programs-core/             # Anchor program `sooth_core`

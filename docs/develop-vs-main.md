@@ -38,11 +38,9 @@ trade on the book until it graduates. Two vaults, two fee pools, two fee rates.
 which could take or strand real money. They are listed in §6 because they are
 the part an auditor should read first.
 
-**A second frontend exists.** `main` ships one app, `apps/demo` — which on
-`develop` has since grown the Eastboard and Arena surfaces on top of its
-chain-shim. `apps/pulse` is new and shim-free: it talks to `@sooth/sdk-solana`
-directly, and it is the surface that renders the program as it actually is.
-§7a.
+**The frontend grew two surfaces.** Both branches ship one app, `apps/demo`. On
+`develop` it gained the Eastboard shell at `/options` and Arena at `/play`, both
+over the same chain-shim. §7a.
 
 The capacity consequence, since it is the question most often asked: a
 transaction goes from **5 fills to several hundred**, and a fill costs ~20×
@@ -68,7 +66,7 @@ actually better and which one scales.
 Programs                      5             1
 Rust (packages/programs-core) 24,514        10,678
 Instructions                  51            30
-Frontends                     apps/demo     apps/demo + apps/pulse
+Frontend surfaces             1             2 (Eastboard, Arena)
 Collateral tokens             1             2 (one per venue)
 Fee rates                     1 (fee_bps)   2 (amm / book) + graduation_bps
 Vaults per market             1             2 (vault_amm, vault_book)
@@ -77,7 +75,7 @@ TypeScript test/spec files    53            81
 Rust #[test]                  244           120
 ```
 
-Overall: **485 files changed, +57,982 / −50,501**
+Overall: **459 files changed, +56,161 / −50,501**
 (`git diff --shortstat main...develop`). Every figure in this section is
 measured against the two committed branch tips; uncommitted work in a worktree
 is not counted, so re-derive rather than trusting these after a busy week.
@@ -90,7 +88,6 @@ By area (`git diff --shortstat main...develop -- <area>`):
 | `packages/sdk-solana` | 64 | 20,324 | 20,551 |
 | `apps/demo` | 152 | 17,082 | 5,515 |
 | `packages/sooth-data` | 34 | 4,031 | 0 |
-| `apps/pulse` | 26 | 1,821 | 0 |
 | `docs` | 9 | 2,653 | 44 |
 
 Three of these need a caveat, because the raw figure misleads:
@@ -575,24 +572,24 @@ be invisible in the archive while sitting plainly in an event. State answers
 
 ---
 
-## 7a. New: `apps/pulse`
+## 7a. New: the Eastboard and Arena surfaces
 
-Does not exist on `main`. A second frontend, built directly on
-`@sooth/sdk-solana` with no chain-shim.
+Neither exists on `main`. Both landed inside `apps/demo` on `develop`, on top of
+the classic pages rather than beside them.
 
-`apps/demo` — including the Eastboard and Arena surfaces that grew on top of it
-— reaches the program through `src/lib/chain-shim/`, 3,810 lines translating
-Ethereum-shaped calls into Solana. That layer is a porting artifact and a real
-source of bugs (§9). Pulse constructs one `SolanaChainAdapter` and wraps the
-connected wallet as the signer every `build*` method takes; that is the whole
-integration.
+**Eastboard** (`/options`) is the primary UI: a shell wrapping the strike ×
+expiry option grid and the main trading surfaces — `/markets`, `/portfolio`,
+`/faucet`, `/launchpad`, `/liquidity`, `/amm`, `/orderbook`, `/create` — so the
+classic pages render inside it.
 
-Five routes — feed (`/`), market (`/m/:pda`), positions (`/me`), launch
-(`/launch`) and a per-venue faucet (`/faucet`) — over four hooks. The venue is
-routed by the program's own `book_enabled` flag rather than chosen in the UI,
-prices are quoted client-side from the LMSR, and the chart is assembled
-incrementally from the market PDA's own events, so no indexer is required.
-Design notes: `docs/design/pulse-fe.md`.
+**Arena** (`/play`) is the gaming, competitive treatment of the same markets,
+with `/learn`, `/operator`, `/lp-forecast` and `/geek` as standalone routes
+alongside it.
+
+Both reach the program the same way the rest of the demo does: through
+`src/lib/chain-shim/`, 3,810 lines translating Ethereum-shaped calls into
+Solana. That layer is a porting artifact and a real source of bugs (§9); the
+surfaces inherit it rather than bypassing it.
 
 ---
 
@@ -641,9 +638,8 @@ not useful for deciding anything.
   Solana, and the Eastboard and Arena surfaces sit on top of it. It is a
   porting artifact and a genuine source of bugs — hex-vs-base58 market keys,
   case-folded pubkeys, WAD-vs-base-unit confusion all came from it. It is
-  confined to `apps/demo`: nothing in `programs-core`, `sdk-solana` or
-  `apps/pulse` imports it. Pulse (§7a) is the shim-free path; the demo has not
-  been moved onto it.
+  confined to `apps/demo`: nothing in `programs-core` or `sdk-solana` imports
+  it. Every frontend surface still sits behind it.
 - **4,096 blocks is a real ceiling**, on live orders plus currently-seated
   traders (§5) — about 4,096 position holders or 2,048 makers. Large enough for
   the depth the public Polymarket books show, but a genuinely popular market
@@ -689,17 +685,15 @@ not useful for deciding anything.
 
 ### Suggested audit scope
 
-`packages/programs-core` and `packages/sdk-solana`. Exclude `apps/demo`,
-`apps/pulse` and `packages/sooth-data`: a bug there costs a wrong chart, not
-funds.
+`packages/programs-core` and `packages/sdk-solana`. Exclude `apps/demo` and
+`packages/sooth-data`: a bug there costs a wrong chart, not funds.
 
 ---
 
 ## 10. Running it
 
 ```bash
-cd apps/demo  && pnpm dev       # http://localhost:5175 — demo, Eastboard, Arena
-cd apps/pulse && pnpm dev       # http://localhost:5300 — the shim-free surface
+cd apps/demo && pnpm dev        # http://localhost:5175 — demo, Eastboard, Arena
 ```
 
 `.env.local` already points at devnet. Import `.localnet/user-keypair.json`
