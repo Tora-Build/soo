@@ -1676,6 +1676,25 @@
       );
     }
 
+  /* The arcade ground: a dark violet wash the ambient orbs bloom against. */
+  .app-shell {
+    position: relative;
+    background: linear-gradient(
+      180deg,
+      rgba(13, 7, 22, 0.2),
+      rgba(13, 7, 22, 0.78)
+    );
+  }
+
+  /* Film grain over the orbs — stops the large blurred gradients from
+     banding on cheap panels, and reads as arcade CRT texture. */
+  .arcade-noise {
+    position: absolute;
+    inset: 0;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.92' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
+  }
+
   .arena-ambient {
     position: fixed;
     inset: 0;

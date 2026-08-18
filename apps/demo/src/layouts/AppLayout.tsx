@@ -1,3 +1,10 @@
+// The arcade shell.
+//
+// Arena is a game, so its chrome is a game's chrome: an ambient field of
+// blurred orbs and film grain behind everything, the dock pinned left, and
+// content offset to clear it. Without the offset the dock overlays the deck
+// on any viewport narrower than ~1600px.
+
 import { Outlet } from 'react-router-dom';
 import { ArenaDock } from '../components/layout/ArenaDock';
 import { ArenaPlayerProvider } from '../features/arena/ArenaPlayerProvider';
@@ -19,17 +26,25 @@ export const AppLayout = () => {
 
   return (
     <ArenaPlayerProvider>
-    <div className="min-h-dvh flex flex-col pb-safe text-ink">
-      <Navbar />
-      <ActivityListener />
+      <div className="app-shell min-h-dvh flex flex-col pb-24 text-ink lg:pb-0">
+        <div className="arena-ambient" aria-hidden="true">
+          <span className="arena-orb arena-orb-one" />
+          <span className="arena-orb arena-orb-two" />
+          <span className="arena-orb arena-orb-three" />
+          <span className="arcade-noise" />
+        </div>
+        <Navbar />
+        <ActivityListener />
+        <ArenaDock />
 
-      <main className="flex-1 container mx-auto max-w-7xl px-4 py-8">
-        <Outlet />
-      </main>
+        <main className="relative flex-1 px-4 py-6 md:px-6 md:py-8 lg:ml-[92px] lg:px-8">
+          <Outlet />
+        </main>
 
-      <Footer />
-    </div>
-    <ArenaDock />
+        <div className="lg:ml-[92px]">
+          <Footer />
+        </div>
+      </div>
     </ArenaPlayerProvider>
   );
 };

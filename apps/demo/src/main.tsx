@@ -125,7 +125,7 @@ function Root() {
                           surfaces stay reachable under their own routes. */}
                       <Route
                         path="/"
-                        element={<Navigate to="/options" replace />}
+                        element={<Navigate to="/play" replace />}
                       />
                       <Route element={<EastboardLayout />}>
                         <Route path="/options" element={<OptionsChain />} />
