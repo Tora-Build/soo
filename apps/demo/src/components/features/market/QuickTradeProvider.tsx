@@ -9,6 +9,11 @@
  * render — single source of truth. The AMM/Orderbook toggle in the
  * shared `TradingContextBar` swaps the body in place inside the modal
  * (via the `onModeChange` callback) instead of navigating away.
+ *
+ * Callers can also pass an arcade presentation (the "megaeth" variant +
+ * cover art), a preselected YES/NO outcome, and a confirmed-trade callback
+ * — the Arena deck uses all three so the modal reads as part of the game
+ * and scored plays flow back to the player ledger.
  */
 import {
   createContext,
@@ -16,17 +21,34 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { Dialog } from "../../ui/Dialog";
 import { AMMPageBody } from "./AMMPageBody";
 import { OrderbookPageBody } from "./OrderbookPageBody";
-import { useIsGraduated } from "../../../hooks/useIsGraduated";
+import { useOnChainMarkets } from "../../../hooks/useOnChainMarkets";
+import type { ConfirmedArenaTrade } from "../../../features/arena/types";
+
+type QuickTradeVariant = "default" | "megaeth";
+type QuickTradeCoverTone = "amber" | "mint" | "blue";
+
+interface QuickTradePresentation {
+  coverImageSrc?: string;
+  coverTone?: QuickTradeCoverTone;
+  coverTitle?: string;
+  coverLabel?: string;
+}
 
 interface QuickTradeContextValue {
-  open: (address: string, defaultMode?: "amm" | "orderbook") => void;
+  open: (
+    address: string,
+    defaultMode?: "amm" | "orderbook",
+    variant?: QuickTradeVariant,
+    presentation?: QuickTradePresentation,
+    defaultOutcome?: "yes" | "no",
+    onTradeConfirmed?: (trade: ConfirmedArenaTrade) => void | Promise<void>,
+  ) => void;
   close: () => void;
 }
 
@@ -40,6 +62,12 @@ export function useQuickTrade() {
   return ctx;
 }
 
+// Market addresses here are 0x-wrapped base58 — base58 is case-sensitive, so
+// two addresses are the same market only when the strings match exactly. The
+// market list and every open() caller draw from the same useOnChainMarkets
+// data, so exact comparison is also sufficient.
+const sameMarket = (a: string, b: string) => a === b;
+
 interface QuickTradeProviderProps {
   children: ReactNode;
 }
@@ -47,46 +75,100 @@ interface QuickTradeProviderProps {
 export const QuickTradeProvider = ({ children }: QuickTradeProviderProps) => {
   const [selected, setSelected] = useState<string | null>(null);
   const [mode, setMode] = useState<"amm" | "orderbook">("amm");
-
-  // True when the caller asked for the orderbook but we had to start on the
-  // AMM because graduation was not known yet.
-  const autoOpenedRef = useRef(false);
+  const [variant, setVariant] = useState<QuickTradeVariant>("default");
+  const [presentation, setPresentation] =
+    useState<QuickTradePresentation | null>(null);
+  const [defaultOutcome, setDefaultOutcome] = useState<"yes" | "no">("yes");
+  const [onTradeConfirmed, setOnTradeConfirmed] = useState<
+    ((trade: ConfirmedArenaTrade) => void | Promise<void>) | undefined
+  >();
+  // True while a graduation-based mode upgrade may still apply: when the
+  // market list has not resolved the clicked market yet, the modal opens on
+  // the requested mode and hops to the orderbook as soon as `isGraduated`
+  // is known. Any explicit toggle by the user cancels the pending hop.
+  const [autoModePending, setAutoModePending] = useState(false);
+  const { markets } = useOnChainMarkets();
 
   const open = useCallback(
-    (address: string, defaultMode: "amm" | "orderbook" = "amm") => {
+    (
+      address: string,
+      defaultMode: "amm" | "orderbook" = "amm",
+      nextVariant: QuickTradeVariant = "default",
+      nextPresentation?: QuickTradePresentation,
+      nextOutcome: "yes" | "no" = "yes",
+      nextOnTradeConfirmed?: (
+        trade: ConfirmedArenaTrade,
+      ) => void | Promise<void>,
+    ) => {
+      // A graduated market has no live AMM curve — it trades on the book.
+      // Opening it on the AMM would show a dead venue, so the request is
+      // upgraded to the orderbook whenever graduation is already known.
+      const targetMarket = markets.find((m) => sameMarket(m.address, address));
+      const initialMode =
+        defaultMode === "amm" && targetMarket?.isGraduated
+          ? "orderbook"
+          : defaultMode;
       setSelected(address);
-      setMode(defaultMode);
-      autoOpenedRef.current = defaultMode === "orderbook";
+      setMode(initialMode);
+      setVariant(nextVariant);
+      setPresentation(nextPresentation ?? null);
+      setDefaultOutcome(nextOutcome);
+      setOnTradeConfirmed(() => nextOnTradeConfirmed);
+      setAutoModePending(true);
     },
-    [],
+    [markets],
   );
-  const close = useCallback(() => setSelected(null), []);
+  const close = useCallback(() => {
+    setSelected(null);
+    setVariant("default");
+    setPresentation(null);
+    setDefaultOutcome("yes");
+    setOnTradeConfirmed(undefined);
+    setAutoModePending(false);
+  }, []);
 
   const value = useMemo<QuickTradeContextValue>(
     () => ({ open, close }),
     [open, close],
   );
 
-  // Which panel a market opens on is decided by the PROGRAM, read directly.
-  //
-  // One read of `isGraduated` for the selected market answers it outright,
-  // and the flag is the same one the program gates the book on. A cached
-  // market list would be a second source of truth that can be stale,
-  // mid-refresh, or missing the market entirely. Undefined means "not known
-  // yet" and is deliberately NOT treated as false — treating it as false
-  // would open a graduated market on the AMM while the answer is still in
-  // flight.
-  const graduated = useIsGraduated(selected);
+  // Look up the market metadata so we can decide whether the orderbook
+  // tab should be reachable. Bonding markets have no SoothBook listing,
+  // so force them back to the AMM mode.
+  const market = useMemo(() => {
+    if (!selected) return null;
+    return markets.find((m) => sameMarket(m.address, selected)) ?? null;
+  }, [markets, selected]);
 
   useEffect(() => {
-    if (graduated === undefined) return; // still loading — do not guess
-    if (mode === "orderbook" && graduated === false) setMode("amm");
-    if (mode === "amm" && graduated === true && autoOpenedRef.current) {
-      // Opened on the AMM only because graduation was unknown at click time.
-      autoOpenedRef.current = false;
+    if (mode === "orderbook" && market && !market.isGraduated) {
+      setMode("amm");
+      setAutoModePending(false);
+    }
+  }, [mode, market]);
+
+  useEffect(() => {
+    if (!autoModePending || !market) return;
+    setAutoModePending(false);
+    if (market.isGraduated && mode === "amm") {
       setMode("orderbook");
     }
-  }, [mode, graduated]);
+  }, [autoModePending, market, mode]);
+
+  const handleModeChange = useCallback((next: "amm" | "orderbook") => {
+    setAutoModePending(false);
+    setMode(next);
+  }, []);
+
+  const megaethCover =
+    variant === "megaeth" && presentation
+      ? {
+          imageSrc: presentation.coverImageSrc,
+          imageTone: presentation.coverTone,
+          title: presentation.coverTitle,
+          label: presentation.coverLabel,
+        }
+      : undefined;
 
   return (
     <QuickTradeContext.Provider value={value}>
@@ -95,21 +177,32 @@ export const QuickTradeProvider = ({ children }: QuickTradeProviderProps) => {
         isOpen={!!selected}
         onClose={close}
         maxWidth="max-w-7xl"
+        className={
+          variant === "megaeth" ? "megaeth-quick-trade-dialog" : undefined
+        }
         hideHeader
       >
         {selected &&
           (mode === "amm" ? (
             <AMMPageBody
               marketAddress={selected}
-              onModeChange={(next) => setMode(next)}
+              onModeChange={handleModeChange}
               onClose={close}
               onSelectMarket={(addr) => setSelected(addr)}
+              variant={variant}
+              megaethCover={megaethCover}
+              initialOutcome={defaultOutcome}
+              onTradeConfirmed={onTradeConfirmed}
             />
           ) : (
             <OrderbookPageBody
               marketAddress={selected}
-              onModeChange={(next) => setMode(next)}
+              onModeChange={handleModeChange}
               onClose={close}
+              variant={variant}
+              megaethCover={megaethCover}
+              initialOutcome={defaultOutcome}
+              onTradeConfirmed={onTradeConfirmed}
             />
           ))}
       </Dialog>

@@ -1,0 +1,353 @@
+.trading-context-bar--megaeth {
+  border: 1px solid #1f2329;
+  border-bottom: 0;
+  background:
+    linear-gradient(90deg, rgba(91, 255, 177, 0.08), transparent 48%),
+    #0a0c10 !important;
+  color: #fff;
+}
+
+.trading-context-art {
+  position: relative;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  overflow: hidden;
+  border: 2px solid rgba(245, 180, 67, 0.72);
+  border-radius: 999px;
+  background: #050608;
+}
+
+.trading-context-art.mint {
+  border-color: rgba(91, 255, 177, 0.72);
+}
+
+.trading-context-art.blue {
+  border-color: rgba(98, 165, 255, 0.72);
+}
+
+.trading-context-art img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  opacity: 0.82;
+}
+
+.trading-context-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 30%, transparent 28%, rgba(5, 6, 8, 0.18)),
+    linear-gradient(180deg, transparent, rgba(5, 6, 8, 0.36));
+  pointer-events: none;
+}
+
+.megaeth-quick-trade-dialog.panel {
+  overflow: hidden;
+  border: 1px solid #1f2329 !important;
+  border-radius: 8px;
+  background: #050608 !important;
+  color: #fff;
+  box-shadow: 0 24px 120px rgba(0, 0, 0, 0.66);
+}
+
+.megaeth-quick-trade-dialog > .custom-scrollbar {
+  background: #050608 !important;
+  scrollbar-color: #2a2f37 #050608;
+}
+
+.megaeth-quick-trade-dialog .trading-context-bar--megaeth button[aria-label] {
+  border-color: #1f2329 !important;
+  background: #050608 !important;
+  color: #a8b0bb !important;
+}
+
+.megaeth-quick-trade-dialog
+  .trading-context-bar--megaeth
+  button[aria-label]:hover {
+  border-color: rgba(91, 255, 177, 0.62) !important;
+  color: #5bffb1 !important;
+}
+
+.megaeth-market-body,
+.amm-page-body--megaeth,
+.orderbook-page-body--megaeth {
+  --accent: #5bffb1;
+  --accent-muted: rgba(91, 255, 177, 0.1);
+  --accent-soft: rgba(91, 255, 177, 0.16);
+  --bg: #050608;
+  --bg-canvas: #050608;
+  --bg-raised: #0a0c10;
+  --bg-inset: #050608;
+  --border-subtle: #1f2329;
+  --border-rule: #1f2329;
+  --text: #fff;
+  --text-muted: #a8b0bb;
+  --text-faint: #6c747f;
+  --pos: #5bffb1;
+  --pos-soft: rgba(91, 255, 177, 0.1);
+  --neg: #f5b443;
+  --neg-soft: rgba(245, 180, 67, 0.12);
+  background: #050608 !important;
+  color: #fff;
+}
+
+.megaeth-market-body .bg-canvas,
+.amm-page-body--megaeth .bg-canvas,
+.orderbook-page-body--megaeth .bg-canvas {
+  background: #050608 !important;
+}
+
+.megaeth-market-body .bg-raised,
+.amm-page-body--megaeth .bg-raised,
+.orderbook-page-body--megaeth .bg-raised {
+  background: #0a0c10 !important;
+}
+
+.megaeth-market-body .bg-inset,
+.amm-page-body--megaeth .bg-inset,
+.orderbook-page-body--megaeth .bg-inset {
+  background: #050608 !important;
+}
+
+.megaeth-market-body .border-subtle,
+.megaeth-market-body .border-rule,
+.megaeth-market-body .border-rule\/50,
+.amm-page-body--megaeth .border-rule,
+.amm-page-body--megaeth .border-rule\/50,
+.orderbook-page-body--megaeth .border-rule,
+.orderbook-page-body--megaeth .border-rule\/50 {
+  border-color: #1f2329 !important;
+}
+
+.megaeth-market-body .text-ink,
+.amm-page-body--megaeth .text-ink {
+  color: #fff !important;
+}
+
+.megaeth-market-body .text-muted,
+.amm-page-body--megaeth .text-muted {
+  color: #a8b0bb !important;
+}
+
+.megaeth-market-body .text-faint,
+.amm-page-body--megaeth .text-faint {
+  color: #6c747f !important;
+}
+
+.megaeth-market-body .text-accent,
+.amm-page-body--megaeth .text-accent {
+  color: #5bffb1 !important;
+}
+
+.megaeth-market-body .text-neg,
+.megaeth-market-body .text-error {
+  color: #f5b443 !important;
+}
+
+.megaeth-market-body .bg-accent,
+.megaeth-market-body .btn-primary,
+.amm-page-body--megaeth .bg-accent,
+.amm-page-body--megaeth .btn-primary {
+  background: #5bffb1 !important;
+  border-color: #5bffb1 !important;
+  color: #050608 !important;
+}
+
+.megaeth-market-body .bg-accent-muted,
+.megaeth-market-body .bg-accent\/30,
+.amm-page-body--megaeth .bg-accent-muted,
+.amm-page-body--megaeth .bg-accent\/30 {
+  background: rgba(91, 255, 177, 0.12) !important;
+}
+
+.megaeth-market-body .input-field {
+  border-color: #1f2329 !important;
+  background: #050608 !important;
+  color: #fff !important;
+}
+
+.megaeth-market-body .input-field:focus {
+  border-color: rgba(91, 255, 177, 0.62) !important;
+}
+
+.soothbook-terminal--megaeth {
+  background: #050608 !important;
+}
+
+.simple-trading-panel--megaeth .megaeth-outcome-tab,
+.soothbook-terminal--megaeth .megaeth-outcome-tab {
+  background: transparent !important;
+  border-bottom-color: transparent !important;
+  color: #a8b0bb !important;
+}
+
+.simple-trading-panel--megaeth
+  .megaeth-outcome-tab--yes.is-active,
+.soothbook-terminal--megaeth
+  .megaeth-outcome-tab--yes.is-active {
+  background: rgba(91, 255, 177, 0.12) !important;
+  border-bottom-color: rgba(91, 255, 177, 0.72) !important;
+  color: #fff !important;
+}
+
+.simple-trading-panel--megaeth
+  .megaeth-outcome-tab--no.is-active,
+.soothbook-terminal--megaeth
+  .megaeth-outcome-tab--no.is-active {
+  background: rgba(245, 180, 67, 0.12) !important;
+  border-bottom-color: rgba(245, 180, 67, 0.68) !important;
+  color: #fff !important;
+}
+
+.trading-context-bar--megaeth h1 {
+  color: #fff;
+}
+
+.megaeth-mode-control {
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.megaeth-mode-control.is-active {
+  border-color: rgba(91, 255, 177, 0.62);
+  background: rgba(91, 255, 177, 0.14) !important;
+  color: #5bffb1 !important;
+}
+
+.megaeth-trading-panel {
+  --accent: #5bffb1;
+  --accent-muted: rgba(91, 255, 177, 0.1);
+  --accent-soft: rgba(91, 255, 177, 0.16);
+  --pos: #5bffb1;
+  --pos-soft: rgba(91, 255, 177, 0.1);
+  --neg: #f5b443;
+  --neg-soft: rgba(245, 180, 67, 0.12);
+
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: #050608;
+  color: #fff;
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+.megaeth-trading-panel__cover {
+  position: relative;
+  min-height: 138px;
+  overflow: hidden;
+  border-bottom: 1px solid #1f2329;
+  background: #11141a;
+}
+
+.megaeth-trading-panel__cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.megaeth-trading-panel__cover::before {
+  content: "";
+  position: absolute;
+  inset: -18%;
+  background:
+    radial-gradient(circle at 35% 55%, rgba(245, 180, 67, 0.24), transparent 38%),
+    conic-gradient(from 230deg at 55% 55%, rgba(245, 180, 67, 0.22), rgba(91, 255, 177, 0.08), rgba(255, 255, 255, 0.03), rgba(245, 180, 67, 0.2));
+  filter: saturate(1.08);
+}
+
+.megaeth-trading-panel__cover.mint::before {
+  background:
+    radial-gradient(circle at 38% 58%, rgba(91, 255, 177, 0.22), transparent 40%),
+    radial-gradient(circle at 70% 52%, rgba(255, 160, 210, 0.12), transparent 42%),
+    linear-gradient(180deg, #191e24, #0a0c10);
+}
+
+.megaeth-trading-panel__cover.blue::before {
+  background:
+    radial-gradient(circle at 60% 45%, rgba(98, 165, 255, 0.2), transparent 40%),
+    radial-gradient(circle at 36% 64%, rgba(91, 255, 177, 0.14), transparent 34%),
+    linear-gradient(160deg, #151821, #07080b);
+}
+
+.megaeth-trading-panel__cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.04), rgba(5, 6, 8, 0.7)),
+    linear-gradient(90deg, rgba(5, 6, 8, 0.72), transparent 58%);
+}
+
+.megaeth-trading-panel__cover-copy {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  left: 18px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.megaeth-trading-panel__cover-copy span {
+  color: #a8b0bb;
+  font-family: "DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.megaeth-trading-panel__cover-copy b {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.megaeth-trading-panel__body {
+  background: #050608;
+}
+
+.simple-trading-panel--megaeth {
+  background: #050608;
+}
+
+.simple-trading-panel--megaeth [data-testid="trade-mode-buy"],
+.simple-trading-panel--megaeth [data-testid="trade-mode-sell"] {
+  border-radius: 6px;
+}
+
+.simple-trading-panel--megaeth .input-field {
+  border: 1px solid #2a2f37;
+  border-radius: 6px;
+  background: #050608;
+  color: #fff;
+}
+
+.simple-trading-panel--megaeth .input-field:focus {
+  border-color: rgba(91, 255, 177, 0.62);
+  outline: none;
+}
+
+.simple-trading-panel--megaeth .skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(91, 255, 177, 0.08),
+    rgba(91, 255, 177, 0.18),
+    rgba(91, 255, 177, 0.08)
+  );
+}
+
+@media (max-width: 640px) {
+  .trading-context-bar--megaeth {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+}

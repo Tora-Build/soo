@@ -35,6 +35,7 @@ import { EntityIcon } from "../components/ui/EntityIcon";
 import { StageBadge } from "../components/ui/StageBadge";
 import { useQuickTrade } from "../components/features/market/QuickTradeProvider";
 import { useArenaPlayer } from "../features/arena/ArenaPlayerProvider";
+import { useArenaPlayerStore } from "../store/useArenaPlayerStore";
 import type {
   ArenaOutcome,
   ArenaReaction,
@@ -43,6 +44,30 @@ import type {
 import { resolveDeckSwipe } from "../features/arena/gestures";
 
 type ArenaMarket = OnChainMarket & { arenaCategory: string };
+
+// Arcade cover tones per world — drives the tinted ring in the modal's
+// context bar and the gradient wash on the trading panel cover.
+const WORLD_TONES: Record<string, "amber" | "mint" | "blue"> = {
+  sports: "mint",
+  tech: "blue",
+  cultures: "mint",
+  crypto: "amber",
+  politics: "amber",
+  weather: "blue",
+  others: "amber",
+};
+
+// Self-contained cover art: the world's glyph as an inline SVG data URI.
+// The megaeth cover CSS layers its own tone gradients over the image, so a
+// transparent glyph is all the artwork the modal needs — no remote assets.
+const worldCoverArt = (category: string) => {
+  const glyph = WORLD_ICONS[category] ?? WORLD_ICONS.others;
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'>` +
+    `<text x='48' y='62' font-size='44' text-anchor='middle' fill='#ffffff' fill-opacity='0.85'>${glyph}</text>` +
+    `</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
 
 const WORLD_ICONS: Record<string, string> = {
   all: "✦",
@@ -73,6 +98,9 @@ export const ArenaPlay = () => {
     postComment,
     registerConfirmedPlay,
   } = useArenaPlayer();
+  // Device-local XP ledger — the scoring fallback when no arena server is
+  // configured (guest mode).
+  const recordLocalPlay = useArenaPlayerStore((state) => state.playMarket);
 
   const markets = useMemo<ArenaMarket[]>(
     () =>
@@ -174,18 +202,67 @@ export const ArenaPlay = () => {
       }
     }
 
-    // The fork's QuickTradeProvider takes (address, mode) — upstream's
-    // richer signature carried a confirmed-trade callback that posted the
-    // play to the arena server for XP. Scoring needs that server
-    // (VITE_ARENA_API_BASE) either way, so locally the trade itself is the
-    // whole game: it opens the same real AMM/book drawer every other surface
-    // uses. When the provider grows a confirmation callback, wire
-    // `registerConfirmedPlay` back through it — the API client is ported and
-    // ready.
-    void registerConfirmedPlay;
+    // The modal is the same real AMM/book surface every other page uses,
+    // dressed in the arcade ("megaeth") presentation so it reads as part of
+    // the game: cover art + tone from the market's world, the player's
+    // chosen side preselected, and a confirmed-trade callback that scores
+    // the play. Scoring goes to the arena server when one is configured;
+    // otherwise the persisted local ledger keeps XP flowing for guests.
     openQuickTrade(
       market.address,
       market.stage === "live" ? "orderbook" : "amm",
+      "megaeth",
+      {
+        coverImageSrc: worldCoverArt(market.arenaCategory),
+        coverTone: WORLD_TONES[market.arenaCategory] ?? "amber",
+        coverTitle: market.question,
+        coverLabel: `${market.arenaCategory} world`,
+      },
+      outcome === "no" ? "no" : "yes",
+      outcome === "watch"
+        ? undefined
+        : async (trade) => {
+            const toastId = toast.loading("Verifying your arena play…");
+            try {
+              const gainedXp = await registerConfirmedPlay(trade);
+              if (gainedXp === 0) {
+                toast.success("Play already scored", { id: toastId });
+                return;
+              }
+              toast.custom(
+                <div className="play-xp-pop">
+                  <Sparkles className="h-4 w-4" />
+                  <span>
+                    {gainedXp > 10 ? "New reality scored" : "Signal replayed"}
+                  </span>
+                  <strong>+{gainedXp} XP</strong>
+                </div>,
+                { id: toastId, duration: 2600 },
+              );
+            } catch (error) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Arena scoring failed";
+              if (!/not configured|not-configured/i.test(message)) {
+                toast.error(message, { id: toastId });
+                return;
+              }
+              // No arena server — the persisted local ledger scores the
+              // play instead, so the HUD still levels up in guest mode.
+              const gainedXp = recordLocalPlay(trade.market, trade.outcome);
+              toast.custom(
+                <div className="play-xp-pop">
+                  <Sparkles className="h-4 w-4" />
+                  <span>
+                    {gainedXp > 10 ? "New reality scored" : "Signal replayed"}
+                  </span>
+                  <strong>+{gainedXp} XP</strong>
+                </div>,
+                { id: toastId, duration: 2600 },
+              );
+            }
+          },
     );
   };
 

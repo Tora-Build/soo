@@ -49,17 +49,28 @@ import { marketConfigs } from "../../config";
 import { getChainById } from "../../lib/chains";
 import { tokenLabels, tokenSymbols } from "../../lib/config";
 import { logger } from "../../lib/logger";
+import type { ConfirmedArenaTrade } from "../../features/arena/types";
 
 interface SimpleTradingPanelProps {
   address: `0x${string}`;
   isGraduated?: boolean;
   isSettled?: boolean;
+  variant?: "default" | "megaeth";
+  /** Outcome tab preselected when the panel mounts (Arena passes the side
+   *  the player picked on the card). */
+  initialOutcome?: "yes" | "no";
+  /** Fires once per confirmed trade transaction with the details the Arena
+   *  scoring flow needs. */
+  onTradeConfirmed?: (trade: ConfirmedArenaTrade) => void | Promise<void>;
 }
 
 export const SimpleTradingPanel = ({
   address,
   isGraduated = false,
   isSettled = false,
+  variant = "default",
+  initialOutcome = "yes",
+  onTradeConfirmed,
 }: SimpleTradingPanelProps) => {
   const { t } = useTranslation();
   const { isConnected, address: userAddress, connector } = useAccount();
@@ -93,8 +104,17 @@ export const SimpleTradingPanel = ({
     useAvailableBalance(ammEngineAddress);
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
+  const isMegaEthVariant = variant === "megaeth";
+
   // Contract State: 1 = YES, 0 = NO
-  const [selectedOutcome, setSelectedOutcome] = useState<0 | 1>(1);
+  const [selectedOutcome, setSelectedOutcome] = useState<0 | 1>(
+    initialOutcome === "no" ? 0 : 1,
+  );
+  // Re-arm the preselected outcome when the modal swaps in another market
+  // or the caller changes the requested side.
+  useEffect(() => {
+    setSelectedOutcome(initialOutcome === "no" ? 0 : 1);
+  }, [address, initialOutcome]);
   const [tradeMode, setTradeMode] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("10");
   const [amountError, setAmountError] = useState<string | null>(null);
@@ -319,15 +339,42 @@ export const SimpleTradingPanel = ({
     }
   }, [tradeTxHash]);
 
-  // Log trade receipt status
+  // Log trade receipt status, and report the confirmed trade upward exactly
+  // once per transaction — the ref guards against effect re-runs re-scoring
+  // the same tx hash.
+  const scoredTxRef = useRef<`0x${string}` | null>(null);
   useEffect(() => {
     if (isTradeSuccess) {
       logger.trade.log("Transaction confirmed!");
+      if (
+        pendingTxHash &&
+        pendingTradeInfo &&
+        scoredTxRef.current !== pendingTxHash &&
+        onTradeConfirmed
+      ) {
+        scoredTxRef.current = pendingTxHash;
+        void onTradeConfirmed({
+          market: address,
+          outcome: pendingTradeInfo.outcome === "YES" ? "yes" : "no",
+          venue: "amm",
+          chainId,
+          txHash: pendingTxHash,
+        });
+      }
     }
     if (isTradeError) {
       logger.trade.error("Transaction failed:", tradeReceiptError);
     }
-  }, [isTradeSuccess, isTradeError, tradeReceiptError]);
+  }, [
+    address,
+    chainId,
+    isTradeSuccess,
+    isTradeError,
+    onTradeConfirmed,
+    pendingTradeInfo,
+    pendingTxHash,
+    tradeReceiptError,
+  ]);
 
   const yesPrice = amm?.yesProbability ?? 0.5;
   const noPrice = amm?.noProbability ?? 0.5;
@@ -790,7 +837,10 @@ export const SimpleTradingPanel = ({
     (tradeMode === "sell" && !hasEnoughShares);
 
   return (
-    <div data-testid="trading-panel">
+    <div
+      data-testid="trading-panel"
+      className={cn(isMegaEthVariant && "simple-trading-panel--megaeth")}
+    >
       {/* Primary Toggle: YES / NO - tab style with underline */}
       <div className="flex border-b border-rule/50">
         <button
@@ -798,6 +848,8 @@ export const SimpleTradingPanel = ({
           onClick={() => setSelectedOutcome(1)}
           className={cn(
             "flex-1 py-3 font-bold text-sm uppercase tracking-wider transition-all",
+            isMegaEthVariant && "megaeth-outcome-tab megaeth-outcome-tab--yes",
+            isMegaEthVariant && selectedOutcome === 1 && "is-active",
             selectedOutcome === 1
               ? "text-ink border-b-2 border-accent bg-accent-muted"
               : "text-muted hover:text-ink border-b-2 border-transparent",
@@ -810,6 +862,8 @@ export const SimpleTradingPanel = ({
           onClick={() => setSelectedOutcome(0)}
           className={cn(
             "flex-1 py-3 font-bold text-sm uppercase tracking-wider transition-all",
+            isMegaEthVariant && "megaeth-outcome-tab megaeth-outcome-tab--no",
+            isMegaEthVariant && selectedOutcome === 0 && "is-active",
             selectedOutcome === 0
               ? "text-muted border-b-2 border-error bg-raised"
               : "text-muted hover:text-ink border-b-2 border-transparent",
@@ -941,11 +995,17 @@ export const SimpleTradingPanel = ({
             )}
             style={
               tradeMode === "buy"
-                ? {
-                    backgroundColor: "rgba(5, 150, 105, 0.2)",
-                    color: "#34d399",
-                    borderColor: "rgba(5, 150, 105, 0.4)",
-                  }
+                ? isMegaEthVariant
+                  ? {
+                      backgroundColor: "rgba(91, 255, 177, 0.14)",
+                      color: "#5bffb1",
+                      borderColor: "rgba(91, 255, 177, 0.58)",
+                    }
+                  : {
+                      backgroundColor: "rgba(5, 150, 105, 0.2)",
+                      color: "#34d399",
+                      borderColor: "rgba(5, 150, 105, 0.4)",
+                    }
                 : undefined
             }
           >
@@ -962,11 +1022,17 @@ export const SimpleTradingPanel = ({
             )}
             style={
               tradeMode === "sell"
-                ? {
-                    backgroundColor: "rgba(225, 29, 72, 0.2)",
-                    color: "#fb7185",
-                    borderColor: "rgba(225, 29, 72, 0.4)",
-                  }
+                ? isMegaEthVariant
+                  ? {
+                      backgroundColor: "rgba(245, 180, 67, 0.14)",
+                      color: "#f5b443",
+                      borderColor: "rgba(245, 180, 67, 0.5)",
+                    }
+                  : {
+                      backgroundColor: "rgba(225, 29, 72, 0.2)",
+                      color: "#fb7185",
+                      borderColor: "rgba(225, 29, 72, 0.4)",
+                    }
                 : undefined
             }
           >

@@ -19,18 +19,18 @@ import { cn } from "../../lib/utils";
 
 const PRIMARY_LINKS = [
   { to: "/play", label: "Play", icon: Gamepad2 },
-  { to: "/liquidity", label: "Vault", icon: Droplets },
-  { to: "/create", label: "Forge", icon: Rocket },
-  { to: "/portfolio", label: "Locker", icon: WalletCards },
+  { to: "/vault", label: "Vault", icon: Droplets },
+  { to: "/forge", label: "Forge", icon: Rocket },
+  { to: "/locker", label: "Locker", icon: WalletCards },
 ] as const;
 
 const MORE_LINKS = [
   { to: "/geek", label: "Geek", icon: SquareTerminal },
-  { to: "/markets", label: "Explore", icon: Grid2X2 },
+  { to: "/explore", label: "Explore", icon: Grid2X2 },
   { to: "/lp-forecast", label: "Sim lab", icon: BarChart3 },
   { to: "/operator", label: "Oracle", icon: Shield },
   { to: "/learn", label: "Tutorial", icon: BookOpen },
-  { to: "/faucet", label: "Power up", icon: Droplets },
+  { to: "/power", label: "Power up", icon: Droplets },
 ] as const;
 
 export const ArenaDock = () => {

@@ -13,6 +13,14 @@ interface TradingContextBarProps {
   event?: string;
   mode: "amm" | "orderbook";
   showOrderbookSwitch?: boolean;
+  variant?: "default" | "megaeth";
+  /** Arcade cover art shown in place of the EntityIcon on the megaeth
+   *  variant. Tone tints the ring; no imageSrc keeps the EntityIcon. */
+  titleArtwork?: {
+    imageSrc?: string;
+    imageTone?: "amber" | "mint" | "blue";
+    label?: string;
+  };
   /** When provided, the AMM/Orderbook toggle calls this callback instead
    *  of navigating via Link. Used by MarketDrawer to swap modes in place. */
   onModeChange?: (mode: "amm" | "orderbook") => void;
@@ -32,14 +40,29 @@ export const TradingContextBar = ({
   event,
   mode,
   showOrderbookSwitch = false,
+  variant = "default",
+  titleArtwork,
   onModeChange,
   onClose,
 }: TradingContextBarProps) => {
   const { t } = useTranslation();
   const timeRemaining = deadline ? getTimeRemaining(deadline, t) : null;
+  const isMegaEthVariant = variant === "megaeth";
+  const modeControlClass = (isActive: boolean) =>
+    isMegaEthVariant
+      ? `megaeth-mode-control px-4 py-2 text-xs font-mono uppercase tracking-[0.12em] transition-colors ${
+          isActive ? "is-active" : "text-muted hover:text-ink"
+        }`
+      : `px-4 py-2 text-xs font-mono uppercase tracking-[0.12em] transition-colors ${
+          isActive ? "bg-accent text-canvas" : "text-muted hover:text-ink"
+        }`;
 
   return (
-    <div className="bg-raised px-4 py-3 flex items-center gap-4">
+    <div
+      className={`bg-raised px-4 py-3 flex items-center gap-4 ${
+        isMegaEthVariant ? "trading-context-bar--megaeth" : ""
+      }`}
+    >
       {!onClose && (
         <div className="flex items-center gap-3 shrink-0">
           <Link
@@ -53,11 +76,20 @@ export const TradingContextBar = ({
       )}
 
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        <EntityIcon
-          question={question}
-          size="sm"
-          market={{ address: address as `0x${string}`, stage }}
-        />
+        {isMegaEthVariant && titleArtwork?.imageSrc ? (
+          <span
+            className={`trading-context-art ${titleArtwork.imageTone ?? "amber"}`}
+            aria-hidden="true"
+          >
+            <img src={titleArtwork.imageSrc} alt="" loading="lazy" />
+          </span>
+        ) : (
+          <EntityIcon
+            question={question}
+            size="sm"
+            market={{ address: address as `0x${string}`, stage }}
+          />
+        )}
         <h1 className="text-sm font-medium text-ink truncate min-w-0">
           {question}
         </h1>
@@ -88,22 +120,14 @@ export const TradingContextBar = ({
           <button
             type="button"
             onClick={() => onModeChange("amm")}
-            className={`px-4 py-2 text-xs font-mono uppercase tracking-[0.12em] transition-colors ${
-              mode === "amm"
-                ? "bg-accent text-canvas"
-                : "text-muted hover:text-ink"
-            }`}
+            className={modeControlClass(mode === "amm")}
           >
             {t("nav.amm")}
           </button>
         ) : (
           <Link
             to={`/amm/${address}`}
-            className={`px-4 py-2 text-xs font-mono uppercase tracking-[0.12em] transition-colors ${
-              mode === "amm"
-                ? "bg-accent text-canvas"
-                : "text-muted hover:text-ink"
-            }`}
+            className={modeControlClass(mode === "amm")}
           >
             {t("nav.amm")}
           </Link>
@@ -113,22 +137,14 @@ export const TradingContextBar = ({
             <button
               type="button"
               onClick={() => onModeChange("orderbook")}
-              className={`px-4 py-2 text-xs font-mono uppercase tracking-[0.12em] transition-colors ${
-                mode === "orderbook"
-                  ? "bg-accent text-canvas"
-                  : "text-muted hover:text-ink"
-              }`}
+              className={modeControlClass(mode === "orderbook")}
             >
               {t("nav.orderbook")}
             </button>
           ) : (
             <Link
               to={`/orderbook/${address}`}
-              className={`px-4 py-2 text-xs font-mono uppercase tracking-[0.12em] transition-colors ${
-                mode === "orderbook"
-                  ? "bg-accent text-canvas"
-                  : "text-muted hover:text-ink"
-              }`}
+              className={modeControlClass(mode === "orderbook")}
             >
               {t("nav.orderbook")}
             </Link>

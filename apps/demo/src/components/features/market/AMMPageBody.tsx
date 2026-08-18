@@ -24,6 +24,7 @@ import { useChainStore } from "../../../store/useChainStore";
 import { Button } from "../../ui/Button";
 import { GraduationProgress, AMMSettlementCard } from "..";
 import { SimpleTradingPanel } from "../SimpleTradingPanel";
+import { MegaEthTradingPanel } from "../megaeth/MegaEthTradingPanel";
 import { MarketDetailsCard } from "./MarketDetailsCard";
 import { TradingContextBar } from "../TradingContextBar";
 import { EventChartCard } from "./EventChartCard";
@@ -36,6 +37,7 @@ import {
 import { useAmmMarketDirect } from "../../../hooks/useAmmMarketDirect";
 import { useOnChainMarkets } from "../../../hooks/useOnChainMarkets";
 import { useDeployments } from "../../../hooks/useDeployments";
+import type { ConfirmedArenaTrade } from "../../../features/arena/types";
 
 interface AMMPageBodyProps {
   marketAddress: string;
@@ -51,6 +53,20 @@ interface AMMPageBodyProps {
    *  this callback instead of navigating. Used by the QuickTrade modal
    *  to swap the loaded market in place. */
   onSelectMarket?: (address: string) => void;
+  variant?: "default" | "megaeth";
+  /** Arcade cover shown by the megaeth variant — image + tone in the
+   *  context bar, title/label copy on the trading panel cover strip. */
+  megaethCover?: {
+    imageSrc?: string;
+    imageTone?: "amber" | "mint" | "blue";
+    title?: string;
+    label?: string;
+  };
+  initialOutcome?: "yes" | "no";
+  onTradeConfirmed?: (trade: ConfirmedArenaTrade) => void | Promise<void>;
+  /** Hide the shared route/modal context bar when the parent provides its own
+   *  persistent market and venue controls. */
+  hideContextBar?: boolean;
 }
 
 export const AMMPageBody = ({
@@ -58,6 +74,11 @@ export const AMMPageBody = ({
   onModeChange,
   onClose,
   onSelectMarket,
+  variant = "default",
+  megaethCover,
+  initialOutcome = "yes",
+  onTradeConfirmed,
+  hideContextBar = false,
 }: AMMPageBodyProps) => {
   const { t } = useTranslation();
   const { selectedChainId } = useChainStore();
@@ -185,8 +206,15 @@ export const AMMPageBody = ({
   })();
 
   return (
-    <div className="bg-canvas flex flex-col gap-1">
+    <div
+      className={`bg-canvas flex flex-col gap-1${
+        variant === "megaeth"
+          ? " amm-page-body--megaeth megaeth-market-body"
+          : ""
+      }`}
+    >
       {/* Context Bar */}
+      {!hideContextBar && (
       <TradingContextBar
         question={
           // `truth.question` is the on-chain hash, not text, and sqfMeta is
@@ -210,7 +238,18 @@ export const AMMPageBody = ({
         )}
         onModeChange={onModeChange}
         onClose={onClose}
+        variant={variant}
+        titleArtwork={
+          variant === "megaeth"
+            ? {
+                imageSrc: megaethCover?.imageSrc,
+                imageTone: megaethCover?.imageTone,
+                label: megaethCover?.label,
+              }
+            : undefined
+        }
       />
+      )}
 
       {/* Full-width market details under the title bar */}
       <MarketDetailsCard
@@ -292,11 +331,25 @@ export const AMMPageBody = ({
                     </div>
                   )}
               </>
+            ) : variant === "megaeth" ? (
+              <MegaEthTradingPanel
+                address={marketAddress as `0x${string}`}
+                isGraduated={launchpad?.isGraduated}
+                isSettled={Boolean(truth?.isSettled)}
+                coverImageSrc={megaethCover?.imageSrc}
+                coverTone={megaethCover?.imageTone}
+                coverTitle={megaethCover?.title}
+                coverLabel={megaethCover?.label}
+                initialOutcome={initialOutcome}
+                onTradeConfirmed={onTradeConfirmed}
+              />
             ) : (
               <SimpleTradingPanel
                 address={marketAddress as `0x${string}`}
                 isGraduated={launchpad?.isGraduated}
                 isSettled={Boolean(truth?.isSettled)}
+                initialOutcome={initialOutcome}
+                onTradeConfirmed={onTradeConfirmed}
               />
             )}
           </div>

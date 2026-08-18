@@ -7,6 +7,7 @@
 
 import { Outlet } from 'react-router-dom';
 import { ArenaDock } from '../components/layout/ArenaDock';
+import { ModeBanner } from '../components/layout/ModeBanner';
 import { ArenaPlayerProvider } from '../features/arena/ArenaPlayerProvider';
 import { Navbar } from '../components/layout/Navbar';
 import { Footer } from '../components/layout/Footer';
@@ -38,6 +39,7 @@ export const AppLayout = () => {
         <ArenaDock />
 
         <main className="relative flex-1 px-4 py-6 md:px-6 md:py-8 lg:ml-[92px] lg:px-8">
+          <ModeBanner />
           <Outlet />
         </main>
 

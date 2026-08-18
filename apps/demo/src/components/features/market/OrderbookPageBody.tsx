@@ -22,6 +22,7 @@ import { useChainStore } from "../../../store/useChainStore";
 import { DEFAULT_CHAIN_ID } from "../../../lib/chains";
 import { ErrorBoundary } from "../../ui/ErrorBoundary";
 import { DemoContextObj } from "../../../lib/DemoContext";
+import type { ConfirmedArenaTrade } from "../../../features/arena/types";
 
 interface OrderbookPageBodyProps {
   marketAddress: string;
@@ -33,12 +34,31 @@ interface OrderbookPageBodyProps {
    *  a close button after the AMM/Orderbook toggle. Used by the modal so
    *  the user can dismiss without backdrop or escape. */
   onClose?: () => void;
+  variant?: "default" | "megaeth";
+  /** Arcade cover shown by the megaeth variant — image + tone rendered in
+   *  the context bar in place of the EntityIcon. */
+  megaethCover?: {
+    imageSrc?: string;
+    imageTone?: "amber" | "mint" | "blue";
+    title?: string;
+    label?: string;
+  };
+  initialOutcome?: "yes" | "no";
+  onTradeConfirmed?: (trade: ConfirmedArenaTrade) => void | Promise<void>;
+  /** Hide the shared route/modal context bar when the parent provides its own
+   *  persistent market and venue controls. */
+  hideContextBar?: boolean;
 }
 
 export const OrderbookPageBody = ({
   marketAddress,
   onModeChange,
   onClose,
+  variant = "default",
+  megaethCover,
+  initialOutcome = "yes",
+  onTradeConfirmed,
+  hideContextBar = false,
 }: OrderbookPageBodyProps) => {
   const demoCtx = useContext(DemoContextObj);
   const { selectedChainId } = useChainStore();
@@ -83,7 +103,7 @@ export const OrderbookPageBody = ({
               ? "expired"
               : "bonding");
 
-  const [viewOutcome, setViewOutcome] = useState<"yes" | "no">("yes");
+  const [viewOutcome, setViewOutcome] = useState<"yes" | "no">(initialOutcome);
   const pageMarketRef = useMemo(() => {
     if (!marketAddress) return null;
     if (marketAddress.startsWith("sol:")) return marketAddress;
@@ -100,7 +120,14 @@ export const OrderbookPageBody = ({
   );
 
   return (
-    <div className="bg-canvas flex flex-col gap-1">
+    <div
+      className={`bg-canvas flex flex-col gap-1${
+        variant === "megaeth"
+          ? " orderbook-page-body--megaeth megaeth-market-body"
+          : ""
+      }`}
+    >
+      {!hideContextBar && (
       <TradingContextBar
         question={
           // `truth.question` is the on-chain hash, not text, and sqfMeta is
@@ -122,7 +149,18 @@ export const OrderbookPageBody = ({
         showOrderbookSwitch={true}
         onModeChange={onModeChange}
         onClose={onClose}
+        variant={variant}
+        titleArtwork={
+          variant === "megaeth"
+            ? {
+                imageSrc: megaethCover?.imageSrc,
+                imageTone: megaethCover?.imageTone,
+                label: megaethCover?.label,
+              }
+            : undefined
+        }
       />
+      )}
 
       <MarketDetailsCard
         address={marketAddress}
@@ -172,6 +210,9 @@ export const OrderbookPageBody = ({
             marketAddress={marketAddress as `0x${string}`}
             beforeOrderbookPane={priceCard}
             onOutcomeChange={setViewOutcome}
+            initialOutcome={initialOutcome}
+            variant={variant}
+            onTradeConfirmed={onTradeConfirmed}
           />
         </DemoContextObj.Provider>
       </ErrorBoundary>

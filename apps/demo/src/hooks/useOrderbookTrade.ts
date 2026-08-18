@@ -36,6 +36,9 @@ type WriteFunctionName =
 type ExecuteWriteOptions = {
   silent?: boolean;
   successMessage?: (receipt: TransactionReceipt) => string;
+  /** Runs after the transaction lands successfully, silent or not — carries
+   *  the receipt so callers can report the confirmed trade (Arena scoring). */
+  onConfirmed?: (receipt: TransactionReceipt) => void;
 };
 type RestingOrderEvent = {
   id?: bigint;
@@ -393,6 +396,7 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
             { id: toastId },
           );
         }
+        options?.onConfirmed?.(receipt);
         await refetchBalance();
         return true;
       } catch (error: unknown) {
@@ -455,6 +459,7 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
       amount: string,
       isBuy = true,
       escrow = true,
+      onConfirmed?: (receipt: TransactionReceipt) => void,
     ) => {
       if (!marketKey || !marketAddress || !soothBookAddress || !userAddress) {
         toast.error("Market key unavailable");
@@ -488,6 +493,7 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
       let actualTick = directTick;
       const receiptSummaries: ParsedOrderReceipt[] = [];
       const orderWriteOptions: ExecuteWriteOptions = {
+        onConfirmed,
         successMessage: (receipt) => {
           const summary = parseOrderReceipt(
             receipt,

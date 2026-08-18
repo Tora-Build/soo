@@ -157,6 +157,14 @@ function Root() {
                         <Route path="/play" element={<ArenaPlay />} />
                         <Route path="/lp-forecast" element={<LPForecast />} />
                         <Route path="/geek" element={<Geek />} />
+                        {/* Arena-native paths for the shared pages: the same
+                            components the Eastboard routes mount, wearing the
+                            arcade shell so dock navigation stays in the game. */}
+                        <Route path="/vault" element={<Liquidity />} />
+                        <Route path="/forge" element={<Launchpad />} />
+                        <Route path="/locker" element={<Portfolio />} />
+                        <Route path="/power" element={<Faucet />} />
+                        <Route path="/explore" element={<Markets />} />
                         <Route
                           path="*"
                           element={<Navigate to="/markets" replace />}

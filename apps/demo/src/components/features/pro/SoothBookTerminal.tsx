@@ -30,6 +30,7 @@ import { LiquidityMap } from "./LiquidityMap";
 import { HistoricalPriceCard } from "./HistoricalPriceCard";
 import { UserOrdersPanel } from "./UserOrdersPanel";
 import { orderCollateral } from "../../../lib/order-collateral";
+import type { ConfirmedArenaTrade } from "../../../features/arena/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,6 +50,13 @@ interface SoothBookTerminalProps {
   afterTradePane?: React.ReactNode;
   /** Called when the user toggles YES/NO outcome */
   onOutcomeChange?: (outcome: "yes" | "no") => void;
+  variant?: "default" | "megaeth";
+  /** Outcome tab preselected on mount (Arena passes the side the player
+   *  picked on the card). */
+  initialOutcome?: "yes" | "no";
+  /** Fires once per confirmed order transaction with the details the Arena
+   *  scoring flow needs. */
+  onTradeConfirmed?: (trade: ConfirmedArenaTrade) => void | Promise<void>;
 }
 
 type BottomRightTab = "orders" | "mint";
@@ -131,9 +139,13 @@ function SoothBookTerminalActive({
   beforeTradePane,
   afterTradePane,
   onOutcomeChange,
+  variant = "default",
+  initialOutcome = "yes",
+  onTradeConfirmed,
 }: Omit<SoothBookTerminalProps, "soothBookAddress"> & {
   resolvedSB: Address;
 }) {
+  const isMegaEthVariant = variant === "megaeth";
   const { address: user } = useAccount();
   // Use the app-selected chain (store) as source of truth for reads so users
   // browsing MegaETH still see its on-chain state when their wallet is on a
@@ -238,8 +250,14 @@ function SoothBookTerminalActive({
   // -------------------------------------------------------------------------
 
   const [selectedOutcome, setSelectedOutcomeRaw] = useState<"yes" | "no">(
-    "yes",
+    initialOutcome,
   );
+  // Re-arm the preselected outcome when the modal swaps in another market
+  // or the caller changes the requested side.
+  useEffect(() => {
+    setSelectedOutcomeRaw(initialOutcome);
+    onOutcomeChange?.(initialOutcome);
+  }, [initialOutcome, marketAddress, onOutcomeChange]);
   const setSelectedOutcome = (o: "yes" | "no") => {
     setSelectedOutcomeRaw(o);
     onOutcomeChange?.(o);
@@ -401,6 +419,16 @@ function SoothBookTerminalActive({
       isBuying,
       // Sell is always escrow (burn shares); buy is non-escrow.
       !isBuying,
+      (receipt) => {
+        if (!onTradeConfirmed) return;
+        void onTradeConfirmed({
+          market: marketAddress,
+          outcome: isYes ? "yes" : "no",
+          venue: "orderbook",
+          chainId,
+          txHash: receipt.transactionHash,
+        });
+      },
     );
     if (success) {
       setShares("");
@@ -420,6 +448,9 @@ function SoothBookTerminalActive({
     insufficientBalance,
     insufficientShares,
     tickOutOfRange,
+    onTradeConfirmed,
+    marketAddress,
+    chainId,
   ]);
 
   // Auto-set price from best bid/ask on outcome/side change
@@ -473,7 +504,12 @@ function SoothBookTerminalActive({
   // Block trading UI for markets that haven't graduated to SoothBook yet
   if (isMarketActive === false) {
     return (
-      <div className="flex flex-col lg:flex-row gap-1 bg-canvas items-start">
+      <div
+      className={cn(
+        "flex flex-col lg:flex-row gap-1 bg-canvas items-start",
+        isMegaEthVariant && "soothbook-terminal--megaeth",
+      )}
+    >
         <div className="flex flex-col gap-1 w-full lg:flex-1 min-w-0">
           {beforeOrderbookPane}
           <div className="bg-raised p-10 text-center space-y-3">
@@ -506,7 +542,12 @@ function SoothBookTerminalActive({
   // trading panel (which would let the user click into a failing tx).
   if (isMarketActive === null && sbMarketLoading) {
     return (
-      <div className="flex flex-col lg:flex-row gap-1 bg-canvas items-start">
+      <div
+      className={cn(
+        "flex flex-col lg:flex-row gap-1 bg-canvas items-start",
+        isMegaEthVariant && "soothbook-terminal--megaeth",
+      )}
+    >
         <div className="flex flex-col gap-1 w-full lg:flex-1 min-w-0">
           {beforeOrderbookPane}
           <div className="bg-raised p-10 text-center">
@@ -522,7 +563,12 @@ function SoothBookTerminalActive({
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-1 bg-canvas items-start">
+    <div
+      className={cn(
+        "flex flex-col lg:flex-row gap-1 bg-canvas items-start",
+        isMegaEthVariant && "soothbook-terminal--megaeth",
+      )}
+    >
       {/* LEFT COLUMN — orderbook + liquidity map */}
       <div className="flex flex-col gap-1 w-full lg:flex-1 min-w-0">
         {beforeOrderbookPane}
@@ -671,6 +717,9 @@ function SoothBookTerminalActive({
               onClick={() => setSelectedOutcome("yes")}
               className={cn(
                 "flex-1 py-3 font-bold text-sm uppercase tracking-wider transition-all",
+                isMegaEthVariant &&
+                  "megaeth-outcome-tab megaeth-outcome-tab--yes",
+                isMegaEthVariant && selectedOutcome === "yes" && "is-active",
                 selectedOutcome === "yes"
                   ? "text-ink border-b-2 border-accent bg-accent-muted"
                   : "text-muted hover:text-ink border-b-2 border-transparent",
@@ -683,6 +732,9 @@ function SoothBookTerminalActive({
               onClick={() => setSelectedOutcome("no")}
               className={cn(
                 "flex-1 py-3 font-bold text-sm uppercase tracking-wider transition-all",
+                isMegaEthVariant &&
+                  "megaeth-outcome-tab megaeth-outcome-tab--no",
+                isMegaEthVariant && selectedOutcome === "no" && "is-active",
                 selectedOutcome === "no"
                   ? "text-muted border-b-2 border-error bg-raised"
                   : "text-muted hover:text-ink border-b-2 border-transparent",
@@ -708,11 +760,17 @@ function SoothBookTerminalActive({
                 )}
                 style={
                   isBuying
-                    ? {
-                        backgroundColor: "rgba(5, 150, 105, 0.2)",
-                        color: "#34d399",
-                        borderColor: "rgba(5, 150, 105, 0.4)",
-                      }
+                    ? isMegaEthVariant
+                      ? {
+                          backgroundColor: "rgba(91, 255, 177, 0.14)",
+                          color: "#5bffb1",
+                          borderColor: "rgba(91, 255, 177, 0.58)",
+                        }
+                      : {
+                          backgroundColor: "rgba(5, 150, 105, 0.2)",
+                          color: "#34d399",
+                          borderColor: "rgba(5, 150, 105, 0.4)",
+                        }
                     : undefined
                 }
               >
@@ -729,11 +787,17 @@ function SoothBookTerminalActive({
                 )}
                 style={
                   !isBuying
-                    ? {
-                        backgroundColor: "rgba(225, 29, 72, 0.2)",
-                        color: "#fb7185",
-                        borderColor: "rgba(225, 29, 72, 0.4)",
-                      }
+                    ? isMegaEthVariant
+                      ? {
+                          backgroundColor: "rgba(245, 180, 67, 0.14)",
+                          color: "#f5b443",
+                          borderColor: "rgba(245, 180, 67, 0.5)",
+                        }
+                      : {
+                          backgroundColor: "rgba(225, 29, 72, 0.2)",
+                          color: "#fb7185",
+                          borderColor: "rgba(225, 29, 72, 0.4)",
+                        }
                     : undefined
                 }
               >
