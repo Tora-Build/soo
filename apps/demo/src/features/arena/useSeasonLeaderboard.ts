@@ -30,6 +30,8 @@ import {
 // ─── Persistent per-market cache ────────────────────────────────────────────
 
 /** Bump to discard tapes cached under an older play shape or scoring input. */
+import seasonSnapshot from "./season-snapshot.json";
+
 const CACHE_KEY = "sooth:arena:chain-plays:v1";
 const POLL_MS = 60_000;
 /** Deepest first walk per market — beyond this the tape starts mid-history,
@@ -54,13 +56,25 @@ interface MarketCache {
 type PlaysCache = Record<string, MarketCache>;
 
 function loadCache(): PlaysCache {
+  // The bundled snapshot is the floor: a cold browser hydrates the whole
+  // season tape without touching the RPC, then polls only past each
+  // market's cursor. A market the browser has walked itself supersedes its
+  // snapshot entry — the local tape extends the same history.
+  const base = { ...(seasonSnapshot.markets as PlaysCache) };
   try {
     const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return {};
+    if (!raw) return base;
     const parsed = JSON.parse(raw) as PlaysCache;
-    return parsed && typeof parsed === "object" ? parsed : {};
+    if (!parsed || typeof parsed !== "object") return base;
+    for (const [market, entry] of Object.entries(parsed)) {
+      const snap = base[market];
+      if (!snap || entry.plays.length >= snap.plays.length) {
+        base[market] = entry;
+      }
+    }
+    return base;
   } catch {
-    return {};
+    return base;
   }
 }
 
