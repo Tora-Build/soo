@@ -10,13 +10,11 @@
 # Required repository variables:
 #   SOLANA_RPC_URL        — the RPC the deployed site should use
 name: deploy-pages
+# Manual trigger only — Actions minutes are billed, so nothing runs on
+# push. Invoke from the Actions tab ("Run workflow") or:
+#   gh workflow run deploy-pages --ref develop
 on:
-  push:
-    branches: [develop]
-    paths:
-      - "apps/demo/**"
-      - "packages/sdk-solana/**"
-      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
 jobs:
   deploy:
     runs-on: ubuntu-latest
