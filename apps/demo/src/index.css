@@ -318,12 +318,12 @@
 }
 
 /* Arena live-data and interaction surfaces */
-.play-deck-stage > .min-w-0 {
+.play-deck-drag {
   touch-action: pan-y;
   cursor: grab;
 }
 
-.play-deck-stage > .min-w-0:active {
+.play-deck-drag:active {
   cursor: grabbing;
 }
 
@@ -807,6 +807,11 @@
   .play-deck-stage {
     position: relative;
     min-width: 0;
+    /* Invariant: the deck stage wins hit-testing over the sidecar. If card
+       content ever overhangs into the sidecar column again, the reaction
+       rail must still receive clicks — the sidecar's cards are positioned
+       and would otherwise paint (and hit-test) above it. */
+    z-index: 10;
   }
 
   .play-deck-arrow {
@@ -847,6 +852,13 @@
     --world-b: #dc48c2;
     position: relative;
     min-height: 620px;
+    /* The card must never outgrow its deck column: content that widens its
+       intrinsic size (a reaction count appearing, a long question) would
+       otherwise push the card — and the reaction rail hanging off its right
+       edge — under the sidecar, which then swallows the rail's clicks. */
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.22);
     border-radius: 32px 16px 32px 16px;

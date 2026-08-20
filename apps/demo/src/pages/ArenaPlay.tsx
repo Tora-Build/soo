@@ -199,15 +199,20 @@ export const ArenaPlay = () => {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [moveDeck]);
 
+  // Keyed on the ADDRESS, not the market object: the market list re-derives
+  // objects on every poll, and an object dependency would tear down and
+  // refire this effect each render — each refresh renders, so that loop
+  // polls at network speed instead of every 12s.
+  const activeMarketAddress = activeMarket?.address;
   useEffect(() => {
-    if (!activeMarket) return;
-    void refresh(activeMarket.address, true);
+    if (!activeMarketAddress) return;
+    void refresh(activeMarketAddress, true);
     const timer = window.setInterval(
-      () => void refresh(activeMarket.address, true),
+      () => void refresh(activeMarketAddress, true),
       12_000,
     );
     return () => window.clearInterval(timer);
-  }, [activeMarket, refresh]);
+  }, [activeMarketAddress, refresh]);
 
   const enterMarket = async (market: ArenaMarket, outcome: ArenaOutcome) => {
     if (outcome !== "watch") {
@@ -412,6 +417,13 @@ export const ArenaPlay = () => {
           </button>
 
           <AnimatePresence mode="wait" initial={false}>
+            {/* Enter/exit and drag live on SEPARATE elements, and that split
+                is load-bearing. A press on the card (reacting, opening the
+                trade dialog) starts a drag gesture, and a React state update
+                inside that same press re-renders the dragged element mid-
+                gesture — framer then re-renders the drag axis from `initial`,
+                parking the card at x:70 for good. The drag surface below has
+                no `initial`, so there is nothing to snap back to. */}
             <motion.div
               key={activeMarket.address}
               initial={{ opacity: 0, x: 70, rotate: 1.5, scale: 0.98 }}
@@ -419,24 +431,28 @@ export const ArenaPlay = () => {
               exit={{ opacity: 0, x: -70, rotate: -1.5, scale: 0.98 }}
               transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
               className="min-w-0"
-              drag="x"
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={0.16}
-              dragMomentum={false}
-              onDragEnd={(_, info) => {
-                const direction = resolveDeckSwipe(info.offset.x, info.velocity.x);
-                if (direction) moveDeck(direction);
-              }}
             >
-              <RealityCard
-                market={activeMarket}
-                onPlay={(market, outcome) => void enterMarket(market, outcome)}
-                onReact={react}
-                onShare={shareMarket}
-                onOpenComments={() => setCommentsOpen(true)}
-                social={social}
-                isReacting={isReacting}
-              />
+              <motion.div
+                className="play-deck-drag min-w-0"
+                drag="x"
+                dragConstraints={{ left: 0, right: 0 }}
+                dragElastic={0.16}
+                dragMomentum={false}
+                onDragEnd={(_, info) => {
+                  const direction = resolveDeckSwipe(info.offset.x, info.velocity.x);
+                  if (direction) moveDeck(direction);
+                }}
+              >
+                <RealityCard
+                  market={activeMarket}
+                  onPlay={(market, outcome) => void enterMarket(market, outcome)}
+                  onReact={react}
+                  onShare={shareMarket}
+                  onOpenComments={() => setCommentsOpen(true)}
+                  social={social}
+                  isReacting={isReacting}
+                />
+              </motion.div>
             </motion.div>
           </AnimatePresence>
 

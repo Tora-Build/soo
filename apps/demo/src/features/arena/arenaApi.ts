@@ -9,6 +9,11 @@ import type {
 
 const API_BASE = (import.meta.env.VITE_ARENA_API_BASE || "").replace(/\/$/, "");
 
+/** The chain layer carries base58 keys wrapped as `0x<base58>` for its
+ * EVM-shaped typing. The arena service speaks bare base58; every wallet or
+ * market crossing this boundary is unwrapped here, once. */
+const bare = (v: string) => (v.startsWith("0x") ? v.slice(2) : v);
+
 export class ArenaApiError extends Error {
   constructor(
     readonly status: number,
@@ -64,22 +69,22 @@ async function request<T>(
 export const arenaApi = {
   bootstrap(wallet?: string, market?: string) {
     const params = new URLSearchParams();
-    if (wallet) params.set("wallet", wallet);
-    if (market) params.set("market", market);
+    if (wallet) params.set("wallet", bare(wallet));
+    if (market) params.set("market", bare(market));
     return request<ArenaBootstrap>(`bootstrap?${params.toString()}`);
   },
 
   nonce(wallet: string) {
     return request<{ wallet: string; message: string; expiresAt: number }>("nonce", {
       method: "POST",
-      body: { wallet },
+      body: { wallet: bare(wallet) },
     });
   },
 
   session(wallet: string, signature: string) {
     return request<{ token: string; expiresAt: number; profile: ArenaProfile }>("session", {
       method: "POST",
-      body: { wallet, signature },
+      body: { wallet: bare(wallet), signature },
     });
   },
 
@@ -94,7 +99,7 @@ export const arenaApi = {
     return request<{ social: ArenaSocial }>("reaction", {
       method: "PUT",
       token,
-      body: { market, reaction },
+      body: { market: bare(market), reaction },
     });
   },
 
@@ -102,7 +107,7 @@ export const arenaApi = {
     return request<{ social: ArenaSocial }>("comments", {
       method: "POST",
       token,
-      body: { market, body },
+      body: { market: bare(market), body },
     });
   },
 
@@ -124,7 +129,7 @@ export const arenaApi = {
     }>("plays", {
       method: "POST",
       token,
-      body: trade,
+      body: { ...trade, market: bare(trade.market) },
     });
   },
 };
