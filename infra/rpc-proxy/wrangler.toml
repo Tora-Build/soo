@@ -1,0 +1,6 @@
+name = "soo-rpc"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+# The upstream RPC URL (with its API key) lives in a secret, never in code:
+#   wrangler secret put UPSTREAM_RPC

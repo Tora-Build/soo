@@ -1,0 +1,44 @@
+# Deploys the demo to Cloudflare Pages on every push to develop.
+#
+# The build runs the same secret-stripping env as a local release build:
+# the vite config refuses to bake wallet secrets, and none are present in
+# CI anyway. VITE_SOLANA_RPC_URL comes from the SOLANA_RPC_URL repo
+# variable so the endpoint can change without a commit.
+#
+# Required repository secrets:
+#   CLOUDFLARE_API_TOKEN  — API token with "Cloudflare Pages: Edit"
+# Required repository variables:
+#   SOLANA_RPC_URL        — the RPC the deployed site should use
+name: deploy-pages
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "apps/demo/**"
+      - "packages/sdk-solana/**"
+      - ".github/workflows/deploy-pages.yml"
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -F @sooth/sdk-solana build
+      - name: Build demo
+        working-directory: apps/demo
+        env:
+          VITE_TEST_MODE: "false"
+          VITE_SOLANA_RPC_URL: ${{ vars.SOLANA_RPC_URL }}
+        run: pnpm build
+      - name: Deploy to Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: a35f6796edc6a6896898c0134c935850
+          workingDirectory: apps/demo
+          command: pages deploy dist --project-name=soo
