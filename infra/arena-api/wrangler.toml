@@ -1,0 +1,10 @@
+name = "soo-arena"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+[[d1_databases]]
+binding = "ARENA_DB"
+database_name = "soo-arena"
+# Paste the id printed by `wrangler d1 create soo-arena` here:
+database_id = "REPLACE_WITH_DATABASE_ID"
+migrations_dir = "migrations"

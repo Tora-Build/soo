@@ -46,7 +46,7 @@ interface ArenaPlayerContextValue {
 
 const ArenaPlayerContext = createContext<ArenaPlayerContextValue | null>(null);
 
-const sessionKey = (wallet: string) => `sooth:arena-session:${wallet.toLowerCase()}`;
+const sessionKey = (wallet: string) => `sooth:arena-session:${wallet}`;
 
 function readStoredSession(wallet?: string): StoredSession | null {
   if (!wallet || typeof window === "undefined") return null;
@@ -80,7 +80,8 @@ export function ArenaPlayerProvider({ children }: { children: ReactNode }) {
     const sig = await walletSignMessage(new TextEncoder().encode(message));
     return btoa(String.fromCharCode(...sig));
   };
-  const wallet = (wagmiAddress ?? appKitAddress)?.toLowerCase();
+  // Base58 is case-sensitive — the pubkey is used verbatim everywhere.
+  const wallet = wagmiAddress ?? appKitAddress;
   const [profile, setProfile] = useState<ArenaProfile | null>(null);
   const [leaderboard, setLeaderboard] = useState<ArenaLeaderboardEntry[]>([]);
   const [socialByMarket, setSocialByMarket] = useState<Record<string, ArenaSocial>>({});
@@ -115,7 +116,7 @@ export function ArenaPlayerProvider({ children }: { children: ReactNode }) {
         if (data.social) {
           setSocialByMarket((current) => ({
             ...current,
-            [data.social!.market.toLowerCase()]: data.social!,
+            [data.social!.market]: data.social!,
           }));
         }
         setServiceError(null);
@@ -216,7 +217,7 @@ export function ArenaPlayerProvider({ children }: { children: ReactNode }) {
       const result = await authenticated((token) => arenaApi.reaction(token, market, reaction));
       setSocialByMarket((current) => ({
         ...current,
-        [market.toLowerCase()]: result.social,
+        [market]: result.social,
       }));
       return result.social;
     },
@@ -228,7 +229,7 @@ export function ArenaPlayerProvider({ children }: { children: ReactNode }) {
       const result = await authenticated((token) => arenaApi.comment(token, market, body));
       setSocialByMarket((current) => ({
         ...current,
-        [market.toLowerCase()]: result.social,
+        [market]: result.social,
       }));
       return result.social;
     },
@@ -243,7 +244,7 @@ export function ArenaPlayerProvider({ children }: { children: ReactNode }) {
       if (result.social) {
         setSocialByMarket((current) => ({
           ...current,
-          [trade.market.toLowerCase()]: result.social!,
+          [trade.market]: result.social!,
         }));
       }
       return result.duplicate ? 0 : result.xpAwarded;

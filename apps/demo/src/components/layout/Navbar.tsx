@@ -41,6 +41,7 @@ import {
   XP_PER_LEVEL,
 } from "../../store/useArenaPlayerStore";
 import { useArenaPlayer } from "../../features/arena/ArenaPlayerProvider";
+import { useSeasonLeaderboard } from "../../features/arena/useSeasonLeaderboard";
 import { shortenAddress } from "../../utils/format";
 import { useTranslation } from "react-i18next";
 
@@ -49,23 +50,28 @@ import { useTranslation } from "react-i18next";
 // controls stay hidden rather than offering an action that cannot succeed.
 const ARENA_SYNC_CONFIGURED = Boolean(import.meta.env.VITE_ARENA_API_BASE);
 
-/** Server profile when the arena service answers, local ledger otherwise. */
+/** Server profile when the arena service answers, local ledger otherwise —
+ *  and once the connected wallet's on-chain play history scores higher than
+ *  either, the chain-derived number wins. Guest plays stay local. */
 function usePlayerStats() {
   const { profile } = useArenaPlayer();
+  const { you: chainScore } = useSeasonLeaderboard();
   const localXp = useArenaPlayerStore((s) => s.xp);
   const localStreak = useArenaPlayerStore((s) => s.streak);
   const localTickets = useArenaPlayerStore((s) => s.tickets);
   const localPlays = useArenaPlayerStore((s) => s.scoutedMarkets.length);
   const localDailyClaim = useArenaPlayerStore((s) => s.lastDailyClaim);
 
-  const xp = profile?.xp ?? localXp;
+  const baseXp = profile?.xp ?? localXp;
+  const chainWins = chainScore !== null && chainScore.xp > baseXp;
+  const xp = chainWins ? chainScore.xp : baseXp;
   return {
     isSynced: profile !== null,
     handle: profile?.handle ?? null,
     xp,
-    streak: profile?.streak ?? localStreak,
+    streak: chainWins ? chainScore.streakDays : (profile?.streak ?? localStreak),
     tickets: profile?.tickets ?? localTickets,
-    plays: profile?.plays ?? localPlays,
+    plays: chainWins ? chainScore.plays : (profile?.plays ?? localPlays),
     lastDailyClaim: profile?.lastDailyClaim ?? localDailyClaim,
     level: levelFromXp(xp),
     levelProgress: levelProgressFromXp(xp),

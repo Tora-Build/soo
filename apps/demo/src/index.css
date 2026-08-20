@@ -4738,3 +4738,121 @@
     stroke-width: 2;
   }
 }
+
+/* Chain-derived signal league: podium medals, first-fetch skeleton, season
+   pulse stat row, and the full-board drawer. Extends the arcade sidecar
+   language above — same radii, mono microcopy, arcade tones. */
+@layer components {
+  .play-league-open {
+    display: flex;
+    width: 100%;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    border-radius: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 150ms ease;
+  }
+
+  .play-league-open:hover {
+    transform: translateY(-1px);
+  }
+
+  .play-league-open:hover > svg {
+    filter: drop-shadow(0 0 6px rgba(255, 214, 68, 0.7));
+  }
+
+  .play-leader-rank.is-gold,
+  .play-leader-rank.is-silver,
+  .play-leader-rank.is-bronze {
+    font-weight: 700;
+    font-size: 9px;
+  }
+
+  .play-leader-rank.is-gold {
+    color: var(--arcade-yellow);
+    text-shadow: 0 0 8px rgba(255, 214, 68, 0.55);
+  }
+
+  .play-leader-rank.is-silver {
+    color: #cdd6e4;
+    text-shadow: 0 0 8px rgba(205, 214, 228, 0.45);
+  }
+
+  .play-leader-rank.is-bronze {
+    color: #e09a5e;
+    text-shadow: 0 0 8px rgba(224, 154, 94, 0.45);
+  }
+
+  .play-leader-skeleton {
+    height: 45px;
+    margin-top: 8px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: linear-gradient(
+      100deg,
+      rgba(255, 255, 255, 0.04) 40%,
+      rgba(255, 255, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0.04) 60%
+    );
+    background-size: 200% 100%;
+    animation: play-skeleton-sweep 1.4s ease infinite;
+  }
+
+  .play-leader-skeleton:first-child {
+    margin-top: 0;
+  }
+
+  @keyframes play-skeleton-sweep {
+    from {
+      background-position: 120% 0;
+    }
+    to {
+      background-position: -80% 0;
+    }
+  }
+
+  .play-pulse-stats {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .play-pulse-stats > span:not(.play-squad-reward) {
+    display: block;
+  }
+
+  .play-pulse-stats strong {
+    display: block;
+    color: var(--text);
+    font-family: var(--font-heading);
+    font-size: 14px;
+  }
+
+  .play-pulse-stats small {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-faint);
+    font-family: var(--font-mono);
+    font-size: 6px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .play-league-drawer .play-leader-row {
+    border-color: var(--border);
+  }
+
+  .play-league-drawer .play-leader-row.is-you {
+    border-color: rgba(223, 255, 79, 0.26);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .play-leader-skeleton {
+      animation: none;
+    }
+  }
+}

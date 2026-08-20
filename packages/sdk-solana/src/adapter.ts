@@ -87,6 +87,7 @@ import {
 import {
   decodeBookEventsFromInner,
   type BookEvent,
+  type BookFilledEvent,
 } from "./book/events.js";
 import { decodePubkeyRef, encodeSignatureRef } from "./refs.js";
 import { SoothError, notImplemented } from "./errors.js";
@@ -159,6 +160,37 @@ const INIT_MARKET_FEE_POOL_DISCRIMINATOR = Buffer.from([
 
 /** Mirrors `MAX_QUESTION_LEN` in the program's `constants.rs`. */
 const MAX_QUESTION_LEN = 300;
+
+
+/** One AMM price-forming event off the logs, normalised for the walkers. */
+type MarketAmmEvent =
+  | {
+      kind: "traded";
+      user: string;
+      outcome: number;
+      /** |delta_shares| in WAD. */
+      deltaShares: bigint;
+      /** |cost_wad| in WAD. */
+      costWad: bigint;
+      ts: number;
+    }
+  | {
+      kind: "sold";
+      user: string;
+      outcome: number;
+      /** Shares in WAD. */
+      sharesSold: bigint;
+      /** USDC base units (1e6). */
+      amountUsdc: bigint;
+    };
+
+/** One transaction's decoded market events, as `walkMarketEvents` returns them. */
+interface MarketEventTx {
+  signature: string;
+  blockTs: number;
+  amm: MarketAmmEvent[];
+  book: BookFilledEvent[];
+}
 
 export class SolanaChainAdapter implements ChainAdapter {
   readonly node: SoothNode;
@@ -2251,14 +2283,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       venue: "amm" | "book";
     }>
   > {
-    const marketPda = decodePubkeyRef(market);
-    const limit = opts?.limit ?? 300;
-    const sigs = await this.connection.getSignaturesForAddress(marketPda, {
-      limit,
-      until: opts?.until,
-    });
-    if (sigs.length === 0) return [];
-
+    const { txs } = await this.walkMarketEvents(market, opts);
     const out: Array<{
       signature: string;
       ts: number;
@@ -2266,6 +2291,180 @@ export class SolanaChainAdapter implements ChainAdapter {
       sizeWad: bigint;
       venue: "amm" | "book";
     }> = [];
+
+    for (const tx of txs) {
+      for (const ev of tx.amm) {
+        if (ev.kind === "traded") {
+          if (ev.deltaShares === 0n) continue;
+          let priceWad = (ev.costWad * 10n ** 18n) / ev.deltaShares;
+          if (ev.outcome === 0) priceWad = 10n ** 18n - priceWad;
+          out.push({
+            signature: tx.signature,
+            ts: ev.ts || tx.blockTs,
+            yesPriceWad: priceWad,
+            sizeWad: ev.deltaShares,
+            venue: "amm",
+          });
+        } else {
+          if (ev.sharesSold === 0n) continue;
+          // amount is base units (1e6); shares are WAD. price = amount/shares
+          // in WAD: amount * 1e12 * 1e18 / shares.
+          let priceWad =
+            (ev.amountUsdc * 10n ** 12n * 10n ** 18n) / ev.sharesSold;
+          if (ev.outcome === 0) priceWad = 10n ** 18n - priceWad;
+          out.push({
+            signature: tx.signature,
+            ts: tx.blockTs,
+            yesPriceWad: priceWad,
+            sizeWad: ev.sharesSold,
+            venue: "amm",
+          });
+        }
+      }
+      for (const event of tx.book) {
+        for (const fill of event.fills) {
+          out.push({
+            signature: tx.signature,
+            ts: Number(event.ts) || tx.blockTs,
+            // The book has ONE price axis, so the maker's tick
+            // IS the YES price: 1..999 ticks = tenths of a cent.
+            yesPriceWad: (BigInt(fill.priceTick) * 10n ** 18n) / 1000n,
+            sizeWad: BigInt(fill.amount) * 10n ** 12n,
+            venue: "book",
+          });
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The market's play tape — who traded, not what it cost the price.
+   *
+   * Same walk and the same decoded events as `readMarketTrades`, keyed by
+   * wallet instead of price: every AMM buy/sell is one play by `user`, and
+   * every book match is one taker play plus one maker play per fill. This is
+   * what a chain-derived leaderboard consumes — no indexer, no server.
+   *
+   * `sizeWad` is shares in WAD; `costWad` is the USDC notional in WAD
+   * (present on every venue, so score-by-money needs no venue branching).
+   *
+   * `latestSignature` is the newest signature the walk saw — pass it back as
+   * `opts.until` to fetch only what landed since. Callers cache the plays
+   * and the cursor; a poll then costs one `getSignaturesForAddress` plus one
+   * `getTransaction` per NEW transaction.
+   */
+  async readMarketPlays(
+    market: MarketRef,
+    opts?: { limit?: number; until?: string },
+  ): Promise<{
+    plays: Array<{
+      wallet: string;
+      venue: "amm" | "book";
+      role?: "taker" | "maker";
+      sizeWad: bigint;
+      costWad?: bigint;
+      ts: number;
+      signature: string;
+    }>;
+    latestSignature?: string;
+  }> {
+    const { txs, latestSignature } = await this.walkMarketEvents(market, opts);
+    const plays: Array<{
+      wallet: string;
+      venue: "amm" | "book";
+      role?: "taker" | "maker";
+      sizeWad: bigint;
+      costWad?: bigint;
+      ts: number;
+      signature: string;
+    }> = [];
+
+    // Book amounts are USDC base units (1e6) → WAD via 1e12; a fill's
+    // notional is amount priced at the maker's tick (tenths of a cent).
+    const fillCostWad = (fill: { priceTick: number; amount: bigint }) =>
+      (fill.amount * BigInt(fill.priceTick) * 10n ** 12n) / 1000n;
+
+    for (const tx of txs) {
+      for (const ev of tx.amm) {
+        if (ev.kind === "traded") {
+          if (ev.deltaShares === 0n) continue;
+          plays.push({
+            wallet: ev.user,
+            venue: "amm",
+            sizeWad: ev.deltaShares,
+            costWad: ev.costWad,
+            ts: ev.ts || tx.blockTs,
+            signature: tx.signature,
+          });
+        } else {
+          if (ev.sharesSold === 0n) continue;
+          plays.push({
+            wallet: ev.user,
+            venue: "amm",
+            sizeWad: ev.sharesSold,
+            costWad: ev.amountUsdc * 10n ** 12n,
+            ts: tx.blockTs,
+            signature: tx.signature,
+          });
+        }
+      }
+      for (const event of tx.book) {
+        if (event.fills.length === 0) continue;
+        const ts = Number(event.ts) || tx.blockTs;
+        // One play for the taker covering the whole match…
+        plays.push({
+          wallet: event.taker,
+          venue: "book",
+          role: "taker",
+          sizeWad: event.fills.reduce((s, f) => s + f.amount * 10n ** 12n, 0n),
+          costWad: event.fills.reduce((s, f) => s + fillCostWad(f), 0n),
+          ts,
+          signature: tx.signature,
+        });
+        // …and one per resting order it consumed.
+        for (const fill of event.fills) {
+          plays.push({
+            wallet: fill.maker,
+            venue: "book",
+            role: "maker",
+            sizeWad: fill.amount * 10n ** 12n,
+            costWad: fillCostWad(fill),
+            ts,
+            signature: tx.signature,
+          });
+        }
+      }
+    }
+    return { plays, latestSignature };
+  }
+
+  /**
+   * Shared signature walk behind `readMarketTrades` and `readMarketPlays`:
+   * every price-forming instruction touches the market PDA, so one
+   * `getSignaturesForAddress` finds them all. AMM events ride the logs
+   * (`emit!`); book fills ride inner instructions (`emit_cpi!`), decoded by
+   * the same versioned parser `readBookHistory` uses — the framing
+   * (event-CPI discriminator + versioned body) belongs in one decoder.
+   *
+   * Returns transactions oldest-first, each with its decoded AMM events
+   * (already filtered to this market, values normalised to bigint/absolute)
+   * and this market's `filled` book events. `latestSignature` is the newest
+   * signature seen, for `until`-cursor callers.
+   */
+  private async walkMarketEvents(
+    market: MarketRef,
+    opts?: { limit?: number; until?: string },
+  ): Promise<{ latestSignature?: string; txs: MarketEventTx[] }> {
+    const marketPda = decodePubkeyRef(market);
+    const limit = opts?.limit ?? 300;
+    const sigs = await this.connection.getSignaturesForAddress(marketPda, {
+      limit,
+      until: opts?.until,
+    });
+    if (sigs.length === 0) return { txs: [] };
+    const latestSignature = sigs[0].signature;
+
     const coder = (
       this.program as unknown as {
         coder: {
@@ -2279,6 +2478,8 @@ export class SolanaChainAdapter implements ChainAdapter {
     const toBig = (v: unknown): bigint => BigInt((v as { toString(): string }).toString());
     const abs = (v: bigint) => (v < 0n ? -v : v);
 
+    const txs: MarketEventTx[] = [];
+
     for (const sig of [...sigs].reverse()) {
       if (sig.err) continue;
       const tx = await this.connection.getTransaction(sig.signature, {
@@ -2287,6 +2488,12 @@ export class SolanaChainAdapter implements ChainAdapter {
       });
       if (!tx?.meta) continue;
       const blockTs = tx.blockTime ?? 0;
+      const entry: MarketEventTx = {
+        signature: sig.signature,
+        blockTs,
+        amm: [],
+        book: [],
+      };
 
       // AMM events ride the logs (`emit!`).
       for (const line of tx.meta.logMessages ?? []) {
@@ -2301,46 +2508,35 @@ export class SolanaChainAdapter implements ChainAdapter {
         if (!decoded) continue;
         if (/^positionTraded$/i.test(decoded.name)) {
           const d = decoded.data as {
-            market: PublicKey; outcome: number; deltaShares: unknown; costWad: unknown; ts: unknown;
+            market: PublicKey; user: PublicKey; outcome: number;
+            deltaShares: unknown; costWad: unknown; ts: unknown;
           };
           if (!new PublicKey(d.market).equals(marketPda)) continue;
-          const delta = abs(toBig(d.deltaShares));
-          if (delta === 0n) continue;
-          const cost = abs(toBig(d.costWad));
-          let priceWad = (cost * 10n ** 18n) / delta;
-          if (Number(d.outcome) === 0) priceWad = 10n ** 18n - priceWad;
-          out.push({
-            signature: sig.signature,
-            ts: Number(toBig(d.ts)) || blockTs,
-            yesPriceWad: priceWad,
-            sizeWad: delta,
-            venue: "amm",
+          entry.amm.push({
+            kind: "traded",
+            user: new PublicKey(d.user).toBase58(),
+            outcome: Number(d.outcome),
+            deltaShares: abs(toBig(d.deltaShares)),
+            costWad: abs(toBig(d.costWad)),
+            ts: Number(toBig(d.ts)),
           });
         } else if (/^positionSold$/i.test(decoded.name)) {
           const d = decoded.data as {
-            market: PublicKey; outcome: number; sharesSold: unknown; amountUsdc: unknown;
+            market: PublicKey; user: PublicKey; outcome: number;
+            sharesSold: unknown; amountUsdc: unknown;
           };
           if (!new PublicKey(d.market).equals(marketPda)) continue;
-          const shares = toBig(d.sharesSold);
-          if (shares === 0n) continue;
-          // amount is base units (1e6); shares are WAD. price = amount/shares
-          // in WAD: amount * 1e12 * 1e18 / shares.
-          let priceWad = (toBig(d.amountUsdc) * 10n ** 12n * 10n ** 18n) / shares;
-          if (Number(d.outcome) === 0) priceWad = 10n ** 18n - priceWad;
-          out.push({
-            signature: sig.signature,
-            ts: blockTs,
-            yesPriceWad: priceWad,
-            sizeWad: shares,
-            venue: "amm",
+          entry.amm.push({
+            kind: "sold",
+            user: new PublicKey(d.user).toBase58(),
+            outcome: Number(d.outcome),
+            sharesSold: toBig(d.sharesSold),
+            amountUsdc: toBig(d.amountUsdc),
           });
         }
       }
 
-      // Book fills ride inner instructions (`emit_cpi!`) — decoded by the
-      // same versioned parser `readBookHistory` uses. The framing (event-CPI
-      // discriminator + versioned body) belongs in one decoder: a hand-rolled
-      // offset here would drop real fills silently.
+      // Book fills ride inner instructions (`emit_cpi!`).
       if (tx.meta.innerInstructions) {
         const inner = tx.meta.innerInstructions.flatMap((group) =>
           group.instructions.map((ix) =>
@@ -2350,21 +2546,13 @@ export class SolanaChainAdapter implements ChainAdapter {
         for (const event of decodeBookEventsFromInner(inner)) {
           if (event.kind !== "filled") continue;
           if (event.market !== marketPda.toBase58()) continue;
-          for (const fill of event.fills) {
-            out.push({
-              signature: sig.signature,
-              ts: Number(event.ts) || blockTs,
-              // The book has ONE price axis, so the maker's tick
-              // IS the YES price: 1..999 ticks = tenths of a cent.
-              yesPriceWad: (BigInt(fill.priceTick) * 10n ** 18n) / 1000n,
-              sizeWad: BigInt(fill.amount) * 10n ** 12n,
-              venue: "book",
-            });
-          }
+          entry.book.push(event);
         }
       }
+
+      if (entry.amm.length > 0 || entry.book.length > 0) txs.push(entry);
     }
-    return out;
+    return { latestSignature, txs };
   }
 
   /**

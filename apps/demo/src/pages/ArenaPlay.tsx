@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { formatUnits } from "@/lib/chain-shim";
@@ -35,7 +35,21 @@ import { EntityIcon } from "../components/ui/EntityIcon";
 import { StageBadge } from "../components/ui/StageBadge";
 import { useQuickTrade } from "../components/features/market/QuickTradeProvider";
 import { useArenaPlayer } from "../features/arena/ArenaPlayerProvider";
-import { useArenaPlayerStore } from "../store/useArenaPlayerStore";
+import {
+  refreshSeasonLeaderboard,
+  useSeasonLeaderboard,
+  type SeasonLeaderboard,
+} from "../features/arena/useSeasonLeaderboard";
+import type { WalletScore } from "../features/arena/scoring";
+import {
+  ARENA_RANKS,
+  levelFromXp,
+  levelProgressFromXp,
+  rankIndexFromLevel,
+  useArenaPlayerStore,
+  XP_PER_LEVEL,
+} from "../store/useArenaPlayerStore";
+import { shortenAddress } from "../utils/format";
 import type {
   ArenaOutcome,
   ArenaReaction,
@@ -101,6 +115,30 @@ export const ArenaPlay = () => {
   // Device-local XP ledger — the scoring fallback when no arena server is
   // configured (guest mode).
   const recordLocalPlay = useArenaPlayerStore((state) => state.playMarket);
+  // Chain-derived season board: every wallet's plays, decoded from program
+  // events. Feeds the sidecar and the level-up moment below.
+  const seasonBoard = useSeasonLeaderboard();
+
+  // When the connected wallet's derived level rises while the app is open
+  // (its own trade landing, usually), celebrate it. The first observed level
+  // is a baseline, not a level-up.
+  const chainLevel = seasonBoard.you?.level ?? null;
+  const prevChainLevel = useRef<number | null>(null);
+  useEffect(() => {
+    if (chainLevel === null) return;
+    const prev = prevChainLevel.current;
+    prevChainLevel.current = chainLevel;
+    if (prev !== null && chainLevel > prev) {
+      toast.custom(
+        <div className="play-xp-pop">
+          <Sparkles className="h-4 w-4" />
+          <span>Level up</span>
+          <strong>LEVEL UP — LV {chainLevel}</strong>
+        </div>,
+        { duration: 3200 },
+      );
+    }
+  }, [chainLevel]);
 
   const markets = useMemo<ArenaMarket[]>(
     () =>
@@ -129,7 +167,7 @@ export const ArenaPlay = () => {
   );
   const activeMarket = deck[activeIndex] ?? null;
   const social = activeMarket
-    ? socialByMarket[activeMarket.address.toLowerCase()]
+    ? socialByMarket[activeMarket.address]
     : undefined;
 
   useEffect(() => setActiveIndex(0), [category]);
@@ -222,6 +260,9 @@ export const ArenaPlay = () => {
       outcome === "watch"
         ? undefined
         : async (trade) => {
+            // The trade is confirmed on chain — pull the season board fresh
+            // so the play lands on the leaderboard without waiting a poll.
+            void refreshSeasonLeaderboard();
             const toastId = toast.loading("Verifying your arena play…");
             try {
               const gainedXp = await registerConfirmedPlay(trade);
@@ -409,7 +450,7 @@ export const ArenaPlay = () => {
           </button>
         </main>
 
-        <ArenaSidecar />
+        <ArenaSidecar board={seasonBoard} />
       </div>
 
       <div className="play-mobile-next">
@@ -554,7 +595,11 @@ const RealityCard = ({
           onClick={() => onReact("fire")}
         >
           <span>🔥</span>
-          <small>{social?.reactions.fire ?? 0}</small>
+          {/* A zero here means "social service not configured", not "nobody
+              reacted" — the count only renders once it has something real. */}
+          {(social?.reactions.fire ?? 0) > 0 && (
+            <small>{social?.reactions.fire}</small>
+          )}
         </button>
         <button
           type="button"
@@ -564,7 +609,9 @@ const RealityCard = ({
           onClick={() => onReact("brain")}
         >
           <Brain className="h-5 w-5" />
-          <small>{social?.reactions.brain ?? 0}</small>
+          {(social?.reactions.brain ?? 0) > 0 && (
+            <small>{social?.reactions.brain}</small>
+          )}
         </button>
         <button
           type="button"
@@ -572,7 +619,9 @@ const RealityCard = ({
           onClick={onOpenComments}
         >
           <MessageCircle className="h-5 w-5" />
-          <small>{social?.commentCount ?? 0}</small>
+          {(social?.commentCount ?? 0) > 0 && (
+            <small>{social?.commentCount}</small>
+          )}
         </button>
         <button type="button" aria-label="Share this market" onClick={onShare}>
           <Share2 className="h-5 w-5" />
@@ -735,15 +784,74 @@ const WorldScene = ({ category }: { category: string }) => (
   </svg>
 );
 
-const ArenaSidecar = () => {
-  const { wallet, profile, leaderboard } = useArenaPlayer();
-  const xp = profile?.xp ?? 0;
-  const tickets = profile?.tickets ?? 0;
-  const streak = profile?.streak ?? 0;
-  const plays = profile?.plays ?? 0;
-  const level = Math.floor(xp / 1_000) + 1;
-  const leaders = leaderboard.slice(0, 4);
-  const levelTitle = level >= 10 ? "Oracle" : level >= 5 ? "Analyst" : "Scout";
+const AVATAR_TONES = ["pink", "cyan", "yellow", "violet"] as const;
+
+/** Medal treatment for the podium; everything below it is plain mono. */
+const rankTone = (position: number) =>
+  position === 1
+    ? "is-gold"
+    : position === 2
+      ? "is-silver"
+      : position === 3
+        ? "is-bronze"
+        : undefined;
+
+const LeaderRow = ({
+  entry,
+  position,
+  isYou,
+  index,
+  positionLabel,
+}: {
+  entry: WalletScore;
+  position: number;
+  isYou: boolean;
+  index: number;
+  /** Overrides the plain position number (the pinned "#12 · you" row). */
+  positionLabel?: string;
+}) => (
+  <div className={cn("play-leader-row", isYou && "is-you")}>
+    <span className={cn("play-leader-rank", rankTone(position))}>
+      {positionLabel ?? position}
+    </span>
+    <span className={`play-mini-avatar is-${AVATAR_TONES[index % 4]}`}>
+      {entry.wallet.slice(0, 2).toUpperCase()}
+    </span>
+    <div>
+      <strong>{shortenAddress(entry.wallet, 4)}</strong>
+      <small>
+        LV {entry.level} · {entry.rank} · {entry.plays} plays
+      </small>
+    </div>
+    <b>{entry.xp.toLocaleString()} XP</b>
+  </div>
+);
+
+const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
+  const { wallet: sessionWallet, profile } = useArenaPlayer();
+  const [leagueOpen, setLeagueOpen] = useState(false);
+  // The local/server ledger is the floor; once the wallet's on-chain history
+  // scores higher, the chain number wins. Guest plays stay local.
+  const localXp = useArenaPlayerStore((s) => s.xp);
+  const localStreak = useArenaPlayerStore((s) => s.streak);
+  const localTickets = useArenaPlayerStore((s) => s.tickets);
+  const localPlays = useArenaPlayerStore((s) => s.scoutedMarkets.length);
+  const baseXp = profile?.xp ?? localXp;
+  const chain = board.you;
+  const chainWins = chain !== null && chain.xp > baseXp;
+  const xp = chainWins ? chain.xp : baseXp;
+  const streak = chainWins ? chain.streakDays : (profile?.streak ?? localStreak);
+  const plays = chainWins ? chain.plays : (profile?.plays ?? localPlays);
+  const tickets = profile?.tickets ?? localTickets;
+  const level = levelFromXp(xp);
+  const levelTitle = ARENA_RANKS[rankIndexFromLevel(level)];
+  const levelProgress = levelProgressFromXp(xp);
+
+  const leaders = board.leaders.slice(0, 5);
+  const youOutsideTop = chain !== null && chain.position > 5 ? chain : null;
+  const isYou = (entry: WalletScore) =>
+    (chain !== null && entry.wallet === chain.wallet) ||
+    sessionWallet?.toLowerCase() === entry.wallet.toLowerCase();
 
   return (
     <aside className="play-sidecar">
@@ -754,10 +862,12 @@ const ArenaSidecar = () => {
             <span>Your run</span>
             <h2>Level {level} · {levelTitle}</h2>
           </div>
-          <strong>{xp % 1_000}</strong>
+          <strong>{levelProgress}</strong>
         </div>
         <div className="play-run-bar">
-          <motion.span animate={{ width: `${(xp % 1_000) / 10}%` }} />
+          <motion.span
+            animate={{ width: `${(levelProgress / XP_PER_LEVEL) * 100}%` }}
+          />
         </div>
         <div className="play-run-stats">
           <span>
@@ -773,36 +883,49 @@ const ArenaSidecar = () => {
       </section>
 
       <section className="play-leaderboard">
-        <div className="play-side-title">
+        <button
+          type="button"
+          className="play-side-title play-league-open"
+          onClick={() => setLeagueOpen(true)}
+          aria-label="Open the full signal league"
+        >
           <div>
             <span>Live squad</span>
             <h2>Signal league</h2>
           </div>
           <Trophy className="h-5 w-5" />
-        </div>
+        </button>
         <div className="mt-4 space-y-2">
-          {leaders.length === 0 && (
-            <div className="play-leader-empty">No scored plays yet. Take the first slot.</div>
-          )}
-          {leaders.map((player, index) => (
-            <div
-              className={cn(
-                "play-leader-row",
-                wallet?.toLowerCase() === player.wallet.toLowerCase() && "is-you",
-              )}
-              key={player.wallet}
-            >
-              <span className="play-leader-rank">{player.rank}</span>
-              <span className={`play-mini-avatar is-${["pink", "cyan", "yellow", "violet"][index % 4]}`}>
-                {player.handle.slice(0, 2).toUpperCase()}
-              </span>
-              <div>
-                <strong>{player.handle}</strong>
-                <small>{player.plays} verified plays</small>
-              </div>
-              <b>{player.xp.toLocaleString()}</b>
+          {board.isLoading && leaders.length === 0 && (
+            <div aria-hidden="true">
+              {[0, 1, 2].map((row) => (
+                <div className="play-leader-skeleton" key={row} />
+              ))}
             </div>
+          )}
+          {!board.isLoading && leaders.length === 0 && (
+            <div className="play-leader-empty">
+              No scored plays yet. Take the first slot.
+            </div>
+          )}
+          {leaders.map((entry, index) => (
+            <LeaderRow
+              key={entry.wallet}
+              entry={entry}
+              position={index + 1}
+              index={index}
+              isYou={isYou(entry)}
+            />
           ))}
+          {youOutsideTop && (
+            <LeaderRow
+              entry={youOutsideTop}
+              position={youOutsideTop.position}
+              positionLabel={`#${youOutsideTop.position} · you`}
+              index={3}
+              isYou
+            />
+          )}
         </div>
       </section>
 
@@ -810,22 +933,46 @@ const ArenaSidecar = () => {
         <div className="play-side-title">
           <div>
             <span>Season pulse</span>
-            <h2>{leaderboard.reduce((sum, player) => sum + player.plays, 0)} verified calls</h2>
+            <h2>{board.season.totalPlays} verified calls</h2>
           </div>
           <Users className="h-5 w-5" />
         </div>
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <div className="play-avatar-stack">
-            {leaders.slice(0, 4).map((player, index) => (
-              <span key={player.wallet} style={{ zIndex: 4 - index }}>
-                {player.handle.slice(0, 2).toUpperCase()}
-              </span>
-            ))}
-          </div>
+        <div className="play-pulse-stats">
+          <span>
+            <strong>{board.season.activeWallets}</strong>
+            <small>wallets</small>
+          </span>
+          <span>
+            <strong>${Math.round(board.season.totalVolume).toLocaleString()}</strong>
+            <small>volume</small>
+          </span>
           <span className="play-squad-reward">S01 live</span>
         </div>
       </section>
 
+      <Drawer
+        isOpen={leagueOpen}
+        onClose={() => setLeagueOpen(false)}
+        title="Signal league — top 25"
+        className="play-league-drawer"
+      >
+        <div className="space-y-2">
+          {board.leaders.slice(0, 25).map((entry, index) => (
+            <LeaderRow
+              key={entry.wallet}
+              entry={entry}
+              position={index + 1}
+              index={index}
+              isYou={isYou(entry)}
+            />
+          ))}
+          {board.leaders.length === 0 && (
+            <div className="play-leader-empty">
+              No scored plays yet this season.
+            </div>
+          )}
+        </div>
+      </Drawer>
     </aside>
   );
 };
@@ -871,7 +1018,9 @@ const CommentsDrawer = ({
       <div className="play-comments-market">
         <span>Reality #{market.address.slice(2, 7)}</span>
         <h2>{market.question}</h2>
-        <p>{social?.commentCount ?? 0} player signals</p>
+        {(social?.commentCount ?? 0) > 0 && (
+          <p>{social?.commentCount} player signals</p>
+        )}
       </div>
 
       <form
