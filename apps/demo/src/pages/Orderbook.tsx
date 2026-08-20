@@ -10,7 +10,7 @@ import { OrderbookPageBody } from "../components/features/market/OrderbookPageBo
 export const Orderbook = () => {
   const { marketAddress } = useParams<{ marketAddress?: string }>();
   if (!marketAddress) {
-    return <Navigate to="/markets" replace />;
+    return <Navigate to="/explore" replace />;
   }
   return <OrderbookPageBody marketAddress={marketAddress} />;
 };

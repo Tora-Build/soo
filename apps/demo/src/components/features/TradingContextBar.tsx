@@ -66,7 +66,7 @@ export const TradingContextBar = ({
       {!onClose && (
         <div className="flex items-center gap-3 shrink-0">
           <Link
-            to="/markets"
+            to="/explore"
             className="text-muted hover:text-ink transition-colors flex items-center gap-1 text-xs font-mono"
           >
             <ArrowLeft className="w-3.5 h-3.5" />

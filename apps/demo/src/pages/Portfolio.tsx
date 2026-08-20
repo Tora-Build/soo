@@ -143,7 +143,7 @@ export const Portfolio = () => {
           <div className="border border-rule bg-inset p-6 text-center space-y-3">
             <p className="text-sm text-muted">{t("portfolio.noPositions")}</p>
             <Link
-              to="/markets"
+              to="/explore"
               className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-accent hover:underline"
             >
               Browse markets to start trading
@@ -231,7 +231,7 @@ export const Portfolio = () => {
           <div className="border border-rule bg-inset p-6 text-center space-y-3">
             <p className="text-sm text-muted">{t("portfolio.noLpPositions")}</p>
             <Link
-              to="/create"
+              to="/forge"
               className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-accent hover:underline"
             >
               Create a market to earn LP fees

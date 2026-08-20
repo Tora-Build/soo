@@ -20,16 +20,16 @@ export function EastboardHeader() {
   // surface, not just the option chain.
   const navigation = fixtureMode
     ? [
-        [route("/options"), t("eastboard.nav.chain")],
-        [route("/positions"), t("eastboard.nav.positions")],
-        ["/faucet", t("eastboard.nav.faucet")],
+        [route("/eastboard/options"), t("eastboard.nav.chain")],
+        [route("/eastboard/positions"), t("eastboard.nav.positions")],
+        ["/eastboard/faucet", t("eastboard.nav.faucet")],
       ]
     : [
-        ["/options", t("eastboard.nav.chain")],
-        ["/markets", t("eastboard.nav.markets")],
-        ["/launchpad", t("eastboard.nav.launch")],
-        ["/portfolio", t("eastboard.nav.portfolio")],
-        ["/faucet", t("eastboard.nav.faucet")],
+        ["/eastboard/options", t("eastboard.nav.chain")],
+        ["/eastboard/markets", t("eastboard.nav.markets")],
+        ["/eastboard/launchpad", t("eastboard.nav.launch")],
+        ["/eastboard/portfolio", t("eastboard.nav.portfolio")],
+        ["/eastboard/faucet", t("eastboard.nav.faucet")],
       ];
 
   return (
@@ -37,7 +37,7 @@ export function EastboardHeader() {
       <div className="mx-auto flex h-[72px] w-full max-w-[1480px] items-center justify-between gap-4 px-4 md:px-7 lg:px-10">
         <div className="flex min-w-0 items-center gap-7">
           <NavLink
-            to={route("/options")}
+            to={route("/eastboard/options")}
             className="group flex items-center gap-3"
           >
             <img

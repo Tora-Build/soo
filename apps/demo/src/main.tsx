@@ -127,16 +127,64 @@ function Root() {
                         path="/"
                         element={<Navigate to="/play" replace />}
                       />
-                      <Route element={<EastboardLayout />}>
-                        <Route path="/options" element={<OptionsChain />} />
+                      {/* Eastboard lives in its own namespace so its route
+                          names never collide with the arena's. Nothing in
+                          the game links here; it is reachable only by
+                          typing /eastboard. */}
+                      <Route path="/eastboard" element={<EastboardLayout />}>
+                        <Route index element={<OptionsChain />} />
+                        <Route path="options" element={<OptionsChain />} />
                         <Route
-                          path="/positions"
+                          path="positions"
                           element={<EastboardPortfolio />}
                         />
-                        {/* The whole Solana surface wears the Eastboard
-                            shell — same design system underneath, one
-                            header, one banner, one app. */}
-                        <Route path="/markets" element={<Markets />} />
+                        <Route path="markets" element={<Markets />} />
+                        <Route path="amm" element={<AMM />} />
+                        <Route path="amm/:marketAddress" element={<AMM />} />
+                        <Route path="orderbook" element={<Orderbook />} />
+                        <Route
+                          path="orderbook/:marketAddress"
+                          element={<Orderbook />}
+                        />
+                        <Route path="create" element={<Launchpad />} />
+                        <Route path="launchpad" element={<Launchpad />} />
+                        <Route path="portfolio" element={<Portfolio />} />
+                        <Route path="faucet" element={<Faucet />} />
+                        <Route path="liquidity" element={<Liquidity />} />
+                      </Route>
+                      {/* Legacy paths land in the arena — shared components
+                          still link the old names, and every visitor should
+                          end up in the game. */}
+                      <Route
+                        path="/options"
+                        element={<Navigate to="/play" replace />}
+                      />
+                      <Route
+                        path="/markets"
+                        element={<Navigate to="/explore" replace />}
+                      />
+                      <Route
+                        path="/faucet"
+                        element={<Navigate to="/power" replace />}
+                      />
+                      <Route
+                        path="/portfolio"
+                        element={<Navigate to="/locker" replace />}
+                      />
+                      <Route
+                        path="/liquidity"
+                        element={<Navigate to="/vault" replace />}
+                      />
+                      <Route
+                        path="/create"
+                        element={<Navigate to="/forge" replace />}
+                      />
+                      <Route
+                        path="/launchpad"
+                        element={<Navigate to="/forge" replace />}
+                      />
+                      <Route path="/__check" element={<HealthCheckPage />} />
+                      <Route element={<AppLayout />}>
                         <Route path="/amm" element={<AMM />} />
                         <Route path="/amm/:marketAddress" element={<AMM />} />
                         <Route path="/orderbook" element={<Orderbook />} />
@@ -144,14 +192,6 @@ function Root() {
                           path="/orderbook/:marketAddress"
                           element={<Orderbook />}
                         />
-                        <Route path="/create" element={<Launchpad />} />
-                        <Route path="/launchpad" element={<Launchpad />} />
-                        <Route path="/portfolio" element={<Portfolio />} />
-                        <Route path="/faucet" element={<Faucet />} />
-                        <Route path="/liquidity" element={<Liquidity />} />
-                      </Route>
-                      <Route path="/__check" element={<HealthCheckPage />} />
-                      <Route element={<AppLayout />}>
                         <Route path="/learn" element={<Learn />} />
                         <Route path="/operator" element={<Operator />} />
                         <Route path="/play" element={<ArenaPlay />} />

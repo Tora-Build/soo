@@ -1363,7 +1363,7 @@ export const SimpleTradingPanel = ({
               <AlertCircle className="w-4 h-4 shrink-0 text-accent" />
               <span className="text-muted flex-1">Insufficient balance.</span>
               <a
-                href="/faucet"
+                href="/power"
                 className="font-mono text-[10px] uppercase tracking-[0.12em] text-accent hover:underline shrink-0"
               >
                 {/* Both venues share the same mock USDC mint, so the
@@ -1429,7 +1429,7 @@ export const SimpleTradingPanel = ({
               {tokenSymbols.amm}
             </span>
             <a
-              href="/faucet"
+              href="/power"
               className="text-xs text-muted hover:text-accent transition-colors inline-flex items-center gap-1"
             >
               {t("trading.needTestUsdc")}

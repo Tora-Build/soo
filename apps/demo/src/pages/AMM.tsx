@@ -11,7 +11,7 @@ import { AMMPageBody } from "../components/features/market/AMMPageBody";
 export const AMM = () => {
   const { marketAddress } = useParams<{ marketAddress?: string }>();
   if (!marketAddress) {
-    return <Navigate to="/markets" replace />;
+    return <Navigate to="/explore" replace />;
   }
   return <AMMPageBody marketAddress={marketAddress} />;
 };
