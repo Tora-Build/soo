@@ -6,5 +6,5 @@ compatibility_date = "2026-08-01"
 binding = "ARENA_DB"
 database_name = "soo-arena"
 # Paste the id printed by `wrangler d1 create soo-arena` here:
-database_id = "REPLACE_WITH_DATABASE_ID"
+database_id = "dd258f45-d132-4f03-9cab-0e0f59f93200"
 migrations_dir = "migrations"
