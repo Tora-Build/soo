@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,15 +14,33 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig(({ command }) => {
-  // Refuse to build with VITE_TEST_MODE=true. The LocalKeypairAdapter signs
-  // with a Keypair from VITE_TEST_KEYPAIR_BYTES — under no circumstances
-  // should it ship in a production bundle. Dev (`vite`) is fine; only
-  // `vite build` is gated.
-  if (command === "build" && process.env.VITE_TEST_MODE === "true") {
-    throw new Error(
-      "Refusing to build with VITE_TEST_MODE=true. The LocalKeypairAdapter must NEVER ship in a production bundle.",
-    );
+export default defineConfig(({ command, mode }) => {
+  // Refuse to bake secrets into a production bundle. Vite inlines every
+  // VITE_-prefixed var it loads — including from .env.local, which
+  // process.env never sees — so the gate must read the same resolved env
+  // the build will bake. VITE_TEST_KEYPAIR_BYTES and
+  // VITE_TEST_AUTHORITY_BYTES are secret keys for funded devnet wallets;
+  // a bundle containing them publishes those wallets. Build with the vars
+  // overridden empty in the shell (shell env wins over .env files):
+  //   VITE_TEST_MODE=false VITE_TEST_KEYPAIR_BYTES= VITE_TEST_AUTHORITY_BYTES= pnpm build
+  // VITE_TEST_MINT_AUTHORITY_BYTES is deliberately NOT gated: it is the
+  // faucet's mint key for the valueless devnet mock token, and minting
+  // freely is the faucet's entire purpose.
+  if (command === "build") {
+    const env = loadEnv(mode, __dirname, "VITE_");
+    const resolved = { ...env, ...process.env };
+    if (resolved.VITE_TEST_MODE === "true") {
+      throw new Error(
+        "Refusing to build with VITE_TEST_MODE=true. The LocalKeypairAdapter must NEVER ship in a production bundle.",
+      );
+    }
+    for (const k of ["VITE_TEST_KEYPAIR_BYTES", "VITE_TEST_AUTHORITY_BYTES"]) {
+      if (resolved[k]) {
+        throw new Error(
+          `Refusing to build with ${k} set — it is a wallet secret key and would be baked into the public bundle. Override it empty: ${k}= pnpm build`,
+        );
+      }
+    }
   }
   return {
     plugins: [react()],
