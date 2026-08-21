@@ -8,23 +8,16 @@ import {
 } from "react";
 import { formatUnits } from "@/lib/chain-shim";
 import {
-  Activity,
-  Calculator,
   Database,
   Info,
   LineChart,
-  RefreshCw,
   SlidersHorizontal,
-  WalletCards,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useVisibleMarkets } from "../hooks";
-import { useChainStore } from "../store/useChainStore";
-import { useLpBacktestData } from "../hooks/useLpBacktestData";
 import {
   calculateCreatorDeposit,
-  runLpBacktest,
   runLpForecast,
   type LpForecastAssumptions,
   type LpForecastPoint,
@@ -70,11 +63,6 @@ const DEFAULT_FORM: ForecastFormState = {
 };
 
 export function LPForecast() {
-  const { selectedChainId } = useChainStore();
-  const chainId =
-    typeof selectedChainId === "number"
-      ? selectedChainId
-      : Number(selectedChainId);
   const { markets, isLoading: marketsLoading } = useVisibleMarkets();
   const [selectedAddress, setSelectedAddress] = useState<
     `0x${string}` | undefined
@@ -125,18 +113,9 @@ export function LPForecast() {
     forecast.scenarios.find((scenario) => scenario.id === selectedScenarioId) ??
     forecast.scenarios[1];
 
-  const backtestData = useLpBacktestData(
-    Number.isFinite(chainId) ? chainId : undefined,
-    selectedAddress,
-  );
-  const backtest = useMemo(() => {
-    if (backtestData.activities.length === 0) return null;
-    return runLpBacktest(backtestData.activities, assumptions);
-  }, [assumptions, backtestData.activities]);
-
   const series = useMemo(
-    () => buildChartSeries(chartMode, forecast.scenarios, backtest?.actual.points),
-    [backtest?.actual.points, chartMode, forecast.scenarios],
+    () => buildChartSeries(chartMode, forecast.scenarios),
+    [chartMode, forecast.scenarios],
   );
 
   const creatorDeposit = calculateCreatorDeposit(
@@ -157,9 +136,7 @@ export function LPForecast() {
             </h1>
             <p className="mt-3 text-body text-muted">
               Model creator deposits, Soo fees, LP dilution, inventory
-              exposure, drawdowns, and ending P&L. Observed backtests replay
-              indexer AMM trades and orderbook fills separately from the
-              modeled assumptions.
+              exposure, drawdowns, and ending P&L.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-px bg-rule text-small lg:w-[420px]">
@@ -167,10 +144,6 @@ export function LPForecast() {
             <StatTile
               label="Selected market"
               value={selectedMarket ? shortLabel(selectedMarket.question) : "None"}
-            />
-            <StatTile
-              label="Observed events"
-              value={String(backtestData.activityCount)}
             />
             <StatTile
               label="Model horizon"
@@ -352,8 +325,7 @@ export function LPForecast() {
           <Panel eyebrow="Explain" title="Transparent math" icon={Info}>
             <div className="space-y-3 text-small text-muted">
               <p>
-                The model keeps assumptions separate from observed trades. It
-                estimates creator capital using the Soo launch formula, then
+                The model estimates creator capital using the Soo launch formula, then
                 allocates pre-graduation fees to liquidity growth and
                 post-graduation fees across b growth and LP yield.
               </p>
@@ -415,92 +387,6 @@ export function LPForecast() {
               <ForecastChart mode={chartMode} series={series} />
             </div>
           </Panel>
-
-          <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <Panel
-              eyebrow="Observed"
-              title="Historical LP replay"
-              icon={Activity}
-            >
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="max-w-2xl text-small text-muted">
-                  <p>
-                    Backtest mode replays observed AMM trades and orderbook
-                    fills from the indexer. AMM trades update inventory
-                    exposure; orderbook fills add post-graduation trading
-                    volume and fee yield.
-                  </p>
-                  {!backtestData.isEnabled && (
-                    <p className="mt-2 text-warn">
-                      Indexer reads are disabled by VITE_USE_INDEXER=false.
-                    </p>
-                  )}
-                  {backtestData.isError && (
-                    <p className="mt-2 text-neg">
-                      Could not load observed activity for this market.
-                    </p>
-                  )}
-                  {!backtestData.isLoading &&
-                    backtestData.activityCount === 0 &&
-                    backtestData.isEnabled && (
-                      <p className="mt-2 text-faint">
-                        No indexed activity is available yet; the forecast
-                        still works from modeled assumptions.
-                      </p>
-                    )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void backtestData.refetch()}
-                  className="btn btn-secondary h-9 px-3"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Refresh
-                </button>
-              </div>
-
-              {backtest ? (
-                <div className="mt-5 grid grid-cols-2 gap-px bg-rule md:grid-cols-4">
-                  <StatTile
-                    label="Actual volume"
-                    value={formatUsd(backtest.actual.metrics.totalVolume)}
-                  />
-                  <StatTile
-                    label="Actual fees"
-                    value={formatUsd(backtest.actual.metrics.totalFees)}
-                  />
-                  <StatTile
-                    label="Actual max exposure"
-                    value={formatUsd(backtest.actual.metrics.maxInventoryExposure)}
-                  />
-                  <StatTile
-                    label="Actual P&L"
-                    value={formatSignedUsd(backtest.actual.metrics.finalPnl)}
-                    tone={backtest.actual.metrics.finalPnl >= 0 ? "pos" : "neg"}
-                  />
-                </div>
-              ) : (
-                <div className="mt-5 border border-rule p-6 text-center text-small text-faint">
-                  Observed replay will appear here once this market has indexed
-                  AMM trades or SooBook fills.
-                </div>
-              )}
-            </Panel>
-
-            <Panel eyebrow="Compare" title="Forecast vs actual" icon={Calculator}>
-              {backtest ? (
-                <ComparisonTable backtest={backtest} />
-              ) : (
-                <div className="flex min-h-[220px] flex-col justify-center gap-3 text-small text-muted">
-                  <WalletCards className="h-7 w-7 text-faint" />
-                  <p>
-                    Select a market with historical activity to compare the
-                    expected scenario against realized LP performance.
-                  </p>
-                </div>
-              )}
-            </Panel>
-          </section>
 
           <Panel eyebrow="Audit trail" title="Scenario cashflow checkpoints">
             <div className="overflow-x-auto">
@@ -767,48 +653,6 @@ function ForecastChart({
   );
 }
 
-function ComparisonTable({
-  backtest,
-}: {
-  backtest: NonNullable<ReturnType<typeof runLpBacktest>>;
-}) {
-  const rows = [
-    ["Volume", backtest.comparison.totalVolumeDelta],
-    ["Fees", backtest.comparison.totalFeesDelta],
-    ["LP fee income", backtest.comparison.feeIncomeDelta],
-    ["Max exposure", backtest.comparison.maxExposureDelta],
-    ["Final P&L", backtest.comparison.finalPnlDelta],
-  ] as const;
-
-  return (
-    <div className="space-y-3">
-      {rows.map(([label, value]) => (
-        <div key={label} className="border-b border-subtle pb-3">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-small text-muted">{label}</span>
-            <span
-              className={cn(
-                "font-mono text-small",
-                value >= 0 ? "text-pos" : "text-neg",
-              )}
-            >
-              {formatSignedUsd(value)}
-            </span>
-          </div>
-          <div className="mt-2 h-1 bg-inset">
-            <div
-              className={cn("h-full", value >= 0 ? "bg-pos" : "bg-neg")}
-              style={{
-                width: `${Math.min(100, Math.max(6, Math.abs(value) / 250))}%`,
-              }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function buildAssumptions(
   form: ForecastFormState,
   marketName?: string,
@@ -859,12 +703,9 @@ function buildAssumptions(
   };
 }
 
-function buildChartSeries(
-  mode: ChartMode,
-  scenarios: LpScenarioResult[],
-  actualPoints?: LpForecastPoint[],
-) {
-  const forecastSeries = scenarios.map((scenario) => ({
+
+function buildChartSeries(mode: ChartMode, scenarios: LpScenarioResult[]) {
+  return scenarios.map((scenario) => ({
     label: scenario.label,
     values: scenario.points.map((point) => chartValue(mode, point)),
     color:
@@ -874,17 +715,6 @@ function buildChartSeries(
           ? "var(--pos)"
           : "var(--accent)",
   }));
-
-  if (!actualPoints?.length) return forecastSeries;
-  return [
-    ...forecastSeries,
-    {
-      label: "Actual",
-      values: actualPoints.map((point) => chartValue(mode, point)),
-      color: "var(--text)",
-      dashed: true,
-    },
-  ];
 }
 
 function chartValue(mode: ChartMode, point: LpForecastPoint): number {

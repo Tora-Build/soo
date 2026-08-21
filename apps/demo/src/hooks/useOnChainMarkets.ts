@@ -44,7 +44,7 @@ export interface OnChainMarket {
 /**
  * Hook to fetch all markets from LaunchpadEngine on-chain
  *
- * This replaces the static markets.json config with dynamic on-chain discovery.
+ * Markets are discovered on chain; there is no static market list.
  * Markets are fetched from LaunchpadEngine.getMarkets() and enriched with
  * metadata from the markets mapping.
  */
@@ -61,7 +61,6 @@ export function useOnChainMarkets() {
   const launchpadEngineAddress = deployments?.contracts?.LaunchpadEngine as
     | Address
     | undefined;
-  const startBlock = BigInt((deployments?.config as any)?.startBlock ?? 0);
 
   const query = useDirectRead({
     queryKey: ["v10", "onChainMarkets", chainId, launchpadEngineAddress],
@@ -87,54 +86,6 @@ export function useOnChainMarkets() {
 
       if (!marketAddresses || marketAddresses.length === 0) {
         return [];
-      }
-
-      // Fetch market questions from the indexer (1 HTTP call) instead of
-      // scanning event logs (which hits RPC block-range limits on HyperEVM).
-      // Falls back to empty map if indexer is unavailable — markets will
-      // show address-based symbols until the next refetch.
-      const indexerMarketMap = new Map<
-        string,
-        { name?: string; createdAt?: bigint; deadline?: number }
-      >();
-      try {
-        const indexerUrl =
-          import.meta.env.VITE_INDEXER_URL ||
-          "https://sooth-indexer.onrender.com";
-        const resp = await fetch(`${indexerUrl}/launchpad-markets/${chainId}`);
-        if (resp.ok) {
-          const markets = (await resp.json()) as {
-            address: string;
-            name: string;
-            createdAt?: string | number | null;
-            deadline?: string | number | null;
-          }[];
-          for (const m of markets) {
-            if (m.address) {
-              const createdAt =
-                typeof m.createdAt === "string" && /^\d+$/.test(m.createdAt)
-                  ? BigInt(m.createdAt)
-                  : typeof m.createdAt === "number" &&
-                      Number.isFinite(m.createdAt)
-                    ? BigInt(Math.floor(m.createdAt))
-                    : 0n;
-              const deadline =
-                typeof m.deadline === "string" && /^\d+$/.test(m.deadline)
-                  ? Number(m.deadline)
-                  : typeof m.deadline === "number" &&
-                      Number.isFinite(m.deadline)
-                    ? m.deadline
-                    : undefined;
-              indexerMarketMap.set(m.address.toLowerCase(), {
-                name: m.name,
-                createdAt,
-                deadline,
-              });
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("[useOnChainMarkets] indexer fetch failed:", e);
       }
 
       // Process markets in chunks to avoid 429 rate limiting
@@ -184,7 +135,7 @@ export function useOnChainMarkets() {
                   // Per-market trial deadline. Markets pre-trial-cap-change
                   // may have a larger stored value than the current
                   // defaultTrialPeriod — that's intentional (contract
-                  // stores per-market, see knowledge.md Trial Period).
+                  // stores per-market).
                   readContractSafe<bigint>(client, {
                     address: launchpadEngineAddress!,
                     abi: ABIS.LaunchpadEngine,
@@ -197,24 +148,13 @@ export function useOnChainMarkets() {
 
               const [creator, lpToken, bBase, creatorDeposit] = marketsMapping;
 
-              const indexerMarket = indexerMarketMap.get(
-                marketAddress.toLowerCase(),
-              );
               const symbol = shortenAddress(marketAddress);
 
-              // Fetch question, isSettled, isFinalized, and trial state in parallel
-              // Order matters. The indexer is authoritative when present but
-              // is off by default here; the local store then covers markets
-              // this browser created; `symbol` (a shortened address) is the
-              // last resort and is what every market showed before.
-              // Order matters. The indexer is authoritative when present but
-              // is off by default here; the local store then covers markets
-              // this browser created; `symbol` (a shortened address) is the
-              // last resort and is what every market showed before.
-              let question =
-                indexerMarket?.name ||
-                lookupMarketQuestion(marketAddress) ||
-                symbol;
+              // Order matters. The local store covers markets this browser
+              // created; `symbol` (a shortened address) is the last resort,
+              // replaced below by the question read off the creation
+              // transaction when one can be recovered.
+              let question = lookupMarketQuestion(marketAddress) || symbol;
 
               // Still nameless? Recover it from the creation transaction —
               // the `MarketCreated` event is the only on-chain copy, and this
@@ -238,19 +178,13 @@ export function useOnChainMarkets() {
               }
               let isSettled = false;
               let isFinalized = false;
-              const isDismissed = false; // dismiss removed in v0.1.2
+              // `dismiss_market` is not read here; the moderation surface
+              // owns market visibility.
+              const isDismissed = false;
               let winningOutcome: number | null = null;
 
               try {
-                // Look up question from the pre-fetched batch map
-                const questionFromLog = indexerMarket?.name ?? null;
-
-                const [qHash, settled, winOutcome] = await Promise.all([
-                  readContractSafe<string>(client, {
-                    address: marketAddress as Address,
-                    abi: ABIS.TruthMarket,
-                    functionName: "questionHash",
-                  }).catch(() => null),
+                const [settled, winOutcome] = await Promise.all([
                   readContractSafe<boolean>(client, {
                     address: marketAddress as Address,
                     abi: ABIS.TruthMarket,
@@ -263,14 +197,9 @@ export function useOnChainMarkets() {
                   }).catch(() => null),
                 ]);
 
-                if (questionFromLog) question = questionFromLog;
-                // Drop the qHash truncation fallback — it rendered a
-                // 0x-prefixed sliced hash that looked like a market address
-                // and confused users on fresh markets where the staging
-                // indexer hadn't backfilled yet (HE in particular at
-                // ethGetLogsBlockRange:5). Leaving `question` as the
-                // shortened address is the lesser evil; AMMPageBody can
-                // render its own loading placeholder when name === symbol.
+                // A market whose question cannot be recovered keeps its
+                // shortened address as the name; AMMPageBody renders its own
+                // placeholder when name === symbol.
                 isSettled = settled ?? false;
                 isFinalized = isSettled;
                 if (isSettled && winOutcome !== null) {
@@ -322,8 +251,8 @@ export function useOnChainMarkets() {
                 isFinalized,
                 isDismissed,
                 winningOutcome,
-                createdAt: indexerMarket?.createdAt ?? 0n,
-                deadline: indexerMarket?.deadline,
+                createdAt: 0n,
+                deadline: undefined,
                 trialEndTime: trialEndTimeRaw
                   ? Number(trialEndTimeRaw)
                   : undefined,

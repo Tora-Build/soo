@@ -69,7 +69,7 @@ afterEach(() => {
   cleanup();
 });
 
-test("Portfolio renders the user's AMM position from bankrun", async () => {
+test("Portfolio renders the user's AMM position from LiteSVM", async () => {
   const t0 = Date.now();
   const smoke = await bootSmoke({
     bWad: 1_000n * WAD,
@@ -79,7 +79,7 @@ test("Portfolio renders the user's AMM position from bankrun", async () => {
   const conn = new LiteSvmConnection(smoke.ctx);
   const adapter = new SolanaChainAdapter({
     node: {
-      id: "demo-bankrun",
+      id: "demo-litesvm",
       chainKind: "solana",
       chainId: "test",
       rpcUrl: "http://localhost:8899",

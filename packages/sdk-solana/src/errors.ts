@@ -1,14 +1,11 @@
-// Tagged-union error class. Mirrors the `SoothError` taxonomy from the
-// integrator contract (`docs/integrator-contract.md §3` "SoothError variants").
+// Tagged-union error class, per the integrator contract
+// (`docs/integrator-contract.md §3` "SoothError variants").
 //
-// We don't implement the full taxonomy yet — only the kinds the AMM buy path
-// raises plus a `NotImplemented` escape hatch for stubs. The shape is
-// deliberately loose so additional variants can be added without breaking
-// existing throw sites.
-//
-// When `@sooth/sdk@0.3.0` ships its canonical `SoothError`, the adapter
-// re-uses it; the swap is mechanical because the variants below are a strict
-// subset of the upstream union.
+// `kind` is what a caller branches on, and it is the stable part: every
+// program error whose ordinal is not specifically mapped arrives as
+// `ProgramError` carrying the program's own message, so an unmapped failure is
+// still readable and adding a mapping later does not break existing branches.
+// Variant-specific fields are all optional for the same reason.
 
 import type { MarketRef } from "./types.js";
 

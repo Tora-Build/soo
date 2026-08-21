@@ -12,10 +12,9 @@
 //! ```
 //!
 //! The account is loaded by **casting the bytes in place**, never by
-//! deserializing. That is the whole point: a borsh `Vec<Order>` is what forces
-//! the current book to heap-allocate the entire price level on every touch, and
-//! is why every instruction in the program has to prepend a 256 KB heap frame.
-//! Casting costs nothing and allocates nothing.
+//! deserializing. A borsh `Vec<Order>` would heap-allocate an entire price
+//! level on every touch; casting costs nothing and allocates nothing, which is
+//! what keeps a fill's marginal cost in the hundreds of CU.
 //!
 //! ## Alignment
 //!
@@ -36,8 +35,8 @@
 //! The arena grows by `realloc`, which Solana caps at
 //! [`MAX_PERMITTED_DATA_INCREASE`] (10,240 bytes) **per instruction**, measured
 //! from the account's length at instruction entry. That is 160 blocks at 64
-//! bytes, so a book can go from empty to the 256-order cap in two instructions.
-//! [`grow_target`] never returns a step larger than the cap.
+//! bytes per call, so reaching [`MAX_ORDERS`] from empty takes several
+//! instructions. [`grow_target`] never returns a step larger than the cap.
 
 use super::arena::{Book, BookHeader, OrderNode, BLOCK_SIZE, MAX_ORDERS};
 
@@ -349,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    fn a_full_book_fits_the_rent_budget_in_the_design_doc() {
+    fn a_full_book_fits_the_rent_budget() {
         let full = book_space(MAX_ORDERS as usize);
         // (128 + bytes) * 6960 lamports.
         let lamports = (128 + full) as u64 * 6960;
@@ -361,14 +360,16 @@ mod tests {
             "a full {MAX_ORDERS}-block book should stay under 2.5 SOL, got {sol}"
         );
 
-        // The comparison that motivates the rewrite: 10 orders in ONE account
-        // against today's 19 accounts for the same book.
+        // The property that justifies one account per market: 10 orders here
+        // cost less than half of the same book split over the 19 accounts a
+        // PDA-per-(side, tick) layout would need, because rent charges a
+        // 128-byte surcharge per ACCOUNT.
         let ten = (128 + book_space(10)) as u64 * 6960;
-        let today = 19 * 128 * 6960 + 2_640 * 6960;
+        let split_across_accounts = 19 * 128 * 6960 + 2_640 * 6960;
         assert!(
-            ten * 2 < today,
-            "10 orders in one account should cost less than half of today's \\
-             19-account layout: {ten} vs {today}"
+            ten * 2 < split_across_accounts,
+            "10 orders in one account should cost less than half of a \\
+             19-account layout: {ten} vs {split_across_accounts}"
         );
     }
 }

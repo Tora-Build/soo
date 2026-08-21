@@ -15,11 +15,12 @@
 //!
 //! So the Market account stays alive as a TOMBSTONE: shrunk to 8 bytes,
 //! discriminator overwritten with a marker that is not any Anchor account's,
-//! rent above the 8-byte minimum refunded. `create_market`'s `init` fails on
-//! it (the account exists), and every other instruction that loads
-//! `Account<Market>` fails its discriminator check — the tombstone poisons
-//! the whole id, which is exactly the point. Cost: ~0.001 SOL per market
-//! stays locked forever, out of ~0.017 reclaimed.
+//! rent above the 8-byte minimum refunded. `create_market` allocates the Market
+//! PDA with a system `create_account`, which fails on an account that already
+//! holds lamports, and every other instruction that loads `Account<Market>`
+//! fails its discriminator check — the tombstone poisons the whole id, which is
+//! exactly the point. Cost: ~0.001 SOL per market stays locked forever, out of
+//! ~0.017 reclaimed.
 //!
 //! ## Why the preconditions are balances, not time
 //!

@@ -1,11 +1,10 @@
 // The chain-shim's `getOrdersAtTick` read path.
 //
-// This used to return `[0n, []]` unconditionally, so the demo's depth panel
-// always said "no liquidity". Not a bug so much as a surrender: the legacy book
-// stores one account per price level, and enumerating them meant 999 RPC round
-// trips per side.
+// Enumerating a per-price-level book would mean 999 RPC round trips per side,
+// which is why upstream's shim answers `[0n, []]` and the depth panel reads
+// "no liquidity".
 //
-// The redesigned book is a single account, so the whole ladder comes from one
+// This book is a single account, so the whole ladder comes from one
 // `getAccountInfo`. `useOrderbook` still issues 999 of these through its
 // multicall loop, but every one after the first is served from a short cache of
 // that single fetch.

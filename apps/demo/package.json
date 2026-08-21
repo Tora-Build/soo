@@ -3,15 +3,19 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Faithful Solana fork of sooth-alpha/apps/demo — TDD harness for @sooth/sdk-solana",
+  "description": "Faithful Solana fork of sooth-alpha/apps/demo \u2014 TDD harness for @sooth/sdk-solana",
   "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",
     "dev:localnet": "bash scripts/dev-localnet.sh",
     "dev:surfpool": "bash scripts/dev-surfpool.sh",
+    "localnet:up": "bash scripts/localnet-up.sh",
+    "localnet:down": "bash scripts/localnet-down.sh",
     "cheats": "bash scripts/surfnet-cheats.sh",
     "seed:prepare": "node scripts/seed-localnet.mjs prepare",
     "seed:init": "node scripts/seed-localnet.mjs init",
+    "seed:fixture": "bash scripts/seed-fixture.sh",
+    "snapshot:season": "node scripts/snapshot-season.mjs",
     "build": "tsc -p tsconfig.build.json && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.test.json --noEmit && tsc -p tsconfig.e2e.json",
@@ -26,7 +30,6 @@
     "@solana/wallet-adapter-base": "^0.9.23",
     "@solana/wallet-adapter-react": "^0.15.35",
     "@solana/wallet-adapter-react-ui": "^0.9.35",
-    "@solana/wallet-adapter-wallets": "^0.19.32",
     "@solana/web3.js": "^1.98.0",
     "@sooth/sdk-solana": "workspace:*",
     "@tanstack/react-query": "^5.51.11",
@@ -57,13 +60,11 @@
     "autoprefixer": "^10.4.20",
     "happy-dom": "^15.7.4",
     "postcss": "^8.4.41",
-    "solana-bankrun": "^0.4.0",
     "tailwindcss": "^3.4.10",
     "tweetnacl": "^1.0.3",
     "typescript": "^5.5.4",
     "vite": "^5.4.6",
-    "vitest": "^2.0.5",
-    "wrangler": "^4.125.0"
+    "vitest": "^2.0.5"
   },
   "engines": {
     "node": ">=20"

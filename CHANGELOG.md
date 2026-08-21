@@ -21,8 +21,17 @@ and this project adheres to semantic versioning once tags are cut.
   pays out AMM positions.
 - Per-market `lp_yield_amm` and `lp_yield_book` vaults, with
   `distribute_fees_amm` / `distribute_fees_book` as separate cranks.
-- `apps/demo` gains two surfaces: the Eastboard shell at `/options`, wrapping
-  the classic pages, and the Arena play deck at `/play`.
+- `apps/demo` gains two surfaces: the Arena play deck at `/play` (with
+  `/vault /forge /locker /power /explore`) and the Eastboard option-chain shell
+  under `/eastboard/*`.
+- zkTLS adjudication: `register_zk_adjudicator` binds a market to a secp256k1
+  attestor with a comparator and threshold, and `attest_outcome_zk` verifies a
+  Primus-shaped attestation on chain.
+- `infra/`: `rpc-proxy` (Cloudflare Worker fronting the RPC provider key),
+  `arena-api` (Worker + D1 serving the arena's profile, leaderboard and social
+  calls), and `zk-resolver` (a Node service that watches markets and submits
+  `attest_outcome_zk`).
+- `packages/sooth-data`: an account/event indexer over `sooth_core`.
 
 ### Changed
 
@@ -50,16 +59,6 @@ and this project adheres to semantic versioning once tags are cut.
   outcome tokens.
 
 ---
-
-> `apps/pulse`, a standalone shim-free frontend, also sat here unreleased. It was
-> dropped in favour of the two surfaces `apps/demo` now carries, so it has no
-> entry above.
-
-> The Monaco-fork line of work (vendored Monaco Protocol as `sooth_book`, the
-> sportsbook strip-down, the probability-WAD price ladder, and the cross-program
-> book/market wiring) sat here unreleased between 0.3.0 and this entry. It was
-> superseded by the direct book redesign above and deleted, so its entries are
-> not carried forward.
 
 ## [0.3.0] - 2026-05-08
 

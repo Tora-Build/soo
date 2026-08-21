@@ -5,7 +5,7 @@ import { useDeployments } from './useDeployments';
 import { useChainStore } from '../store/useChainStore';
 
 /**
- * Hook to fetch user's AMM position (YES and NO shares) for a specific market (V9 Architecture).
+ * Hook to fetch user's AMM position (YES and NO shares) for a specific market.
  */
 export function useAMMPositionDirect(marketAddress?: `0x${string}`) {
   const { address: userAddress } = useAccount();

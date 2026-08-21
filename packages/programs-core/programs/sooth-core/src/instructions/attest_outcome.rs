@@ -18,11 +18,8 @@ use anchor_lang::prelude::*;
 
 use crate::error::SoothCoreError;
 use crate::events::OutcomeAttested;
+use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
 use crate::state::{AdjudicatorEntry, Market, MarketLifecycle, ADJUDICATOR_ENTRY_SEED};
-
-const OUTCOME_NO: u8 = 0;
-const OUTCOME_YES: u8 = 1;
-const OUTCOME_INVALID: u8 = 2;
 
 #[derive(Accounts)]
 pub struct AttestOutcome<'info> {

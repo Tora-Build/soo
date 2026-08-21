@@ -17,10 +17,10 @@
 // ## Versioning
 //
 // Every book event carries a `version` byte as its FIRST field, and this
-// decoder REJECTS an unknown version rather than guessing. The legacy
-// `OrdersFilled` has no version, and both failure modes are live: adding one
-// field 500s the endpoint, and renaming the event yields an empty list with
-// HTTP 200 — silent data loss.
+// decoder REJECTS an unknown version rather than guessing. Guessing has two
+// failure modes and both are silent-ish: a field added mid-body shifts every
+// field after it, and a renamed event yields an empty list under HTTP 200 —
+// data loss that looks like an idle market.
 
 import { decodeBase58 } from "./base58.js";
 import { PROGRAM_IDS } from "./config.js";
@@ -46,7 +46,8 @@ export const BOOK_ORDER_CANCELLED_DISCRIMINATOR = Uint8Array.from([
 
 /** One share, in USDC base units — the unit the book speaks. */
 export const ONE_SHARE_BASE = 1_000_000n;
-/** Base units → WAD, so book amounts are comparable with legacy ones. */
+/** Base units → WAD. The served `IndexedFill.amount` is WAD; the wire is
+ *  6-decimal base units. */
 export const BASE_TO_WAD = 1_000_000_000_000n;
 
 export type BookFillRecord = {
@@ -311,10 +312,8 @@ function accountKeyAt(tx: TxLike, index: number): string | null {
  * Every book event in a transaction's inner instructions.
  *
  * Filtered on the emitting program, which for a self-CPI is `sooth_core`
- * itself. Note the authenticity story is weaker than the legacy path's
- * `isBuyParent` check and does not need to be stronger: these events are
- * emitted by the program under its own id, so a forgery would require the
- * program to emit it.
+ * itself. That filter IS the authenticity check: only the program can sign a
+ * CPI under its own id, so anyone else's inner instruction cannot pass it.
  */
 export function decodeBookEventsFromTransaction(
   tx: unknown,

@@ -3,14 +3,14 @@
 // Drives the full Launchpad form: question, expiration, adjudicator,
 // initial-liquidity slider (default 693 USDC), then LAUNCH. The
 // chain-shim's `dispatchCreateMarket` routes to
-// `sooth_launchpad::create_market` (composes 4 inner CPIs); on success
+// `sooth_core::create_market` (composes 4 inner CPIs); on success
 // it stashes the new Market PDA at `globalThis.__lastCreatedMarketPda`
 // because the EVM-shaped Hash return type can't carry the address
 // otherwise (event-log decoding upstream is EVM-only).
 //
 // Verifications:
 //   - globalThis.__lastCreatedMarketPda gets set within 30s.
-//   - Market PDA exists on-chain, owned by sooth_market, lifecycle=Open.
+//   - Market PDA exists on-chain, owned by sooth_core, lifecycle=Open.
 
 import { test, expect } from "@playwright/test";
 import { PublicKey } from "@solana/web3.js";
@@ -76,7 +76,7 @@ test.describe("create-market (UI-driven via /launchpad)", () => {
     const newMarketPda = new PublicKey(newMarketPdaStr);
 
     // On-chain assertions: the Market account exists, owned by
-    // sooth_market, lifecycle = Open (1).
+    // sooth_core, lifecycle = Open (1).
     // The chain-shim stashes the PDA *before* tx confirmation so the
     // dapp UX can navigate immediately. Poll until the on-chain account
     // materializes (typical Surfpool latency is sub-second).

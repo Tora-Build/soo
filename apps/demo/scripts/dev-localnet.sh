@@ -14,9 +14,8 @@
 #   6. Boots vite on the demo's configured port (foreground).
 #   7. On Ctrl-C, kills the validator we started.
 #
-# Does NOT touch the user's running vite at PID 57333 — see the
-# `Constraints` section of the task brief. We use vite's `--port` flag to
-# pick a different port if 5175 is taken.
+# vite's `--port` flag picks a different port if the configured one is taken,
+# so an unrelated dev server already running is left alone.
 #
 # Safety: only kills processes from the PID file we wrote (no broad pkill).
 
@@ -35,10 +34,9 @@ USDC_DUMP="$LOCALNET_DIR/usdc-mint-account.json"
 
 USDC_MINT_ADDR="ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
 
-# ONE program: sooth_core. sooth_log was removed — `buy` emits its durable
-# OrdersFilled record by self-CPI (Anchor's emit_cpi!) rather than invoking a
-# second program. Solana permits direct self recursion, so the second program
-# was never necessary.
+# ONE program: sooth_core. `buy` emits its durable OrdersFilled record by
+# self-CPI (Anchor's emit_cpi!); Solana permits direct self recursion, so no
+# second program is needed.
 CORE_SO="$REPO_ROOT/target/deploy/sooth_core.so"
 
 VITE_PORT="${VITE_PORT:-5175}"

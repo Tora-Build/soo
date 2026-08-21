@@ -81,7 +81,7 @@ export const useMarketStatsMath = (launchpad: LaunchpadData | undefined, ammStat
         const maxLoss = parseUnits(maxLossNum.toFixed(usdcDecimals), usdcDecimals);
         const cash = maxLoss + lpYieldPool + pnl;
 
-        // Keep gross for backwards compatibility (Seed + Fees + P&L)
+        // Gross = Seed + Fees + P&L, before the LP share is netted out.
         const gross = seed + fees + pnl;
 
         // 3. Liability = max(qYes, qNo) - worst case payout

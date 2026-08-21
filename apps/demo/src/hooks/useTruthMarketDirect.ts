@@ -17,7 +17,7 @@ export function useTruthMarketDirect(marketAddress: Address | undefined) {
     chainId,
     read: async (client) => {
       // Each call individually swallows errors (returns null) so a single
-      // missing function on a v0.1.2 minimal TruthMarket clone (e.g.
+      // missing function on a minimal TruthMarket clone (e.g.
       // question(), guardian()) doesn't fail the whole hook.
       const safe = <T>(fn: string) =>
         readContractSafe<T>(client, {

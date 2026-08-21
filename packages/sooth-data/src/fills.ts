@@ -2,10 +2,6 @@ import { PublicKey } from "@solana/web3.js";
 
 import { PROGRAM_IDS } from "./config.js";
 import {
-  decodeOrdersFilledFromTransaction,
-  type FillRecord,
-} from "./decode-ordersfilled.js";
-import {
   BASE_TO_WAD,
   decodeBookEventsFromTransaction,
   type BookFillRecord,
@@ -22,14 +18,8 @@ export type IndexedFill = {
   /** WAD (1e18) shares, for both sources — see `bookFillToIndexed`. */
   amount: string;
   timestamp: string;
-  /**
-   * Which book produced this fill.
-   *
-   * `"legacy"` is the per-tick-account book, `"book"` the redesigned single
-   * account. Both are served from the same endpoint while they coexist, so a
-   * consumer can tell them apart without changing shape.
-   */
-  source: "legacy" | "book";
+  /** Which book produced this fill. `sooth_core` has exactly one. */
+  source: "book";
 };
 
 export type SignatureInfo = {
@@ -123,27 +113,13 @@ function parseLimit(value: string | undefined): number {
   return Math.min(Math.floor(parsed), 2_000);
 }
 
-function toIndexedFill(fill: FillRecord): IndexedFill {
-  return {
-    yesTick: fill.yes_tick,
-    amount: fill.amount.toString(),
-    timestamp: fill.ts.toString(),
-    source: "legacy",
-  };
-}
-
 /**
- * Map a redesigned-book fill onto the same shape.
+ * Map a book fill onto the served shape.
  *
- * Two conversions, both deliberate:
- *
- *   - `price_tick` IS the YES price. The unified axis quotes everything on it,
- *     so an ask at tick 400 is "YES at 0.40" and needs no complement flip —
- *     which is exactly the class of error that produced bug B2 in the legacy
- *     book, where the two ticks were emitted swapped.
- *   - `amount` is USDC base units on the new book and WAD on the old one.
- *     Scaling here keeps `IndexedFill.amount` a single unit, so a consumer
- *     charting both does not silently plot one 1e12 times the other.
+ * `price_tick` IS the YES price — the book quotes both sides on one axis, so
+ * an ask at tick 400 is "YES at 0.40" and takes no complement flip. `amount`
+ * is USDC base units on the wire and WAD here, so `IndexedFill.amount` carries
+ * a single unit whatever the source.
  */
 function bookFillToIndexed(fill: BookFillRecord, ts: bigint): IndexedFill {
   return {
@@ -170,15 +146,6 @@ async function collectFillsFromSignatures(
     const txMeta = (tx as { meta?: { err?: unknown } } | null)?.meta;
     if (!tx || txMeta?.err) continue;
 
-    for (const event of decodeOrdersFilledFromTransaction(tx)) {
-      if (event.market !== market) continue;
-      for (const fill of event.fills) {
-        fills.push(toIndexedFill(fill));
-        if (fills.length >= limit) return fills;
-      }
-    }
-
-    // The redesigned book, served from the same endpoint while both exist.
     for (const event of decodeBookEventsFromTransaction(tx)) {
       if (event.kind !== "book_filled" || event.market !== market) continue;
       for (const fill of event.fills) {

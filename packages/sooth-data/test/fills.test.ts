@@ -2,26 +2,29 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { PublicKey } from "@solana/web3.js";
+import { Keypair } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 
-import { BUY_DISCRIMINATOR, PROGRAM_IDS } from "../src/config.js";
-import { decodeOrdersFilledInstructionData } from "../src/decode-ordersfilled.js";
+import { PROGRAM_IDS } from "../src/config.js";
+import {
+  BASE_TO_WAD,
+  decodeBookEventInstructionData,
+  type BookFilledEvent,
+} from "../src/decode-book-events.js";
 import { createApp } from "../src/index.js";
 import { encodeBase58 } from "../src/base58.js";
 import { deriveMarketKey } from "../src/market-key.js";
 
-const fixturePath = join(
-  import.meta.dirname,
-  "fixtures",
-  "ordersfilled.bin",
-);
+const fixturePath = join(import.meta.dirname, "fixtures", "bookfilled.bin");
 
 describe("fills endpoint", () => {
   it("resolves a marketKey and returns the IndexedFill shape", async () => {
+    // Bytes captured from a real BookFilled self-CPI, so the endpoint is
+    // exercised over the same payload the program emits rather than a shape
+    // invented by the test.
     const fixture = new Uint8Array(await readFile(fixturePath));
-    const decoded = decodeOrdersFilledInstructionData(fixture);
-    const market = decoded!.market;
+    const decoded = decodeBookEventInstructionData(fixture) as BookFilledEvent;
+    const market = decoded.market;
     const marketKey = deriveMarketKey(market);
     const dir = await mkdtemp(join(tmpdir(), "sooth-data-fills-"));
     const metadataPath = join(dir, "market-meta.json");
@@ -41,6 +44,10 @@ describe("fills endpoint", () => {
       "utf8",
     );
 
+    // An unrelated program's inner instruction, to prove the scan filters on
+    // the emitting program rather than taking whatever it finds.
+    const OTHER = Keypair.generate().publicKey.toBase58();
+
     const calls: unknown[] = [];
     const app = createApp({
       metadataPath,
@@ -53,18 +60,8 @@ describe("fills endpoint", () => {
         getTransaction: async (_signature, config) => {
           calls.push({ config });
           return {
-            // The decoder requires the record's parent to be
-            // sooth_core::buy — see test/authenticity.test.ts. A mock without
-            // the outer instruction now correctly yields no fills.
             transaction: {
-              message: {
-                instructions: [
-                  {
-                    programId: new PublicKey(PROGRAM_IDS.SOOTH_CORE),
-                    data: Buffer.from(BUY_DISCRIMINATOR),
-                  },
-                ],
-              },
+              message: { accountKeys: [OTHER, PROGRAM_IDS.SOOTH_CORE] },
             },
             meta: {
               err: null,
@@ -73,7 +70,11 @@ describe("fills endpoint", () => {
                   index: 0,
                   instructions: [
                     {
-                      programId: new PublicKey(PROGRAM_IDS.SOOTH_CORE),
+                      programIdIndex: 0,
+                      data: encodeBase58(fixture),
+                    },
+                    {
+                      programIdIndex: 1,
                       data: encodeBase58(fixture),
                     },
                   ],
@@ -88,15 +89,17 @@ describe("fills endpoint", () => {
     const resp = await app.request(`/v12/fills/902/${marketKey}?limit=5`);
 
     expect(resp.status).toBe(200);
-    expect(await resp.json()).toEqual([
-      {
-        yesTick: 950,
-        amount: decoded!.fills[0]!.amount.toString(),
-        timestamp: decoded!.fills[0]!.ts.toString(),
-        // Which book produced it. The endpoint serves both while they coexist.
-        source: "legacy",
-      },
-    ]);
+    // One fill per fill in the event — the impostor copy contributes none.
+    expect(await resp.json()).toEqual(
+      decoded.fills.map((fill) => ({
+        yesTick: fill.price_tick,
+        // Served in WAD, from base units on the wire: a consumer that plots
+        // this alongside an AMM quote must not be off by 1e12.
+        amount: (fill.amount * BASE_TO_WAD).toString(),
+        timestamp: decoded.ts.toString(),
+        source: "book",
+      })),
+    );
     expect(calls).toContainEqual({
       address: market,
       options: { limit: 5 },

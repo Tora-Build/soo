@@ -59,6 +59,15 @@ export function lmsrPrice(qYes: number, qNo: number, b: number): number {
   return ea / (ea + ec);
 }
 
+/**
+ * Decode one archived `AmmState` into a chart point.
+ *
+ * The WAD i128s are narrowed to `number`, which is lossy past 2^53. That is
+ * deliberate and safe HERE and nowhere else: the output is a price in 0..1 and
+ * a magnitude for a chart axis, and `q/b` divides the same relative error out
+ * of both operands. Nothing money-carrying may come through this function —
+ * quotes and costs stay bigint end to end in `@sooth/sdk-solana`.
+ */
 export function toPricePoint(account: ArchiveAccount): PricePoint | null {
   if (account.data.length < OFF_B + 16) return null;
   const qYes = Number(readI128(account.data, OFF_Q_YES)) / WAD;

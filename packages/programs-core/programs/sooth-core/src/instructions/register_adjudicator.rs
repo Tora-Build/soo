@@ -1,6 +1,8 @@
-//! `register_adjudicator` — create the per-market `AdjudicatorEntry` PDA.
+//! `register_adjudicator` — create the per-market `AdjudicatorEntry` PDA for
+//! the manual (human-signed) resolution path.
 //!
-//! v1 auth: `signer.key() == market.creator`.
+//! Auth follows `ProtocolConfig.permissionless_adjudicators`: the market's
+//! creator when set, the protocol authority when clear.
 
 use anchor_lang::prelude::*;
 
@@ -66,7 +68,10 @@ pub fn handler(ctx: Context<RegisterAdjudicator>, authority: Pubkey) -> Result<(
     let entry = &mut ctx.accounts.adjudicator_entry;
     entry.market = market_key;
     entry.authority = authority;
-    entry.dispute_authority = authority; // v1 collapsed: same as attestation authority
+    // The veto and the attestation are held by one key. `AdjudicatorEntry`
+    // stores them separately so a guardian multisig can take the veto without
+    // an account migration.
+    entry.dispute_authority = authority;
     entry.attested_outcome = None;
     entry.attested_at = None;
     entry.disputed = false;

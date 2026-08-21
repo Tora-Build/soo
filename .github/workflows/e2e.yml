@@ -18,18 +18,17 @@ jobs:
 
       - name: Download .so binaries from anchor-build job
         # The workspace is one member, `sooth_core`, and its Rust tests are
-        # pure unit tests today. The artifact is still pulled so a future
-        # LiteSVM-backed Rust test can load `target/deploy/*.so` without this
-        # job silently starting to fail with "target/deploy not found".
+        # pure unit tests. The artifact is pulled so a LiteSVM-backed Rust test
+        # can load `target/deploy/*.so` without this job failing on a missing
+        # target/deploy.
         uses: actions/download-artifact@v4
         with:
           name: target-deploy
           path: target/deploy/
 
       # `--workspace` is one crate: `sooth_core`. The book, the AMM and the
-      # market lifecycle are modules inside it, not separate packages — there
-      # is no `sooth_book` to test on its own. The book's compute-unit ceiling
-      # is measured against the real program by
+      # market lifecycle are modules inside it, not separate packages. The
+      # book's compute-unit ceiling is measured against the real program by
       # `packages/sdk-solana/tests/book-cu-budget.test.ts`, which the SDK
       # Vitest job below runs; it lives there because the measurement needs
       # LiteSVM plus the TypeScript book builders.
@@ -118,9 +117,9 @@ jobs:
   e2e:
     name: Surfpool Playwright E2E
     runs-on: ubuntu-latest
-    # Run on every PR + every main push. The job's a real Surfpool boot +
-    # Full UI suite including W8 orderbook specs — catches chain-shim / hook regressions that the
-    # cargo + vitest gates can't see.
+    # Run on every PR + every main push: a real Surfpool boot plus the full UI
+    # suite, which catches chain-shim / hook regressions the cargo and vitest
+    # gates cannot see.
     steps:
       - uses: actions/checkout@v4
 
@@ -170,10 +169,9 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Build all programs via anchor build
-        # Use anchor build (not per-program cargo build-sbf) so the
-        # full IDL-gen + SBF link pipeline runs. Per-program cargo
-        # build-sbf misses stack-offset errors that only surface
-        # during anchor's combined build. Auto-generates IDLs to
+        # Use anchor build (not cargo build-sbf) so the full IDL-gen + SBF
+        # link pipeline runs. cargo build-sbf misses stack-offset errors that
+        # only surface during anchor's combined build. Auto-generates IDLs to
         # packages/programs-core/target/idl/ as a side effect;
         # dev:surfpool's pre-flight expects .so files in target/deploy.
         # No untrusted input (static command, no github.event.* subs).
@@ -208,7 +206,15 @@ jobs:
           exit 1
 
       - name: Run Playwright E2E
-        run: E2E_VIDEO=on pnpm -F @sooth/demo test:e2e
+        # playwright.config.ts requires VITE_TEST_KEYPAIR_BYTES and
+        # global-setup requires TEST_PUBKEY; both are only in the .env.local
+        # the surfpool boot step above wrote, and neither is read from a file.
+        run: |
+          set -a
+          . apps/demo/.env.local
+          set +a
+          TEST_PUBKEY="$(solana-keygen pubkey apps/demo/.localnet/user-keypair.json)" \
+            E2E_VIDEO=on pnpm -F @sooth/demo test:e2e
 
       - name: Build walkthrough video
         run: node apps/demo/scripts/build-e2e-walkthrough.mjs

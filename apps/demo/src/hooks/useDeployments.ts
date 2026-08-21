@@ -13,10 +13,6 @@ export interface ChainDeployments {
   OrderEngine?: string;
   TruthMarket?: string;
   FeeRouter?: string;
-  AdjudicatorRegistry?: string;
-  // Optional entries — absent from v0.1.0+ deployments.
-  Collateralizer?: string;
-  ProtocolConfig?: string;
   USDC?: string;
   [key: string]: string | number | undefined;
 }
@@ -24,7 +20,6 @@ export interface ChainDeployments {
 type NetworkEntry = {
   chainId: number;
   contracts: Record<string, string | number>;
-  markets?: string[];
 };
 
 const networks = deploymentsJson.networks as Record<string, NetworkEntry>;
@@ -41,11 +36,9 @@ function getDeployment(
 }
 
 /**
- * Return EVERY deployment that matches the chainId, in declaration order.
- * Multi-node-per-chain (e.g. Base Sepolia hosts both v0.2.0 and v0.1.2)
- * means a single chain can have multiple LaunchpadEngines. Lookups for a
- * specific market need to probe each engine until they find the one that
- * actually has the market.
+ * Every deployment matching the chainId, in declaration order. A chain may
+ * carry more than one engine, so per-market lookups probe each in turn until
+ * one answers for the market.
  */
 export function getAllDeploymentsForChain(
   chainId: number,

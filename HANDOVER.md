@@ -38,9 +38,17 @@ title from chain history with no indexer. The `Market` account keeps the hash.
   are Rust modules calling each other directly, not separate programs over CPI.
 - **`packages/sdk-solana/`** — `@sooth/sdk-solana`. Instruction builders,
   account readers, PDA helpers, and client-side LMSR quote math.
-- **`apps/demo/`** — forked demo app, and the only frontend. It carries both
-  surfaces: the Eastboard shell at `/options`, wrapping the classic pages, and
-  Arena at `/play`. Both reach the program through a chain-shim.
+- **`apps/demo/`** — the only frontend. It carries both surfaces: Arena at
+  `/play` (plus `/vault /forge /locker /power /explore`), and the Eastboard
+  option-chain shell under `/eastboard/*`. Both reach the program through a
+  chain-shim. Legacy paths (`/options`, `/markets`, `/faucet`, `/portfolio`,
+  `/liquidity`, `/create`, `/launchpad`) redirect into the arena.
+- **`packages/sooth-data/`** — account/event indexer over `sooth_core`. Not
+  wired into the frontend, which reads accounts directly over RPC.
+- **`infra/`** — the deployed services: `rpc-proxy` (Cloudflare Worker that
+  hides the RPC provider key), `arena-api` (Worker + D1 behind the arena's
+  profile/leaderboard/social calls), and `zk-resolver` (a Node service, not a
+  Worker, that drives the zkTLS attest path).
 
 ## Where to look
 
@@ -53,7 +61,6 @@ title from chain history with no indexer. The `Market` account keeps the hash.
 | Per-subsystem specs                     | [`docs/spec/`](docs/spec/)                                                                           |
 | Order book design                       | [`docs/design/orderbook-redesign.md`](docs/design/orderbook-redesign.md)                             |
 | Two-token venue split                   | [`docs/design/dual-token-venues.md`](docs/design/dual-token-venues.md)                               |
-| How `develop` differs from `main`       | [`docs/develop-vs-main.md`](docs/develop-vs-main.md)                                                 |
 | SDK public surface                      | [`packages/sdk-solana/docs/integrator-contract.md`](packages/sdk-solana/docs/integrator-contract.md) |
 
 ## Repo layout
@@ -68,11 +75,13 @@ sooth-solana/
 ├── Cargo.toml                    # Rust workspace (sooth-core) + anchor-syn patch
 ├── package.json / pnpm-workspace.yaml
 ├── apps/
-│   └── demo/                     # forked demo + Eastboard + Arena + dev/seed scripts
+│   └── demo/                     # the frontend: Arena + Eastboard + dev/seed scripts
+├── infra/                        # rpc-proxy, arena-api (Workers); zk-resolver (Node)
 ├── docs/                         # specs, design docs, decision log, status, glossary
 ├── packages/
 │   ├── programs-core/programs/sooth-core/
-│   └── sdk-solana/
+│   ├── sdk-solana/
+│   └── sooth-data/
 └── vendor/anchor-syn-0.30.1-fork # rustc-compat patch for IDL generation
 ```
 

@@ -1,8 +1,8 @@
 /**
- * About Page (formerly Learn) - Actor-Centric Onboarding
+ * Learn — actor-centric onboarding
  *
  * Based on Sooth Whitepaper (Dec 2025)
- * Refactored to focus on Actor-Driven Design and the 3 Pillars of Decentralization.
+ * Organised around the actors and the three pillars of decentralization.
  */
 import React, { useState, useCallback } from "react";
 import { Link } from "react-router-dom";

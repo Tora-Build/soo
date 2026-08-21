@@ -18,3 +18,6 @@
 /playwright-report
 /playwright/.cache
 /e2e/.e2e-fixture.json
+
+# Stray backups of the generated env file.
+.env.local.bak*

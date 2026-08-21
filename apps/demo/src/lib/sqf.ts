@@ -2,7 +2,7 @@
  * Sooth Question Format (SQF) — Parser & Generator
  *
  * Encodes/decodes structured market metadata in the on-chain `question` string.
- * See docs/QUESTION_FORMAT.md for full spec.
+ * See docs/spec/sqf.md for the full spec.
  */
 
 export interface SQFRule {
@@ -142,12 +142,6 @@ export function generateSQF(data: SQFData): string {
  * Extract just the human-readable question from a § formatted string.
  * Falls back to the raw string if no §question tag found.
  */
-export function extractQuestion(raw: string): string {
-  if (!raw.includes("§question")) return raw;
-  const parsed = parseSQF(raw);
-  return parsed.question || raw;
-}
-
 /** Parse SQF if present, otherwise return plain question with empty metadata */
 export function parseSQFSafe(raw: string): SQFData {
   if (raw.includes("§question")) return parseSQF(raw);

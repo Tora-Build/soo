@@ -25,9 +25,13 @@ export const DEFAULT_MARKET_META_PATH = fileURLToPath(
   new URL("../data/market-meta.json", import.meta.url),
 );
 
+/// Wraps a base58 pubkey in the `0x` prefix the EVM-shaped market list is
+/// typed for. Case is preserved: base58 is case-sensitive, so a folded
+/// address cannot be decoded back to a pubkey. Consumers that compare these
+/// case-insensitively must fold both sides.
 function toSyntheticAddress(address: string): string {
   const base58 = address.startsWith("0x") ? address.slice(2) : address;
-  return `0x${base58}`.toLowerCase();
+  return `0x${base58}`;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

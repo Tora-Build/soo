@@ -41,11 +41,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
     const { context = 'Unknown', onError } = this.props;
     
-    // Log to our production-safe logger
     logger.ui.error(`[ErrorBoundary:${context}] Caught error:`, error.message);
     logger.ui.error(`[ErrorBoundary:${context}] Stack:`, errorInfo.componentStack);
     
-    // Call optional callback
     onError?.(error, errorInfo);
   }
 
@@ -58,12 +56,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     const { children, fallback, context } = this.props;
 
     if (hasError) {
-      // Custom fallback provided
       if (fallback) {
         return fallback;
       }
 
-      // Default fallback UI
       return (
         <div className="flex flex-col items-center justify-center p-8 min-h-[200px] bg-raised">
           <AlertTriangle className="w-12 h-12 text-muted mb-4" />

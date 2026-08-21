@@ -2,14 +2,12 @@ import { useMemo } from "react";
 import { useNodeModeration } from "./useNodeModeration";
 import { useOnChainMarkets } from "./useOnChainMarkets";
 
-// Auto-hide test/spam markets. Observed patterns on Base 84532 (2026-04-27):
-//   "e2e 84532 1777178132649"                            ×8 — lifecycle/orderbook spec auto-titles
-//   "v02 E2E — Will this test pass? (1777115839020)"     ×8 — orderbook spec variant
-//   "v0.2.0 smoke 1776917576"                            ×1 — smoke harness
-//   "Will the E2E v0.2.0 lifecycle test pass on Base..." ×1 — self-referential
-// Total: 18 of 97 markets matched. Doesn't replace useNodeModeration
-// (registry-backed); complements it for frontends without operator-write
-// permission and for spam volume too high to flag manually.
+// Auto-hide markets whose question is an e2e or smoke-harness auto-title —
+// "e2e <chainId> <timestamp>", "v02 E2E — …", "v0.2.0 smoke <timestamp>".
+//
+// Complements `useNodeModeration` (registry-backed) rather than replacing it:
+// this covers frontends without operator-write permission, and spam volume
+// too high to flag by hand.
 const E2E_QUESTION_PATTERNS: RegExp[] = [
   /^e2e\s+\d+\s+\d+/i, // "e2e <chainId> <timestamp>"
   /^e2e\s+\w+\s+\d+/i, // "e2e <method> <chainId>" variants

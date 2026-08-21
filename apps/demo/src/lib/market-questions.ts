@@ -8,9 +8,6 @@
 // from a seeded one, which is worse than it sounds, because the two route to
 // different venues.
 //
-// The indexer path (`indexerMarket?.name`) is unavailable: the demo runs with
-// `VITE_USE_INDEXER=false`, so that field is always null.
-//
 // So: remember locally what this browser submitted. Deliberately narrow —
 //
 //   - It only covers markets created in THIS browser. Someone else's market

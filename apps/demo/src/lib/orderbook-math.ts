@@ -1,16 +1,9 @@
-// Pure orderbook helpers, extracted from the hooks so they can be tested.
+// Pure orderbook helpers: the tick ladder, the price conversion, the
+// cancel-by-level parser and the refund arithmetic.
 //
-// These were inline in `useOrderbookTrade` and `useIndexerOrders`, which meant
-// the tick ladder, the price conversion, the cancel-by-level parser and the
-// refund arithmetic had **no unit coverage at all** — the demo's tests cover
-// AMM, markets, portfolio and rendering, and everything here was reachable only
-// through Surfpool-gated e2e specs.
-//
-// They are extracted now rather than later because the orderbook redesign
-// (`docs/design/orderbook-redesign.md`) changes what a "tick" means: the new
-// book quotes a single unified YES axis, so the complement flip below
-// disappears. Characterising the current behaviour first is what makes that
-// migration checkable instead of hopeful.
+// They live here rather than inside the hooks so they are unit-testable
+// without a validator — everything in this file is otherwise reachable only
+// through the Surfpool-gated e2e specs.
 
 /** Ticks per unit price. `NUM_TICKS` in the program. */
 export const NUM_TICKS = 1000;

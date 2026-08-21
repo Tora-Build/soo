@@ -6,8 +6,8 @@
  * color from a fixed palette; the same color is used for both the chart
  * line and the row dot.
  *
- * Replaces the old EventCard (sibling list view) on AMM/Orderbook pages
- * and is reused by the Markets page event group rendering.
+ * Rendered on the AMM and Orderbook pages and reused by the Markets page's
+ * event grouping.
  */
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
@@ -15,10 +15,6 @@ import { Layers, Clock, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { CategoryBadge } from "../../ui/CategoryBadge";
 import { useAmmMarketDirect } from "../../../hooks/useAmmMarketDirect";
-import {
-  useEventPriceHistory,
-  type EventPriceSeries,
-} from "../../../hooks/useEventPriceHistory";
 import { cn } from "../../../lib/utils";
 
 // Distinct line colors per outcome (rotates if >5 markets)
@@ -44,7 +40,6 @@ export interface EventChartMarket {
 interface EventChartCardProps {
   event: string;
   category?: string;
-  chainId: number;
   markets: EventChartMarket[];
   currentAddress?: string; // highlight in row list
   basePath?: string; // "/amm" | "/orderbook"
@@ -62,6 +57,14 @@ const PADDING_LEFT = 28;
 const PADDING_RIGHT = 8;
 const PADDING_TOP = 8;
 const PADDING_BOTTOM = 18;
+
+/** One market's price series. Points are always empty: this app reads chain
+ *  accounts over RPC, which answers "the price now", not a time series. The
+ *  chart draws each market as a flat line at its current price. */
+interface EventPriceSeries {
+  market: string;
+  points: { timestamp: number; price: number }[];
+}
 
 interface ChartProps {
   series: EventPriceSeries[];
@@ -301,7 +304,6 @@ const PriceProbe = ({
 export const EventChartCard = ({
   event,
   category,
-  chainId,
   markets,
   currentAddress,
   basePath = "/amm",
@@ -311,9 +313,9 @@ export const EventChartCard = ({
   const { t, i18n } = useTranslation();
   const isSingleMarket = markets.length === 1;
   const addresses = useMemo(() => markets.map((m) => m.address), [markets]);
-  const { series, isLoading, totalPoints } = useEventPriceHistory(
-    chainId,
-    addresses,
+  const series: EventPriceSeries[] = useMemo(
+    () => addresses.map((market) => ({ market, points: [] })),
+    [addresses],
   );
 
   // For flat-line fallback we need current price + createdAt per market.
@@ -386,17 +388,11 @@ export const EventChartCard = ({
 
       {/* Chart */}
       <div className="px-2 py-3 border-b border-rule text-ink">
-        {isLoading && totalPoints === 0 ? (
-          <div className="h-32 flex items-center justify-center font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-            {t("common.loading")}
-          </div>
-        ) : (
-          <PriceChartSvg
-            series={series}
-            currentPriceByAddress={currentPriceByAddress}
-            createdAtByAddress={createdAtByAddress}
-          />
-        )}
+        <PriceChartSvg
+          series={series}
+          currentPriceByAddress={currentPriceByAddress}
+          createdAtByAddress={createdAtByAddress}
+        />
         {/* Hidden price probes — populate currentPriceByAddress map so the
             flat-line fallback uses the live price */}
         {markets.map((m) => (

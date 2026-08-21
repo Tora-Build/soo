@@ -268,7 +268,7 @@ export function privateKeyToAccount(_pk: string): {
   signTypedData: () => Promise<Hex>;
 } {
   // The Solana fork has no EVM-private-key concept. Return a deterministic
-  // placeholder so the upstream `useLocalWallet` hook surface still types
+  // placeholder so upstream local-wallet call sites still type
   // and renders, but no signing actually happens.
   return {
     address: "0x0000000000000000000000000000000000000000",

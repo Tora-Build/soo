@@ -143,7 +143,7 @@ export const useActivePositions = () => {
             }
           } else {
             if (market.outcomeToken && market.outcomeToken !== ZERO_ADDRESS) {
-              // Protocol convention (knowledge.md): outcome id 0 = NO, 1 = YES.
+              // Protocol convention: outcome id 0 = NO, 1 = YES.
               const [noBalance, yesBalance] = await Promise.all([
                 readContractSafe<bigint>(client, {
                   address: market.outcomeToken,

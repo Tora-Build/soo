@@ -1,8 +1,6 @@
 import { parseAbi } from "@/lib/chain-shim";
 import {
   AMMEngineABI,
-  CollateralizerABI,
-  DynamicFeeHookABI,
   LaunchpadEngineABI,
   OutcomeTokenABI,
   TruthMarketABI,
@@ -18,40 +16,6 @@ const ERC20_STRINGS = [
 ];
 
 export const ERC20_ABI = parseAbi(ERC20_STRINGS);
-
-export const MOCK_ERC20_ABI = parseAbi([
-  ...ERC20_STRINGS,
-  "function mint(address to, uint256 amount)",
-]);
-
-export const MARKET_V4_ABI = parseAbi([
-  "function qYes() view returns (int256)",
-  "function qNo() view returns (int256)",
-  "function _cost(int256 qYes, int256 qNo, uint256 b) view returns (int256)",
-  "function b() view returns (uint256)",
-  "function bBase() view returns (uint256)",
-  "function feeLMSR() view returns (uint256)",
-  "function price(uint8 outcome) view returns (uint256)",
-  "function calculateAMMTradeCost(uint8 outcome, uint256 shares, bool isBuy) view returns (int256 cost, uint256 fee, int256 newQYes, int256 newQNo)",
-  "function isLive() view returns (bool)",
-  "function isSettled() view returns (bool)",
-  "function yesBalance(address user) view returns (uint256)",
-  "function noBalance(address user) view returns (uint256)",
-  "function bestAsk() view returns (uint256)",
-  "function bestBid() view returns (uint256)",
-  "function orders(uint256 id) view returns (address maker, uint8 outcome, uint256 yesPrice, uint256 amount, bool isBuySide)",
-  "function nextOrder(uint256 id) view returns (uint256)",
-  "function outcomeToken() view returns (address)",
-  "function merge(uint256 amount) returns (uint256 proceeds)",
-  "function split(uint256 amount)",
-]);
-
-export const SOOTH_ADJUDICATOR_REGISTRY_ABI = parseAbi([
-  "function isAdjudicator(address adjudicator) view returns (bool)",
-  "function getAdjudicatorClass(address adjudicator) view returns (uint8)",
-  "function setAdjudicator(address adjudicator, uint8 classId, bool enabled, bytes32 paramsHash)",
-  "event AdjudicatorConfigured(address indexed adjudicator, uint8 classId, bool enabled, bytes32 paramsHash)",
-]);
 
 export const LAUNCHPAD_MARKET_ABI = parseAbi([
   "function qYes() view returns (int256)",
@@ -105,10 +69,6 @@ export const LAUNCHPAD_MARKET_ABI = parseAbi([
   "event TradeAMM(address indexed user, uint8 outcome, int256 deltaShares, int256 cost, uint256 fee)",
 ]);
 
-export const LAUNCHPAD_QUOTER_ABI = parseAbi([
-  "function calculateAMMTradeQuote(address market, uint8 outcome, uint256 shares, bool isBuy) view returns (int256 cost, uint256 fee, uint256 nextFloor, uint256 nextCeiling, uint256 priceImpactBps)",
-]);
-
 export const LAUNCHPAD_OUTCOME_TOKEN_ABI = parseAbi([
   "function name() view returns (string)",
   "function symbol() view returns (string)",
@@ -132,15 +92,6 @@ export const SOOTH_MANUAL_ADJUDICATOR_ABI = parseAbi([
   // resolve() reverts unless msg.sender == st.resolver.
   "struct AdjMarketState { uint8 phase; uint8 outcome; uint64 tStar; uint64 deadline; uint64 vetoEndsAt; address resolver; bytes32 dataHash; }",
   "function getMarketState(address market) view returns (AdjMarketState)",
-]);
-
-export const SOOTH_OPTIMISTIC_ADJUDICATOR_ABI = parseAbi([
-  "function propose(address market, uint8 outcome, bytes32 dataHash, uint64 tStar)",
-  "function dispute(address market)",
-  "function finalize(address market)",
-  "function proposals(address market) view returns (uint8 outcome, uint256 tStar, uint256 timestamp, address proposer, bool disputed)",
-  "function adjudicatorClass() view returns (uint8)",
-  "function challengeWindow() view returns (uint256)",
 ]);
 
 export const SOOTHBOOK_ABI = parseAbi([
@@ -194,8 +145,8 @@ export const SOOTHBOOK_ABI = parseAbi([
   "error NotAuthorized()",
 ]);
 
-// Minimal FeeRouter ABI — the deployed contract holds fee bps and graduation
-// progress. These functions DO NOT exist on LaunchpadEngine (see BUG-003).
+// Minimal FeeRouter ABI — fee bps and graduation progress. These functions are
+// not on LaunchpadEngine.
 export const FEE_ROUTER_ABI = parseAbi([
   "function preGradFeeBps() view returns (uint24)",
   "function postGradFeeBps() view returns (uint24)",
@@ -208,8 +159,6 @@ export const FEE_ROUTER_ABI = parseAbi([
 
 export const ABIS = {
   AMMEngine: AMMEngineABI,
-  Collateralizer: CollateralizerABI,
-  DynamicFeeHook: DynamicFeeHookABI,
   LaunchpadEngine: LaunchpadEngineABI,
   OutcomeToken: OutcomeTokenABI,
   TruthMarket: TruthMarketABI,

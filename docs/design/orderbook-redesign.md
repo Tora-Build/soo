@@ -263,6 +263,8 @@ Its gates, in order:
 3. `market.book_enabled` — the book opens at graduation and not before, read
    from `Market` rather than `AmmState` so the check costs no extra account
    (see `docs/design/dual-token-venues.md`)
+4. `assert_within_trading_window(now, market.deadline)` — `TradingClosed`, so a
+   resting order cannot outlive the deadline it was placed against
 
 `book_cancel` and `book_withdraw` are ungated by the pause flag and by the
 lifecycle, deliberately: an exit must always be available, and after settlement

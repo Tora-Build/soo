@@ -11,10 +11,9 @@
 // QuickTradeProvider already present elsewhere — the AMM page itself
 // doesn't depend on it).
 //
-// Wave 1B fix landed — `sell_positions` now CPIs into
-// `sooth_market::transfer_to_lock` so the PDA-signed transfer happens from
-// the program that owns the `vault_authority` PDA. See
-// `packages/sdk-solana/tests/sell-flow.test.ts` for the matching note.
+// `sell_positions` CPIs into `sooth_core::transfer_to_lock`, so the
+// PDA-signed transfer is issued by the program that owns the
+// `vault_authority` PDA.
 
 import { afterEach, beforeAll, expect, test } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -77,7 +76,7 @@ test("AMM sell YES end-to-end against LiteSVM", async () => {
   const conn = new LiteSvmConnection(smoke.ctx);
   const adapter = new SolanaChainAdapter({
     node: {
-      id: "demo-bankrun",
+      id: "demo-litesvm",
       chainKind: "solana",
       chainId: "test",
       rpcUrl: "http://localhost:8899",

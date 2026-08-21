@@ -1,26 +1,9 @@
 /**
- * Chain-aware polling intervals
- * 
- * Monad has strict rate limits (25 rps on QuickNode), so we need longer
- * polling intervals to avoid 429 errors.
- * 
- * Rate limits (from docs.monad.xyz):
- * - QuickNode: 25 rps
- * - Ankr: 300 req/10s (30 rps avg)
- * - Monad Foundation: 20 rps
+ * Polling intervals for chain reads.
+ *
+ * Jitter is added to every interval so a page mounting N hooks at once does
+ * not fire N requests on the same tick for the rest of the session.
  */
-
-// Chain IDs
-export const MONAD_TESTNET_CHAIN_ID = 10143;
-export const BASE_SEPOLIA_CHAIN_ID = 84532;
-export const MEGAETH_FRONTIER_CHAIN_ID = 4326;
-
-// Polling interval multipliers by chain (relative to base)
-const CHAIN_POLLING_MULTIPLIERS: Record<number, number> = {
-  [BASE_SEPOLIA_CHAIN_ID]: 1,       // Base: normal polling
-  [MEGAETH_FRONTIER_CHAIN_ID]: 1,   // MegaETH: normal polling
-  [MONAD_TESTNET_CHAIN_ID]: 3,      // Monad: 3x slower (25 rps limit)
-};
 
 const BASE_INTERVALS = {
   FAST: 10000,
@@ -31,32 +14,22 @@ const BASE_INTERVALS = {
 
 const JITTER_RATIO = 0.2;
 
-export function addJitter(interval: number): number {
+function addJitter(interval: number): number {
   const jitter = interval * JITTER_RATIO * Math.random();
   return Math.floor(interval + jitter);
 }
 
 export function getPollingInterval(
-  chainId: number | undefined,
+  _chainId: number | undefined,
   speed: 'fast' | 'normal' | 'slow' | 'very_slow' = 'normal'
 ): number {
-  const baseInterval = BASE_INTERVALS[speed.toUpperCase() as keyof typeof BASE_INTERVALS] || BASE_INTERVALS.NORMAL;
-  const multiplier = chainId ? (CHAIN_POLLING_MULTIPLIERS[chainId] ?? 1) : 1;
-  return addJitter(baseInterval * multiplier);
+  const baseInterval =
+    BASE_INTERVALS[speed.toUpperCase() as keyof typeof BASE_INTERVALS] ??
+    BASE_INTERVALS.NORMAL;
+  return addJitter(baseInterval);
 }
 
-/**
- * Check if chain has rate limiting concerns
- */
-export function isRateLimitedChain(chainId: number | undefined): boolean {
-  return chainId === MONAD_TESTNET_CHAIN_ID;
+/** How long a cached read is considered fresh. */
+export function getStaleTime(_chainId: number | undefined): number {
+  return 10000;
 }
-
-/**
- * Default stale time (how long data is considered fresh)
- */
-export function getStaleTime(chainId: number | undefined): number {
-  // On rate-limited chains, keep data fresh longer
-  return isRateLimitedChain(chainId) ? 30000 : 10000;
-}
-

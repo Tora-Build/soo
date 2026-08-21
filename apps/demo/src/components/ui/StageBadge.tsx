@@ -12,7 +12,7 @@ import { cn } from "../../lib/utils";
 import { SimpleTooltip } from "./SimpleTooltip";
 
 /**
- * Canonical stage labels + colors. The indexer / SDK maps protocol state
+ * Canonical stage labels + colors. The SDK maps protocol state
  * to these keys:
  *   settled  → user label "Resolved"  (outcome decided, unredeemable yet)
  *   finalized → user label "Settled"   (payouts live)

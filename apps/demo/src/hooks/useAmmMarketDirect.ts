@@ -6,7 +6,7 @@ import { useDirectRead, readContractSafe } from "./useDirectRead";
 type Address = `0x${string}`;
 
 /**
- * Hook to read AMM market state (V9 Architecture - Pure AMMEngine read)
+ * Reads AMM market state straight off AMMEngine.
  */
 export function useAmmMarketDirect(marketAddress: Address | undefined) {
   const { selectedChainId } = useChainStore();

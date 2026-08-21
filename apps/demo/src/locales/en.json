@@ -1,109 +1,44 @@
 {
   "nav": {
-    "launchpad": "LAUNCHPAD",
-    "liquidity": "LIQUIDITY",
-    "lpForecast": "LP LAB",
     "amm": "AMM",
     "orderbook": "ORDERBOOK",
-    "geek": "GEEK",
     "portfolio": "PORTFOLIO",
     "more": "MORE",
     "faucet": "Faucet",
-    "explore": "Explore Markets",
-    "operator": "Operator",
-    "learn": "Learn",
     "markets": "MARKETS"
-  },
-  "landing": {
-    "protocolPillars": "Protocol Pillars"
   },
   "common": {
     "connect": "Connect",
     "connectWallet": "Connect Wallet",
-    "disconnect": "Disconnect",
-    "approve": "Approve",
-    "approveUsdc": "APPROVE USDC",
     "buy": "BUY",
     "sell": "SELL",
     "yes": "YES",
     "no": "NO",
-    "max": "MAX",
     "loading": "Loading...",
-    "error": "Error",
-    "success": "Success",
-    "confirm": "Confirm",
-    "cancel": "Cancel",
     "close": "Close",
-    "back": "Back",
     "shares": "SHARES",
-    "price": "Price",
-    "amount": "Amount",
-    "balance": "Balance",
-    "wallet": "Wallet",
     "search": "Search markets...",
-    "live": "Live",
-    "settled": "Settled",
-    "finalized": "Finalized",
-    "verifying": "verifying",
-    "submitting": "Submitting...",
-    "ok": "OK",
-    "errorTryAgain": "Something went wrong. Try again.",
-    "view": "View",
-    "save": "Save",
-    "clear": "Clear",
-    "refresh": "Refresh",
-    "actions": "Actions",
-    "status": "Status",
-    "market": "Market",
-    "category": "Category"
+    "live": "Live"
   },
   "amm": {
     "title": "Trading on LMSR AMM",
-    "currentPrice": "CURRENT PRICE",
-    "poolShares": "POOL SHARES",
     "buyingPower": "Buying power",
-    "youPay": "You Pay",
-    "fee": "Fee",
-    "liquidityDepth": "Liquidity Depth (b)",
-    "priceImpact": "Price Impact",
     "yesProb": "YES Prob",
-    "allStages": "ALL STAGES",
-    "bonding": "BONDING",
-    "graduated": "GRADUATED",
-    "settled": "SETTLED",
-    "finalized": "FINALIZED",
-    "dismissed": "DISMISSED",
-    "results": "RESULTS",
     "discoveringMarkets": "Discovering markets...",
     "noMarketsFound": "No markets found"
   },
   "bonding": {
-    "feeProgress": "FEE PROGRESS",
-    "feesEarned": "Fees Earned",
     "feesAccrued": "Fees Accrued",
     "title": "Bonding Curve Progress",
-    "subtitle": "Liquidity grows with each trade",
     "toGraduation": "To Graduation",
-    "earned": "earned",
     "target": "target",
-    "trialPeriod": "TRIAL PERIOD",
     "graduateMarket": "Graduate Market",
     "graduating": "Graduating..."
   },
   "orderbook": {
-    "title": "SooBook Terminal",
     "orderBook": "Order Book",
-    "chart": "Chart",
     "orders": "Orders",
-    "mintMerge": "Mint / Merge",
-    "historicalPrice": "Historical Price",
-    "last": "Last",
-    "change": "Change",
-    "high": "High",
-    "low": "Low",
-    "volume": "Volume",
     "spread": "Spread",
-    "noFillsYet": "Not enough fills yet for historical chart",
     "bid": "Bid",
     "ask": "Ask",
     "mid": "Mid",
@@ -112,7 +47,6 @@
     "shares": "Shares",
     "cost": "Cost",
     "tokensBurned": "Tokens burned",
-    "collateral": "Collateral",
     "payoutIfCorrect": "Payout if correct",
     "return": "Return",
     "notOnSoothBook": "Market not yet on SooBook",
@@ -124,16 +58,10 @@
     "walletCollateral": "Wallet Collateral",
     "approved": "Approved",
     "readyToTrade": "Ready to Trade",
-    "soothBookApproval": "SooBook Approval",
     "refreshBalance": "Refresh Balance",
     "walletUsdcBalance": "Wallet USDC Balance",
     "depositInstruction": "Deposit USDC to place limit orders on the SooBook orderbook.",
     "reservedTooltip": "On-chain reserved collateral for open orders or short positions. May differ from visible orders if orders were placed in a previous session.",
-    "approveUsdcForSoothBook": "Approve USDC for SooBook",
-    "amountToApprove": "Amount to approve",
-    "processing": "Processing...",
-    "walletModeActive": "Wallet Mode Active",
-    "directWalletSettlement": "V12 uses direct wallet settlement. Deposit/withdraw is not required.",
     "liquid": "Liquid",
     "reserved": "Reserved",
     "positions": "Positions",
@@ -145,7 +73,6 @@
     "openMarkets": "Open Markets",
     "activePositions": "Active Positions",
     "noPositions": "No active AMM positions yet.",
-    "limitOrders": "Limit Orders",
     "lpPositions": "LP Positions",
     "yesShares": "YES Shares",
     "noShares": "NO Shares",
@@ -161,49 +88,14 @@
     "liveLpPosition": "Live LP position",
     "preLiveLpPosition": "Pre-live LP position",
     "markets": "markets",
-    "open": "open",
-    "noActiveOrders": "No active orders"
+    "open": "open"
   },
   "create": {
     "title": "Create Market",
-    "subtitle": "Deploy a prediction market in 60 seconds",
-    "question": "QUESTION",
-    "category": "CATEGORY",
-    "expiration": "EXPIRATION",
-    "adjudicator": "ADJUDICATOR",
-    "launchMarket": "Launch Market",
-    "completeForm": "Complete Form",
-    "connectDescription": "Connect a wallet to create a prediction market.",
-    "success": "Market Created!",
-    "successDescription": "Your prediction market is now live on the bonding curve.",
-    "viewMarket": "View Market",
-    "browseMarkets": "Browse Markets",
-    "details": "Market Details",
-    "liquidityTier": "Liquidity Tier",
-    "liquidityNote": "Higher tiers provide deeper liquidity but require larger deposits.",
-    "duration": "Market Duration",
-    "resolution": "Resolution Method",
-    "resolutionNote": "How will the market outcome be determined?",
-    "comingSoon": "(Coming Soon)"
-  },
-  "markets": {
-    "empty": "No Markets Yet",
-    "emptyDescription": "Be the first to create a prediction market on this chain.",
-    "createMarket": "Create Market",
-    "noGraduated": "No graduated markets found"
-  },
-  "gov": {
-    "title": "Governance",
-    "subtitle": "Guardian controls and protocol settings",
-    "guardian": "Guardian",
-    "protocolOwner": "Protocol Owner",
-    "protocolSettings": "Protocol Settings",
-    "admin": "Admin"
+    "subtitle": "Deploy a prediction market in 60 seconds"
   },
   "operator": {
-    "resolve": "Resolve",
-    "title": "Operator Console",
-    "connectDescription": "Connect to view your role"
+    "title": "Operator Console"
   },
   "liquidityPage": {
     "expired": "Expired",
@@ -264,203 +156,15 @@
       "depth": "Most Liquid"
     }
   },
-  "operatorPage": {
-    "invalid": "INVALID",
-    "vetoed": "Vetoed",
-    "connectDescription": "Connect your wallet to access operator controls.",
-    "sections": {
-      "adjudicator": "Adjudicator",
-      "owner": "Owner",
-      "editor": "Editor"
-    },
-    "tabs": {
-      "ready": "Ready",
-      "readyToSettle": "Ready to Settle",
-      "pending": "Pending",
-      "history": "History"
-    },
-    "time": {
-      "overdue": "{{days}}d {{hours}}h overdue",
-      "left": "{{days}}d {{hours}}h left",
-      "vetoWindow": "In veto window"
-    },
-    "actions": {
-      "select": "Select...",
-      "settle": "Settle"
-    },
-    "table": {
-      "deadline": "Deadline",
-      "vetoWindow": "Veto Window",
-      "settled": "Settled"
-    },
-    "education": {
-      "responsibilities": "Responsibilities",
-      "adjudicator": {
-        "title": "Adjudicator Guide",
-        "description": "Adjudicators are trusted entities responsible for determining the outcome of prediction markets. When a market reaches its deadline, the adjudicator submits the final result (YES, NO, or INVALID).",
-        "items": {
-          "0": "Monitor markets assigned to you for deadline expiry",
-          "1": "Research and verify the actual outcome of events",
-          "2": "Submit settlement transactions with the correct outcome",
-          "3": "Respond promptly to avoid delayed payouts for traders"
-        },
-        "warning": "Incorrect settlements can be vetoed by the Guardian during the finalization window."
-      },
-      "owner": {
-        "title": "Owner Guide",
-        "description": "The Protocol Owner has administrative control over protocol parameters. This role is typically held by a multisig or DAO to ensure decentralized governance.",
-        "items": {
-          "0": "Configure fee parameters (bonding fee, trading fee)",
-          "1": "Set fee distribution ratios (liquidity, LP yield, treasury)",
-          "2": "Adjust graduation multiplier for market maturity",
-          "3": "Emergency pause the protocol if critical issues arise"
-        },
-        "warning": "Changes to protocol parameters affect all markets. Test on testnet before applying to mainnet."
-      },
-      "editor": {
-        "title": "Editor Guide",
-        "description": "Shared content controls for the current registry node. Use this page to hide stale or disallowed markets from node-driven discovery and trading views.",
-        "items": {
-          "0": "Filter and review markets before changing visibility",
-          "1": "Batch hide or show selected markets",
-          "2": "Maintain node-specific content standards for all users"
-        },
-        "warning": "Visibility changes apply to everyone using this registry node as soon as the registry write succeeds."
-      }
-    },
-    "adjudicator": {
-      "settlementAuthority": "Settlement Authority",
-      "activeMarkets": "Active · {{count}} market",
-      "notAssigned": "Not assigned",
-      "noRoleTitle": "You are not an adjudicator for any markets on this chain.",
-      "noRoleDescription": "Create a market or be assigned as adjudicator to see pending settlements.",
-      "noMarkets": "No markets on this chain"
-    },
-    "owner": {
-      "protocolOwner": "Protocol Owner",
-      "activeOwner": "Active Owner",
-      "notOwner": "Not owner",
-      "noRoleTitle": "You are not the protocol owner.",
-      "noRoleDescription": "Only the LaunchpadEngine owner can modify protocol settings.",
-      "feeConfiguration": "Fee Configuration",
-      "bondingFee": "Bonding Fee",
-      "postGraduationFee": "Post-Graduation Fee",
-      "feeDistribution": "Fee Distribution (Post-Graduation)",
-      "liquidityGrowth": "Liquidity Growth",
-      "lpYield": "LP Yield",
-      "protocolTreasury": "Protocol Treasury",
-      "total": "Total",
-      "totalValid": "✓",
-      "totalInvalid": "(must equal 100%)",
-      "protocolStatus": "Protocol Status",
-      "pauseProtocol": "Pause Protocol",
-      "pauseDescription": "Emergency stop all trading",
-      "pausedWarning": "Protocol is PAUSED. All trading is halted.",
-      "trialPeriodSettings": "Trial Period Settings",
-      "defaultTrialCap": "Default trial cap",
-      "days": "days",
-      "trialPeriodDescription": "Each new market's trial duration is",
-      "trialPeriodDescriptionTail": "Shorter markets automatically get shorter trials.",
-      "previewChanges": "Preview Changes",
-      "applyChanges": "Apply Changes"
-    },
-    "editor": {
-      "contentControl": "Content Control",
-      "nodeOwner": "Node Owner",
-      "readOnly": "Read Only",
-      "noRoleTitle": "You are not the deployed owner of this registry node.",
-      "noRoleDescription": "You can review market visibility, but only the node owner can submit shared moderation changes.",
-      "marketVisibility": "Market Visibility",
-      "marketVisibilityDescription": "Node-scoped moderation controls for shared market visibility.",
-      "hiddenCount": "{{count}} Hidden",
-      "node": "Node",
-      "resolving": "Resolving...",
-      "deployedBy": "Deployed By",
-      "unknown": "Unknown",
-      "registryAdminToken": "Registry Admin Token",
-      "tokenPlaceholder": "Required for shared moderation writes",
-      "tokenSaved": "Registry token saved in this browser.",
-      "tokenCleared": "Registry token cleared.",
-      "endpointMissing": "Registry moderation endpoint not deployed yet.",
-      "updatedAt": "Updated {{value}}",
-      "searchPlaceholder": "Question or address",
-      "creator": "Creator",
-      "creatorPlaceholder": "0x creator...",
-      "sort": "Sort",
-      "sortOptions": {
-        "timeDesc": "Newest First",
-        "timeAsc": "Oldest First",
-        "creatorAsc": "Creator A-Z",
-        "categoryAsc": "Category A-Z",
-        "status": "Hidden First"
-      },
-      "marketStatus": "Market Status",
-      "allStatuses": "All Statuses",
-      "visibility": "Visibility",
-      "visibilityFilter": "Market visibility filter",
-      "showing": "Showing",
-      "hidden": "Hidden",
-      "summary": "{{filtered}} filtered • {{showing}} showing • {{hidden}} hidden • {{selected}} selected",
-      "unselectFiltered": "Unselect Filtered",
-      "selectFiltered": "Select Filtered",
-      "hideSelected": "Hide Selected",
-      "showSelected": "Show Selected",
-      "loadingMarkets": "Loading markets...",
-      "noMarkets": "No markets match the current filters.",
-      "resetFilters": "Reset Filters",
-      "selectMarket": "Select market {{question}}",
-      "timeUnknown": "Time Unknown",
-      "showMarket": "Show market",
-      "hideMarket": "Hide market",
-      "visibilityUpdated": "{{action}} {{count}} market(s) for node {{nodeId}}.",
-      "updateFailed": "Failed to update hidden markets."
-    }
-  },
   "faucet": {
     "title": "Protocol Faucet",
     "subtitle": "Get test tokens to interact with the Soo Protocol",
-    "yourBalance": "Your Balance",
-    "requestTokens": "Request 100,000 mUSDC",
-    "requesting": "Requesting...",
-    "mockUsdc": "Mock USDC",
-    "mintDescription": "Mint 100,000 mUSDC to your wallet. This token is used as collateral for all trading on Soo.",
-    "notDeployed": "Not deployed"
+    "yourBalance": "Your Balance"
   },
   "geek": {
     "title": "Geek Mode",
     "subtitle": "Direct protocol interaction via CLI",
-    "typeCommand": "Type a command...",
-    "history": "history",
-    "unsupported": "Unsupported Network",
-    "switchNetwork": "Switch to a supported network using the chain selector in the navbar."
-  },
-  "accessGate": {
-    "tagline": "Permissionless prediction markets",
-    "earlyAccessInviteOnly": "Early Access / Invite Only",
-    "earlyAccessBaseSepolia": "Early Access / Base Sepolia",
-    "connectToContinue": "Connect to continue",
-    "requestAnInvite": "Request an invite",
-    "emailPlaceholder": "email (optional)",
-    "requestAccess": "Request Access",
-    "requestReceived": "Request received",
-    "reviewMessage": "We'll review and grant access shortly.",
-    "baseSepoliaTestnet": "Base Sepolia Testnet"
-  },
-  "filters": {
-    "name": "Name",
-    "id": "ID",
-    "status": "Status",
-    "yesPrice": "YES Price",
-    "noPrice": "NO Price",
-    "recent": "Recent",
-    "allMarkets": "All Markets",
-    "trading": "Trading",
-    "cooldown": "Cooldown",
-    "settled": "Settled",
-    "newest": "ID",
-    "price": "Price",
-    "desc": "Desc",
-    "asc": "Asc"
+    "history": "history"
   },
   "stage": {
     "dismissed": "Dismissed",
@@ -494,8 +198,7 @@
     }
   },
   "navbar": {
-    "navigation": "Navigation",
-    "openMenu": "Open menu"
+    "navigation": "Navigation"
   },
   "eventChart": {
     "ammPriceHistory": "AMM Price History",
@@ -503,33 +206,10 @@
   },
   "marketDetails": {
     "feeLabel": "{{fee}} Fee",
-    "feeSuffix": "{{fee}} fee",
     "addressCopied": "Address copied",
     "copyMarketAddress": "Copy market address",
     "viewCreator": "View creator",
-    "viewAdjudicator": "View adjudicator",
-    "min": "min",
-    "window": "window",
-    "types": {
-      "zkOracle": "zk-Oracle",
-      "zkRule": "zk-Rule",
-      "aiAgent": "AI Agent",
-      "optimistic": "Optimistic"
-    },
-    "rule": {
-      "source": "Source",
-      "adapter": "Adapter",
-      "params": "Params",
-      "condition": "Condition",
-      "contract": "Contract",
-      "event": "Event",
-      "chain": "Chain",
-      "agent": "Agent",
-      "validators": "Validators",
-      "prompt": "Prompt",
-      "bond": "Bond",
-      "dispute": "Dispute"
-    }
+    "viewAdjudicator": "View adjudicator"
   },
   "liquidityDetail": {
     "lpTokenRedemption": "LP Token Redemption",
@@ -540,26 +220,7 @@
     "redeemFailed": "Redemption failed: {{message}}",
     "unknownError": "Unknown error"
   },
-  "trust": {
-    "trustless": "TRUSTLESS",
-    "trustRequired": "Trust Required",
-    "trustlessLabel": "Trustless"
-  },
-  "benefits": {
-    "lpGrows": "LP value grows with trading volume",
-    "lossProtection": "Loss protection cushion"
-  },
-  "proceeds": {
-    "ready": "Ready",
-    "locked": "Locked"
-  },
   "settlement": {
-    "marketSettled": "Market Settled",
-    "marketFinalized": "Market Finalized",
-    "outcome": "Outcome",
-    "claimWinnings": "Claim Winnings",
-    "noWinnings": "No winnings to claim",
-    "redeemShares": "Redeem Shares",
     "yourPosition": "Your Position"
   },
   "lp": {
@@ -588,46 +249,16 @@
     "prob": "Prob",
     "youPay": "You Pay",
     "youReceive": "You Receive",
-    "fee": "Fee",
-    "cost": "Cost",
-    "payoutIfCorrect": "Payout if correct",
-    "return": "Return",
     "usingUpTo": "Using up to",
     "fromSpendableProceeds": "from spendable proceeds.",
     "walletUsdc": "Wallet balance: ",
     "needTestUsdc": "Need test tokens? Get from faucet →",
-    "buyOutcome": "Buy {{outcome}} with {{cost}}",
-    "sellOutcome": "Sell {{outcome}} for {{cost}}",
-    "enterAmount": "Enter Amount",
-    "marketUninitialized": "Market Uninitialized",
-    "loadingQuote": "Loading Quote...",
-    "quoteUnavailable": "Quote Unavailable",
-    "insufficientBalance": "Insufficient Balance",
-    "insufficientPosition": "Insufficient Position",
     "highImpact": "High Impact!",
     "highImpactDesc": "Consider trading in smaller sizes.",
     "significantImpact": "Significant price impact. Check execution price.",
-    "connectWallet": "Connect Wallet",
-    "approveUsdc": "Approve USDC",
-    "switchWallet": "Switch Wallet",
     "position": "Position",
-    "trading": "Trading",
-    "settled": "Settled",
-    "buyingPower": "Buying power",
     "proceedsNote": "Proceeds are instantly spendable but locked for withdrawal for 24h.",
     "notInitialized": "Not initialized"
-  },
-  "trial": {
-    "label": "TRIAL",
-    "left": "LEFT",
-    "active": "Trial Period Active",
-    "ended": "Trial Ended",
-    "remaining": "remaining"
-  },
-  "footer": {
-    "protocol": "SOO PROTOCOL",
-    "rpc": "RPC",
-    "block": "Block"
   },
   "launchpad": {
     "categories": {
@@ -642,160 +273,22 @@
     },
     "questionLabel": "Question",
     "categoryLabel": "Category",
-    "eventLabel": "Event (optional)",
-    "eventPlaceholder": "e.g., crypto-q1-2026",
-    "eventHint": "Markets with the same event name from the same creator are grouped together.",
-    "initialProbabilityLabel": "Opening YES Price",
-    "initialProbabilityHint": "% seeded by the bonding curve — anything other than 50 skews the LMSR inventory from block 0.",
     "expirationLabel": "Expiration",
-    "adjudicatorLabel": "Adjudicator",
-    "depositLabel": "Deposit",
-    "balancePrefix": "Balance: ",
     "openUntilResolved": "Open until resolved",
     "dateLabel": "Date",
     "timeLabel": "Time (local)",
-    "create": "Create",
     "pageTitle": "Create Market",
     "pageSubtitle": "Deploy a prediction market in 60 seconds",
-    "simulator": "Simulator",
     "launchMarket": "Launch Market",
     "launching": "Launching...",
-    "approving": "Approving...",
-    "approveUsdc": "Approve USDC",
     "completeFormToContinue": "Complete Form to Continue",
     "walletUsdc": "Wallet balance: ",
     "needTestUsdc": "Need test tokens? Get from faucet →",
     "liquidityB": "Liquidity (b)",
-    "graduationFee": "Graduation Fee",
-    "graduationVol": "Graduation Vol",
-    "lmsrProperty": "LMSR:",
     "lmsrDesc": "Max loss = Deposit. Max win = Deposit + Flywheel. Fee Yield is always yours.",
-    "adjudicator": {
-      "idealUseCase": "Ideal use case",
-      "zkOracle": "ZK Oracle",
-      "zkRule": "ZK Rule",
-      "agentAdjudicator": "Agent Adjudicator",
-      "optimisticOracle": "Optimistic Oracle",
-      "web2ApiProve": "Web2 API Prove",
-      "primus": "Primus",
-      "trustless": "Trustless",
-      "brevis": "Brevis",
-      "hardwareTrust": "Hardware Trust",
-      "economicSecurity": "Economic Security",
-      "innovation": "Innovation",
-      "manual": "Manual Resolver",
-      "manualDesc": "A trusted human (the market creator or a delegated authority) reads the question, verifies the outcome off-chain, and submits the final result. Simplest model — no oracles, no proofs — but requires the resolver to be honest within the trial window.",
-      "manualUseCase": "Niche / low-volume markets, demos, internal use, markets where automation is overkill",
-      "zkOracleDesc": "Uses zkTLS to prove that a Web2 API response is authentic and untampered. An attestation step is inserted between resolve and settle — the resolver must provide a cryptographic proof that the off-chain data source returned the claimed result.",
-      "zkOracleUseCase": "Any market resolved by provable Web2 data — prices, scores, API results",
-      "zkRuleDesc": "Pure blockchain event resolution. A pause-protocol event is tracked and verified via ZK proofs — if the on-chain condition occurred, resolution proceeds automatically. The most minimum-trust setup possible.",
-      "zkRuleUseCase": "Insurance markets, protocol circuit-breaker events",
-      "agentDesc": "AI agents create and resolve markets via single-agent execution or multi-agent voting. Agents are verified through ERC-8004 attestation and TEE secure enclaves, ensuring tamper-proof autonomous resolution.",
-      "agentUseCase": "AI agent markets, autonomous market creation and resolution",
-      "optimisticDesc": "Proposer assertion followed by a dispute window. Requires financial bonds to ensure honesty.",
-      "optimisticUseCase": "High-throughput mainstream markets, performance-prioritized resolution"
-    },
     "periodLabels": {
       "7d": "7D",
       "30d": "30D"
-    },
-    "sim": {
-      "creator": "Creator",
-      "gamingTrader": "Gaming Trader",
-      "arbitrageur": "Arbitrageur",
-      "pvpTrader": "PvP Trader",
-      "carolStrategy": "Carol's Strategy:",
-      "carolDesc": "Create a market, seed liquidity, and earn from trading volume. No trading required!",
-      "aliceStrategy": "Alice's Strategy:",
-      "aliceDesc": "Trade early to earn LP tokens from fees. Even wrong predictions can profit!",
-      "bobStrategy": "Bob's Strategy:",
-      "bobDesc": "Capture price differences between AMM and SooBook. Risk-free profit when spread exceeds costs!",
-      "daveStrategy": "Dave's Strategy:",
-      "daveDesc": "Bet on conviction against other traders. No LP safety net — winner takes all!",
-      "influenceFactors": "Influence Factors",
-      "liquidityB": "Liquidity (b)",
-      "tradingVolume": "Trading Volume",
-      "settlementLuck": "Settlement Luck",
-      "yourLpOwnership": "Your LP Ownership",
-      "lpEquation": "LP Equation",
-      "lpRedemption": "LP Redemption",
-      "deposit": "Deposit",
-      "flywheel": "Flywheel",
-      "settlement": "Settlement",
-      "feeYield": "Fee Yield",
-      "netPnL": "Net P&L",
-      "roi": "ROI",
-      "lmsrProperty": "LMSR Property:",
-      "lmsrMaxLoss": "Max loss = Deposit, Max win = Deposit + Flywheel. Fee Yield is always yours.",
-      "tradeSize": "Trade Size",
-      "entryPrice": "Entry Price (Your Side)",
-      "predictionOutcome": "Prediction Outcome",
-      "correct": "Correct",
-      "wrong": "Wrong",
-      "tradeEquation": "Trade Equation",
-      "tradePnL": "Trade P&L",
-      "payout": "Payout",
-      "cost": "Cost",
-      "postGrad": "Post-Grad",
-      "preGrad": "Pre-Grad",
-      "volumeAfterEntry": "Volume After Entry",
-      "preGradBonus": "Pre-Grad Bonus:",
-      "postGradNote": "Lower 1% fees but no LP tokens. Pure trading P&L.",
-      "priceDivergence": "Price Divergence",
-      "gasCost": "Gas Cost (2 txs)",
-      "grossProfit": "Gross Profit",
-      "totalCosts": "Total Costs",
-      "netProfit": "Net Profit",
-      "profitable": "Profitable!",
-      "notProfitable": "Not Profitable",
-      "minViableSpread": "Min Viable Spread",
-      "arbInsight": "Arbs provide a SERVICE by tightening spreads. All traders benefit from their activity!",
-      "keyInsight": "Key Insight:",
-      "positionSize": "Position Size",
-      "estimatedWinProb": "Your Estimated Win Probability",
-      "outcomeScenario": "Outcome Scenario",
-      "win": "Win",
-      "lose": "Lose",
-      "expected": "Expected",
-      "sharesReceived": "Shares Received",
-      "expectedValue": "Expected Value",
-      "ifWin": "If Win",
-      "ifLose": "If Lose",
-      "expectedPnL": "Expected P&L",
-      "actualPnL": "Actual P&L",
-      "return": "Return",
-      "pvpWarning": "PvP trading has NO LP safety net. If you don't have an edge, you're the counterparty smart money bets against.",
-      "warning": "Warning:",
-      "carolStory": "Carol creates markets and earns from volume",
-      "aliceStory": "Alice trades early and earns LP tokens",
-      "bobStory": "Bob captures spreads between venues",
-      "daveStory": "Dave bets on conviction, winner takes all"
-    },
-    "risk": {
-      "title": "Risk Disclosure",
-      "subtitle": "Understand before you launch",
-      "lowVolumeTitle": "Low Volume Risk",
-      "lowVolumeDesc": "Your market may not attract sufficient traders.",
-      "lowVolumeMitigation": "Choose trending topics and promote your market actively.",
-      "settlementTitle": "Settlement Imbalance",
-      "settlementDesc": "LP value depends on the distribution of YES/NO positions at settlement.",
-      "settlementMitigation": "LP floor formula guarantees a minimum redemption value.",
-      "smartContractTitle": "Smart Contract Risk",
-      "smartContractDesc": "All DeFi protocols carry inherent smart contract risk.",
-      "smartContractMitigation": "Soo Protocol has been audited. Only deposit what you can afford to lose.",
-      "lpFloorProtection": "LP Floor Protection",
-      "lpFloorDesc": "Your LP tokens have a guaranteed minimum value based on the floor formula:",
-      "lpFloorWorstCase": "Even in the worst-case scenario (all winners redeem), LPs are guaranteed at least the floor value.",
-      "acknowledgePreamble": "By launching a market, you acknowledge:",
-      "ack1": "LP tokens are not guaranteed to profit",
-      "ack2": "Your deposit seeds liquidity for traders",
-      "ack3": "Smart contract risks exist despite audits",
-      "low": "low",
-      "medium": "medium",
-      "high": "high",
-      "critical": "critical",
-      "impact": "impact",
-      "mitigation": "Mitigation:"
     }
   },
   "stats": {
@@ -813,72 +306,6 @@
     "liquidityAnchorHint": "b × ln(2) ≈ Supply"
   },
   "uc": {
-    "common": {
-      "loadingHolders": "Loading holders...",
-      "no": "No",
-      "noHolders": "No LP holders",
-      "noPositions": "No positions",
-      "usdc": "USDC",
-      "yes": "Yes"
-    },
-    "create": {
-      "connectWallet": {
-        "description": "Connect your wallet to view your markets and create new ones.",
-        "title": "Connect Wallet"
-      },
-      "emptyMarkets": {
-        "button": "Create Your First Market",
-        "description": "Market creators earn fees from every trade. Start earning today!",
-        "title": "No Markets Yet"
-      },
-      "emptySettlements": {
-        "description": "No markets are awaiting your settlement decision.",
-        "title": "All Caught Up!"
-      },
-      "header": {
-        "subtitle": "Manage your markets and settle outcomes",
-        "title": "Create & Manage"
-      },
-      "roles": {
-        "adjudicator": "Adjudicator",
-        "creator": "Creator",
-        "lpTooltip": "What are LP tokens?"
-      },
-      "tabs": {
-        "create": "+ Create New",
-        "markets": "My Markets",
-        "settlements": "Pending Settlements"
-      },
-      "wizard": {
-        "l": {
-          "description": "Choose how much USDC to seed the market with. This determines trading depth.",
-          "maxLoss": "Max potential loss: "
-        },
-        "q": {
-          "deadline": "Resolution Deadline",
-          "description": "Create a clear, unambiguous question that can be resolved as YES or NO.",
-          "label": "Question",
-          "placeholder": "e.g., \"Will ETH reach $10,000 by December 31, 2025?\""
-        },
-        "r": {
-          "adjDesc": "Can settle the market outcome after the deadline",
-          "adjLabel": "Adjudicator Address",
-          "description": "Designate who can settle the market outcome and who can veto incorrect settlements.",
-          "guardDesc": "Can veto incorrect settlements within 24 hours",
-          "guardLabel": "Guardian Address"
-        },
-        "review": {
-          "comingSoon": "Deploy Market (Coming Soon)",
-          "transactionDesc": "Deploying will require two transactions: TruthMarket creation and initial liquidity deposit."
-        },
-        "steps": {
-          "l": "Set Initial Liquidity",
-          "q": "Define Your Question",
-          "r": "Assign Roles",
-          "review": "Review & Deploy"
-        }
-      }
-    },
     "learn": {
       "advantage": {
         "table": {
@@ -1176,178 +603,14 @@
       }
     },
     "lp": {
-      "ceiling": "Ceiling",
-      "ceilingDescription": "Maximum LP value if all positions win",
-      "ceilingValue": "Ceiling Value",
-      "creatorFloor": "Creator Floor",
-      "creator": "Creator",
-      "you": "You",
-      "redeemable": "Redeemable",
-      "fairMinting": "Fair Minting",
-      "holderShare": "LP Holder / Share",
-      "fairMintingDescription": "Fair minting ensures LP tokens are priced correctly",
-      "floor": "Floor",
-      "floorDescription": "Minimum guaranteed LP value",
-      "holders": "Holders",
-      "leaderboard": "LP Leaderboard",
-      "loadingHolders": "Loading holders...",
-      "noHolders": "No LP holders",
-      "noPositions": "No LP positions",
-      "redeemValue": "Redeem Value",
-      "title": "LP Positions",
-      "yourFloor": "Your Floor",
       "showHint": "Show hint",
       "graduatedHint": "In graduated mode, trading fees are split three ways: (1) b-growth increases liquidity depth, (2) LP yield accrues to existing LP holders, and (3) protocol fee. No new LP tokens are minted from trades — your LP share only changes if you bond more LP or redeem.",
       "bondingHint": "In bonding mode, every trade you make earns you LP tokens as a reward. The more you trade during bonding, the larger your LP position becomes. Once the market graduates, LP minting stops and your position is locked in. Early traders get the biggest LP allocation."
     },
-    "navbar": {
-      "adjudicator": "Adjudicator",
-      "amm": "AMM",
-      "connect": "Connect",
-      "faucet": "Faucet",
-      "gov": "Gov",
-      "launchpad": "Launchpad",
-      "learn": "Learn",
-      "pro": "Orderbook"
-    },
-    "operator": {
-      "description": "Manage market operations",
-      "guardian": "Guardian",
-      "resolve": "Resolve",
-      "title": "Operator Console"
-    },
     "pro": {
-      "activeOrders": {
-        "clearAll": "Clear All",
-        "empty": "No active limit orders",
-        "title": "Active Orders"
-      },
-      "execution": {
-        "amountDollar": "Amount (Dollar Based)",
-        "amountShares": "Amount (Shares)",
-        "buyYes": "BUY YES",
-        "estimatedValue": "Estimated Value",
-        "executeMarket": "Execute Market",
-        "limit": "LIMIT (RANGE)",
-        "market": "MARKET",
-        "placeLimit": "Place Limit",
-        "rangeLower": "Range Lower (Prob)",
-        "rangeUpper": "Range Upper (Optional)",
-        "rangeUpperPlaceholder": "Leave empty for point order",
-        "sellYes": "SELL YES",
-        "takerFee": "Taker Fee (0.2%)"
-      },
-      "history": {
-        "empty": "No trade history"
-      },
-      "inventory": {
-        "balances": "Balances",
-        "details": "Details",
-        "merge": "MERGE",
-        "retroactive": "RETROACTIVE",
-        "split": "SPLIT",
-        "truthFinality": "Truth Finality"
-      },
-      "restricted": {
-        "description": "Hyper-orderbook venues are only available for graduated markets. This market is still in its bonding phase.",
-        "switchButton": "Switch to Trade",
-        "title": "SooBook Restricted"
-      },
-      "shortcuts": {
-        "buy": "BUY",
-        "price": "PRICE",
-        "sell": "SELL",
-        "shortcuts": "SHORTCUTS",
-        "terminal": "V12 SOOBOOK TERMINAL"
-      },
-      "tabs": {
-        "history": "HISTORY",
-        "inventory": "INVENTORY"
-      },
-      "utility": {
-        "latency": "Latency",
-        "network": "Network"
-      },
       "visuals": {
-        "depthChart": "Market Depth",
-        "liquidityMap": "Liquidity Map",
-        "tickLadder": "Tick Ladder",
-        "tickMap": "Tick Map (1,000)",
-        "tickMapSub": "HIGH FIDELITY BITMAP"
+        "liquidityMap": "Liquidity Map"
       }
-    },
-    "roles": {
-      "0": {
-        "description": "Monetize market-making expertise and community insight",
-        "icon": "Palette",
-        "id": "creator",
-        "name": "Creator",
-        "path": "/create",
-        "story": "Carol creates markets and earns from volume"
-      },
-      "1": {
-        "description": "Predict events and earn protocol stakeholder rewards",
-        "icon": "Gamepad2",
-        "id": "gaming",
-        "name": "Gaming Trader",
-        "path": "/amm",
-        "story": "Alice trades early and earns LP tokens"
-      },
-      "2": {
-        "description": "Capture spreads and maintain cross-venue efficiency",
-        "icon": "ArrowLeftRight",
-        "id": "arb",
-        "name": "Arbitrageur",
-        "path": "/orderbook",
-        "story": "Bob captures spreads between venues"
-      },
-      "3": {
-        "description": "Pure conviction trading on the 1,000-tick orderbook",
-        "icon": "Swords",
-        "id": "pvp",
-        "name": "PvP Trader",
-        "path": "/orderbook",
-        "story": "Dave bets on conviction, winner takes all"
-      }
-    },
-    "trade": {
-      "education": "New to prediction markets? Learn how they work →",
-      "header": {
-        "subtitle": "For Gaming Traders: buy/sell YES or NO with always‑available liquidity. During Bonding, each trade earns LP rewards.",
-        "title": "Trading on LMSR AMM"
-      },
-      "panel": {
-        "deadline": "Deadline",
-        "goPro": "Go Orderbook",
-        "graduated": "Graduated",
-        "preGrad": "Bonding",
-        "selectToStart": "Select a market to start trading"
-      },
-      "positions": {
-        "connectWallet": "Connect wallet to view positions",
-        "makePrediction": "Make your first prediction!",
-        "noPositions": "No positions yet.",
-        "title": "My Positions"
-      },
-      "selector": {
-        "noMarkets": "No markets match your search",
-        "searchPlaceholder": "Search markets...",
-        "trending": "Trending Markets"
-      }
-    },
-    "trading": {
-      "bestPrice": "Best Price",
-      "buy": "Buy",
-      "costPerShare": "Cost Per Share",
-      "insufficientBalance": "Insufficient Balance",
-      "marketPrice": "Market Price",
-      "passiveOrder": "Passive Order",
-      "sell": "Sell",
-      "settled": "Settled",
-      "shares": "Shares",
-      "totalCost": "Total Cost",
-      "trading": "Trading",
-      "yourPrice": "Your Price"
     }
   },
   "risk": {
@@ -1388,8 +651,6 @@
       "chain": "Option chain",
       "positions": "Positions",
       "faucet": "Faucet",
-      "connect": "Connect wallet",
-      "classic": "Classic",
       "markets": "Markets",
       "launch": "Launch",
       "portfolio": "Portfolio"
@@ -1404,21 +665,6 @@
     "shell": {
       "testnetBanner": "Devnet — funds have no value",
       "networkFooter": "Solana Devnet · Soo Core"
-    },
-    "wallet": {
-      "connectedTitle": "Connected with {{connector}}. Click to disconnect.",
-      "fallbackName": "wallet",
-      "connecting": "Connecting",
-      "connect": "Connect",
-      "mossPasskey": "MOSS Passkey",
-      "connectionFailed": "Wallet connection failed.",
-      "technicalDetails": "Technical details",
-      "mobileFrameHelp": "On mobile, the browser may be blocking the wallet’s embedded frame. Retry on a slower connection or disable cross-site tracking prevention for this page. MOSS needs third-party frame storage and passkey access to load.",
-      "authorityNotice": "MegaETH testnet only. MOSS is never used for resolver or guardian authority."
-    },
-    "toast": {
-      "viewReceipt": "View receipt",
-      "dismiss": "Dismiss"
     },
     "hero": {
       "eyebrow": "Daily close / binary settlement",
@@ -1448,14 +694,9 @@
         "perShare": "per share",
         "eitherSide": "either side"
       },
-      "activeOnly": "Active only",
       "active": "Active",
       "all": "All",
-      "syncing": "Syncing chain metadata",
-      "synced": "Chain metadata synced",
       "fixtureNotice": "Local fixture mode is on. Filled cells exercise UI states only; canonical chain matching remains fail-closed.",
-      "hiddenMarkets_one": "{{count}} market hidden pending verification",
-      "hiddenMarkets_other": "{{count}} markets hidden pending verification",
       "indexerUnavailable": "Indexer unavailable. No live markets are being inferred.",
       "verificationUnavailable": "Chain verification unavailable. No live markets are being inferred.",
       "priceUnavailable": "Live price refresh unavailable. Displayed grid prices may be out of date.",
@@ -1487,102 +728,10 @@
         "fixtureTiming": "Explicit fixtures settle locally and immediately.",
         "canonicalTiming": "Canonical testnet markets collect close evidence on the session pass, then wait through the deployed ManualAdjudicator’s 60-minute veto period.",
         "invalidation": "Every clone’s invalidation deadline is read live."
-      }
+      },
+      "hiddenMarkets": "{{count}} market(s) hidden — metadata did not match a template"
     },
     "activation": {
-      "steps": {
-        "funding": {
-          "label": "Approve exact creator deposit",
-          "detail": "Allowance only; funds remain in your wallet until creation."
-        },
-        "creating": {
-          "label": "Create canonical market",
-          "detail": "The deposit backs the market’s worst-case payout."
-        },
-        "bonding": {
-          "label": "Seed executable liquidity",
-          "detail": "Quote-bounded trades seed inventory; you receive outcome shares and a liquidity token."
-        },
-        "graduated": {
-          "label": "Open trading",
-          "detail": "Confirm order-book registration; activation assets remain claimable."
-        }
-      },
-      "economics": {
-        "title": "Capital decision",
-        "maximumCommitted": "Maximum committed",
-        "maximumCommittedUnit": "test MUSDC + gas · locked across market assets",
-        "recoverable": "Est. recoverable",
-        "feesCost": "Est. fees / cost",
-        "creatorDeposit": "Creator deposit",
-        "seedingCollateral": "Liquidity-seeding collateral",
-        "activationFee": "Activation fee · 5%",
-        "formula": "Deposit formula",
-        "assetExplanation": "Activation trades mint YES/NO shares and liquidity tokens to the activator. After settlement, winning/INVALID shares can be claimed and liquidity tokens can be redeemed pro-rata.",
-        "recoverableWarning": "Recoverable is an estimate, not cash in your wallet: it unlocks only after settlement and depends on the resolved outcome and LP floor."
-      },
-      "sequence": "Receipt-backed sequence",
-      "stepState": {
-        "mined": "mined",
-        "current": "current",
-        "next": "next",
-        "queued": "queued"
-      },
-      "frame": {
-        "eyebrow": "Testnet activation",
-        "closes": "closes {{close}}"
-      },
-      "fixture": {
-        "notice": "Explicit fixture mode. These controls do not sign or broadcast and are available only through the fixture flag.",
-        "openTrade": "Open fixture trade drawer",
-        "start": "Start fixture simulation",
-        "continue": "Continue fixture simulation",
-        "reset": "Reset fixture"
-      },
-      "canonical": {
-        "notice": "MegaETH testnet broadcasts are enabled. Manual simulation · verified=false · Primus is not live. Every approval is exact and every state transition waits for a successful receipt.",
-        "resuming": "Resuming this cell’s existing market — mined steps are skipped and no new deposit is taken.",
-        "market": "Market {{address}}",
-        "receipt": "Receipt {{hash}}",
-        "tooLate": "Activation locked: fewer than two hours remain before close.",
-        "openOrderbook": "Open chain order book",
-        "waitingReceipts": "Waiting for receipts",
-        "approveCreate": "Approve and create on testnet",
-        "connectHeader": "Connect wallet in header",
-        "waitingReceipt": "Waiting for receipt",
-        "submitSeed": "Submit next liquidity seed",
-        "resetAllowance": "Reset exact seeding allowance"
-      },
-      "status": {
-        "mossSession": "Approve the 4-hour MOSS EastBoard session (single popup)",
-        "approveCreation": "Approve exactly {{amount}} raw test MUSDC for creation",
-        "createMarket": "Create the canonical ManualAdjudicator market",
-        "approveSetupBudget": "Approve the capped 370 test-MUSDC market setup budget",
-        "marketCreated": "Market {{address}} created; continue liquidity setup",
-        "tradingReady": "Trading readiness is confirmed on-chain",
-        "resetSetupBudget": "Setup allowance exhausted; resetting the capped 370 test-MUSDC budget",
-        "submittingRound": "Submitting {{outcome}} liquidity round at a 1% quote bound",
-        "finalRound": "Round mined; liquidity setup is 99.99% complete — submit the final rounding transaction",
-        "roundProgress": "Round mined; liquidity setup is {{progress}}% complete",
-        "mossBatchedApproval": "MOSS batches an exact approval with each quoted setup transaction",
-        "setupAllowanceSet": "Setup allowance is set to the exact capped budget"
-      },
-      "errors": {
-        "registryMissing": "{{label}} is missing from the MegaETH deployment registry",
-        "liquiditySetup": "Liquidity setup could not be completed",
-        "connectWallet": "Connect a wallet first",
-        "wrongNetwork": "Switch the wallet to MegaETH testnet",
-        "rpcUnavailable": "MegaETH RPC client is unavailable",
-        "transactionReverted": "Transaction {{hash}} reverted",
-        "mossBatch": "MOSS approvals must be batched with their consuming call",
-        "approvalMismatch": "Approval receipt did not set the exact test MUSDC allowance",
-        "twoHourLead": "Activation requires at least two hours before close",
-        "creationEvent": "Creation receipt did not contain MarketCreated",
-        "createFirst": "Create or resume a market first",
-        "trialWindow": "Fewer than 15 minutes remain in the market setup window",
-        "registrationPending": "Liquidity target reached but order-book registration is not confirmed",
-        "noSetupFee": "No remaining market setup fee was found"
-      },
       "liquidity": "Liquidity (b)",
       "title": "Activate market",
       "strike": "Strike",
@@ -1605,7 +754,6 @@
       },
       "depth": {
         "title": "CLOB depth",
-        "liveTitle": "Live CLOB depth",
         "spread": "spread {{spread}}",
         "instruction": "Select an ask to buy YES. Select a bid to sell YES.",
         "bids": "YES bids · buyers",
@@ -1613,13 +761,8 @@
         "sizePrice": "Size · Price",
         "priceSize": "Price · Size",
         "empty": "Empty",
-        "unavailable": "Unavailable",
-        "syncing": "Syncing…",
         "tradeBidAria": "Trade against bid at {{price}}",
-        "tradeAskAria": "Trade against ask at {{price}}",
-        "openSpread": "{{count}} open · spread {{spread}}",
-        "open": "{{count}} open",
-        "loadError": "Order-book depth and open-order status could not be loaded. This is not an empty market. Retry after the indexer reconnects."
+        "tradeAskAria": "Trade against ask at {{price}}"
       },
       "fixture": {
         "notice": "Simulated attestation mode · verified=false. Quotes and fills are local fixtures; no wallet signature or transaction can be produced here.",
@@ -1630,7 +773,6 @@
         "simBalance": "Sim balance {{amount}} MUSDC",
         "yesLimitPrice": "YES limit price (¢)",
         "sellHelper": "Equivalent NO price: {{noPrice}}¢ · collateralized below exposure",
-        "limitPrice": "Limit price, cents",
         "shares": "Shares",
         "risk": "You risk",
         "pays": "Pays if right",
@@ -1640,236 +782,18 @@
         "filled": "Simulated {{action}} filled for {{amount}} test MUSDC.",
         "appendixBody": "The template stops trading at {{close}}. Local settlement is immediate; a future mined ManualAdjudicator simulation must also wait through its deployed 60-minute veto period. INVALID follows the market deadline plus the clone’s live invalidation buffer."
       },
-      "live": {
-        "bannerTitle": "MegaETH testnet · verified=false",
-        "bannerBody": "Orders and receipts are on-chain. Settlement is manually operated and the published close is not cryptographically verified.",
-        "bestBid": "Best bid",
-        "priceReference": "Price reference",
-        "bestAsk": "Best ask",
-        "protocolOnly": "Protocol reference only · order book unavailable",
-        "bookUnavailable": "Order book unavailable",
-        "syncingBook": "Syncing order book",
-        "clobMidpoint": "CLOB midpoint · {{value}}",
-        "protocolReference": "Protocol reference · {{state}}",
-        "emptyBook": "empty book",
-        "oneSidedBook": "one-sided book",
-        "midpointExplanation": "This number is the midpoint between the best indexed CLOB bid and ask; it is a reference, not a guaranteed fill.",
-        "protocolExplanation": "The order book cannot form a midpoint, so this number comes from the live protocol state. Your order still executes on SooBook.",
-        "unavailableExplanation": "Indexed depth is unavailable, so this reference cannot be treated as an executable price. Order submission is paused.",
-        "loadingExplanation": "Reading indexed depth before presenting an executable price reference.",
-        "noReference": "No chain or indexer price reference is available yet. The app is not inventing one."
-      },
-      "position": {
-        "title": "Your position",
-        "connect": "Connect a wallet to see your position.",
-        "reading": "Reading position…",
-        "empty": "No shares held in this market.",
-        "includesActivation": "Includes activation inventory · {{yes}} YES / {{no}} NO"
-      },
-      "orders": {
-        "title": "Your open orders",
-        "unavailable": "Open-order status is unavailable while the indexer is offline.",
-        "reading": "Reading open orders…",
-        "empty": "No resting orders.",
-        "cancel": "Cancel #{{id}}"
-      },
-      "ticket": {
-        "buyYes": "Buy YES",
-        "sellYes": "Sell YES",
-        "yesLimitPrice": "YES limit price (¢)",
-        "sellHelper": "Equivalent NO price: {{noPrice}}¢",
-        "collateralizedBelow": "Collateralized below exposure",
-        "limitPrice": "Limit price, cents",
-        "shares": "Shares",
-        "currentFee": "Current order fee",
-        "unavailable": "Unavailable",
-        "reading": "Reading…"
-      },
-      "risk": {
-        "beforeSign": "Before you sign",
-        "youRisk": "You risk",
-        "riskUnit": "MUSDC incl. crossing fee",
-        "netWin": "Net win if right",
-        "winUnit": "MUSDC after max debit",
-        "invalid": "INVALID · 50¢/share",
-        "details": "Order details",
-        "viewBreakdown": "View breakdown",
-        "collateral": "Collateral · price × shares",
-        "crossingFee": "Crossing fee · {{fee}}",
-        "maximumDebit": "Maximum debit",
-        "payout": "Payout if right · 100¢/share",
-        "walletBalance": "Wallet balance",
-        "explanation": "A binary share pays 100¢ if correct and 0¢ if wrong. The fee is charged on top when this order crosses and fills as taker; the ticket reserves that worst case."
-      },
-      "actions": {
-        "waitingReceipt": "Waiting for receipt",
-        "claim": "Claim settled payout",
-        "tradingClosed": "Trading closed at the exchange close",
-        "bookUnavailable": "Order book unavailable",
-        "feeUnavailable": "Fee schedule unavailable",
-        "readingFee": "Reading current fee",
-        "submit": "Submit on-chain order",
-        "connect": "Connect wallet"
-      },
       "appendix": {
         "title": "Rules, fees, custody & settlement",
-        "subtitle": "Manual settlement · verified=false · INVALID pays 50¢/share",
-        "view": "View details",
-        "onchainMarket": "On-chain market",
-        "walletRouting": "{{address}} · orders sign through the connected MegaETH testnet wallet"
-      },
-      "status": {
-        "mossSession": "Approve the 4-hour MOSS EastBoard session…",
-        "connectWallet": "Connect a MegaETH testnet wallet first.",
-        "settlementUnavailable": "Settlement contracts are unavailable.",
-        "claiming": "Claiming settled positions…",
-        "nothingToClaim": "Nothing to claim in this market.",
-        "claimed": "Claimed {{amount}} test MUSDC",
-        "claimNoChange": "Claim confirmed; no balance change was recorded",
-        "tradingClosed": "Trading is closed for this market.",
-        "submissionPaused": "The order book is unavailable. Order submission is paused until indexed depth returns.",
-        "feeScheduleUnavailable": "Live FeeRouter schedule is unavailable; refusing to quote or sign an order.",
-        "invalidOrder": "Use a whole-cent tick from 1 to 99 and positive shares.",
-        "checkingAllowance": "Checking exact collateral allowance…",
-        "approveExact": "Approve exactly {{amount}} test MUSDC…",
-        "submitting": "Submitting {{action}}…",
-        "orderConfirmed": "Order confirmed: {{hash}}",
-        "cancelling": "Cancelling order {{id}}…",
-        "cancelConfirmed": "Cancellation confirmed: {{hash}}"
-      },
-      "errors": {
-        "operationFailed": "Operation failed: {{detail}}",
-        "lifecycleClient": "Market lifecycle client is unavailable",
-        "balanceClient": "Balance client is unavailable",
-        "positionClient": "Position client unavailable",
-        "feeClient": "Fee client unavailable",
-        "mossConfig": "MOSS session contract configuration is unavailable",
-        "claimReceipt": "Claim receipt failed",
-        "claimStep": "Claim step {{step}} reverted",
-        "approvalReceipt": "Collateral approval receipt failed",
-        "approvalMismatch": "Approval receipt did not set the exact order allowance",
-        "orderReceipt": "Order receipt failed",
-        "cancelReceipt": "Cancel receipt failed",
-        "shortfall": "{{purpose}} needs {{required}} test MUSDC, but this wallet has {{balance}}. Mint test MUSDC from Faucet first.",
-        "purposeOrder": "Order"
-      },
-      "fees": {
-        "eyebrow": "Live FeeRouter",
-        "title": "What fees you pay, and where they go",
-        "current": "Current order fee {{fee}}",
-        "readError": "The deployed fee schedule could not be read. Order signing is disabled instead of presenting an assumed fee.",
-        "applied": "Applied to crossing orders",
-        "description": "A crossing order pays the current fee on top of collateral. The deployed split below applies to that fee.",
-        "marketReserve": "Market reserve",
-        "lpYield": "LP yield",
-        "adjudicator": "Adjudicator",
-        "protocol": "Protocol"
-      },
-      "custody": {
-        "eyebrow": "Custody map",
-        "title": "Where your assets are now",
-        "claimsUnlocked": "claims unlocked",
-        "live": "live custody",
-        "connect": "Connect a wallet to read custody balances and unlock conditions.",
-        "wallet": "Wallet",
-        "readingBalance": "Reading balance…",
-        "walletDescription": "Available now; approvals do not move funds.",
-        "orderEngine": "OrderEngine",
-        "bookBalance": "{{yes}} YES · {{no}} NO · ≈{{escrow}} MUSDC resting",
-        "readingBook": "Reading CLOB custody…",
-        "bookDescription": "Resting collateral unlocks on cancel/fill; outcome shares claim after settlement.",
-        "activation": "Activation inventory",
-        "activationBalance": "{{yes}} YES · {{no}} NO",
-        "readingActivation": "Reading activation inventory…",
-        "activationDescription": "Shares acquired during activation become claimable after settlement.",
-        "lpToken": "LP token",
-        "lpBalance": "{{amount}} LP",
-        "readingLp": "Reading LP balance…",
-        "lpDescription": "Redeemable pro-rata only after settlement, after liabilities and reserved fees."
+        "view": "View details"
       },
       "real": {
-        "priceTitle": "market price",
         "connect": "Connect a wallet first",
-        "buyYes": "Buy YES",
-        "sellYes": "Sell YES",
-        "shares": "shares",
         "cost": "Est. cost",
         "proceeds": "Est. proceeds",
         "paysIfYes": "Pays if YES",
-        "pending": "Signing…",
-        "notEnough": "Not enough YES to sell",
-        "buyCta": "Buy {{shares}} YES",
-        "sellCta": "Sell {{shares}} YES",
-        "sold": "Sold {{shares}} YES — proceeds unlock after the cooldown",
-        "yourPosition": "your position",
         "closed": "Closed {{shares}} {{side}}",
         "closeCta": "Close {{shares}} {{side}}",
         "paysIfNo": "Pays if NO"
-      }
-    },
-    "mechanism": {
-      "loadingAria": "Loading market mechanism",
-      "unavailableTitle": "Mechanism status unavailable",
-      "unavailableBody": "Live market and adjudicator reads failed. No lifecycle timestamps or authority claims are being inferred.",
-      "unknownOutcome": "unknown outcome {{outcome}}",
-      "notSet": "Not set",
-      "phase": {
-        "notConfigured": "Not configured",
-        "trading": "Trading / awaiting close",
-        "proposed": "Outcome proposed / veto open",
-        "attested": "Attested / veto open",
-        "settled": "Settled",
-        "disputed": "Guardian disputed / re-resolution required",
-        "frozen": "Trading frozen / awaiting resolver",
-        "unknown": "Unknown {{phase}}"
-      },
-      "time": {
-        "days": "{{days}}d {{hours}}h {{minutes}}m",
-        "in": "in {{value}}",
-        "ago": "{{value}} ago"
-      },
-      "sources": {
-        "sse": "Shanghai Stock Exchange day-k close",
-        "szse": "Shenzhen Stock Exchange history close",
-        "tencent": "Tencent HK daily close feed",
-        "yahoo": "Yahoo Finance daily chart close",
-        "primary": "{{source}} primary",
-        "hsiCrossCheck": "Yahoo Finance HSI cross-check",
-        "tencentCrossCheck": "Tencent daily close cross-check"
-      },
-      "confirmed": "Confirmed on-chain",
-      "notScheduled": "Not scheduled until an outcome is proposed",
-      "eyebrow": "Live mechanism",
-      "title": "What happens next, and who controls it",
-      "phaseLabel": "Phase: {{phase}}",
-      "proposedOutcome": "Proposed {{outcome}}",
-      "warningTitle": "Manual simulation · verified=false",
-      "warningBody": "Primus is not live here. The resolver submits a human-operated ManualAdjudicator decision and evidence hash; the contract does not cryptographically verify the published close.",
-      "timeline": {
-        "tradingFreezes": "Trading freezes",
-        "firstEvidence": "First evidence pass",
-        "evidenceDeadline": "Evidence deadline",
-        "guardianVeto": "Guardian veto ends",
-        "settlement": "Earliest settlement",
-        "fallback": "Unresolved fallback",
-        "chain": "chain",
-        "schedule": "schedule",
-        "evidenceWindow": "{{timing}} · configured evidence window",
-        "priorDispute": "Prior proposal disputed · awaiting re-resolution",
-        "pendingProposal": "Pending proposal · {{minutes}} min window",
-        "invalidPath": "{{timing}} · permissionless INVALID path"
-      },
-      "evidence": {
-        "policy": "Evidence policy · 2-of-{{count}}",
-        "rules": "Two independent close observations must agree. Fewer than two, no published close, a full-session suspension, or a qualifying corporate action produces INVALID. INVALID redeems YES and NO at 50¢ per share."
-      },
-      "authority": {
-        "adjudicator": "ManualAdjudicator",
-        "resolver": "Resolver · only address that can propose",
-        "guardian": "Configured guardian",
-        "guardianApproved": "Approved on-chain to veto",
-        "guardianNotApproved": "Not approved on-chain",
-        "evidenceHash": "Proposed evidence hash"
       }
     },
     "portfolio": {
@@ -1894,43 +818,6 @@
       "fixtureOnly": "Fixture-only route",
       "disabledBodyBefore": "Local simulated positions are disabled in the default chain UI. Add the explicit",
       "disabledBodyAfter": "flag only when testing non-broadcasting fixture flows."
-    },
-    "faucet": {
-      "title": "Faucet",
-      "testMusdc": "Test MUSDC",
-      "fixtureEyebrow": "Local simulation funding",
-      "fixtureNotice": "Local-only balance. This faucet never calls the MegaETH token contract.",
-      "fixtureBody": "Use this balance to exercise activation previews, local order fills, portfolio settlement, and redemption without a wallet.",
-      "simulatedBalance": "Simulated balance",
-      "addLocal": "Add 1,000 local MUSDC",
-      "addedLocal": "Added 1,000 local test MUSDC. No token was minted on-chain.",
-      "chainEyebrow": "MegaETH testnet funding",
-      "chainNotice": "This calls the deployed permissionless MockUSDC mint function on MegaETH testnet. Tokens have no value.",
-      "chainBody": "Activation needs about 381.23 test MUSDC. One faucet mint funds a complete activation rehearsal plus order testing.",
-      "walletBalance": "Wallet balance",
-      "connectWallet": "Connect wallet",
-      "waitingReceipt": "Waiting for receipt",
-      "mint": "Mint 1,000 test MUSDC",
-      "receipt": "Receipt {{hash}}",
-      "status": {
-        "connectFirst": "Connect a MegaETH testnet wallet first.",
-        "configUnavailable": "MegaETH test-token configuration is unavailable.",
-        "simulating": "Simulating the permissionless test-token mint…",
-        "mossSession": "Approve the 4-hour MOSS EastBoard session…",
-        "confirmMint": "Confirm minting 1,000 test MUSDC in your wallet…",
-        "confirmed": "Mint confirmed. Balance: {{balance}} test MUSDC."
-      },
-      "errors": {
-        "mossConfig": "MOSS session contract configuration is unavailable",
-        "receiptFailed": "Mint receipt failed",
-        "balanceUnchanged": "Mint receipt did not increase the wallet’s test MUSDC balance",
-        "operationFailed": "Mint failed: {{detail}}"
-      }
-    },
-    "errors": {
-      "operationFailed": "Operation failed: {{detail}}",
-      "unexpectedFailure": "The wallet or network request could not be completed.",
-      "technicalDetails": "Technical details"
     }
   },
   "arena": {
@@ -1947,7 +834,6 @@
       "edit": "Edit",
       "save": "Save",
       "saving": "Saving",
-      "cancel": "Cancel",
       "saved": "Player handle saved",
       "saveFailed": "Could not save handle"
     },

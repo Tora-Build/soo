@@ -10,12 +10,12 @@ stored verbatim.
 From `infra/arena-api/`, in order:
 
 ```sh
-wrangler d1 create soo-arena
+npx wrangler d1 create soo-arena
 # paste the printed database_id into wrangler.toml (d1_databases -> database_id)
 
-wrangler d1 migrations apply soo-arena --remote
+npx wrangler d1 migrations apply soo-arena --remote
 
-wrangler deploy
+npx wrangler deploy
 ```
 
 Then set `VITE_ARENA_API_BASE` to the printed `https://soo-arena.<account>.workers.dev`
@@ -31,5 +31,5 @@ curl -s "$BASE/api/arena/bootstrap?wallet=EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n
 
 ## Local dev
 
-`wrangler dev` (local D1 is automatic; apply migrations first with
-`wrangler d1 migrations apply soo-arena --local`).
+`npx wrangler dev` (local D1 is automatic; apply migrations first with
+`npx wrangler d1 migrations apply soo-arena --local`).

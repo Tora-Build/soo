@@ -1,8 +1,8 @@
 # Adjudicator — resolution, veto, settlement
 
-> Subsystem: `state/adjudicator.rs` and
-> `instructions/{register_adjudicator, request_lock, lock_for_resolution,
-> attest_outcome, dispute, settle}.rs`.
+> Subsystem: `state/adjudicator.rs`, `zk/` and
+> `instructions/{register_adjudicator, register_zk_adjudicator, request_lock,
+> lock_for_resolution, attest_outcome, attest_outcome_zk, dispute, settle}.rs`.
 > Canon law: [`law/adjudicator.md`](https://github.com/Tora-Build/sooth-canon/blob/main/law/adjudicator.md).
 
 ---
@@ -31,6 +31,11 @@ graduates is closed by `dismiss_market` and refunded through `claim_refund`
 | `attested_at`        | timestamp of the attestation                                              |
 | `disputed`           | one-shot guard; a second dispute is rejected                              |
 | `disputed_at`        | timestamp of the veto                                                     |
+| `zk_comparator`      | `ZkComparator` discriminant; non-`None` is what marks the entry zk-enabled |
+| `zk_value_scale`     | decimal places shared by the attested value and `zk_threshold`            |
+| `zk_attestor_evm`    | the one EVM address whose attestations this market accepts                |
+| `zk_rule_hash`       | commitment to the endpoint url + parse path, re-derived on submission     |
+| `zk_threshold`       | threshold in `10^zk_value_scale` units                                    |
 
 The account carries forward-compat padding, so adding a field consumes reserved
 bytes instead of changing the account length — no migration.
@@ -38,10 +43,17 @@ bytes instead of changing the account length — no migration.
 ## 3. The path
 
 ```text
-register_adjudicator → request_lock → attest_outcome → [veto window] → settle
-                                             ↑                  │
-                                             └──── dispute ─────┘
+register_adjudicator    → request_lock →   attest_outcome    → [veto] → settle
+register_zk_adjudicator                    attest_outcome_zk
+                                                  ↑             │
+                                                  └── dispute ──┘
 ```
+
+Registration picks the path: a market registered manually resolves through
+`attest_outcome`, one registered with `register_zk_adjudicator` through
+`attest_outcome_zk`. The mode is fixed at registration and cannot be switched
+under a market that is already trading. Everything downstream — the veto
+window, `dispute`, and permissionless `settle` — is shared.
 
 1. **`register_adjudicator(authority)`** creates the entry. Who may sign depends
    on `ProtocolConfig.permissionless_adjudicators`: when set, the market's own
@@ -60,6 +72,21 @@ register_adjudicator → request_lock → attest_outcome → [veto window] → s
    one place.
 5. **`settle`** finalizes after the window closes, emits `MarketSettled`, and
    opens the redeem paths.
+
+The zk variants slot into steps 1 and 3:
+
+- **`register_zk_adjudicator(authority, attestor_evm, rule_hash, comparator,
+  threshold, value_scale)`** takes the same registration gate. `authority` here
+  is only the `dispute_authority` — nothing about the zk path is signer-gated
+  for attestation. A `comparator` of `None` is rejected, since an entry that
+  can never resolve is always a mistake.
+- **`attest_outcome_zk(attestation)`** is permissionless: anyone holding a
+  valid attestation may submit it. Three checks bind it, none sufficient alone:
+  the digest is re-encoded on chain from the structured fields and must recover
+  to `zk_attestor_evm`; the url and parse path must re-derive `zk_rule_hash`;
+  and the observation timestamp must be at or after `market.deadline`. It emits
+  `OutcomeAttested` and `ZkOutcomeAttested`, and — like the manual path — does
+  not settle, so the veto window still applies.
 
 ## 4. Why attest and settle are separate
 
@@ -94,7 +121,7 @@ real, and it matches the EVM contract, where `resolve` and a permissionless
 
 ## 6. Out of scope
 
-- zkTLS and other automated adjudicator variants. Only the manual path exists.
+- Adjudicator variants beyond the manual and Primus zkTLS paths.
 - Retroactive `T*` settlement and `invalidate()` parity.
 
 ## 7. Cross-references

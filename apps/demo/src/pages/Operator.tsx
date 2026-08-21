@@ -2,14 +2,13 @@
  * Operator Page - Unified Dashboard for Protocol Operators
  *
  * Combines Adjudicator, Guardian, and Owner roles into a single interface.
- * Features: Role-based sidebar navigation, settlement, veto, protocol settings
+ * Features: role-based section switcher, settlement, veto, node content control
  */
 import { useState, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Gavel,
-  Settings,
   Clock,
   CheckCircle,
   XCircle,
@@ -47,7 +46,6 @@ import {
 import { useNodeModeration } from "../hooks/useNodeModeration";
 import { updateHiddenMarkets } from "../lib/registry";
 import { CATEGORY_IDS } from "../lib/categories";
-import marketsConfigRaw from "../config/markets.json";
 
 interface MarketConfig {
   id: string;
@@ -59,13 +57,7 @@ interface MarketConfig {
   version?: string;
 }
 
-interface MarketsConfigJson {
-  markets: MarketConfig[];
-}
-
-const marketsConfig = marketsConfigRaw as MarketsConfigJson;
-
-type Section = "adjudicator" | "owner" | "editor";
+type Section = "adjudicator" | "editor";
 type AdjudicatorTab = "ready" | "pending" | "history";
 type VisibilityFilter = "all" | "showing" | "hidden";
 type StageFilter =
@@ -110,19 +102,6 @@ const RoleEducation: React.FC<{ role: Section }> = ({ role }) => {
       ],
       warning:
         "Incorrect settlements can be vetoed by the Guardian during the finalization window.",
-    },
-    owner: {
-      title: "Owner Guide",
-      description:
-        "The Protocol Owner has administrative control over protocol parameters. This role is typically held by a multisig or DAO to ensure decentralized governance.",
-      responsibilities: [
-        "Configure fee parameters (bonding fee, trading fee)",
-        "Set fee distribution ratios (liquidity, LP yield, treasury)",
-        "Adjust graduation multiplier for market maturity",
-        "Emergency pause the protocol if critical issues arise",
-      ],
-      warning:
-        "Changes to protocol parameters affect all markets. Test on testnet before applying to mainnet.",
     },
     editor: {
       title: "Editor Guide",
@@ -200,7 +179,7 @@ const AdjudicatorMarketRow: React.FC<AdjudicatorMarketRowProps> = ({
   const publicClient = usePublicClient();
   const qc = useQueryClient();
 
-  // The truthMarket.adjudicator field is the *contract* address for v0.2.0
+  // The truthMarket.adjudicator field is the *contract* address
   // markets (e.g. ManualAdjudicator). resolve() reverts unless the caller
   // is the per-market resolver EOA stored inside that contract. Read it
   // here so the gate matches the on-chain auth check.
@@ -262,7 +241,7 @@ const AdjudicatorMarketRow: React.FC<AdjudicatorMarketRowProps> = ({
       const tStar = BigInt(Math.floor(Date.now() / 1000));
       const dataHash =
         "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
-      // For v0.2.0 the adjudicator is always a contract — use the
+      // The adjudicator is always a contract — use the
       // adjudicator's resolve() entry point. The on-chain auth check
       // verifies msg.sender === st.resolver.
       const hash = await writeContractAsync({
@@ -1240,9 +1219,8 @@ export const Operator = () => {
     | undefined;
 
   // Markets for the current chain come from on-chain discovery via
-  // `useLaunchpadMarkets`; markets.json is empty for v0.2.0. The static
-  // config is a fallback only when the hook returns nothing, which is the
-  // path chains with on-chain discovery disabled take.
+  // `useLaunchpadMarkets`, which is the only source — there is no static
+  // market list to fall back to.
   const { markets: launchpadMarkets } = useLaunchpadMarkets();
   const allMarkets = useMemo<MarketConfig[]>(() => {
     if (launchpadMarkets.length > 0) {
@@ -1255,7 +1233,6 @@ export const Operator = () => {
               m.symbol ?? `${m.address.slice(0, 6)}…${m.address.slice(-4)}`,
             contractAddress: m.address,
             chainId,
-            version: "v0.2.0",
             // Carry the question through so AdjudicatorMarketRow can show it.
             // MarketConfig is a permissive type — extra fields are dropped at
             // the boundary by the row's `(market as any).question` access.
@@ -1263,9 +1240,7 @@ export const Operator = () => {
           }) as unknown as MarketConfig,
       );
     }
-    return marketsConfig.markets.filter(
-      (m: MarketConfig) => m.version?.startsWith("v") && m.chainId === chainId,
-    );
+    return [] as MarketConfig[];
   }, [launchpadMarkets, chainId]);
 
   // Batch fetch adjudicator addresses for all markets
@@ -1278,7 +1253,7 @@ export const Operator = () => {
     query: { enabled: allMarkets.length > 0 },
   });
 
-  // v0.2.0 adjudicators are contracts (e.g. ManualAdjudicator). The user's
+  // Adjudicators are contracts (e.g. ManualAdjudicator). The user's
   // EOA never matches the contract address — so to detect "I am the
   // resolver for this market" we must read the per-market resolver from
   // the adjudicator's getMarketState(). Fetched in a second multicall
@@ -1298,8 +1273,7 @@ export const Operator = () => {
   });
 
   // Check if user is adjudicator for any market — match either the
-  // adjudicator contract address (legacy/EOA-as-adjudicator) OR the
-  // per-market EOA resolver stored inside the adjudicator (v0.2.0 path).
+  // adjudicator address itself or the per-market resolver stored inside it.
   const isAdjudicatorForAny = useMemo(() => {
     if (!userAddress) return false;
     const lowerUser = userAddress.toLowerCase();
@@ -1338,35 +1312,8 @@ export const Operator = () => {
     return count;
   }, [userAddress, adjudicatorData, adjMarketStates]);
 
-  // Check if user is protocol owner
-  const { data: ownerAddress } = useReadContract({
-    address: launchpadEngineAddress,
-    abi: ABIS.LaunchpadEngine,
-    functionName: "owner",
-    query: { enabled: !!launchpadEngineAddress },
-  });
-
-  const isOwner =
-    userAddress?.toLowerCase() === (ownerAddress as string)?.toLowerCase();
   const isNodeOwner =
     userAddress?.toLowerCase() === node?.deployedBy?.toLowerCase();
-
-  // Protocol settings state
-  const [settings, setSettings] = useState({
-    preGradFee: "5",
-    postGradFee: "1",
-    liquidityShare: "50",
-    lpShare: "30",
-    protocolShare: "20",
-    gradMultiplier: "2",
-    isPaused: false,
-    trialPeriodDays: "3",
-  });
-
-  const totalShares =
-    parseInt(settings.liquidityShare) +
-    parseInt(settings.lpShare) +
-    parseInt(settings.protocolShare);
 
   const sections: {
     id: Section;
@@ -1375,7 +1322,6 @@ export const Operator = () => {
     color: "accent" | "muted" | "cyan";
   }[] = [
     { id: "adjudicator", label: "Adjudicator", icon: Gavel, color: "accent" },
-    { id: "owner", label: "Owner", icon: Settings, color: "cyan" },
     { id: "editor", label: "Editor", icon: Eye, color: "muted" },
   ];
 
@@ -1394,8 +1340,6 @@ export const Operator = () => {
     switch (role) {
       case "adjudicator":
         return isAdjudicatorForAny;
-      case "owner":
-        return isOwner;
       case "editor":
         return isNodeOwner;
       default:
@@ -1571,305 +1515,6 @@ export const Operator = () => {
 
             <div>
               <RoleEducation role="adjudicator" />
-            </div>
-          </div>
-        )}
-
-        {/* ============================================ */}
-        {/* OWNER SECTION */}
-        {/* ============================================ */}
-        {activeSection === "owner" && (
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="space-y-4">
-              {/* Stats Bar with Active Role Indicator */}
-              <Card
-                className={`bg-raised ${isOwner ? "border-accent" : "border-accent/20"}`}
-              >
-                <div className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <Settings className="w-5 h-5 text-muted" />
-                    <span className="text-ink font-medium">Protocol Owner</span>
-                    {isOwner ? (
-                      <Badge className="bg-accent-muted text-ink border border-accent">
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        Active Owner
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="text-muted border-rule"
-                      >
-                        Not owner
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </Card>
-
-              {/* Not Active Warning */}
-              {!isOwner && (
-                <div className="flex items-center gap-3 p-4 bg-raised/50 border border-rule">
-                  <Info className="w-5 h-5 text-muted shrink-0" />
-                  <div>
-                    <p className="text-sm text-ink">
-                      You are not the protocol owner.
-                    </p>
-                    <p className="text-xs text-muted mt-0.5">
-                      Only the LaunchpadEngine owner can modify protocol
-                      settings.
-                    </p>
-                  </div>
-                </div>
-              )}
-              {/* Fee Configuration */}
-              <Card
-                className={!isOwner ? "opacity-60 pointer-events-none" : ""}
-              >
-                <div className="p-4 space-y-4">
-                  <h3 className="font-bold text-ink">Fee Configuration</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-muted mb-2">
-                        Bonding Fee
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={settings.preGradFee}
-                          onChange={(e) =>
-                            setSettings((s) => ({
-                              ...s,
-                              preGradFee: e.target.value,
-                            }))
-                          }
-                          className="input-field pr-8"
-                          disabled={!isOwner}
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted">
-                          %
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-muted mb-2">
-                        Post-Graduation Fee
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={settings.postGradFee}
-                          onChange={(e) =>
-                            setSettings((s) => ({
-                              ...s,
-                              postGradFee: e.target.value,
-                            }))
-                          }
-                          className="input-field pr-8"
-                          disabled={!isOwner}
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted">
-                          %
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Fee Distribution */}
-              <Card
-                className={!isOwner ? "opacity-60 pointer-events-none" : ""}
-              >
-                <div className="p-4 space-y-4">
-                  <h3 className="font-bold text-ink">
-                    Fee Distribution (Post-Graduation)
-                  </h3>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm text-muted mb-2">
-                        Liquidity Growth
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={settings.liquidityShare}
-                          onChange={(e) =>
-                            setSettings((s) => ({
-                              ...s,
-                              liquidityShare: e.target.value,
-                            }))
-                          }
-                          className="input-field pr-8"
-                          disabled={!isOwner}
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted">
-                          %
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-muted mb-2">
-                        LP Yield
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={settings.lpShare}
-                          onChange={(e) =>
-                            setSettings((s) => ({
-                              ...s,
-                              lpShare: e.target.value,
-                            }))
-                          }
-                          className="input-field pr-8"
-                          disabled={!isOwner}
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted">
-                          %
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-muted mb-2">
-                        Protocol Treasury
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={settings.protocolShare}
-                          onChange={(e) =>
-                            setSettings((s) => ({
-                              ...s,
-                              protocolShare: e.target.value,
-                            }))
-                          }
-                          className="input-field pr-8"
-                          disabled={!isOwner}
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted">
-                          %
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    className={`p-3 ${
-                      totalShares === 100
-                        ? "bg-accent-muted border border-accent"
-                        : "bg-raised border border-error"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Total</span>
-                      <span
-                        className={`font-bold ${totalShares === 100 ? "text-ink" : "text-muted"}`}
-                      >
-                        {totalShares}%{" "}
-                        {totalShares === 100 ? "✓" : "(must equal 100%)"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Protocol Status */}
-              <Card
-                className={`${!isOwner ? "opacity-60 pointer-events-none" : ""} ${settings.isPaused ? "border-error bg-raised" : ""}`}
-              >
-                <div className="p-4 space-y-4">
-                  <h3 className="font-bold text-ink flex items-center gap-2">
-                    <AlertTriangle
-                      className={`w-4 h-4 ${settings.isPaused ? "text-muted" : "text-muted"}`}
-                    />
-                    Protocol Status
-                  </h3>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="block text-sm text-muted">
-                        Pause Protocol
-                      </label>
-                      <p className="text-xs text-muted mt-1">
-                        Emergency stop all trading
-                      </p>
-                    </div>
-                    <button
-                      onClick={() =>
-                        setSettings((s) => ({ ...s, isPaused: !s.isPaused }))
-                      }
-                      disabled={!isOwner}
-                      aria-label={
-                        settings.isPaused ? "Resume protocol" : "Pause protocol"
-                      }
-                      className={`relative w-14 h-7 rounded-full border transition-colors ${
-                        settings.isPaused
-                          ? "border-neg bg-neg"
-                          : "border-pos bg-pos"
-                      } ${!isOwner ? "opacity-50 cursor-not-allowed" : ""}`}
-                    >
-                      <span
-                        className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-ink transition-transform ${
-                          settings.isPaused ? "translate-x-7" : "translate-x-0"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                  {settings.isPaused && (
-                    <div className="p-3 bg-raised border border-error text-muted text-sm">
-                      Protocol is PAUSED. All trading is halted.
-                    </div>
-                  )}
-                </div>
-              </Card>
-
-              {/* Trial Period */}
-              <Card
-                className={!isOwner ? "opacity-60 pointer-events-none" : ""}
-              >
-                <div className="p-4 space-y-4">
-                  <h3 className="font-bold text-ink">Trial Period Settings</h3>
-                  <div>
-                    <label className="block text-sm text-muted mb-2">
-                      Default trial cap
-                    </label>
-                    <div className="relative w-48">
-                      <input
-                        type="number"
-                        value={settings.trialPeriodDays}
-                        onChange={(e) =>
-                          setSettings((s) => ({
-                            ...s,
-                            trialPeriodDays: e.target.value,
-                          }))
-                        }
-                        className="input-field pr-12"
-                        disabled={!isOwner}
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted">
-                        days
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted mt-1">
-                      Each new market's trial duration is{" "}
-                      <code>min(30% × time-to-deadline, cap)</code>. Shorter
-                      markets automatically get shorter trials.
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Apply Button */}
-              {isOwner && (
-                <div className="flex justify-end gap-4">
-                  <Button variant="secondary">Preview Changes</Button>
-                  <Button variant="primary" disabled={totalShares !== 100}>
-                    Apply Changes
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <RoleEducation role="owner" />
             </div>
           </div>
         )}

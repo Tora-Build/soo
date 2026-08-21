@@ -27,13 +27,11 @@ LOCALNET_DIR="$DEMO_DIR/.localnet"
 PID_FILE="$DEMO_DIR/.localnet.pid"
 LOG="$LOCALNET_DIR/validator.log"
 LEDGER_DIR="$LOCALNET_DIR/ledger"
-# One mint per venue, both pinned by `address = ...` in the program, so both
-# must be preloaded or create_market fails on a constraint that does not
+# One mint fills both venue roles, pinned by `address = ...` in the program, so
+# it must be preloaded or create_market fails on a constraint that does not
 # mention a missing mint.
 USDC_DUMP="$LOCALNET_DIR/usdc-mint-account.json"
 USDC_MINT_ADDR="ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
-AMM_DUMP="$LOCALNET_DIR/amm-mint-account.json"
-AMM_MINT_ADDR="CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu"
 CORE_SO="$REPO_ROOT/target/deploy/sooth_core.so"
 RPC_PORT="${RPC_PORT:-8899}"
 
@@ -73,7 +71,6 @@ solana-test-validator \
   --limit-ledger-size 10000000 \
   --bpf-program "$SOOTH_CORE_ID" "$CORE_SO" \
   --account "$USDC_MINT_ADDR" "$USDC_DUMP" \
-  --account "$AMM_MINT_ADDR" "$AMM_DUMP" \
   >"$LOG" 2>&1 &
 
 echo $! > "$PID_FILE"

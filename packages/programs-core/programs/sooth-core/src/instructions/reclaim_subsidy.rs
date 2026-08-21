@@ -131,11 +131,9 @@ pub fn handler(ctx: Context<ReclaimSubsidy>) -> Result<()> {
     let ledger_owed = ledger_obligations(&ctx.accounts.amm_state, winning_outcome)?;
 
     // AMM obligations only. The book's seats are owed from the BOOK vault,
-    // which holds a different token — subtracting them here would understate
-    // the AMM residual and strand the creator's own capital.
-    // The book needs no equivalent: every fill
-    // escrows both legs to exactly 1.00, so its vault is fully collateralised
-    // by construction and the creator posted nothing into it.
+    // which holds a different token, and every book fill escrows both legs to
+    // exactly 1.00 — so that vault is fully collateralised by construction and
+    // the creator posted nothing into it.
     let obligations = ledger_owed;
 
     // Everything above what is owed. Saturating: a vault below its obligations
@@ -148,7 +146,7 @@ pub fn handler(ctx: Context<ReclaimSubsidy>) -> Result<()> {
     let payout = residual.min(remaining);
 
     // Nothing free yet, or the cap is spent. Failing rather than succeeding
-    // with a zero transfer tells the creator which it was via the logs above.
+    // with a zero transfer keeps a no-op call distinguishable from a payout.
     require!(payout > 0, SoothCoreError::ZeroAmount);
 
     // Book before transfer, so a re-entrant call finds the cap already spent.

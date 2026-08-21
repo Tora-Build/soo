@@ -29,18 +29,12 @@ const SEED_VAULT = enc.encode("vault");
 const SEED_LOCK = enc.encode("lock");
 const SEED_LOCK_ENTRY = enc.encode("lock_entry");
 const SEED_POS = enc.encode("pos");
-const SEED_MINT = enc.encode("mint");
-const SEED_Y = enc.encode("y");
-const SEED_N = enc.encode("n");
 const SEED_PROTOCOL_CONFIG = enc.encode("protocol_config");
 const SEED_FEE_POOL_AUTHORITY = enc.encode("fee_pool_authority");
 const SEED_LP = enc.encode("lp");
 const SEED_LP_MINT_AUTHORITY = enc.encode("lp_mint_authority");
 const SEED_LP_POSITION = enc.encode("lp_position");
 const SEED_LP_YIELD_AUTHORITY = enc.encode("lp_yield_authority");
-const SEED_MARKET_BOOK = enc.encode("market_book");
-const SEED_BOOK_SIDE = enc.encode("book_side");
-const SEED_ORDERBOOK_POSITION = enc.encode("orderbook_position");
 const SEED_FEE_POOL_BOOK = enc.encode("fee_pool_book");
 const SEED_FEE_POOL_AMM = enc.encode("fee_pool_amm");
 const SEED_ADJUDICATOR = enc.encode("adjudicator");
@@ -49,7 +43,8 @@ export const SOOTH_CORE_PROGRAM_ID = new PublicKey(
   "EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw",
 );
 
-
+// A wrong-length id would otherwise derive a real address for a market that
+// does not exist, and fail at simulation on an account nobody can name.
 function assertMarketId(marketId: MarketId): Buffer {
   if (marketId.length !== 16) {
     throw new Error(
@@ -159,33 +154,8 @@ export function deriveLockEntryPda(
   );
 }
 
-// SPL mint PDA for YES outcome tokens.
-// Seeds: [b"mint", market_id, b"y"]. Owned by spl-token program;
-// the mint authority is the `vault_authority` PDA.
-export function deriveYesMintPda(
-  marketId: MarketId,
-  programs: ProgramIds,
-): [PublicKey, number] {
-  const id = assertMarketId(marketId);
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from(SEED_MINT), id, Buffer.from(SEED_Y)],
-    programs.soothCore,
-  );
-}
-
-export function deriveNoMintPda(
-  marketId: MarketId,
-  programs: ProgramIds,
-): [PublicKey, number] {
-  const id = assertMarketId(marketId);
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from(SEED_MINT), id, Buffer.from(SEED_N)],
-    programs.soothCore,
-  );
-}
-
-// Vault USDC ATA (associated token address; not a PDA in the seed sense).
-// Owner = `vault_authority` PDA.
+// The BOOK venue's vault: the `vault_authority` PDA's associated token account
+// for the book mint. An ATA, not a seeded PDA — unlike `deriveMarketVaultAmm`.
 export function deriveMarketVaultAta(
   marketId: MarketId,
   usdcMint: PublicKey,
@@ -339,7 +309,11 @@ export function deriveUserLpAta(user: PublicKey, lpMint: PublicKey): PublicKey {
   );
 }
 
-// ─── sooth_core orderbook PDA helpers ───────────────────────────────────────
+// ─── Orderbook PDA helpers ─────────────────────────────────────────────────
+//
+// `programs` is optional here and defaults to the deployed program id; the
+// book helpers are called from indexers and scripts that have no adapter in
+// hand.
 
 type OrderbookProgramIds = Partial<Pick<ProgramIds, "soothCore">>;
 
@@ -347,56 +321,6 @@ function orderbookProgramId(
   programs: OrderbookProgramIds | undefined,
 ): PublicKey {
   return programs?.soothCore ?? SOOTH_CORE_PROGRAM_ID;
-}
-
-// MarketBook: one PDA per orderbook-enabled market, owned by sooth_core.
-export function marketBookPda(
-  marketId: Uint8Array,
-  programs?: Partial<Pick<ProgramIds, "soothCore">>,
-): [PublicKey, number] {
-  const id = assertMarketId(marketId);
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from(SEED_MARKET_BOOK), id],
-    orderbookProgramId(programs),
-  );
-}
-
-// BookSide: one PDA per populated (market, side, tick), owned by sooth_core.
-// side: 0 = AGAINST, 1 = FOR. Tick is encoded as Rust `u16::to_le_bytes()`.
-export function bookSidePda(
-  marketId: Uint8Array,
-  side: 0 | 1,
-  tick: number,
-  programs?: Partial<Pick<ProgramIds, "soothCore">>,
-): [PublicKey, number] {
-  const id = assertMarketId(marketId);
-  if (!Number.isInteger(tick) || tick < 0 || tick > 0xffff) {
-    throw new Error(`tick must fit in u16, got ${tick}`);
-  }
-  const tickBuf = Buffer.alloc(2);
-  tickBuf.writeUInt16LE(tick, 0);
-  return PublicKey.findProgramAddressSync(
-    [
-      Buffer.from(SEED_BOOK_SIDE),
-      id,
-      Buffer.from([side]),
-      tickBuf,
-    ],
-    orderbookProgramId(programs),
-  );
-}
-
-// OrderbookPosition: one PDA per (market, user), owned by sooth_core.
-export function orderbookPositionPda(
-  marketId: Uint8Array,
-  user: PublicKey,
-  programs?: Partial<Pick<ProgramIds, "soothCore">>,
-): [PublicKey, number] {
-  const id = assertMarketId(marketId);
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from(SEED_ORDERBOOK_POSITION), id, user.toBuffer()],
-    orderbookProgramId(programs),
-  );
 }
 
 // Fee pools: one TokenAccount per market PER VENUE, owned by sooth_core.

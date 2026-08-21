@@ -11,8 +11,8 @@
 // Action under test (UI):
 //   Navigate to /portfolio, fill the REDEEM amount, click REDEEM. The
 //   panel routes through the chain-shim's `redeem` dispatcher to
-//   sooth_market::redeem (1:1 winner payout for YES holders, NO tokens
-//   untouched per the on-chain handler — see redeem.rs).
+//   sooth_core::redeem (1:1 winner payout for YES holders, NO tokens
+//   untouched per redeem_amm_position.rs).
 //
 // Verifications:
 //   - User's YES outcome ATA → 0 (winning side fully burned)
@@ -119,7 +119,7 @@ test.describe("Redeem (YES wins) — UI-driven", () => {
         marketPda,
         winningOutcome: 1,
       });
-      // attest_outcome no longer settles — it opens the guardian-veto window.
+      // attest_outcome does not settle; it opens the guardian-veto window.
       // The market stays Locked until settle is cranked after the window, so
       // the LIFECYCLE_SETTLED assertion below needs both steps.
       await waitForVetoWindow(conn, creator);

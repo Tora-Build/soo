@@ -4,20 +4,17 @@ import {
   usePublicClient,
   useWalletClient,
   useChainId,
-  useBalance,
   useReadContract,
-  useConfig,
   useDemo,
 } from "@/lib/chain-shim";
-import { Terminal, Wallet, Key, Download } from "lucide-react";
+import { Terminal, Wallet, Download } from "lucide-react";
 import { formatUnits } from "@/lib/chain-shim";
 import { Card } from "../components/ui/Card";
 import { WebTerminal } from "../components/features/WebTerminal";
 import { SoothSDK, type OutputLine } from "../lib/sdk";
 import deployments from "../config/deployments.json";
-import { allowedChains } from "../lib/chains";
+import { allowedChains, getChainById } from "../lib/chains";
 import { parseAbi } from "@/lib/chain-shim";
-import { useLocalWallet } from "../hooks/useLocalWallet";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -41,7 +38,6 @@ export function Geek() {
   const publicClient = usePublicClient();
   const qc = useQueryClient();
   const { data: connectedWalletClient } = useWalletClient();
-  const wagmiConfig = useConfig();
 
   const networkConfig = useMemo(() => {
     return Object.values(deployments.networks).find(
@@ -49,26 +45,11 @@ export function Geek() {
     );
   }, [chainId]);
 
-  const currentChain = useMemo(() => {
-    return wagmiConfig.chains.find((c) => c.id === chainId);
-  }, [wagmiConfig.chains, chainId]);
-
-  const rpcUrlForLocalWallet = useMemo(() => {
-    const chain = allowedChains.find((c) => c.id === chainId);
-    return chain?.rpcUrl;
-  }, [chainId]);
-
-  const localWallet = useLocalWallet(currentChain, rpcUrlForLocalWallet);
-
-  const activeAddress = localWallet.isActive
-    ? localWallet.address
-    : connectedAddress;
-  const activeWalletClient = localWallet.isActive
-    ? localWallet.walletClient
-    : connectedWalletClient;
+  const activeAddress = connectedAddress;
+  const activeWalletClient = connectedWalletClient;
 
   const isSupported = !!networkConfig;
-  const hasWallet = localWallet.isActive || isConnected;
+  const hasWallet = isConnected;
 
   const rpcHost = useMemo(() => {
     const chain = allowedChains.find((c) => c.id === chainId);
@@ -79,11 +60,6 @@ export function Geek() {
       return chain.rpcUrl;
     }
   }, [chainId]);
-
-  const { data: gasBalance } = useBalance({
-    address: activeAddress ?? undefined,
-    query: { enabled: hasWallet && isSupported },
-  });
 
   const { data: usdcBalance } = useReadContract({
     address: networkConfig?.contracts.MockUSDC as `0x${string}`,
@@ -144,8 +120,8 @@ export function Geek() {
   }, [sdk, activeWalletClient]);
 
   // Commands that change on-chain state — after they finish we must
-  // invalidate React Query so the AMM trading panel, portfolio, indexer
-  // hooks, etc. all refetch and stop showing the pre-write snapshot.
+  // invalidate React Query so the AMM trading panel, portfolio and market
+  // reads all refetch and stop showing the pre-write snapshot.
   const WRITE_COMMANDS = new Set([
     "createmarket",
     "graduate",
@@ -175,100 +151,6 @@ export function Geek() {
       const cmd = parts[0]?.toLowerCase();
       const subCmd = parts[1]?.toLowerCase();
 
-      if (cmd === "localwallet" || cmd === "lw") {
-        if (!subCmd || subCmd === "status") {
-          if (localWallet.isActive) {
-            return [
-              { type: "success", text: "Local wallet ACTIVE" },
-              { type: "plain", text: `Address: ${localWallet.address}` },
-              { type: "dim", text: "All transactions auto-signed (no popups)" },
-            ];
-          }
-          return [
-            {
-              type: "info",
-              text: localWallet.hasStoredKey
-                ? "Local wallet DISABLED"
-                : "Local wallet not set up",
-            },
-            { type: "plain", text: "" },
-            { type: "plain", text: "Commands:" },
-            { type: "plain", text: "  lw create   Generate new wallet" },
-            ...(localWallet.hasStoredKey
-              ? [
-                  {
-                    type: "plain" as const,
-                    text: "  lw enable   Activate stored wallet",
-                  },
-                  {
-                    type: "dim" as const,
-                    text: `              (${localWallet.storedAddress})`,
-                  },
-                ]
-              : []),
-            { type: "plain", text: "  lw disable  Deactivate (keep key)" },
-            { type: "plain", text: "  lw clear    Remove wallet permanently" },
-          ];
-        }
-
-        if (subCmd === "create") {
-          const addr = localWallet.create();
-          return [
-            { type: "success", text: "Local wallet created!" },
-            { type: "plain", text: `Address: ${addr}` },
-            {
-              type: "dim",
-              text: "Send native gas token to this address to start",
-            },
-          ];
-        }
-
-        if (subCmd === "enable") {
-          if (localWallet.isActive) {
-            return [
-              { type: "info", text: "Local wallet already active" },
-              { type: "plain", text: `Address: ${localWallet.address}` },
-            ];
-          }
-          const addr = localWallet.enable();
-          if (!addr) {
-            return [
-              { type: "error", text: "No stored wallet. Use: lw create" },
-            ];
-          }
-          return [
-            { type: "success", text: "Local wallet enabled!" },
-            { type: "plain", text: `Address: ${addr}` },
-          ];
-        }
-
-        if (subCmd === "disable") {
-          if (!localWallet.isActive) {
-            return [{ type: "info", text: "Local wallet already disabled" }];
-          }
-          localWallet.disable();
-          return [
-            { type: "success", text: "Local wallet disabled" },
-            {
-              type: "dim",
-              text: 'Key preserved. Use "lw enable" to reactivate.',
-            },
-          ];
-        }
-
-        if (subCmd === "clear") {
-          localWallet.clear();
-          return [{ type: "success", text: "Local wallet cleared" }];
-        }
-
-        return [
-          {
-            type: "error",
-            text: "Unknown subcommand. Use: lw create|enable|disable|clear",
-          },
-        ];
-      }
-
       if (!sdk) {
         return [
           {
@@ -284,7 +166,7 @@ export function Geek() {
           return [
             {
               type: "error",
-              text: 'No wallet. Use "lw create" or connect via navbar.',
+              text: "No wallet. Connect one via the navbar.",
             },
           ];
         }
@@ -323,7 +205,7 @@ export function Geek() {
       const { output } = await sdk.executeCommand(input);
       return output;
     },
-    [sdk, hasWallet, localWallet],
+    [sdk, hasWallet],
   );
 
   // Wrap handleCommand so any write-type command triggers a global cache
@@ -387,8 +269,8 @@ export function Geek() {
             <Wallet className="w-12 h-12 text-muted mx-auto" />
             <h2 className="text-xl font-bold text-ink">Unsupported Network</h2>
             <p className="text-muted max-w-md">
-              Switch to a supported network using the chain selector in the
-              navbar.
+              This build only carries deployments for Solana devnet and
+              localnet. Point VITE_SOLANA_RPC_URL at one of them.
             </p>
           </div>
         </Card>
@@ -412,7 +294,7 @@ export function Geek() {
                 />
               </div>
               <span className="ml-3 font-mono text-xs uppercase tracking-[0.12em] text-faint">
-                soo-cli — {currentChain?.name ?? "unknown"}
+                soo-cli — {getChainById(chainId)?.name ?? "unknown"}
               </span>
             </div>
             <span className="font-mono text-xs text-faint">v0.1.2</span>
@@ -435,12 +317,6 @@ export function Geek() {
               {hasWallet && (
                 <>
                   <span>
-                    Gas:{" "}
-                    {gasBalance
-                      ? `${parseFloat(gasBalance.formatted).toLocaleString(undefined, { maximumFractionDigits: 4 })} ${gasBalance.symbol}`
-                      : "—"}
-                  </span>
-                  <span>
                     USDC:{" "}
                     {formatBalance(
                       usdcBalance as bigint | undefined,
@@ -453,26 +329,15 @@ export function Geek() {
               )}
               {rpcHost && <span>RPC: {rpcHost}</span>}
               {!hasWallet && (
-                <span className="text-faint">Type "lw create" to start</span>
+                <span className="text-faint">
+                  {t("geek.connectPrompt", {
+                    defaultValue: "Connect a wallet to start",
+                  })}
+                </span>
               )}
             </div>
             <span className="text-faint">↑↓ {t("geek.history")}</span>
           </div>
-          {localWallet.isActive && localWallet.address && (
-            <div className="flex items-center gap-2">
-              <Key className="w-3 h-3 text-muted" />
-              <span className="text-muted">LOCAL:</span>
-              <span
-                className="text-muted cursor-pointer hover:text-ink transition-colors"
-                onClick={() => {
-                  navigator.clipboard.writeText(localWallet.address!);
-                }}
-                title="Click to copy"
-              >
-                {localWallet.address}
-              </span>
-            </div>
-          )}
         </div>
       )}
     </div>

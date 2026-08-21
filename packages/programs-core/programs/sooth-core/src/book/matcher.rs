@@ -1,14 +1,11 @@
 //! Matching: walk the opposite side, settle each fill, rest the remainder.
 //!
-//! This is the loop whose per-fill cost sets the book's ceiling. A design
-//! that needed **3 accounts and 99 transaction bytes** per fill —
-//! `[book_side, maker_position, maker_usdc_ata]` — would cap a crossing buy
-//! at 5 fills against the 1232-byte packet limit.
-//!
-//! Here a fill touches nothing outside the book account the instruction already
-//! holds: the maker's order, the maker's seat and the taker's seat are all
-//! blocks in the same arena. **Zero accounts and zero bytes per fill**, so the
-//! ceiling is set by compute alone.
+//! This is the loop whose per-fill cost sets the book's ceiling. A fill touches
+//! nothing outside the book account the instruction already holds: the maker's
+//! order, the maker's seat and the taker's seat are all blocks in the same
+//! arena. **Zero accounts and zero bytes per fill**, so the ceiling is set by
+//! compute alone — where a layout needing 3 accounts and 99 transaction bytes
+//! per fill would cap a crossing buy at 5 against the 1232-byte packet limit.
 //!
 //! Token movement is deliberately absent. Fills credit `SeatNode::credit`; a
 //! separate `withdraw` turns credit into USDC. That is Phoenix's seat model, and
@@ -98,8 +95,8 @@ impl<'a> Book<'a> {
     ///
     /// A linear walk is the honest cost of keeping seats in the arena, and it
     /// is the thing to watch if this ever gets slow: a per-fill maker lookup is
-    /// the only super-constant work in the match loop. At the 256-order cap the
-    /// walk is bounded, and it buys the elimination of a per-fill account.
+    /// the only super-constant work in the match loop. `MAX_ORDERS` bounds the
+    /// walk, and it buys the elimination of a per-fill account.
     pub fn seat_mut(&mut self, trader: Pubkey) -> R<u32> {
         let mut cursor = self.header.seats_head;
         while cursor != NIL {
@@ -190,13 +187,9 @@ impl<'a> Book<'a> {
         let mut remaining = amount;
 
         // Walk the opposite side with a cursor rather than repeatedly taking
-        // the best, so a self-owned order can be STEPPED OVER.
-        //
-        // Taking the best every iteration meant the first self-owned order
-        // ended the match: a trader's own resting order shielded every
-        // stranger's order behind it. Holding an ask at 485 while a stranger
-        // rests one at 490 left a bid of 500 with zero fills, against
-        // liquidity that plainly crossed.
+        // the best, so a self-owned order can be STEPPED OVER. Re-taking the
+        // best each iteration would let a trader's own resting order shield
+        // every stranger's order behind it and end the match early.
         let mut cursor = self.head_of(opposite);
 
         while remaining > 0 && out.fills < match_limit && cursor != NIL {
@@ -214,15 +207,15 @@ impl<'a> Book<'a> {
             // it. That much is a property of the representation, not a policy
             // choice.
             //
-            // What IS a policy choice is what happens instead, and the first
-            // two answers were both wrong:
+            // What IS a policy choice is what happens instead, and the two
+            // obvious alternatives are both wrong:
             //
-            //   - resting the incoming order left the book CROSSED against its
-            //     own owner, free for anyone to lift both legs;
-            //   - dropping the incoming order (cancel-newest) meant a trader
-            //     who quoted one side could not then quote the other at a
-            //     crossing price at all. The order vanished, the transaction
-            //     succeeded, and nothing had happened.
+            //   - resting the incoming order leaves the book CROSSED against
+            //     its own owner, free for anyone to lift both legs;
+            //   - dropping the incoming order (cancel-newest) means a trader
+            //     who quoted one side cannot then quote the other at a
+            //     crossing price at all: the order vanishes, the transaction
+            //     succeeds, and nothing has happened.
             //
             // Cancelling the RESTING order is the one answer that is neither.
             // It is economically exact: the order had escrow posted and no
@@ -282,9 +275,7 @@ impl<'a> Book<'a> {
             out.taker_collateral_out = out
                 .taker_collateral_out
                 .saturating_add(taker_leg.collateral_out);
-            out.fee = out
-                .fee
-                .saturating_add(taker_fee(fill, exec_tick, fee_bps, taker_cost)?);
+            out.fee = out.fee.saturating_add(taker_fee(fill, exec_tick, fee_bps)?);
 
             // Consume the resting order. Read `next` BEFORE removing it —
             // `remove` unlinks the node and its links stop being meaningful.
@@ -407,8 +398,8 @@ impl<'a> Book<'a> {
     /// total paid out here can never exceed what was taken in.
     ///
     /// `OUTCOME_INVALID` splits: both sides of a matched share are worth half,
-    /// which is the same rule `redeem_amm_position` and `redeem_orderbook`
-    /// apply, so the three ledgers cannot drift.
+    /// which is the same rule `redeem_amm_position` applies, so the two ledgers
+    /// cannot drift.
     ///
     /// Zeroes both fields before returning, so a second call pays nothing.
     /// Resting orders are deliberately untouched — their escrow is recovered
@@ -529,14 +520,18 @@ impl<'a> Book<'a> {
         Ok(total)
     }
 
-    /// A trader's current credit, without draining it.
-    pub fn credit_of(&mut self, trader: Pubkey) -> R<u64> {
-        let idx = self.seat_mut(trader)?;
+    /// A trader's current credit, without draining it and without allocating
+    /// a seat: a wallet that has never traded reads zero rather than costing
+    /// the arena a block.
+    pub fn credit_of(&self, trader: Pubkey) -> R<u64> {
+        let Some(idx) = self.seat_of(trader) else {
+            return Ok(0);
+        };
         let node = self
             .blocks
             .get(idx as usize)
             .ok_or(BookError::InvalidIndex)?;
-        Ok(bytemuck::cast_ref::<OrderNode, super::arena::SeatNode>(node).credit)
+        Ok(as_seat(node).credit)
     }
 }
 

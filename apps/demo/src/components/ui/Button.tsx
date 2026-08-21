@@ -11,13 +11,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     /** @deprecated alias for `danger` — remove after sweep */
     | "destructive"
     /** @deprecated maps to `primary` — pick `primary` explicitly */
-    | "success"
-    /** @deprecated maps to `secondary` — pick `secondary` explicitly */
-    | "info"
-    /** @deprecated legacy skeuomorphic alias for `primary` */
-    | "glow"
-    /** @deprecated legacy accent-color alias for `secondary` */
-    | "cyan";
+    | "success";
   size?: "xs" | "sm" | "md" | "lg";
   isLoading?: boolean;
 }
@@ -42,9 +36,6 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       danger: "btn btn-danger",
       destructive: "btn btn-danger", // deprecated
       success: "btn btn-primary", // deprecated
-      info: "btn btn-secondary", // deprecated
-      glow: "btn btn-primary", // deprecated
-      cyan: "btn btn-secondary", // deprecated
     };
     const sizes: Record<string, string> = {
       xs: "px-2.5 py-1 text-xs",

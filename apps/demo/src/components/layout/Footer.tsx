@@ -1,12 +1,10 @@
 import { useState } from "react";
 import { Twitter, Send } from "lucide-react";
-import { useChainStatus } from "../../hooks/useChainStatus";
 import deployments from "../../config/deployments.json";
 
-// The footer's status strip reflects the architecture: the app reads the
-// chain directly over RPC — there is no indexer anywhere in the stack.
+// The status strip reflects the architecture: every read is a direct RPC call
+// against a chain account. No indexer sits between the app and the chain.
 export const Footer = () => {
-  const { rpcBlock, rpcConnected } = useChainStatus();
   const [showStatusHelp, setShowStatusHelp] = useState(false);
 
   return (
@@ -20,15 +18,9 @@ export const Footer = () => {
           <div className="flex items-center gap-3">
             <div
               className="flex items-center gap-1.5"
-              title={
-                rpcConnected
-                  ? "Direct RPC connection active"
-                  : "RPC disconnected"
-              }
+              title="Direct RPC connection active"
             >
-              <div
-                className={`w-1 h-1 ${rpcConnected ? "bg-accent" : "bg-faint"}`}
-              />
+              <div className="w-1 h-1 bg-accent" />
               <span className="font-mono text-xs text-faint">RPC</span>
             </div>
 
@@ -38,13 +30,9 @@ export const Footer = () => {
               className="flex items-center gap-1.5"
               title="All data is read directly from chain accounts over RPC — this app has no indexer."
             >
-              <div
-                className={`w-1 h-1 ${rpcConnected ? "bg-accent" : "bg-faint"}`}
-              />
+              <div className="w-1 h-1 bg-accent" />
               <span className="font-mono text-xs text-faint">
-                {rpcBlock
-                  ? `On-chain · Devnet · ${rpcBlock.toLocaleString()}`
-                  : "On-chain · Devnet"}
+                On-chain · Devnet
               </span>
             </div>
 
@@ -90,15 +78,10 @@ export const Footer = () => {
                       <p className="text-faint ml-4">
                         Markets, order books and trades are read straight from
                         chain accounts — no indexer sits between the app and
-                        the chain. The number is the latest slot seen.
+                        the chain.
                       </p>
                     </div>
 
-                    <div className="border-t border-rule pt-2">
-                      <p className="text-faint">
-                        Online = Active | Offline = Unavailable
-                      </p>
-                    </div>
                   </div>
                 </div>
               )}

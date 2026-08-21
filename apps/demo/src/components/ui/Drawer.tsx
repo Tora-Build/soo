@@ -29,7 +29,8 @@ export const Drawer: React.FC<DrawerProps> = ({
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
   const lastActiveElRef = useRef<HTMLElement | null>(null);
 
-  // Prevent body scroll when drawer is open
+  // While open: lock body scroll and move focus into the drawer. On close,
+  // both are restored, so a keyboard user lands back where they were.
   useEffect(() => {
     if (isOpen) {
       lastActiveElRef.current = document.activeElement as HTMLElement | null;

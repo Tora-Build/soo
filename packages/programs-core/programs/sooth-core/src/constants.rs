@@ -83,7 +83,12 @@ pub const DEFAULT_VETO_PERIOD_SECS: i64 = 24 * 60 * 60;
 pub const MAX_VETO_PERIOD_SECS: i64 = 30 * 24 * 60 * 60;
 
 // ── Account byte-offset constants ────────────────────────────────────────
-// Used by SPACE assertions in state types and by raw-parse helpers.
+//
+// `claim_refund` reads a `Position` out of the raw account buffer rather than
+// through `Account<Position>`, because it closes the account itself. These
+// offsets are that parser's map, derived as a chain so a field's length and
+// the offsets after it cannot disagree. `state/position.rs` pins
+// `POSITION_TOTAL_LEN` against `Position::SPACE` at compile time.
 
 pub const POSITION_DISCRIMINATOR_LEN: usize = 8;
 pub const POSITION_USER_LEN: usize = 32;
@@ -107,68 +112,31 @@ pub const POSITION_BUMP_OFFSET: usize = POSITION_LOCK_NONCE_OFFSET + POSITION_LO
 pub const POSITION_RESERVED_OFFSET: usize = POSITION_BUMP_OFFSET + POSITION_BUMP_LEN;
 pub const POSITION_TOTAL_LEN: usize = POSITION_RESERVED_OFFSET + POSITION_RESERVED_LEN;
 
-pub const LOCK_ENTRY_DISCRIMINATOR_LEN: usize = 8;
-pub const LOCK_ENTRY_USER_LEN: usize = 32;
-pub const LOCK_ENTRY_MARKET_LEN: usize = 32;
-pub const LOCK_ENTRY_AMOUNT_USDC_LEN: usize = 8;
-pub const LOCK_ENTRY_UNLOCK_AT_LEN: usize = 8;
-pub const LOCK_ENTRY_NONCE_LEN: usize = 8;
-pub const LOCK_ENTRY_BUMP_LEN: usize = 1;
-pub const LOCK_ENTRY_RESERVED_LEN: usize = 32;
+/// Serialized length of a `LockEntry` account, discriminator included.
+/// Pinned against `LockEntry::SPACE` by a compile-time assert in
+/// `state/lock_entry.rs`, so the struct cannot outgrow the buffer live
+/// accounts already have.
+pub const LOCK_ENTRY_TOTAL_LEN: usize = 8   // discriminator
+    + 32                                     // user
+    + 32                                     // market
+    + 8                                      // amount_usdc
+    + 8                                      // unlock_at
+    + 8                                      // nonce
+    + 1                                      // bump
+    + 32; // _reserved
 
-pub const LOCK_ENTRY_USER_OFFSET: usize = LOCK_ENTRY_DISCRIMINATOR_LEN;
-pub const LOCK_ENTRY_MARKET_OFFSET: usize = LOCK_ENTRY_USER_OFFSET + LOCK_ENTRY_USER_LEN;
-pub const LOCK_ENTRY_AMOUNT_USDC_OFFSET: usize = LOCK_ENTRY_MARKET_OFFSET + LOCK_ENTRY_MARKET_LEN;
-pub const LOCK_ENTRY_UNLOCK_AT_OFFSET: usize =
-    LOCK_ENTRY_AMOUNT_USDC_OFFSET + LOCK_ENTRY_AMOUNT_USDC_LEN;
-pub const LOCK_ENTRY_NONCE_OFFSET: usize = LOCK_ENTRY_UNLOCK_AT_OFFSET + LOCK_ENTRY_UNLOCK_AT_LEN;
-pub const LOCK_ENTRY_BUMP_OFFSET: usize = LOCK_ENTRY_NONCE_OFFSET + LOCK_ENTRY_NONCE_LEN;
-pub const LOCK_ENTRY_RESERVED_OFFSET: usize = LOCK_ENTRY_BUMP_OFFSET + LOCK_ENTRY_BUMP_LEN;
-pub const LOCK_ENTRY_TOTAL_LEN: usize = LOCK_ENTRY_RESERVED_OFFSET + LOCK_ENTRY_RESERVED_LEN;
-
-pub const PROTOCOL_CONFIG_DISCRIMINATOR_LEN: usize = 8;
-pub const PROTOCOL_CONFIG_AUTHORITY_LEN: usize = 32;
-pub const PROTOCOL_CONFIG_TREASURY_LEN: usize = 32;
-pub const PROTOCOL_CONFIG_FEE_BPS_LEN: usize = 2;
-pub const PROTOCOL_CONFIG_B_BASE_SHARE_BPS_LEN: usize = 2;
-pub const PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_LEN: usize = 2;
-pub const PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_LEN: usize = 2;
-pub const PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_LEN: usize = 2;
-pub const PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_LEN: usize = 8;
-pub const PROTOCOL_CONFIG_BUMP_LEN: usize = 1;
-pub const PROTOCOL_CONFIG_PAUSED_LEN: usize = 1;
-pub const PROTOCOL_CONFIG_PERMISSIONLESS_ADJUDICATORS_LEN: usize = 1;
-pub const PROTOCOL_CONFIG_VETO_PERIOD_SECS_LEN: usize = 8;
-pub const PROTOCOL_CONFIG_RESERVED_LEN: usize = 64;
-
-pub const PROTOCOL_CONFIG_AUTHORITY_OFFSET: usize = PROTOCOL_CONFIG_DISCRIMINATOR_LEN;
-pub const PROTOCOL_CONFIG_TREASURY_OFFSET: usize =
-    PROTOCOL_CONFIG_AUTHORITY_OFFSET + PROTOCOL_CONFIG_AUTHORITY_LEN;
-pub const PROTOCOL_CONFIG_FEE_BPS_OFFSET: usize =
-    PROTOCOL_CONFIG_TREASURY_OFFSET + PROTOCOL_CONFIG_TREASURY_LEN;
-pub const PROTOCOL_CONFIG_B_BASE_SHARE_BPS_OFFSET: usize =
-    PROTOCOL_CONFIG_FEE_BPS_OFFSET + PROTOCOL_CONFIG_FEE_BPS_LEN;
-pub const PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_OFFSET: usize =
-    PROTOCOL_CONFIG_B_BASE_SHARE_BPS_OFFSET + PROTOCOL_CONFIG_B_BASE_SHARE_BPS_LEN;
-pub const PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_OFFSET: usize =
-    PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_OFFSET + PROTOCOL_CONFIG_LP_YIELD_SHARE_BPS_LEN;
-pub const PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_OFFSET: usize =
-    PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_OFFSET + PROTOCOL_CONFIG_ADJUDICATOR_SHARE_BPS_LEN;
-pub const PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_OFFSET: usize =
-    PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_OFFSET + PROTOCOL_CONFIG_PROTOCOL_SHARE_BPS_LEN;
-pub const PROTOCOL_CONFIG_BUMP_OFFSET: usize =
-    PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_OFFSET + PROTOCOL_CONFIG_DEFAULT_TRIAL_PERIOD_LEN;
-pub const PROTOCOL_CONFIG_PAUSED_OFFSET: usize =
-    PROTOCOL_CONFIG_BUMP_OFFSET + PROTOCOL_CONFIG_BUMP_LEN;
-pub const PROTOCOL_CONFIG_PERMISSIONLESS_ADJUDICATORS_OFFSET: usize =
-    PROTOCOL_CONFIG_PAUSED_OFFSET + PROTOCOL_CONFIG_PAUSED_LEN;
-pub const PROTOCOL_CONFIG_VETO_PERIOD_SECS_OFFSET: usize =
-    PROTOCOL_CONFIG_PERMISSIONLESS_ADJUDICATORS_OFFSET
-        + PROTOCOL_CONFIG_PERMISSIONLESS_ADJUDICATORS_LEN;
-pub const PROTOCOL_CONFIG_RESERVED_OFFSET: usize =
-    PROTOCOL_CONFIG_VETO_PERIOD_SECS_OFFSET + PROTOCOL_CONFIG_VETO_PERIOD_SECS_LEN;
-pub const PROTOCOL_CONFIG_TOTAL_LEN: usize =
-    PROTOCOL_CONFIG_RESERVED_OFFSET + PROTOCOL_CONFIG_RESERVED_LEN;
+/// Serialized length of a `ProtocolConfig` account, discriminator included.
+/// Pinned against `ProtocolConfig::SPACE` the same way.
+pub const PROTOCOL_CONFIG_TOTAL_LEN: usize = 8 // discriminator
+    + 32                                        // authority
+    + 32                                        // treasury
+    + 2 * 7                                     // three rate fields + four share bps
+    + 8                                         // default_trial_period
+    + 1                                         // bump
+    + 1                                         // paused
+    + 1                                         // permissionless_adjudicators
+    + 8                                         // veto_period_secs
+    + 60; // _reserved
 
 const _: () = assert!(POSITION_TOTAL_LEN == 153);
 const _: () = assert!(LOCK_ENTRY_TOTAL_LEN == 129);

@@ -5,7 +5,7 @@
 // LiteSVM-backed `SolanaChainAdapter` injected via `<DemoProvider override>`.
 // The test exercises the buy path end-to-end:
 //
-//   1. Boot bankrun via `bootSmoke()` — same fixture the SDK smoke test uses.
+//   1. Boot LiteSVM via `bootSmoke()` — same fixture the SDK smoke test uses.
 //   2. Mount the AMM page at `/amm/<marketPda-base58>`.
 //   3. Wait for the AMM market data to load (yes-price renders as 50.0%).
 //   4. Click "buy YES" — exercises `useWriteContract → dispatchAmmWrite →
@@ -39,7 +39,7 @@ import {
   WAD,
   type SignerRef,
 } from "@sooth/sdk-solana";
-// Reuse the bankrun fixture from `@sooth/sdk-solana/tests/fixtures` directly.
+// Reuse the LiteSVM fixture from `@sooth/sdk-solana/tests/fixtures` directly.
 // The package's `exports` field only ships `.` so we reach into the source
 // tree via a relative monorepo path. This keeps a single fixture authority.
 import { bootSmoke } from "../../../packages/sdk-solana/tests/fixtures/setup";
@@ -90,7 +90,7 @@ test("AMM buy YES end-to-end against LiteSVM", async () => {
   const conn = new LiteSvmConnection(smoke.ctx);
   const adapter = new SolanaChainAdapter({
     node: {
-      id: "demo-bankrun",
+      id: "demo-litesvm",
       chainKind: "solana",
       chainId: "test",
       rpcUrl: "http://localhost:8899",
@@ -225,8 +225,8 @@ test("AMM buy YES end-to-end against LiteSVM", async () => {
   const lpAtaInfo = await conn.getAccountInfo(userLpAta);
   expect(lpAtaInfo).toBeTruthy();
   // Web3.js's `AccountInfo<Buffer>` shape matches `unpackAccount`'s expected
-  // input — but at runtime the bankrun-shim returns `Buffer | Uint8Array`
-  // so we wrap once.
+  // input — but at runtime the LiteSVM connection returns
+  // `Buffer | Uint8Array`, so we wrap once.
   const tokenAccount = unpackAccount(userLpAta, {
     ...(lpAtaInfo as NonNullable<typeof lpAtaInfo>),
     data: Buffer.from(lpAtaInfo!.data),
@@ -242,8 +242,8 @@ test("AMM buy YES end-to-end against LiteSVM", async () => {
 
 // ─── Stale-quote race coverage ──────────────────────────────────────────────
 //
-// Codex's 2nd-pass review flagged a stale-quote race in a hypothetical
-// "click quote → bind into status → submit reads status.cost" form. Upstream's
+// A "click quote → bind into status → submit reads status.cost" form would
+// have a stale-quote race. Upstream's
 // `SimpleTradingPanel` doesn't implement that pattern: `useAMMQuoteDirect`
 // is a reactive hook keyed on (marketAddress, outcome, deltaShares, isBuy).
 // Toggling outcome (or changing the share input) invalidates the underlying
@@ -266,7 +266,7 @@ test("Outcome toggle invalidates the quote before submit (no stale-quote race)",
   const conn = new LiteSvmConnection(smoke.ctx);
   const adapter = new SolanaChainAdapter({
     node: {
-      id: "demo-bankrun",
+      id: "demo-litesvm",
       chainKind: "solana",
       chainId: "test",
       rpcUrl: "http://localhost:8899",

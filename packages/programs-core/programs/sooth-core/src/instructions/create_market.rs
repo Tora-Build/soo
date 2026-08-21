@@ -90,15 +90,16 @@ pub struct CreateMarket<'info> {
     #[account(mut)]
     pub vault_book: UncheckedAccount<'info>,
 
-    /// CHECK: AMM-token ATA owned by `vault_authority`; init'd in handler.
+    /// CHECK: AMM-token account at seeds `[b"vault_amm", market_id]`, owned by
+    /// `vault_authority`; created and initialized in the handler, which
+    /// re-derives the address before signing.
     ///
-    /// Seeds `[b"vault_amm", market_id]` — its own address, NOT an ATA. The
-    /// book vault is the vault authority's ATA, and an ATA is one account
-    /// per (authority, mint) pair: a deployment that fills both venue roles
-    /// with the same mint would collapse the two vaults into one and merge
-    /// venue accounting. Own seeds keep the vaults distinct under any mint
-    /// pairing. Token-account authority is still `vault_authority`, so every
-    /// downstream transfer path signs exactly as before.
+    /// Its own PDA, NOT an ATA. The book vault is the vault authority's ATA,
+    /// and an ATA is one account per (authority, mint) pair: a deployment that
+    /// fills both venue roles with the same mint would collapse the two vaults
+    /// into one and merge venue accounting. Own seeds keep the vaults distinct
+    /// under any mint pairing, while the token-account authority stays
+    /// `vault_authority`, so every downstream transfer path signs identically.
     #[account(mut)]
     pub vault_amm: UncheckedAccount<'info>,
 

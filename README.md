@@ -11,7 +11,9 @@ Companion to `Tora-Build/sooth-alpha` (the EVM home). Deployed to Solana devnet.
 | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | [`packages/programs-core/programs/sooth-core/`](./packages/programs-core/) | `sooth_core` — one Anchor program: market lifecycle, LMSR AMM, CLOB, LP/fee flows, adjudication. No cross-program CPIs. |
 | [`packages/sdk-solana/`](./packages/sdk-solana/)                          | `@sooth/sdk-solana` — instruction builders, account readers, PDA helpers, client-side LMSR quote math.                  |
-| [`apps/demo/`](./apps/demo/)                                              | Forked demo: classic pages, the Eastboard shell at `/options`, Arena at `/play`. Talks to the program via a chain-shim. |
+| [`packages/sooth-data/`](./packages/sooth-data/)                          | Account/event indexer over `sooth_core`. Not wired into the frontend, which reads accounts over RPC.                    |
+| [`infra/`](./infra/)                                                      | Deployed services: `rpc-proxy` (Worker), `arena-api` (Worker + D1), `zk-resolver` (Node).                              |
+| [`apps/demo/`](./apps/demo/)                                              | The frontend: Arena at `/play`, Eastboard at `/eastboard/*`. Talks to the program via a chain-shim.                     |
 
 ## Where to start
 
@@ -60,19 +62,23 @@ sooth-solana/
 ├── README.md / HANDOVER.md / CLAUDE.md / CHANGELOG.md
 ├── Anchor.toml / Cargo.toml / package.json / pnpm-workspace.yaml
 ├── apps/
-│   └── demo/                      # forked demo + Eastboard + Arena
+│   └── demo/                      # the frontend: Arena + Eastboard
+├── infra/
+│   ├── rpc-proxy/                 # Cloudflare Worker, hides the RPC key
+│   ├── arena-api/                 # Cloudflare Worker + D1, arena social layer
+│   └── zk-resolver/               # Node service, drives the zkTLS attest path
 ├── docs/
 │   ├── status.md                  # current snapshot
 │   ├── build.md                   # local build + wallet rules
 │   ├── roadmap.md
 │   ├── decision-log.md
 │   ├── glossary.md
-│   ├── develop-vs-main.md
 │   ├── design/                    # orderbook redesign, dual-token venues
 │   └── spec/                      # per-subsystem specs
 ├── packages/
 │   ├── programs-core/             # Anchor program `sooth_core`
-│   └── sdk-solana/                # @sooth/sdk-solana
+│   ├── sdk-solana/                # @sooth/sdk-solana
+│   └── sooth-data/                # account/event indexer
 └── vendor/anchor-syn-0.30.1-fork  # rustc-compat patch for IDL generation
 ```
 

@@ -18,8 +18,8 @@
 // two-mint deployment is one config change away — and these builders were
 // wrong for it.
 //
-// `book-usdc-ata-preix.test.ts` asserts only the associated-token PROGRAM ID,
-// which is exactly what let the mismatch through. This asserts the MINT.
+// So every assertion here names the MINT. Asserting only that an
+// associated-token instruction is present is what let the mismatch through.
 
 import { describe, expect, it } from "vitest";
 import { PublicKey } from "@solana/web3.js";
@@ -119,6 +119,18 @@ describe("ATA pre-instructions name the right venue's mint", () => {
     const userRef = encodePubkeyRef(smoke.user.publicKey);
 
     const paths: Array<[string, () => Promise<{ meta?: unknown }>]> = [
+      [
+        "bookPlace",
+        () =>
+          adapter.buildBookPlace(marketRef, {
+            user: userRef,
+            side: 0,
+            limitTick: 400,
+            amount: 1_000_000n,
+            matchLimit: 8,
+            postRemainder: true,
+          }),
+      ],
       [
         "bookWithdraw",
         () => adapter.buildBookWithdraw(marketRef, { user: userRef }),

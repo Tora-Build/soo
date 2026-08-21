@@ -84,8 +84,8 @@ describe("selling on the redesigned book", () => {
   });
 
   it("never reports a share shortfall", () => {
-    // The old message named the outcome token; surfacing it here would tell
-    // the trader to go mint a pair, which is exactly the step this removes.
+    // Naming the outcome token here would tell the trader to go mint a pair,
+    // which is exactly the step selling out of the book removes.
     const c = orderCollateral({
       ...base,
       isBuying: false,

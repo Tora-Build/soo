@@ -1,23 +1,13 @@
-// =============================================================================
-// VENDORED — replace with `@sooth/sdk@0.3.0` import when Phase A ships.
-// -----------------------------------------------------------------------------
-// The umbrella `@sooth/sdk` Phase A refactor (per
-// `docs/implementation-guide.md §8`) will extract the `ChainAdapter` interface
-// and the supporting cross-chain types into `@sooth/sdk/core/*`. Until that
-// ships as `@sooth/sdk@0.3.0`, this package vendors the spec verbatim from the
-// canonical sketch in `docs/implementation-guide.md §2`.
+// The cross-chain `ChainAdapter` interface and its supporting types.
 //
-// When swapping over:
+// Vendored: the canonical shape is the one `sooth-alpha` (the EVM home)
+// implements, and it is restated here rather than imported so this package has
+// no dependency on that repo. The two must stay structurally identical — the
+// umbrella SDK picks an adapter at runtime and calls it through this
+// interface, so a field that exists on only one side is a runtime failure at
+// the call site, not a compile error here.
 //
-//   - delete this file
-//   - replace imports with: `import type { ChainAdapter, SoothCoreSnapshot, ... } from "@sooth/sdk"`
-//   - the `SolanaChainAdapter` class signatures should not need to change; the
-//     vendored types are deliberately byte-aligned with the spec.
-//
-// If a divergence between this file and `@sooth/sdk@0.3.0` is observed at swap
-// time, the upstream package wins (it owns the canonical surface) and the
-// adapter is updated to match.
-// =============================================================================
+// Solana-only extensions are marked as such at each declaration.
 
 // Chain-prefixed market identifier. Solana shape: `sol:<base58 market PDA>`.
 export type MarketRef = string;
@@ -36,18 +26,13 @@ export interface SoothNode {
   chainId: number | string;
   cluster?: "devnet" | "mainnet-beta" | "testnet";
   rpcUrl: string;
-  // Sooth program addresses — base58, Solana-only.
-  //
-  // There is one program: `soothCore` (events use Anchor's `emit_cpi!`, so no
-  // separate log program exists). The adapter reads only `soothCore`,
-  // `usdcMint`, and `ammMint`; the deprecated keys below are retained so
-  // existing node descriptors still typecheck — setting them is a silent
-  // no-op rather than an error.
+  // Sooth program addresses — base58, Solana-only. There is one program;
+  // events use Anchor's `emit_cpi!`, so no separate log program exists.
   programs?: {
     soothCore?: string;
     /**
-     * The BOOK venue's token. The name is kept as `usdcMint` because node
-     * descriptors in the wild already set it.
+     * The BOOK venue's token. Spelled `usdcMint` because node descriptors in
+     * the wild already set it under that name.
      */
     usdcMint?: string;
     /**
@@ -55,12 +40,6 @@ export interface SoothNode {
      * take the adapter's default, which mirrors the program's `AMM_TOKEN_MINT`.
      */
     ammMint?: string;
-    /** @deprecated merged into `soothCore`; ignored by the adapter. */
-    soothAmm?: string;
-    /** @deprecated merged into `soothCore`; ignored by the adapter. */
-    soothMarket?: string;
-    /** @deprecated merged into `soothCore`; ignored by the adapter. */
-    soothBook?: string;
   };
 }
 
@@ -109,9 +88,8 @@ export interface Portfolio {
   positions: Array<{ market: MarketRef; position: Position }>;
 }
 
-// `SoothCoreSnapshot` is the umbrella SDK's normalized read shape. The
-// canonical definition lives in `sooth-alpha/packages/sdk/src/types.ts` —
-// when Phase A ships we replace this with the upstream type.
+// The normalized read shape both adapters return. Canonical definition:
+// `sooth-alpha/packages/sdk/src/types.ts`.
 export interface SoothCoreSnapshot {
   market: MarketInfo;
   position?: Position;
@@ -345,7 +323,11 @@ export interface ChainAdapter {
   buildApprove(spender: AddressRef, amount: bigint): Promise<SoothRequest>;
 }
 
-// ─── Constants (mirrors `@sooth/sdk` core constants) ─────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────
+//
+// `WAD` and `WAD_TO_USDC_SCALAR` are also declared in `math/lmsr.ts`, which is
+// what `index.ts` re-exports; these are the interface's own copies and carry
+// the same values.
 
 export const OUTCOME = { NO: 0, YES: 1, INVALID: 2 } as const;
 export const WAD = 1_000_000_000_000_000_000n; // 1e18

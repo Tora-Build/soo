@@ -1,15 +1,14 @@
 // Playwright config for the on-chain e2e suite.
 //
 // Drives the demo via vite (test mode) against a real solana-test-validator
-// (or devnet, with caveats). Spec assumes the validator is already running
-// with the 4 program .so binaries deployed and the demo's protocol
-// singletons + a market initialised — see e2e/onchain/README in the spec
-// header for the boot sequence.
+// (or devnet, with caveats). Assumes the validator is already running with
+// `sooth_core.so` deployed and the demo's protocol singletons + a market
+// initialised — `pnpm -F @sooth/demo dev:surfpool` does all of that.
 //
 // Key choices:
 //   - workers: 1 — serial avoids same-blockhash double-submit races.
 //   - timeout: 120s/spec — Solana confirm is fast (1-2s), but BlockhashNotFound
-//     retries + indexer lag can push past 60s.
+//     retries plus multi-step flows can push past 60s.
 //   - reuseExistingServer: true — convenient when the operator has the dev
 //     server already running (test-mode vite). CI should set false.
 //   - port 5176 (not 5175) so the e2e doesn't fight a local dev server.

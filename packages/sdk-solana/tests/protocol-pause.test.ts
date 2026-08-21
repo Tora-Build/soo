@@ -24,13 +24,9 @@ import {
   CLOB_ERROR,
   SHARES,
   anchorProgram,
-  cancelTx,
   customError,
-  fetchBookSide,
-  fillBundle,
   enableBook,
   initMarketFeePool,
-  liveAmount,
   sendTx,
   setPaused,
 } from "./fixtures/orderbook.js";

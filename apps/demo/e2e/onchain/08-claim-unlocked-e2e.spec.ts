@@ -15,7 +15,7 @@
 //      drained the same, LockEntry account closed.
 //
 // Gate: self-skips on stock test-validator. Cargo coverage at
-// `programs-core/programs/sooth_amm/...` covers the protocol invariants
+// `programs-core/programs/sooth-core/...` covers the protocol invariants
 // (NotYetUnlocked, double-claim) regardless.
 
 import { test, expect } from "@playwright/test";

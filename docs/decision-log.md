@@ -199,10 +199,9 @@ and PDAs can be re-initialized into a live-looking account. The tombstone makes
 
 - **Guardian allowlist for the veto.** `dispute` is held by a single
   `dispute_authority`. Widening it to a guardian set is unresolved.
-- **zkTLS adjudication.** Not implemented; Primus has no first-class Solana
-  support. Resolution is the manual adjudicator only.
-- **Indexing at production scale.** Frontends read accounts and decode events
-  directly. That is adequate at demo scale; a busy market wants Geyser, and the
-  boundary has not been drawn.
+- **Indexing at production scale.** `apps/demo` reads accounts and decodes CPI
+  events directly, which is adequate at demo scale. `packages/sooth-data` is an
+  indexer over the same data, but no instance is deployed and the frontend does
+  not consume it. A busy market wants Geyser; the boundary has not been drawn.
 - **Three-outcome / MAYBE markets.** Not implemented; markets are binary plus
   INVALID.

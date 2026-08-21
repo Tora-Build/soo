@@ -1,5 +1,5 @@
 /**
- * SimpleTradingPanel - V8 Trading Panel with Real-time Quotes
+ * SimpleTradingPanel — AMM trading panel with real-time quotes
  *
  * Uses useAMMQuoteDirect for accurate LMSR cost/fee calculations
  */
@@ -13,20 +13,16 @@ import {
   ArrowRight,
   Unlock,
   Info,
-  Rocket,
   Scale,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../ui/Button";
 import {
   useAccount,
-  useChainId,
   usePublicClient,
-  useSwitchChain,
   useWriteContract,
   useWaitForTransactionReceipt,
   useReadContract,
-  useDisconnect,
 } from "@/lib/chain-shim";
 import { useAppKit } from "@/lib/chain-shim";
 import {
@@ -45,8 +41,6 @@ import { parseUnits, formatUnits } from "@/lib/chain-shim";
 import toast from "react-hot-toast";
 import { cn, formatAmmAmount, formatCurrencyCompact } from "../../lib/utils";
 import { useChainStore } from "../../store/useChainStore";
-import { marketConfigs } from "../../config";
-import { getChainById } from "../../lib/chains";
 import { tokenLabels, tokenSymbols } from "../../lib/config";
 import { logger } from "../../lib/logger";
 import type { ConfirmedArenaTrade } from "../../features/arena/types";
@@ -73,13 +67,9 @@ export const SimpleTradingPanel = ({
   onTradeConfirmed,
 }: SimpleTradingPanelProps) => {
   const { t } = useTranslation();
-  const { isConnected, address: userAddress, connector } = useAccount();
-  const { disconnect } = useDisconnect();
+  const { isConnected, address: userAddress } = useAccount();
   const { open: openAppKit } = useAppKit();
-  const walletChainId = useChainId();
-  const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
   const { selectedChainId } = useChainStore();
-  const { setSelectedChain } = useChainStore();
   const chainId =
     typeof selectedChainId === "number"
       ? selectedChainId
@@ -130,20 +120,10 @@ export const SimpleTradingPanel = ({
 
   // Contract write hooks
   const {
-    writeContract: approve,
-    data: approveTxHash,
-    isPending: isApproving,
-  } = useWriteContract();
-  const {
     writeContract: trade,
     data: tradeTxHash,
     isPending: isTrading,
   } = useWriteContract();
-
-  const { isLoading: isApprovePending } = useWaitForTransactionReceipt({
-    hash: approveTxHash,
-    pollingInterval: 2000,
-  });
 
   // Only watch for the specific pending transaction to avoid stale success states
   const {
@@ -207,13 +187,13 @@ export const SimpleTradingPanel = ({
       return;
     }
 
-    // Prevent negative numbers (Bug #1)
+    // Prevent negative numbers
     if (num < 0) {
       setAmountError("Enter a positive number.");
       return;
     }
 
-    // Reasonable upper limit (Bug #2)
+    // Reasonable upper limit
     if (num > 100000000) {
       setAmountError("That size is too large.");
       return;
@@ -250,27 +230,6 @@ export const SimpleTradingPanel = ({
     },
   });
 
-  const { data: usdcAllowance, refetch: refetchAllowance } = useReadContract({
-    address: ammTokenAddress as `0x${string}`,
-    abi: ERC20_ABI,
-    functionName: "allowance",
-    args: [userAddress!, contracts.AMMEngine as `0x${string}`],
-    chainId,
-    query: {
-      enabled: !!userAddress && !!ammTokenAddress && !!contracts.AMMEngine,
-      refetchInterval: 30000,
-    },
-  });
-
-  // Refetch allowance after approval or trade
-  useEffect(() => {
-    if (approveTxHash && !isApprovePending) {
-      refetchAllowance();
-    }
-  }, [approveTxHash, isApprovePending, refetchAllowance]);
-
-  // Refetch allowance after trade completes - handled by isTradeSuccess effect now
-
   const decimals = useBaseTokenDecimals();
 
   // --- Position + Balances (for MAX + validation) ---
@@ -291,9 +250,7 @@ export const SimpleTradingPanel = ({
       setPendingTradeInfo(null);
       setPendingTxHash(null);
       setAmount("10");
-      // Invalidate ALL V8 queries to refresh everything immediately
       invalidateV8Queries();
-      refetchAllowance();
     }
   }, [
     isTradeSuccess,
@@ -301,7 +258,6 @@ export const SimpleTradingPanel = ({
     pendingTxHash,
     pendingTradeInfo,
     invalidateV8Queries,
-    refetchAllowance,
   ]);
 
   // Handle trade error
@@ -328,11 +284,10 @@ export const SimpleTradingPanel = ({
     return walletUsdcToken / BigInt(10 ** (decimals - 18));
   }, [walletUsdcToken, decimals]);
 
-  // LaunchpadEngine now uses spendable proceeds first for the base cost,
+  // LaunchpadEngine spends proceeds first for the base cost,
   // then pulls the remainder (+ fee) from wallet. So buying power = wallet + spendable.
   const buyingPowerWad = walletWad + (spendableProceeds ?? 0n);
 
-  // Log transaction hash when it's set
   useEffect(() => {
     if (tradeTxHash) {
       logger.trade.log("Transaction hash received:", tradeTxHash);
@@ -390,22 +345,6 @@ export const SimpleTradingPanel = ({
   const isInitStateLoading =
     isConnected && (isLoadingAmm || isLoadingLaunchpad);
 
-  const marketConfig = useMemo(() => {
-    const addr = address?.toLowerCase();
-    return marketConfigs.find(
-      (m: any) => String(m.contractAddress).toLowerCase() === addr,
-    );
-  }, [address]);
-  const expectedChainId =
-    Number((marketConfig as any)?.chainId || 0) || undefined;
-  const expectedChain = expectedChainId
-    ? getChainById(expectedChainId)
-    : undefined;
-  const selectedChain = getChainById(chainId);
-  const isWrongSelectedChain = !!expectedChainId && chainId !== expectedChainId;
-  const isWrongWalletChain =
-    !!expectedChainId && walletChainId !== expectedChainId;
-
   const isQuoteValid = useMemo(() => {
     if (!canTrade) return false;
     if (sharesNum <= 0) return false;
@@ -423,16 +362,6 @@ export const SimpleTradingPanel = ({
     quote.cost,
     tradeMode,
   ]);
-
-  const isPhantomConnector = useMemo(() => {
-    const name = (connector as any)?.name
-      ? String((connector as any).name).toLowerCase()
-      : "";
-    const id = (connector as any)?.id
-      ? String((connector as any).id).toLowerCase()
-      : "";
-    return name.includes("phantom") || id.includes("phantom");
-  }, [connector]);
 
   // Formatters
   const fmtQty = (val: bigint) =>
@@ -464,18 +393,6 @@ export const SimpleTradingPanel = ({
     return baseCost - fromBalance + fee;
   }, [tradeMode, quote.netCost, quote.fee, spendableProceeds]);
 
-  // Check if approval is needed (only for the wallet portion)
-  const needsApproval = useMemo(() => {
-    if (tradeMode !== "buy") return false;
-    if (requiredFromWalletWad <= 0n) return false;
-    if (usdcAllowance === undefined) return false;
-
-    const requiredToken = wadToTokenCeil(requiredFromWalletWad);
-    // Add 1% buffer for slippage
-    const requiredAllowance = (requiredToken * 101n) / 100n;
-    return (usdcAllowance as bigint) < requiredAllowance;
-  }, [tradeMode, requiredFromWalletWad, usdcAllowance, decimals]);
-
   // Check if user has enough wallet balance for the wallet-pulled portion
   const hasEnoughBalance = useMemo(() => {
     if (tradeMode !== "buy") return true;
@@ -499,43 +416,8 @@ export const SimpleTradingPanel = ({
   // Connect/Switch wallet handler — uses the AppKit hook directly so it
   // works in any context (including portal'd drawers where the navbar's
   // <appkit-button> may not be reachable via querySelector).
-  const handleConnect = async () => {
-    if (isConnected && isPhantomConnector) {
-      disconnect();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
+  const handleConnect = () => {
     openAppKit();
-  };
-
-  // Approve USDC for AMMEngine (tradePositions pulls from wallet via transferFrom)
-  const handleApprove = () => {
-    if (!ammTokenAddress || !contracts.AMMEngine) return;
-
-    // Approve a large amount in the token's actual decimals
-    const approvalAmount = parseUnits("1000000", decimals);
-    logger.trade.log(
-      "Approve amount:",
-      approvalAmount.toString(),
-      "decimals:",
-      decimals,
-    );
-
-    approve(
-      {
-        address: ammTokenAddress as `0x${string}`,
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [contracts.AMMEngine as `0x${string}`, approvalAmount],
-      },
-      {
-        onSuccess: () => {
-          toast.success(`${tokenSymbols.amm} approved!`);
-        },
-        onError: (error) => {
-          toast.error(`Approval failed: ${error.message}`);
-        },
-      },
-    );
   };
 
   const handleMax = async () => {
@@ -571,7 +453,7 @@ export const SimpleTradingPanel = ({
     if (high > capSharesWad) high = capSharesWad;
 
     const totalCostForBuyShares = async (sharesWad: bigint) => {
-      // V8.2: deltaShares is always positive for buys, outcome determines YES/NO
+      // deltaShares is always positive for buys, outcome determines YES/NO
       const deltaShares = sharesWad;
 
       try {
@@ -636,7 +518,6 @@ export const SimpleTradingPanel = ({
     }
   };
 
-  // Execute trade
   const handleTrade = async () => {
     logger.trade.log("handleTrade called", {
       ammEngine: contracts.AMMEngine,
@@ -663,27 +544,20 @@ export const SimpleTradingPanel = ({
 
     // Slippage guard: +5% on a buy, -5% on a sell.
     //
-    // Measured against `netCost` (cost + fee), not `cost`. The buffer used to
-    // come off the PRE-fee cost, so the fee ate into it: at a 1% fee a
-    // nominal 5% buffer was really ~4%, and at 5% it was ~0% — every buy then
-    // failed with SlippageExceeded on a market that had not moved at all.
-    // The fee is a known, quoted cost; slippage headroom should sit on top of
-    // it rather than share it.
-    // Slippage buffer, measured against the fee-inclusive figure the program
-    // actually compares to — `quote.netCost`, which the quote layer returns as
-    // the amount paid on a buy and the NET proceeds on a sell.
-    //
-    // Measuring against the raw LMSR cost meant the fee came out of the buffer
-    // instead of sitting under it: at a 1% fee a nominal 5% buffer was really
-    // ~4%, and at 5% it was ~0%, so trades failed with SlippageExceeded on a
-    // market that had not moved.
+    // Measured against `quote.netCost` — the fee-inclusive figure the program
+    // compares against, returned by the quote layer as the amount paid on a
+    // buy and the NET proceeds on a sell. Measuring against the raw LMSR cost
+    // instead would take the fee out of the buffer rather than leaving it
+    // underneath: at a 1% fee a nominal 5% buffer is really ~4%, and at a 5%
+    // fee it is ~0%, so a market that has not moved still fails
+    // SlippageExceeded.
     const netQuote = quote.netCost ?? quote.cost;
     const limitCost =
       tradeMode === "buy"
         ? (netQuote * 105n) / 100n
         : (netQuote * 95n) / 100n;
 
-    logger.trade.log("Executing (V9):", {
+    logger.trade.log("Executing:", {
       market: address,
       outcome: selectedOutcome,
       deltaShares: deltaShares.toString(),
@@ -697,7 +571,7 @@ export const SimpleTradingPanel = ({
     };
 
     try {
-      // v0.1.2: tradePositions lives on AMMEngine (not LaunchpadEngine).
+      // tradePositions lives on AMMEngine, not LaunchpadEngine.
       // AMMEngine pulls USDC from wallet via transferFrom — requires allowance on AMMEngine.
       // Dynamic gas estimation based on chain and graduation impact:
       // - MegaETH (6343): 60M for graduation (code deposit = 10k gas/byte, ~44M storage gas)
@@ -807,8 +681,7 @@ export const SimpleTradingPanel = ({
     );
   }
 
-  const isPending =
-    isApproving || isApprovePending || isTrading || isTradePending;
+  const isPending = isTrading || isTradePending;
 
   const getButtonContent = () => {
     if (isPending) return <Loader2 size={16} className="mr-2 animate-spin" />;
@@ -832,7 +705,6 @@ export const SimpleTradingPanel = ({
     sharesNum <= 0 ||
     !!amountError ||
     !isQuoteValid ||
-    isPhantomConnector ||
     (tradeMode === "buy" && !hasEnoughBuyingPower) ||
     (tradeMode === "sell" && !hasEnoughShares);
 
@@ -882,85 +754,7 @@ export const SimpleTradingPanel = ({
           </div>
         )}
 
-        {/* Phantom Guard */}
-        {isConnected && isPhantomConnector && (
-          <div className="p-2 bg-raised text-xs text-muted flex items-start gap-2">
-            <AlertCircle size={12} className="shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <div>
-                Wallet blocked: <strong>Phantom</strong> is intercepting this
-                transaction.
-              </div>
-              <div className="text-muted">
-                Switch to <strong>MetaMask</strong> or{" "}
-                <strong>Coinbase Wallet</strong> to trade.
-              </div>
-              <div className="pt-1">
-                <Button
-                  onClick={handleConnect}
-                  className="h-7 px-2 text-xs bg-raised hover:bg-raised border border-error"
-                >
-                  Switch Wallet
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {!isInitStateLoading &&
-          isConnected &&
-          !canTrade &&
-          (isWrongSelectedChain || isWrongWalletChain) && (
-            <div className="p-2 bg-raised text-xs text-ink flex items-start gap-2">
-              <AlertCircle size={12} className="shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <div>
-                  Trading unavailable: this market isn't initialized on the{" "}
-                  <strong>selected network</strong>.
-                </div>
-                <div className="text-muted">
-                  Selected:{" "}
-                  <strong>{selectedChain?.name ?? `Chain ${chainId}`}</strong>
-                  {expectedChain ? (
-                    <>
-                      {" "}
-                      • Market lives on: <strong>{expectedChain.name}</strong>
-                    </>
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {isWrongSelectedChain && expectedChainId ? (
-                    <Button
-                      onClick={() => setSelectedChain(expectedChainId)}
-                      className="h-7 px-2 text-xs bg-raised hover:bg-raised border border-rule"
-                    >
-                      View{" "}
-                      {expectedChain?.shortName ?? `Chain ${expectedChainId}`}
-                    </Button>
-                  ) : null}
-                  {isWrongWalletChain && expectedChainId ? (
-                    <Button
-                      onClick={() =>
-                        switchChain?.({ chainId: expectedChainId })
-                      }
-                      disabled={isSwitchingChain}
-                      className="h-7 px-2 text-xs bg-raised hover:bg-raised border border-rule"
-                    >
-                      {isSwitchingChain
-                        ? "Switching…"
-                        : `Switch wallet to ${expectedChain?.shortName ?? expectedChainId}`}
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          )}
-
-        {!isInitStateLoading &&
-          isConnected &&
-          !canTrade &&
-          !isWrongSelectedChain &&
-          !isWrongWalletChain && (
+        {!isInitStateLoading && isConnected && !canTrade && (
             <div className="p-2 bg-raised text-xs text-ink flex items-start gap-2">
               <AlertCircle size={12} className="shrink-0 mt-0.5" />
               <div className="space-y-1">
@@ -1389,19 +1183,6 @@ export const SimpleTradingPanel = ({
           >
             <Wallet size={18} className="mr-2" />
             Connect Wallet
-          </Button>
-        ) : needsApproval && tradeMode === "buy" ? (
-          <Button
-            onClick={handleApprove}
-            disabled={isPending || !canTrade || isPhantomConnector}
-            className="btn btn-primary w-full py-4"
-          >
-            {isPending ? (
-              <Loader2 size={18} className="mr-2 animate-spin" />
-            ) : (
-              <Rocket size={18} className="mr-2" />
-            )}
-            {isPhantomConnector ? "Switch Wallet" : "Approve USDC"}
           </Button>
         ) : (
           <Button

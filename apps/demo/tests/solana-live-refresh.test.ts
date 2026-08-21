@@ -1,9 +1,9 @@
 // Push-based freshness.
 //
 // Upstream's live updates all hang off EVM events, and the chain-shim's
-// `useWatchContractEvent` is a no-op, so `ActivityListener` — mounted globally,
-// watching seven events — never fires. The app ran on polling alone: a trade
-// could land on-chain and leave the page stale until the next interval.
+// `useWatchContractEvent` is a no-op, so nothing invalidates on an event.
+// Without this hook the app runs on polling alone: a trade lands on-chain and
+// the page stays stale until the next interval.
 //
 // What is tested here is the part with teeth. Subscriptions leak if the effect
 // re-runs on array identity, and a debounce that resets wrongly either storms

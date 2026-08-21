@@ -32,9 +32,10 @@ below are historical; they name modules, not programs.
    token. The order book is closed.
 3. **Graduate** — when accrued AMM fees reach `b·ln(2)`, the book opens.
 4. **Trade** — the order book, priced in USDC, becomes the mature venue.
-5. **Resolve** — `request_lock` → `lock_for_resolution` → `attest_outcome` →
-   veto window → permissionless `settle`, with `dispute` able to override
-   inside the window.
+5. **Resolve** — `request_lock` → `lock_for_resolution` → `attest_outcome` (or
+   `attest_outcome_zk`, for a market registered through
+   `register_zk_adjudicator`) → veto window → permissionless `settle`, with
+   `dispute` able to override inside the window.
 6. **Redeem and close** — `redeem_amm_position`, `redeem_book_seat`,
    `redeem_lp`, `reclaim_subsidy`, then `sweep_residual` and `close_market`.
 

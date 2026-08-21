@@ -101,16 +101,8 @@ export const CHAIN_NAMES = {
 
 export type ChainId = keyof typeof CHAIN_NAMES;
 
-/// Program ids. The 5→1 merge replaced sooth_book/market/amm/launchpad/
-/// adjudicator with a single `sooth_core`. `sooth_log` is gone too — events
-/// self-CPI via Anchor's `emit_cpi!`, so no second program is needed.
+/// Program ids. There is one program; events self-CPI via Anchor's
+/// `emit_cpi!`, so no separate log program exists.
 export const PROGRAM_IDS = {
   SOOTH_CORE: "EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw",
 } as const;
-
-/// Anchor discriminator for `sooth_core::buy` — sha256("global:buy")[..8].
-/// Load-bearing for authenticity: an OrdersFilled record is only trustworthy
-/// if its PARENT top-level instruction is this. See decode-ordersfilled.ts.
-export const BUY_DISCRIMINATOR = Uint8Array.from([
-  0x66, 0x06, 0x3d, 0x12, 0x01, 0xda, 0xeb, 0xea,
-]);

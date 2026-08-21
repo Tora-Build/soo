@@ -108,7 +108,6 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
   const floorRate = stats?.floorRate ?? 0;
   const ceilingRate = stats?.ceilingRate ?? 0;
 
-  // User LP
   const hasUserLp =
     launchpad.userLpBalance !== undefined && launchpad.userLpBalance > 0n;
   const userLP = launchpad.userLpBalance ?? 0n;
@@ -127,7 +126,6 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
   const marketFloorVal = totalLpNum * floorRate;
   const marketCeilingVal = totalLpNum * ceilingRate;
 
-  // Share percentages (now that all values are defined)
   const userSharePct = totalLpNum > 0 ? (userLpNum / totalLpNum) * 100 : 0;
   const creatorSharePct =
     totalLpNum > 0 ? (creatorLpNum / totalLpNum) * 100 : 0;

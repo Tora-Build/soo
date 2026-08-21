@@ -33,19 +33,16 @@ import type { SvmContext } from "./svm.js";
 
 import { soothCoreIdl } from "../../src/anchor/index.js";
 import {
-  bookSidePda,
   deriveFeePoolAuthorityPda,
   deriveMarketVaultAta,
   deriveProtocolConfigPda,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
-  marketBookPda,
   feePoolAmmPda,
   lpYieldAmmPda,
   lpYieldBookPda,
   deriveLpYieldAuthority,
   feePoolBookPda,
-  orderbookPositionPda,
 } from "../../src/pdas.js";
 
 import { LiteSvmConnection } from "./svm.js";
@@ -53,24 +50,16 @@ import type { SmokeContext } from "./setup.js";
 
 // Share amounts are WAD-scaled u128; collateral is 6-decimal USDC.
 // BASE_UNIT_WAD (math/book.rs) is the WAD value of one USDC base unit.
-export const BASE_UNIT_WAD = 1_000_000_000_000n;
+const BASE_UNIT_WAD = 1_000_000_000_000n;
 
 /** A share amount comfortably above min_resting_order_for_tick for any tick
  *  used in these tests, so orders rest instead of being skipped as dust. */
 export const SHARES = 1_000n * BASE_UNIT_WAD;
 
-/** Anchor error codes for the CLOB matcher, from sooth_core's error enum.
- *  the SVM surfaces failures as `custom program error: 0x…`, so tests match
- *  on the hex code rather than the name. */
+/** Anchor error codes this fixture asserts on. The SVM surfaces failures as
+ *  `custom program error: 0x…`, so tests match the hex code, not the name.
+ *  Ordinals are positional from 6000 — see `sooth_core`'s `error.rs`. */
 export const CLOB_ERROR = {
-  OrderIdSeedMismatch: 6043,
-  BookSideFull: 6044,
-  BookSideNotDrained: 6045,
-  CompactBoundExceeded: 6046,
-  NoCancellableOrder: 6050,
-  MissingCrossingBookSide: 6051,
-  MakerAccountMismatch: 6052,
-  WrongBundleArity: 6053,
   ProtocolPaused: 6054,
 } as const;
 
@@ -263,194 +252,6 @@ export async function setPaused(
   );
 }
 
-/** Cancel every resting order the user holds at (side, tick), refunding
- *  collateral. An exit path — deliberately NOT gated by the pause flag. */
-export async function cancelTx(
-  program: Program,
-  smoke: SmokeContext,
-  user: Keypair,
-  side: number,
-  tick: number,
-): Promise<Transaction> {
-  const { marketId, programs, usdcMint, marketPda } = smoke;
-  const [marketBook] = marketBookPda(marketId, programs);
-  const [bookSide] = bookSidePda(marketId, side as 0 | 1, tick, programs);
-  const [vaultAuthority] = deriveVaultAuthorityPda(marketId, programs);
-  const [userOrderbookPosition] = orderbookPositionPda(
-    marketId,
-    user.publicKey,
-    programs,
-  );
-  return new Transaction().add(
-    await (program.methods as any)
-      .cancel(side, tick)
-      .accounts({
-        user: user.publicKey,
-        market: marketPda,
-        marketBook,
-        bookSide,
-        vaultAuthority,
-        marketUsdcVault: deriveMarketVaultAta(marketId, usdcMint, programs),
-        userUsdcAta: deriveUserUsdcAta(user.publicKey, usdcMint),
-        userOrderbookPosition,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        rent: SYSVAR_RENT_PUBKEY,
-      })
-      .instruction(),
-  );
-}
-
-/** Cancel one specific resting order by id. */
-export async function cancelByIdTx(
-  program: Program,
-  smoke: SmokeContext,
-  user: Keypair,
-  orderId: bigint,
-  side: number,
-  tick: number,
-): Promise<Transaction> {
-  const { marketId, programs, usdcMint, marketPda } = smoke;
-  const [marketBook] = marketBookPda(marketId, programs);
-  const [bookSide] = bookSidePda(marketId, side as 0 | 1, tick, programs);
-  const [vaultAuthority] = deriveVaultAuthorityPda(marketId, programs);
-  const [userOrderbookPosition] = orderbookPositionPda(
-    marketId,
-    user.publicKey,
-    programs,
-  );
-  return new Transaction().add(
-    await (program.methods as any)
-      .cancelById(new BN(orderId.toString()), side, tick)
-      .accounts({
-        user: user.publicKey,
-        market: marketPda,
-        marketBook,
-        bookSide,
-        vaultAuthority,
-        marketUsdcVault: deriveMarketVaultAta(marketId, usdcMint, programs),
-        userUsdcAta: deriveUserUsdcAta(user.publicKey, usdcMint),
-        userOrderbookPosition,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        rent: SYSVAR_RENT_PUBKEY,
-      })
-      .instruction(),
-  );
-}
-
-/** Crank: drop up to `maxDrops` fully-cancelled orders from the front of a
- *  BookSide. Permissionless — anyone may compact. */
-export async function compactBookSideTx(
-  program: Program,
-  smoke: SmokeContext,
-  cranker: Keypair,
-  side: number,
-  tick: number,
-  maxDrops: number,
-): Promise<Transaction> {
-  const [bookSide] = bookSidePda(
-    smoke.marketId,
-    side as 0 | 1,
-    tick,
-    smoke.programs,
-  );
-  return new Transaction().add(
-    await (program.methods as any)
-      .compactBookSide(maxDrops)
-      .accounts({
-        cranker: cranker.publicKey,
-        market: smoke.marketPda,
-        bookSide,
-      })
-      .instruction(),
-  );
-}
-
-/** Crank: close a fully-drained BookSide and reclaim its rent. */
-export async function closeBookSideTx(
-  program: Program,
-  smoke: SmokeContext,
-  closer: Keypair,
-  side: number,
-  tick: number,
-): Promise<Transaction> {
-  const [marketBook] = marketBookPda(smoke.marketId, smoke.programs);
-  const [bookSide] = bookSidePda(
-    smoke.marketId,
-    side as 0 | 1,
-    tick,
-    smoke.programs,
-  );
-  return new Transaction().add(
-    await (program.methods as any)
-      .closeBookSide()
-      .accounts({
-        closer: closer.publicKey,
-        market: smoke.marketPda,
-        marketBook,
-        bookSide,
-      })
-      .instruction(),
-  );
-}
-
-/** One fill bundle: [book_side, maker_position, maker_usdc_ata]. */
-export function fillBundle(
-  smoke: SmokeContext,
-  side: number,
-  tick: number,
-  maker: PublicKey,
-): PublicKey[] {
-  const [bookSide] = bookSidePda(
-    smoke.marketId,
-    side as 0 | 1,
-    tick,
-    smoke.programs,
-  );
-  const [position] = orderbookPositionPda(
-    smoke.marketId,
-    maker,
-    smoke.programs,
-  );
-  return [bookSide, position, deriveUserUsdcAta(maker, smoke.usdcMint)];
-}
-
-export async function fetchPosition(
-  program: Program,
-  address: PublicKey,
-): Promise<any> {
-  return (program.account as any).orderbookPosition.fetch(address);
-}
-
-export async function fetchBookSide(
-  program: Program,
-  address: PublicKey,
-): Promise<any> {
-  return (program.account as any).bookSide.fetch(address);
-}
-
-/** Total amount still resting at or after head_index. */
-export function liveAmount(bookSide: {
-  headIndex: number;
-  orders: Array<{ amount: BN }>;
-}): bigint {
-  return bookSide.orders
-    .slice(bookSide.headIndex)
-    .reduce((sum, o) => sum + BigInt(o.amount.toString()), 0n);
-}
-
-export async function usdcBalance(
-  ctx: SvmContext,
-  owner: PublicKey,
-  smoke: SmokeContext,
-): Promise<bigint> {
-  const conn = new LiteSvmConnection(ctx);
-  const ata = deriveUserUsdcAta(owner, smoke.usdcMint);
-  const account = await getAccount(conn as any, ata);
-  return account.amount;
-}
-
 /** sooth_core installs a 256 KB #[global_allocator]; the runtime only maps it
  *  when the transaction requests the frame. Every raw-instruction path must
  *  prepend this, exactly as the SDK adapter does — omitting it faults with
@@ -461,23 +262,17 @@ export function heapFrameIx(): TransactionInstruction {
   });
 }
 
-/** Per-transaction CU cap for raw test transactions. Solana's default is
- *  200k per instruction, which a 4-fill buy already brushes against — the
- *  real budget is 1.4M, so raise it explicitly rather than measuring against
- *  an artificial ceiling. Mirrors what the SDK adapter and main's
- *  cu_measurement.rs both do. */
 /** Must equal SOOTH_CORE_HEAP_LEN in the program's lib.rs. */
 export const SOOTH_CORE_HEAP_BYTES = 256 * 1024;
 
-export const TEST_CU_LIMIT = 1_400_000;
-
-/** Maximum wire size of a Solana transaction (PACKET_DATA_SIZE). */
-export const MAX_TX_BYTES = 1232;
+/** Solana's per-instruction default is 200k; the real per-transaction budget
+ *  is 1.4M. Raise it so a measurement is against the real ceiling. */
+const TEST_CU_LIMIT = 1_400_000;
 
 /** Prepend the compute-budget preamble every sooth_core transaction needs:
  *  the 256 KB heap frame (mandatory — see heapFrameIx) and a realistic CU
  *  cap. */
-export function withHeapFrame(tx: Transaction): Transaction {
+function withHeapFrame(tx: Transaction): Transaction {
   const framed = new Transaction()
     .add(ComputeBudgetProgram.setComputeUnitLimit({ units: TEST_CU_LIMIT }))
     .add(heapFrameIx());
@@ -504,74 +299,6 @@ export async function sendTx(
   sending.feePayer = signers[0]!.publicKey;
   sending.sign(...signers);
   await ctx.banksClient.processTransaction(sending);
-}
-
-/** Send and return the emitted Anchor events' raw payloads.
- *
- *  `emit!` writes `Program data: <base64>` where the payload is
- *  [8-byte event discriminator][borsh body]. */
-export async function sendTxCollectingEvents(
-  ctx: SvmContext,
-  signers: Keypair[],
-  tx: Transaction,
-): Promise<Uint8Array[]> {
-  const sending = withHeapFrame(tx);
-  const blockhash = await ctx.banksClient.getLatestBlockhash();
-  if (!blockhash) throw new Error("no blockhash");
-  sending.recentBlockhash = blockhash[0];
-  sending.feePayer = signers[0]!.publicKey;
-  sending.sign(...signers);
-  const res = await ctx.banksClient.tryProcessTransaction(sending);
-  if (res.result !== null) {
-    throw new Error(
-      `${res.result}\n${(res.meta?.logMessages ?? []).join("\n")}`,
-    );
-  }
-  return (res.meta?.logMessages ?? [])
-    .filter((l: string) => l.startsWith("Program data: "))
-    .map((l: string) => new Uint8Array(Buffer.from(l.slice(14), "base64")));
-}
-
-export interface TxCost {
-  /** Compute units the transaction actually consumed. */
-  computeUnits: number;
-  /** Wire size of the signed transaction. A real cluster rejects anything
-   *  over 1232 bytes (PACKET_DATA_SIZE); LiteSVM does not enforce this, so
-   *  tests must check it explicitly or they will validate transactions that
-   *  could never be submitted. */
-  serializedBytes: number;
-  /** Distinct writable accounts in the compiled message. This is the budget
-   *  that caps fills per transaction (~3.7), not compute — see
-   *  docs/spec/sooth_book.md §13 Q2. */
-  writableAccounts: number;
-}
-
-/** Send and report what it cost. Throws with program logs on failure, same as
- *  sendTx, so a measured transaction can never silently record a failed run. */
-export async function sendTxMeasured(
-  ctx: SvmContext,
-  signers: Keypair[],
-  tx: Transaction,
-  opts: SendOpts = {},
-): Promise<TxCost> {
-  const sending = opts.skipHeapFrame ? tx : withHeapFrame(tx);
-  const blockhash = await ctx.banksClient.getLatestBlockhash();
-  if (!blockhash) throw new Error("no blockhash");
-  sending.recentBlockhash = blockhash[0];
-  sending.feePayer = signers[0]!.publicKey;
-  sending.sign(...signers);
-
-  const writableAccounts = countWritableAccounts(sending);
-  const res = await ctx.banksClient.tryProcessTransaction(sending);
-  if (res.result !== null) {
-    const logs = (res.meta?.logMessages ?? []).join("\n");
-    throw new Error(`measured tx failed: ${res.result}\n${logs}`);
-  }
-  return {
-    computeUnits: Number(res.meta?.computeUnitsConsumed ?? 0),
-    serializedBytes: sending.serialize({ verifySignatures: false }).length,
-    writableAccounts,
-  };
 }
 
 /** Writable-account count from the compiled message header. Solana marks an

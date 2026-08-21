@@ -29,7 +29,7 @@ import { Connection } from "@solana/web3.js";
 
 beforeAll(() => {
   // happy-dom doesn't expose `window.matchMedia`; some upstream UI
-  // components (notably ChainSelector / framer-motion) call it during
+  // components (notably framer-motion) call it during
   // initial render. Stub minimally.
   if (typeof window !== "undefined" && !window.matchMedia) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

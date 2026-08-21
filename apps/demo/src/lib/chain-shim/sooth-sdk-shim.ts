@@ -33,57 +33,6 @@ export interface CommandResult {
   data?: unknown;
 }
 
-// ─── Order / market types (loose so command code compiles) ─────────────────
-
-export type OrderType = "buy" | "sell" | "mint" | "merge";
-
-export interface OrderResult {
-  type: OrderType;
-  amount: bigint;
-  tick?: number;
-}
-
-export interface Order {
-  id: bigint;
-  side: 0 | 1;
-  tick: number;
-  amount: bigint;
-  maker: string;
-}
-
-export interface SpotSellOrder {
-  id: bigint;
-  amount: bigint;
-  price: bigint;
-}
-
-export interface MarketState {
-  qYes: bigint;
-  qNo: bigint;
-  yesPrice: bigint;
-  noPrice: bigint;
-  isLive: boolean;
-  isSettled: boolean;
-}
-
-export interface MarketInfo {
-  address: string;
-  question: string;
-  deadline: bigint;
-  state: MarketState;
-}
-
-export interface Balances {
-  yes: bigint;
-  no: bigint;
-  collateral: bigint;
-}
-
-export interface InternalOutcomes {
-  yesShares: bigint;
-  noShares: bigint;
-}
-
 // ─── ABI stubs ─────────────────────────────────────────────────────────────
 //
 // Each upstream import resolves to an empty array. `useReadContract` in the
@@ -93,8 +42,6 @@ export interface InternalOutcomes {
 const EMPTY_ABI = [] as const;
 
 export const AMMEngineABI = EMPTY_ABI;
-export const CollateralizerABI = EMPTY_ABI;
-export const DynamicFeeHookABI = EMPTY_ABI;
 export const LaunchpadEngineABI = EMPTY_ABI;
 export const OutcomeTokenABI = EMPTY_ABI;
 export const TruthMarketABI = EMPTY_ABI;

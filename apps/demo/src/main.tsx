@@ -121,8 +121,6 @@ function Root() {
                       }}
                     />
                     <Routes>
-                      {/* Eastboard is the primary frontend; the classic demo
-                          surfaces stay reachable under their own routes. */}
                       <Route
                         path="/"
                         element={<Navigate to="/play" replace />}
@@ -152,9 +150,8 @@ function Root() {
                         <Route path="faucet" element={<Faucet />} />
                         <Route path="liquidity" element={<Liquidity />} />
                       </Route>
-                      {/* Legacy paths land in the arena — shared components
-                          still link the old names, and every visitor should
-                          end up in the game. */}
+                      {/* Pre-arena paths redirect into the arena, so a
+                          bookmark or a shared link still lands in the game. */}
                       <Route
                         path="/options"
                         element={<Navigate to="/play" replace />}

@@ -55,7 +55,7 @@ export function LiquidityDetailPanel({
         address: contracts.LaunchpadEngine as `0x${string}`,
         abi: [
           {
-            name: "redeemLP",
+            name: "redeemLp",
             type: "function",
             inputs: [
               { name: "market", type: "address" },
@@ -65,7 +65,7 @@ export function LiquidityDetailPanel({
             stateMutability: "nonpayable",
           },
         ],
-        functionName: "redeemLP",
+        functionName: "redeemLp",
         args: [marketAddress, launchpad.userLpBalance],
       });
       toast.success(t("liquidityDetail.redeemedSuccess"));

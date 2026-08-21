@@ -12,7 +12,7 @@ type Address = `0x${string}`;
 import { useAccount } from "@/lib/chain-shim";
 
 /**
- * Hook to read Launchpad market state (V9 Architecture)
+ * Hook to read Launchpad market state
  */
 export function useLaunchpadMarketDirect(marketAddress: Address | undefined) {
   const { selectedChainId } = useChainStore();
@@ -76,9 +76,8 @@ export function useLaunchpadMarketDirect(marketAddress: Address | undefined) {
     chainId,
     read: async (client) => {
       // Multi-node-per-chain: a single chainId can host multiple
-      // LaunchpadEngines (e.g. Base Sepolia v0.2.0 + v0.1.2). The default
-      // useDeployments() returns the first match (currently v0.2.0), but
-      // the market the user is viewing may live on the *other* engine.
+      // LaunchpadEngines, and useDeployments() returns only the first match,
+      // but the market the user is viewing may live on another engine.
       // Probe every deployment for the chain and pick the one that knows
       // this market (creator !== ZERO).
       const candidates = getAllDeploymentsForChain(chainId);
@@ -232,8 +231,8 @@ export function useLaunchpadMarketDirect(marketAddress: Address | undefined) {
             }).catch(() => 3000n),
           ])
         : [500n, 100n, 3000n];
-      // v0.1.2 exposes no graduationMultiplier; keep the shape but treat it
-      // as 1x for display purposes.
+      // No graduationMultiplier read exists; the shape is kept and treated
+      // as 1x for display.
       const graduationMultiplier = 1n;
 
       const isCreated = creator !== ZERO_ADDRESS;
@@ -275,17 +274,14 @@ export function useLaunchpadMarketDirect(marketAddress: Address | undefined) {
             })
           : 0n;
 
-      // LaunchpadEngine.getMarketState(address) does not exist in v0.1.2, and
-      // floorValue needs the bonding-curve LP state it would expose; leave as
-      // 0 until a replacement view is deployed.
+      // floorValue needs bonding-curve LP state that no read on
+      // LaunchpadEngine exposes, so it stays 0 rather than being guessed.
       const floorValue = 0n;
 
       const graduationProgressPct = Math.min(100, Number(progressBps) / 100);
 
-      // Trial period is still active in v0.1.2. The composite
-      // trialStates() getter was removed but trialEndTimes(address)
-      // exists. Dismiss/refund functions are gone — isDismissed is
-      // always false.
+      // The trial window comes from trialEndTimes(address). There is no
+      // dismiss/refund read here, so isDismissed stays false.
       let trialEndTime = 0n;
       try {
         trialEndTime = await readContractSafe<bigint>(client, {

@@ -22,8 +22,8 @@ const get = (k) => env.match(new RegExp(`^${k}=(.*)$`, "m"))?.[1]?.trim() ?? "";
 const rpc = process.env.SOLANA_RPC_URL || get("VITE_SOLANA_RPC_URL");
 
 // Discovery beats configuration: every Market account on the program,
-// filtered to the current venue mint — markets from before the mint
-// migration hold a different token and cannot trade, so they stay out.
+// filtered to the current venue mint — markets holding a different
+// token cannot trade, so they stay out.
 // This is how a market created in one browser reaches every other one:
 // the snapshot bakes the full list at build time.
 const USDC_MINT = "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX";

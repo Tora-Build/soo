@@ -78,6 +78,7 @@ to contain.
 | `winning_outcome`      | `u8`              | written by `settle`; meaningful only when `Settled`           |
 | `bump`, `vault_authority_bump`, `lock_authority_bump` | `u8` | PDA bumps                                     |
 | `book_enabled`         | `bool`            | mirror of `AmmState.is_graduated`; opens the book             |
+| `is_dismissed`         | `bool`            | mirror of `AmmState.is_dismissed`; `is_open()` returns false when set |
 
 Outcome encoding is protocol-wide: `OUTCOME_NO = 0`, `OUTCOME_YES = 1`,
 `OUTCOME_INVALID = 2`.
@@ -100,9 +101,10 @@ pub enum MarketLifecycle { Initializing, Open, Locked, Settled }
 `can_transition_to` permits exactly `Initializing → Open`, `Open → Locked`,
 `Locked → Settled`. Nothing else is legal, and `Settled` is terminal.
 
-There is no `Dismissed` lifecycle state: trial expiry is
-`AmmState.is_dismissed`, a separate axis, because a dismissed market still has to
-support refunds and eventual close.
+There is no `Dismissed` lifecycle state. Trial expiry is a flag on a separate
+axis — `Market.is_dismissed`, mirrored on `AmmState` — because a dismissed
+market still has to support refunds and eventual close. It does close trading:
+`Market::is_open()` is `lifecycle == Open && !is_dismissed`.
 
 ### 3.2 The account graph
 
@@ -160,7 +162,9 @@ let payout_wad = match outcome {
 let usdc_payout = wad_to_base(payout_wad)?;  // floor
 ```
 
-Both share legs are zeroed **before** the transfer, so a repeat call is a no-op;
+Both share legs and `locked_cost_usdc` are zeroed **before** the transfer, so a
+repeat call is a no-op — clearing the cost leg matters as much as the shares,
+since `claim_refund` pays out of it;
 then `amm.q_yes` and `amm.q_no` are decremented with checked math, so an
 underflow is loud rather than silent. Payment is a PDA-signed transfer out of
 `vault_amm`. Emits `Redeemed`.
@@ -180,8 +184,9 @@ ledgers cannot drift.
 A market that never graduates can be wound down without an adjudicator:
 
 - `dismiss_market` — creator signs, requires `now >= amm.trial_end_at`,
-  `!is_graduated`, `!is_dismissed`. Sets `AmmState.is_dismissed`; the lifecycle
-  is untouched.
+  `!is_graduated`, `!is_dismissed`. Sets `is_dismissed` on **both** `Market` and
+  `AmmState`; the lifecycle enum is untouched, but `Market::is_open()` goes
+  false, so trading stops.
 - `claim_refund` — any user with a position, once the market is dismissed. The
   refund is `Position.locked_cost_usdc`, the cumulative cost paid in, decremented
   by any sells. It pays out of `vault_amm` under the vault authority and then

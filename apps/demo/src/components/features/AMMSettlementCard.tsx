@@ -1,5 +1,5 @@
 /**
- * AMMSettlementCard - Displays settlement info and claim button per V8_AMM_TRADING_SPEC.md
+ * AMMSettlementCard — settlement info and the claim button.
  *
  * Shows: Winning outcome, user's payout, claim button
  */

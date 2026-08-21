@@ -4505,7 +4505,7 @@
   }
 }
 
-/* Final arcade remaps sit after the legacy component layer. */
+/* Final arcade remaps sit last so they win the cascade. */
 @layer components {
   .arena-orb {
     filter: blur(120px);
@@ -4762,12 +4762,6 @@
   }
 }
 
-
-@layer components {
-  /* ── Solana-surface additions: SVG world-art fills and shared panel
-     chrome that have no upstream counterpart. ── */
-
-}
 
 @layer components {
   /* ── Solana-surface additions: SVG world-art fills and shared panel

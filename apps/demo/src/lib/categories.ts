@@ -176,7 +176,7 @@ export function inferCategory(question: string): string {
 /**
  * Aliases for category labels that don't map to the canonical 7. Seeded
  * markets carry on-chain §category SQF tags like "defi" / "security" /
- * "governance" (written by seed scripts such as seed-sepolia.ts). The filter
+ * "governance" (written by the seed scripts). The filter
  * UI in Markets.tsx only buckets CATEGORY_IDS, so anything outside that set
  * stays in "All" but disappears from per-category counts — counts then no
  * longer sum to All. Normalize at parse time instead of changing the chain

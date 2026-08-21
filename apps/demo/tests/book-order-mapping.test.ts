@@ -173,20 +173,14 @@ describe("toBookPlace — bounds and defaults", () => {
   });
 });
 
-// The caller contract, pinned directly — this is what regressed.
+// The caller contract, pinned directly.
 //
-// `SoothBookTerminal.tsx` used to compute
-// `priceForHook = isYes ? limitPriceNum : 1 - limitPriceNum` before calling
-// `placeOrder`, on top of the complement `toBookPlace` already does from
-// `outcome`. Both landed in the same commit that introduced this file, so the
-// 18 tests here — all correct in isolation, all passing the RAW price as the
-// docstring asks — never saw the double complement: nothing exercised the
-// call site.
-//
-// The result was never an error. A 49c "buy NO" rested at the tick for a 49c
-// "sell NO" instead — silently landing 2x closer to the market than the
-// trader intended. It read as unexpected self-trading, because two ordinary
-// resting orders a trader believed were 2c apart were actually adjacent.
+// `toBookPlace` already applies the complement implied by `outcome`, so a
+// caller that pre-complements the price applies it twice. That is never an
+// error: a 49c "buy NO" simply rests at the tick for a 49c "sell NO", 2x
+// closer to the market than intended, and reads as unexpected self-trading.
+// The tests above all pass the RAW price in isolation; this block is what
+// exercises the call shape a form actually produces.
 describe("the caller must pass the RAW outcome price, never pre-complemented", () => {
   it("matches the documented quadrant table for a representative order in each", () => {
     // Table from the module docs, restated as the exact call shape a form

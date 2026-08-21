@@ -1,6 +1,8 @@
 import type { AnchorError } from "@coral-xyz/anchor";
 import type { SendTransactionError } from "@solana/web3.js";
 
+import { soothCoreIdl } from "../anchor/index.js";
+
 export interface ClassifiedError {
   code: string;
   message: string;
@@ -99,18 +101,17 @@ const ALIASES: Record<string, keyof typeof CATALOG> = {
   InsufficientOutcomeShares: "InsufficientShares",
 };
 
-const NUMERIC_CODES: Record<number, keyof typeof CATALOG> = {
-  // sooth_core SoothCoreError ordinals (Anchor user errors start at 6000).
-  6006: "MathOverflow",
-  6043: "OrderIdSeedMismatch",
-  6044: "BookSideFull",
-  6047: "WrongBaseMint",
-  6048: "BaseMintDrift",
-  6049: "AccumulatorNotReset",
-  6051: "MissingCrossingBookSide",
-  6052: "MakerAccountMismatch",
-  6053: "WrongBundleArity",
-};
+// Anchor numbers `SoothCoreError` positionally from 6000 and the runtime
+// reports the number, not the name — so a failure that never made it into a
+// program log arrives as a bare code. Read the names out of the bundled IDL
+// rather than restating the ordinals, which cannot fall behind when a variant
+// is appended to the program's error enum.
+const NAME_BY_CODE: Record<number, string> = Object.fromEntries(
+  (
+    (soothCoreIdl as { errors?: Array<{ code: number; name: string }> })
+      .errors ?? []
+  ).map((e) => [e.code, e.name]),
+);
 
 export function classifyError(
   err: SendTransactionError | AnchorError | Error | unknown,
@@ -127,13 +128,19 @@ export function classifyError(
   }
 
   const numericCode = extracted.numericCode;
-  if (numericCode !== undefined && NUMERIC_CODES[numericCode]) {
-    const mapped = NUMERIC_CODES[numericCode];
-    return { code: mapped, ...CATALOG[mapped] };
+  const numericName = numericCode !== undefined ? NAME_BY_CODE[numericCode] : undefined;
+  if (numericName) {
+    const mapped = canonicalCode(numericName);
+    if (CATALOG[mapped]) return { code: mapped, ...CATALOG[mapped] };
   }
+  // Unmapped: still name it if the IDL knows the code, so the caller reports
+  // "ZkAttestorMismatch" rather than "6077".
   const raw = rawProgramLog(err);
   return {
-    code: code ?? (numericCode != null ? String(numericCode) : "Unknown"),
+    code:
+      code ??
+      numericName ??
+      (numericCode != null ? String(numericCode) : "Unknown"),
     category: "unknown",
     message: raw,
     retriable: false,

@@ -53,7 +53,7 @@ Two compile-time constants:
 pub const AMM_TOKEN_MINT: Pubkey =
     compile_error!("set AMM_TOKEN_MINT for mainnet before building with --features mainnet");
 #[cfg(not(feature = "mainnet"))]
-pub const AMM_TOKEN_MINT: Pubkey = AMM_TOKEN_MINT_DEVNET;
+pub const AMM_TOKEN_MINT: Pubkey = USDC_MINT_DEVNET;
 
 #[cfg(feature = "mainnet")]
 pub const BOOK_TOKEN_MINT: Pubkey = USDC_MINT_MAINNET;
@@ -245,11 +245,12 @@ independently. No instruction may read one vault to satisfy the other.
 
 ## 7. What it costs
 
-- **Two balances to fund.** A wallet holding only USDC cannot trade any market
-  before graduation. Every client, fixture and script has to know which venue it
-  is touching, and getting it wrong fails on balance rather than on anything that
-  names the cause. `deployments.json` names both tokens and each surface's faucet
-  dispenses one card per venue.
+- **Two balances to fund**, whenever the two roles carry different mints. Every
+  client, fixture and script has to know which venue it is touching, and getting
+  it wrong fails on balance rather than on anything that names the cause.
+  `deployments.json` names both roles. The current devnet build points both at
+  the same mock USDC (`AMM_TOKEN_MINT = USDC_MINT_DEVNET`), so one balance
+  covers both venues there; a mainnet build reintroduces the split.
 - **Cross-venue mixing is a silent failure**, which is why the venue-separation
   test asserts from the Rust source rather than from review.
 - **No cross-venue arbitrage is designed for.** The venues are deliberately

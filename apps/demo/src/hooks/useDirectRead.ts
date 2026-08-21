@@ -34,14 +34,11 @@ export function useDirectRead<TData>(params: {
   });
 }
 
-/**
- * Hook to invalidate all V8 and V9 queries - call after any transaction
- */
+/** Invalidates every `v8`/`v9`-namespaced query. Call after any write. */
 export function useInvalidateQueries() {
   const queryClient = useQueryClient();
 
   return useCallback(() => {
-    // Invalidate all queries that start with 'v8' or 'v9'
     queryClient.invalidateQueries({ queryKey: ['v8'] });
     queryClient.invalidateQueries({ queryKey: ['v9'] });
   }, [queryClient]);

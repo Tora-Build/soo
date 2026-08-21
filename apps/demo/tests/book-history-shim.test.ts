@@ -1,10 +1,9 @@
-// Order history from the redesigned book's own CPI events.
+// Order history from the book's own CPI events.
 //
-// The legacy path replays EVM-shaped ORDER_PLACED / ORDER_CANCELLED /
-// ORDER_FILLED logs through a chunked `getLogs` scan. The redesigned book emits
-// none of those signatures, and there is no indexer on this fork
-// (VITE_USE_INDEXER=false), so history rendered empty however much the user had
-// traded. That is the bug this read exists to remove.
+// The EVM-shaped ORDER_PLACED / ORDER_CANCELLED / ORDER_FILLED log scan
+// upstream uses has no counterpart here: the book emits none of those
+// signatures and there is no indexer. This read walks the account's own
+// signature history instead.
 //
 // Three properties carry the weight:
 //

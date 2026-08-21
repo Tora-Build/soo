@@ -331,9 +331,8 @@ with the transaction it precedes.
 `deriveLockVaultAta`, `deriveUserUsdcAta`, `feePoolAmmPda`, `feePoolBookPda`,
 plus `bookPda` for the book account itself.
 
-`bookPda` — seeds `["book", market_id]` — is the live book. `marketBookPda`,
-`bookSidePda`, and `orderbookPositionPda` are left over from the per-tick book
-the program no longer has; do not derive against them for new work.
+`bookPda` — seeds `["book", market_id]` — is the book account itself, exported
+from `book/index.ts` rather than `pdas.ts`.
 
 **Book client.** `decodeBook`, `ladder`, `seatOf`, `bookSpace`, and the raw
 instruction builders (`buildBookInit`, `buildBookInitIxs`, `buildBookGrow`,

@@ -68,16 +68,15 @@ pub const BLOCK_SIZE: usize = 64;
 /// `capacity_in_participants_not_orders`, which pins both numbers.
 ///
 /// This is a CEILING, not an allocation. `book_init` takes an initial capacity
-/// and `book_grow` extends toward this limit one realloc at a time, so raising
-/// it costs nothing until a market actually needs the room — rent is paid
+/// and `book_grow` extends toward this limit one realloc at a time, so the
+/// ceiling costs nothing until a market actually needs the room — rent is paid
 /// incrementally by whoever grows the book.
 ///
-/// Raised from 256 because 256 blocks is 256 concurrent position holders, and
-/// a prediction market is buy-and-hold: a position occupies its seat from the
-/// fill until redemption after settlement, which can be months. A market that
-/// popular would have had no room left to quote. Polymarket's most liquid books
-/// carry 63-101 price levels with several orders each, so hundreds of live
-/// orders is the shape to support.
+/// It is set high because a prediction market is buy-and-hold: a position
+/// occupies its seat from the fill until redemption after settlement, which can
+/// be months, so concurrent position holders accumulate alongside live quotes.
+/// Polymarket's most liquid books carry 63-101 price levels with several orders
+/// each, so hundreds of live orders is the shape to support on top of that.
 ///
 /// What bounds it above:
 ///
@@ -128,9 +127,9 @@ pub struct OrderNode {
 /// A trader's ledger entry, sharing the block array with orders.
 ///
 /// Two node kinds in one arena is what keeps a fill free of extra accounts:
-/// crediting a maker is a write inside the book account we already hold, not a
-/// second account to name, lock and pass in. That is the whole reason a fill
-/// costs 3 accounts and 99 transaction bytes today and 0 of each here.
+/// crediting a maker is a write inside the book account the instruction already
+/// holds, not a second account to name, lock and pass in. A fill therefore
+/// costs zero accounts and zero transaction bytes.
 ///
 /// `kind` sits at the **same byte offset** as `OrderNode::flags` so a block can
 /// be identified before it is interpreted; the offsets are asserted below.
@@ -418,13 +417,12 @@ impl<'a> Book<'a> {
 
     /// A trader's seat if it exists — **without creating one**.
     ///
-    /// The allocating [`Book::seat_mut`] is right on a trading path, where a
-    /// trader who is about to hold a position needs somewhere to hold it. It is
-    /// wrong on a read or an exit: `take_credit` used it, so calling
-    /// `book_withdraw` from a wallet that had never traded ALLOCATED a block to
-    /// record a zero balance. Since blocks are capped and seats were never
-    /// freed, ~256 throwaway signers could fill the arena and permanently stop
-    /// the market accepting orders, for the cost of transaction fees.
+    /// The allocating [`Book::seat_mut`] belongs on a trading path, where a
+    /// trader who is about to hold a position needs somewhere to hold it. Reads
+    /// and exits must use this one instead: blocks are capped, so an allocating
+    /// lookup on `book_withdraw` would let throwaway signers fill the arena with
+    /// zero-balance seats and permanently stop the market accepting orders, for
+    /// the cost of transaction fees.
     pub fn seat_of(&self, trader: Pubkey) -> Option<u32> {
         let mut cursor = self.header.seats_head;
         while cursor != NIL {
@@ -450,14 +448,11 @@ impl<'a> Book<'a> {
     ///
     /// ## Why only from an exit instruction
     ///
-    /// The matching loop caches seat indices across mutations (`taker_seat` is
-    /// held for the whole loop while makers allocate seats). Freeing a block
-    /// there could hand that index to a different trader mid-match, which is
-    /// exactly the aliasing the original "zeroed, not freed" comment worried
-    /// about. That concern was right about the matcher and too broad about
-    /// everywhere else: `book_withdraw` and `redeem_book_seat` hold no cached
-    /// index, so calling it there is sound and calling it inside `match_order`
-    /// is not.
+    /// The matching loop caches seat indices across mutations — `taker_seat` is
+    /// held for the whole loop while makers allocate seats — so freeing a block
+    /// there could hand that index to a different trader mid-match. Callers
+    /// that hold no cached index (`book_withdraw`, `redeem_book_seat`) are the
+    /// only sound callers; `place` must never call this.
     pub fn free_seat_if_empty(&mut self, trader: Pubkey) -> BookResult<bool> {
         let mut prev = NIL;
         let mut cursor = self.header.seats_head;
@@ -564,8 +559,8 @@ mod tests {
 
     #[test]
     fn equal_prices_keep_arrival_order_on_both_sides() {
-        // The FIFO guarantee. Today it falls out of appending to a Vec; here it
-        // is explicit logic, so it is worth stating on its own.
+        // The FIFO guarantee. Ordering is explicit logic in `insert` rather
+        // than a side effect of a container, so it is pinned on its own.
         let mut f = Fixture::new(16);
         let mut b = f.book();
         for i in 0..4u8 {
@@ -795,8 +790,9 @@ mod tests {
             "the fixed prefix must stay negligible, got {fixed}"
         );
 
-        // Rent, in lamports, for the fully-extended book vs today's thin book
-        // of 19 separate accounts totalling 2,640 payload bytes.
+        // Rent, in lamports, for the fully-extended book against the same book
+        // split over 19 separate accounts totalling 2,640 payload bytes — the
+        // layout a PDA per (side, tick) would need.
         let rent = |bytes: usize| (128 + bytes) as u64 * 6960;
         let new_full = rent(full);
         let old_thin = 19 * 128 * 6960 + 2_640 * 6960;

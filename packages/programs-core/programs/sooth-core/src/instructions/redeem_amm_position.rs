@@ -154,9 +154,9 @@ pub fn handler(ctx: Context<RedeemAmmPosition>) -> Result<()> {
     );
 
     // A dismissed market refunds at cost; it never pays a settlement claim.
-    // `Market.is_dismissed` covers markets dismissed under the current rules,
-    // `AmmState.is_dismissed` also covers any dismissed before the mirror
-    // existed — and this instruction already loads both.
+    // Both flags are checked rather than one: `dismiss_market` writes them
+    // together, and this instruction already loads both accounts, so neither
+    // has to be trusted alone.
     require!(
         !ctx.accounts.market.is_dismissed && !ctx.accounts.amm_state.is_dismissed,
         SoothCoreError::MarketDismissed

@@ -271,17 +271,19 @@ exactly 16 bytes. They are exported because tests and any future indexer derive
 accounts without going through the adapter. The full seed table is in
 [`./integrator-contract.md`](./integrator-contract.md).
 
-One trap: `bookPda` — seeds `[b"book", market_id]`, exported from
-`book/index.ts` — is the live book account. `marketBookPda`, `bookSidePda`, and
-`orderbookPositionPda` in `pdas.ts` are from the per-tick book the program no
-longer has, and are kept only for callers still reading old accounts.
+The book account's own PDA is the exception: `bookPda` — seeds
+`[b"book", market_id]` — is exported from `book/index.ts`, not `pdas.ts`,
+because it lives with the layout it addresses.
+
+`tests/pdas.test.ts` pins every one of them twice: to a golden address, and to
+the seed literals the program source actually derives.
 
 ---
 
 ## 9. Tests
 
-Vitest 2 over LiteSVM 1.3.0: 39 test files plus four fixture modules, roughly
-250 assertions. `vitest.config.ts` sets 60 s timeouts and `pool: "forks"` with
+Vitest 2 over LiteSVM 1.3.0: 41 test files plus five fixture modules, roughly
+270 assertions. `vitest.config.ts` sets 60 s timeouts and `pool: "forks"` with
 `singleFork: true`, because the fixtures share a validator.
 
 ```sh

@@ -71,13 +71,12 @@ pub struct ClaimRefund<'info> {
 /// Both draw on the same AMM vault, so a market that could do both would pay
 /// one deposit twice. The market must therefore be dismissed and must not have
 /// settled. `dismiss_market` refuses anything but an `Open` market and `settle`
-/// refuses a dismissed one, so for markets created under these rules the two
-/// states are already disjoint; this guard also holds for any market dismissed
-/// before that exclusion existed.
+/// refuses a dismissed one, so the two states are disjoint at the source; this
+/// guard holds the exclusion independently of either.
 ///
-/// Dismissal is read from `AmmState`, which every dismissed market carries,
-/// rather than from the `Market` mirror, which only markets dismissed since
-/// the mirror was added have set.
+/// Dismissal is read from `AmmState`, the account `dismiss_market` writes
+/// first and the one every dismissed market carries, rather than from the
+/// `Market` mirror.
 fn assert_refundable(market: &Market, amm: &AmmState) -> Result<()> {
     require!(amm.is_dismissed, SoothCoreError::MarketNotDismissed);
     require!(!market.is_settled(), SoothCoreError::MarketAlreadySettled);
@@ -111,8 +110,13 @@ pub fn handler(ctx: Context<ClaimRefund>) -> Result<()> {
         )?;
     }
 
-    // Close the position account (rent → user).
-    close_position_account(&ctx.accounts.position, &ctx.accounts.user)?;
+    // Spend the claim in place. The account stays: `LockEntry`'s seeds derive
+    // from the position's key and `claim_unlocked` deserializes it, so a
+    // position closed here would strand any sell proceeds still escrowed in
+    // the lock vault. Zeroing the one field this instruction pays makes the
+    // refund unrepeatable — the same trade `redeem_amm_position` makes, at
+    // the cost of the account's rent.
+    clear_locked_cost(&ctx.accounts.position)?;
 
     emit!(RefundClaimed {
         market: market_key,
@@ -184,22 +188,14 @@ fn read_and_validate_position(
 
 /// Close a position account by zeroing its data and moving its lamports to
 /// the user.
-fn close_position_account(position: &UncheckedAccount, user: &Signer) -> Result<()> {
-    let dest = user.to_account_info();
-    let src = position.to_account_info();
-
-    // Move lamports.
-    let lamports = src.lamports();
-    **src.try_borrow_mut_lamports()? = 0;
-    **dest.try_borrow_mut_lamports()? = dest
-        .lamports()
-        .checked_add(lamports)
-        .ok_or(error!(SoothCoreError::MathOverflow))?;
-
-    // Zero account data.
-    let mut data = src.try_borrow_mut_data()?;
-    data.fill(0);
-
+/// Zero the refund field in the raw buffer, leaving the rest of the position
+/// intact. Writes through the same offset `read_locked_cost` reads, so the
+/// two cannot disagree about which bytes hold the claim.
+fn clear_locked_cost(position: &UncheckedAccount) -> Result<()> {
+    let mut data = position.try_borrow_mut_data()?;
+    let end = POSITION_LOCKED_COST_USDC_OFFSET + 8;
+    require!(data.len() >= end, SoothCoreError::VaultAuthorityMismatch);
+    data[POSITION_LOCKED_COST_USDC_OFFSET..end].fill(0);
     Ok(())
 }
 
@@ -228,9 +224,10 @@ mod tests {
 
     #[test]
     fn a_settled_market_never_refunds() {
-        // The P0 invariant from the other side: settle → redeem → dismiss →
-        // claim_refund. Dismissal can no longer follow settlement, and even a
-        // market carrying a stale dismissal flag pays no refund once settled.
+        // The double-pay invariant from the other side: settle → redeem →
+        // dismiss → claim_refund. `dismiss_market` refuses a settled market,
+        // and a market carrying a dismissal flag still pays no refund once
+        // settled — either guard alone is enough.
         let mut market = market_fixture(MarketLifecycle::Settled);
         let mut amm = amm_fixture();
         amm.is_dismissed = true;
@@ -239,9 +236,9 @@ mod tests {
     }
 
     #[test]
-    fn a_market_dismissed_before_the_mirror_existed_still_refunds() {
-        // Accounts already on chain carry the flag only on `AmmState`; their
-        // holders must keep their exit.
+    fn the_amm_flag_alone_is_enough_to_refund() {
+        // Dismissal is read from `AmmState`, so an entry whose `Market` mirror
+        // is clear still opens the exit.
         let market = market_fixture(MarketLifecycle::Open);
         let mut amm = amm_fixture();
         amm.is_dismissed = true;
@@ -265,6 +262,34 @@ mod tests {
         position.locked_cost_usdc = 1_250_000;
         let data = serialize_position(&position);
         assert_eq!(read_locked_cost(&data).unwrap(), 1_250_000);
+    }
+
+    #[test]
+    fn a_refund_spends_the_claim_without_erasing_the_position() {
+        // `LockEntry`'s seeds derive from the position's key and
+        // `claim_unlocked` deserializes the position, so a refund that wiped
+        // the account would leave escrowed sell proceeds unreachable for
+        // good. The claim goes to zero; the shares and identity stay.
+        let mut position = crate::state::position::position_fixture();
+        position.yes_shares = 11;
+        position.no_shares = 3;
+        position.locked_cost_usdc = 900_000;
+        let mut data = serialize_position(&position);
+
+        let end = POSITION_LOCKED_COST_USDC_OFFSET + 8;
+        data[POSITION_LOCKED_COST_USDC_OFFSET..end].fill(0);
+
+        assert_eq!(
+            read_locked_cost(&data).unwrap(),
+            0,
+            "refund is unrepeatable"
+        );
+        let after = crate::state::Position::try_deserialize(&mut data.as_slice())
+            .expect("the position still deserializes, so claim_unlocked still works");
+        assert_eq!(after.yes_shares, 11);
+        assert_eq!(after.no_shares, 3);
+        assert_eq!(after.user, position.user);
+        assert_ne!(&data[..8], &[0u8; 8], "the discriminator survives");
     }
 
     #[test]

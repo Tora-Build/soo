@@ -1,18 +1,17 @@
 // Alchemy's Solana Account Archive — `getAccountInfo` at a historical slot.
 //
-// ## What this gives us that we could not get before
+// ## What it gives
 //
 // The state of any account at any past slot, and the ability to walk an
-// account's writes forward or backward. That removes a whole class of work:
+// account's writes forward or backward:
 //
 //   - **price history**. `AmmState.q_yes / q_no / b` at a series of slots IS
-//     the LMSR price over time. Previously that meant either indexing every
-//     trade or having no chart at all.
+//     the LMSR price over time, with no trade index needed to chart it.
 //   - **point-in-time answers**. "What did the book look like when this
 //     happened" stops being a question only an index can answer.
 //   - **cheap backfill of STATE**, without replaying transactions.
 //
-// It also fixes the retention problem for accounts specifically: a public
+// It also answers the retention problem for accounts specifically: a public
 // validator prunes, and this does not.
 //
 // ## Why it does NOT replace the event indexer

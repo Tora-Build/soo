@@ -1,16 +1,21 @@
 // `SolanaChainAdapter` — implements the vendored `ChainAdapter` interface
 // against `@coral-xyz/anchor` 0.30.x and `@solana/web3.js` 1.x.
 //
-// Scope of this implementation (per scaffolding plan):
+// Every market lifecycle instruction is reachable from here: AMM trade and
+// sell, book place/cancel/withdraw, LP seed/redeem, adjudication (manual and
+// zkTLS), settle, claim and close. Five members of the vendored interface are
+// the exception and throw `NotImplemented`: `readPortfolio`,
+// `subscribeMarketEvents`, `subscribePositionEvents`, `getCollateralBalance`
+// and `buildApprove` — the first two because there is no cross-market index to
+// read, the last three because Solana has no approve step and balances are
+// read through the token program directly.
 //
-//   - Real: readSnapshot, readQuote, readPosition, buildTrade (buy), submit
-//   - NotImplemented: readPortfolio, buildClaim, buildOrderbook*,
-//     buildCreateMarket, preflight, subscribe*, getCollateralBalance,
-//     buildApprove
+// Two rules hold across every builder:
 //
-// The buy path is wired end-to-end. Sell path on `buildTrade` throws
-// `NotImplemented` because the on-chain sell branch in `trade_positions.rs`
-// is itself stubbed (no USDC outflow yet — see the file's module comment).
+//   - `MarketRef` / `AddressRef` arrive as `sol:<base58>` and are decoded by
+//     `decodePubkeyRef`, which rejects anything else rather than guessing.
+//   - Every transaction prepends `requestHeapFrame(256 KiB)`; the program runs
+//     a custom bump allocator and traps in its prologue without it.
 
 import {
   AnchorProvider,
@@ -97,7 +102,7 @@ import {
   type BookFilledEvent,
 } from "./book/events.js";
 import { decodePubkeyRef, encodeSignatureRef } from "./refs.js";
-import { SoothError, notImplemented } from "./errors.js";
+import { SoothError, notImplemented, type SoothErrorKind } from "./errors.js";
 import type {
   AddressRef,
   ChainAdapter,
@@ -620,7 +625,7 @@ export class SolanaChainAdapter implements ChainAdapter {
    * Enumerate the user's pending sell-lock entries on a given market.
    *
    * Sells route USDC proceeds into a per-LockEntry PDA with a 24h cooldown
-   * (`sooth_amm::sell_positions` → `LockEntry::unlock_at = now + 86400`).
+   * (`sell_positions` → `LockEntry::unlock_at = now + 86400`).
    * `claim_unlocked` drains one matured LockEntry per call back to the
    * user's USDC ATA and closes the LockEntry account (rent → user).
    *
@@ -1105,7 +1110,7 @@ export class SolanaChainAdapter implements ChainAdapter {
   // outflows that share the "claim" semantic surface:
   //
   //   1. `kind: 'unlock'` — drain a `LockEntry` from the AMM sell-with-lock
-  //      cooldown (`sooth_amm::claim_unlocked`). This is the EVM
+  //      cooldown (`claim_unlocked`). This is the EVM
   //      `claimUnlocked(maxClaims)` analogue. One LockEntry per call mirrors
   //      the on-chain handler (see `claim_unlocked.rs`).
   //
@@ -1131,7 +1136,7 @@ export class SolanaChainAdapter implements ChainAdapter {
     const marketPda = decodePubkeyRef(market);
     const resolved = await this.fetchMarket(marketPda);
 
-    // ── Default: AMM lock-claim — sooth_amm::claim_unlocked ────────────
+    // ── Default: AMM lock-claim — `claim_unlocked` ─────────────────────
     const lockEntryRef = args.lockEntry;
     if (!lockEntryRef) {
       throw new SoothError({
@@ -1688,7 +1693,7 @@ export class SolanaChainAdapter implements ChainAdapter {
   // There is no planner or simulator here, and that is the point: the program
   // walks its own book, so a taker sends one instruction with a `matchLimit`
   // and nothing has to be predicted off-chain — no client-side match plan
-  // exists to go stale (the failure class of audit finding H1).
+  // exists to go stale.
 
   private bookRefs(marketPda: PublicKey, marketId: Uint8Array): BookRefs {
     return {
@@ -2806,15 +2811,15 @@ export class SolanaChainAdapter implements ChainAdapter {
     return out;
   }
 
-  // ─── sooth_book order lifecycle builders ──────────────────────────────
+  // ─── Market creation ──────────────────────────────────────────────────
 
 
   async buildCreateMarket(
     args: CreateMarketArgs,
   ): Promise<CreateMarketRequest> {
-    // The on-chain `sooth_launchpad::create_market` ix composes the four-leg
-    // init flow from `sooth_market` + `sooth_amm` into a single tx. See
-    // `programs/sooth_launchpad/src/instructions/create_market.rs` for the
+    // `create_market` composes the four-leg init flow — market, vaults, AMM
+    // state, adjudicator entry — into a single instruction. See
+    // `programs/sooth-core/src/instructions/create_market.rs` for the
     // CPI body and architecture §4.1 for the call chain.
     //
     // Solana-only meta channel: the user pubkey (creator + payer for every
@@ -3503,7 +3508,7 @@ export class SolanaChainAdapter implements ChainAdapter {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-// H5 (Codex 2nd-pass): bounded retry/resend in submit().
+// Ceiling on resend attempts in `submit()`.
 //
 // Cap mirrors the integrator-contract spec
 // (`docs/implementation-guide.md §2`: "EVM always returns 1; Solana may
@@ -3797,72 +3802,50 @@ async function getTokenAmountOrZero(
 // unrelated program (SPL, system) is never misread as a sooth_core error.
 //
 // Error table mirrors `sooth_core/src/error.rs` SoothCoreError enum order.
-const SOOTH_CORE_ERROR_TABLE: Record<number, { kind: string; msg: string }> = {
-  6000: { kind: "MarketNotActive", msg: "Market is not in the Open lifecycle state" },
-  6001: { kind: "ProgramError", msg: "Market is not Settled" },
-  6002: { kind: "ProgramError", msg: "Lifecycle transition not permitted from current state" },
-  6003: { kind: "ProgramError", msg: "Invalid outcome (must be NO=0, YES=1, or INVALID=2)" },
-  6004: { kind: "ProgramError", msg: "Amount must be non-zero" },
-  6005: { kind: "InsufficientShares", msg: "Insufficient outcome-token balance" },
-  6006: { kind: "ProgramError", msg: "Math overflow" },
-  6007: { kind: "ProgramError", msg: "Vault / mint authority mismatch" },
-  6008: { kind: "ProgramError", msg: "Deadline must be greater than start_time" },
-  6009: { kind: "ProgramError", msg: "Adjudicator pubkey must not be the default (all-zero) key" },
-  6010: { kind: "MarketNotDismissed", msg: "Market is not dismissed" },
-  6011: { kind: "TradingClosed", msg: "Trading window has closed (now >= deadline)" },
-  6012: { kind: "InvalidTick", msg: "Invalid tick" },
-  6013: { kind: "ProgramError", msg: "Amount too small for base token decimals" },
-  6014: { kind: "SlippageExceeded", msg: "Slippage: cost exceeded max_cost_wad" },
-  6015: { kind: "ProgramError", msg: "delta_shares must be non-zero" },
-  6016: { kind: "InsufficientShares", msg: "Insufficient shares to sell" },
-  6017: { kind: "MarketNotActive", msg: "Market is dismissed" },
-  6018: { kind: "ProgramError", msg: "Liquidity parameter b must be > 0" },
-  6019: { kind: "ProgramError", msg: "Caller is not authorized for this action (creator mismatch)" },
-  6020: { kind: "TradingNotStarted", msg: "Trading window has not started yet (now < start_time)" },
-  6021: { kind: "SellNotImplemented", msg: "Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3" },
-  6022: { kind: "LockNotElapsed", msg: "Lock has not elapsed yet (now < lock_entry.unlock_at)" },
-  6023: { kind: "LockVaultMismatch", msg: "Lock vault account does not match market.lock_vault" },
-  6024: { kind: "TrialNotExpired", msg: "Trial period has not expired yet" },
-  6025: { kind: "AlreadyGraduated", msg: "Market has already graduated" },
-  6026: { kind: "AlreadyDismissed", msg: "Market has already been dismissed" },
-  6027: { kind: "ProgramError", msg: "AmmState market backlink does not match market account" },
-  6028: { kind: "ProgramError", msg: "Fee bps must not exceed 10000 (100%)" },
-  6029: { kind: "ProgramError", msg: "Fee split bps do not sum to 10000" },
-  6030: { kind: "ProgramError", msg: "Treasury pubkey must be non-default" },
-  6031: { kind: "ProgramError", msg: "Default trial period must be > 0" },
-  6032: { kind: "ProgramError", msg: "Fee pool is empty — nothing to distribute" },
-  6033: { kind: "NotGraduated", msg: "Market is not graduated" },
-  6034: { kind: "ProgramError", msg: "LP amount must be > 0" },
-  6035: { kind: "ProgramError", msg: "LP supply is empty" },
-  6036: { kind: "ProgramError", msg: "Legacy fee drain already executed" },
-  6037: { kind: "ProgramError", msg: "Caller is not the registered authority for this adjudicator" },
-  6038: { kind: "ProgramError", msg: "Adjudicator has already attested an outcome; re-attestation is not permitted" },
-  6039: { kind: "ProgramError", msg: "Adjudicator account does not match the supplied market" },
-  6040: { kind: "ProgramError", msg: "Adjudicator has already been disputed; dispute is one-shot per market" },
-  6041: { kind: "ProgramError", msg: "Market is already settled; dispute can no longer override the outcome" },
-  6042: { kind: "ProgramError", msg: "Order id is outside the supported composite encoding range" },
-  6043: { kind: "ProgramError", msg: "Decoded order id does not match the requested side or tick" },
-  6044: { kind: "ProgramError", msg: "Book side is full for this tick" },
-  6045: { kind: "ProgramError", msg: "Book side is not fully drained" },
-  6046: { kind: "ProgramError", msg: "Compaction drop count exceeds the per-call bound" },
-  6047: { kind: "ProgramError", msg: "Market vault uses the wrong base mint" },
-  6048: { kind: "ProgramError", msg: "MarketBook base mint does not match the market vault mint" },
-  6049: { kind: "ProgramError", msg: "MarketBook accumulators must be reset before placing an order" },
-  6050: { kind: "ProgramError", msg: "No cancellable order was found" },
-  6051: { kind: "ProgramError", msg: "Remaining-account bundle does not carry the crossing BookSide" },
-  6052: { kind: "ProgramError", msg: "Remaining-account bundle maker does not match the live order maker" },
-  6053: { kind: "ProgramError", msg: "Remaining-account bundles must contain exactly three accounts per fill" },
-  6054: { kind: "ProgramError", msg: "Protocol is paused; trading, new liquidity and market creation are disabled" },
-  6055: { kind: "ProgramError", msg: "Adjudicator has not yet attested an outcome for this market" },
-  6056: { kind: "ProgramError", msg: "Trading window has not closed yet (now < deadline)" },
+// Anchor numbers `SoothCoreError` positionally from 6000 and the runtime
+// reports that number, not the name. Codes and messages are read out of the
+// bundled IDL rather than restated here, so the table covers every variant the
+// shipped program can raise and cannot fall behind when one is appended.
+//
+// Only the mapping to a `SoothErrorKind` is stated: a name listed here gets a
+// kind a caller can branch on, everything else is a generic `ProgramError`
+// carrying the program's own message.
+const SOOTH_ERROR_KIND_BY_NAME: Record<string, SoothErrorKind> = {
+  MarketNotOpen: "MarketNotActive",
+  MarketDismissed: "MarketNotActive",
+  MarketNotDismissed: "MarketNotDismissed",
+  InsufficientOutcomeShares: "InsufficientShares",
+  InsufficientShares: "InsufficientShares",
+  TradingClosed: "TradingClosed",
+  TradingNotStarted: "TradingNotStarted",
+  InvalidTick: "InvalidTick",
+  SlippageExceeded: "SlippageExceeded",
+  SellNotImplemented: "SellNotImplemented",
+  LockNotElapsed: "LockNotElapsed",
+  LockVaultMismatch: "LockVaultMismatch",
+  TrialNotExpired: "TrialNotExpired",
+  AlreadyGraduated: "AlreadyGraduated",
+  AlreadyDismissed: "AlreadyDismissed",
+  NotGraduated: "NotGraduated",
 };
+
+const SOOTH_CORE_ERROR_TABLE: Record<
+  number,
+  { kind: SoothErrorKind; msg: string }
+> = Object.fromEntries(
+  ((soothCoreIdl as { errors?: Array<{ code: number; name: string; msg: string }> })
+    .errors ?? []).map((e) => [
+    e.code,
+    { kind: SOOTH_ERROR_KIND_BY_NAME[e.name] ?? "ProgramError", msg: e.msg },
+  ]),
+);
 
 // Lookup of failing-program-ID base58 → which error table to consult. Built
 // per-adapter at construction time so the decoder doesn't need to know the
 // concrete deployment IDs (those rotate across localnet/devnet/mainnet).
 type ProgramErrorLookup = Map<
   string,
-  Record<number, { kind: string; msg: string }>
+  Record<number, { kind: SoothErrorKind; msg: string }>
 >;
 
 // Exported for tests so they can assert error code disambiguation.
@@ -3885,7 +3868,7 @@ function decodeSubmitError(
     const entry = table?.[code];
     if (entry) {
       return new SoothError({
-        kind: entry.kind as SoothError["kind"],
+        kind: entry.kind,
         code,
         msg: entry.msg,
         signature,
@@ -3920,17 +3903,17 @@ function decodeSubmitError(
   return new SoothError({ kind: "ProgramError", msg, signature });
 }
 
-// H5 (Codex 2nd-pass): classify a raw submit failure into:
+// Split a raw submit failure into retryable and terminal:
 //   - `retryable: true`  → transient (blockhash expired, node lag, RPC blip,
 //     transaction-not-found after confirm timeout). Caller resends with a
 //     fresh blockhash after backoff.
-//   - `retryable: false` → terminal program error (custom code 6000-6011)
-//     or terminal network error (signature mismatch, insufficient lamports
-//     for rent, malformed message). Caller throws immediately.
+//   - `retryable: false` → any custom program error, or a terminal network
+//     error (signature mismatch, insufficient lamports for rent, malformed
+//     message). Caller throws immediately.
 //
-// `decodeSubmitError` (above) preserves the existing per-code mapping for
-// program errors. The classifier wraps it: program errors are always
-// terminal, anything else is bucketed by string-matching `.message`.
+// A custom program code means the program ran and rejected deterministically,
+// so a resend reproduces it exactly; everything else is bucketed by
+// string-matching the message.
 function classifySubmitError(
   raw: unknown,
   attempt: number,

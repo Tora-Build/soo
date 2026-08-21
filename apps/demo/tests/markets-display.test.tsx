@@ -82,7 +82,7 @@ test("Markets page renders the seeded market with bridged metadata", async () =>
   const conn = new LiteSvmConnection(smoke.ctx);
   const adapter = new SolanaChainAdapter({
     node: {
-      id: "demo-bankrun",
+      id: "demo-litesvm",
       chainKind: "solana",
       chainId: "test",
       rpcUrl: "http://localhost:8899",

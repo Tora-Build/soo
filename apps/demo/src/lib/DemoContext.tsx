@@ -5,7 +5,7 @@
 //      `useWallet()`. The signer comes from `wallet.adapter`.
 //
 //   2. Test injection: the test wraps the app in `<DemoProvider override={...}>`
-//      passing a pre-built adapter (with a BankrunConnection) plus a
+//      passing a pre-built adapter (with a LiteSvmConnection) plus a
 //      programmatic signer. This keeps the React tree free of wallet-adapter
 //      UI in the test path.
 

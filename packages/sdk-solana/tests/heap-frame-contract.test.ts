@@ -8,10 +8,9 @@
 //
 // Two properties matter and neither is obvious from reading the program:
 //
-//   1. The requirement is program-wide, not orderbook-specific. Because the
-//      5→1 merge produced a single program, `create_market`, `redeem`, and
-//      every other instruction share the allocator. main did not have this
-//      problem — its allocator was scoped to sooth_book alone.
+//   1. The requirement is program-wide, not orderbook-specific: `sooth_core`
+//      is one program, so `create_market`, `redeem` and every other
+//      instruction share the one allocator.
 //
 //   2. There is no way to detect a missing frame at runtime. The mapped heap
 //      size is not queryable, so the program cannot fail with a friendly
@@ -24,8 +23,18 @@
 // removing the frame, the second one fails.
 
 import { describe, expect, it } from "vitest";
+import {
+  ComputeBudgetProgram,
+  PublicKey,
+  Transaction,
+} from "@solana/web3.js";
 
+import { soothCoreIdl } from "../src/anchor/index.js";
 import { bootSmoke } from "./fixtures/setup.js";
+import {
+  CapturingConnection,
+  mockSubmitAdapter,
+} from "./fixtures/mock-submit.js";
 import {
   SOOTH_CORE_HEAP_BYTES,
   SHARES,
@@ -91,22 +100,33 @@ describe("256 KB allocator caller contract", () => {
     );
   });
 
-  it("the SDK adapter requests the frame on every path it builds", async () => {
-    // Cheap structural check against the shipped source. The adapter has three
-    // transaction-assembly sites (trade, orderbook, generic submit); all three
-    // must carry the frame or some user flow faults in production while the
-    // fixtures — which prepend it themselves — stay green.
-    const { readFileSync } = await import("node:fs");
-    const { fileURLToPath } = await import("node:url");
-    const adapterPath = fileURLToPath(
-      new URL("../src/adapter.ts", import.meta.url),
-    );
-    const src = readFileSync(adapterPath, "utf8");
+  it("submit() puts the frame on the wire, at the full 256 KB", async () => {
+    // The builders return a bare instruction — `submit` is what assembles the
+    // transaction, so this is the only place the contract can be upheld. Read
+    // it off the SERIALIZED bytes rather than the adapter source: a test that
+    // greps for `requestHeapFrame` passes on a mention in a comment.
+    const conn = new CapturingConnection();
+    const { adapter, req, signer } = mockSubmitAdapter(conn);
 
-    const frames = src.match(/requestHeapFrame/g) ?? [];
-    const limits = src.match(/setComputeUnitLimit/g) ?? [];
-    expect(frames.length).toBe(limits.length);
-    expect(frames.length).toBeGreaterThanOrEqual(3);
-    expect(src).toContain(`bytes: ${SOOTH_CORE_HEAP_BYTES}`);
+    await adapter.submit(req, signer);
+
+    const tx = Transaction.from(Buffer.from(conn.rawTransactions[0]!));
+    const budget = tx.instructions.filter((ix) =>
+      ix.programId.equals(ComputeBudgetProgram.programId),
+    );
+    // RequestHeapFrame is compute-budget instruction 1; its arg is a u32 LE.
+    const frame = budget.find((ix) => ix.data[0] === 1);
+    expect(frame, "submit() built a transaction with no heap frame").toBeTruthy();
+    expect(Buffer.from(frame!.data).readUInt32LE(1)).toBe(SOOTH_CORE_HEAP_BYTES);
+
+    // The frame has to precede the sooth_core instruction it protects: the
+    // runtime maps the heap when it processes the request, and the allocator
+    // faults on the first allocation of anything that ran before it.
+    const frameIndex = tx.instructions.indexOf(frame!);
+    const coreIndex = tx.instructions.findIndex((ix) =>
+      ix.programId.equals(new PublicKey(soothCoreIdl.address)),
+    );
+    expect(coreIndex).toBeGreaterThan(-1);
+    expect(frameIndex).toBeLessThan(coreIndex);
   });
 });

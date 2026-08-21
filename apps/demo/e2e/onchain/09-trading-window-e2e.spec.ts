@@ -4,12 +4,12 @@
 //   1. Read Market.deadline from the seeded market PDA.
 //   2. Time-travel past `deadline + 1`.
 //   3. Try to buy via the adapter — assert the ix fails with the
-//      `TradingClosed` error from sooth_amm/src/error.rs:40
+//      `TradingClosed` error from sooth-core/src/error.rs:40
 //      ("Trading window has closed (now >= deadline)").
 //
 // On stock test-validator the `isSurfpool()` probe returns false and the
 // describe block self-skips. The cargo unit tests at
-// `packages/programs-core/programs/sooth_amm/src/instructions/
+// `packages/programs-core/programs/sooth-core/src/instructions/
 // trade_positions.rs` cover both halves of the C1 guard with synthetic
 // Clock sysvars; this spec adds the runtime-against-canonical-.so layer.
 
@@ -30,7 +30,7 @@ test.describe("AMM trading-window guard (Surfpool-gated)", () => {
   test.beforeAll(async () => {
     test.skip(
       !(await isSurfpool()),
-      "requires Surfpool (surfnet_timeTravel cheatcode). Boot via `pnpm -F @sooth/demo dev:surfpool` and re-run, or trust the cargo coverage at programs-core/programs/sooth_amm/src/instructions/trade_positions.rs.",
+      "requires Surfpool (surfnet_timeTravel cheatcode). Boot via `pnpm -F @sooth/demo dev:surfpool` and re-run, or trust the cargo coverage at programs-core/programs/sooth-core/src/instructions/trade_positions.rs.",
     );
   });
 
@@ -72,7 +72,7 @@ test.describe("AMM trading-window guard (Surfpool-gated)", () => {
       errMsg = (e as Error).message ?? String(e);
     }
     expect(failed).toBe(true);
-    // sooth_amm error.rs `TradingClosed` is the variant; Anchor surfaces
+    // sooth-core error.rs `TradingClosed` is the variant; Anchor surfaces
     // it in the program log as "Trading window has closed" plus the
     // numeric error code. Either substring is sufficient signal.
     expect(

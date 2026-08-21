@@ -27,11 +27,13 @@ import bundled from "../src/anchor/sooth_core.json" assert { type: "json" };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BUILT_PATH = resolve(HERE, "../../../target/idl/sooth_core.json");
+const BUNDLED_PATH = resolve(HERE, "../src/anchor/sooth_core.json");
 
 interface MinimalIdl {
   address?: string;
   instructions: Array<{ name: string }>;
   accounts?: Array<{ name: string }>;
+  errors?: Array<{ code: number; name: string }>;
 }
 
 const names = (idl: MinimalIdl) => idl.instructions.map((i) => i.name).sort();
@@ -72,5 +74,27 @@ describe("bundled IDL freshness", () => {
 
   it.skipIf(!hasBuilt)("agrees on the program id", () => {
     expect((bundled as unknown as MinimalIdl).address).toBe(built!.address);
+  });
+
+  it.skipIf(!hasBuilt)("agrees on the error ordinals", () => {
+    // Anchor numbers user errors positionally from 6000 and the SDK's two
+    // error classifiers read the mapping straight out of this file. A stale
+    // copy renames codes rather than losing them: the message a user is shown
+    // then belongs to a different failure than the one that happened.
+    const pairs = (idl: MinimalIdl) =>
+      (idl.errors ?? []).map((e) => `${e.code}:${e.name}`);
+    expect(pairs(bundled as unknown as MinimalIdl)).toEqual(pairs(built!));
+  });
+
+  it.skipIf(!hasBuilt)("is byte-identical to the built IDL", () => {
+    // The three checks above compare names. Everything else the IDL carries —
+    // instruction discriminators, argument order and types, account order and
+    // writable/signer flags — is what Anchor encodes a transaction from, and a
+    // drift in any of it builds a well-formed instruction the program decodes
+    // as something else. The bundled copy is generated, never hand-edited, so
+    // the invariant is equality, not compatibility.
+    expect(readFileSync(BUILT_PATH, "utf8")).toBe(
+      readFileSync(BUNDLED_PATH, "utf8"),
+    );
   });
 });

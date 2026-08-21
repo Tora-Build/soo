@@ -18,8 +18,8 @@
 #   4. `seed-localnet.mjs prepare` → write USDC mint JSON dump.
 #   5. Boot `surfpool start --ci --offline` from the Anchor workspace —
 #      Surfpool auto-detects the workspace, generates a default txtx.yml
-#      if none exists, and deploys all 5 programs from target/deploy
-#      to their declared addresses (per Anchor.toml [programs.localnet]).
+#      if none exists, and deploys sooth_core from target/deploy to its
+#      declared address (per Anchor.toml [programs.localnet]).
 #   6. Wait for RPC health.
 #   7. Curl `surfnet_setAccount` to load the canonical USDC mint at
 #      ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX. (Surfpool's

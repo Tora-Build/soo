@@ -70,11 +70,9 @@ function requireEnv(name: string): string {
   return v;
 }
 
-// Position layout (mirror of sooth_amm::state::Position; offsets sourced
-// from sooth-account-offsets crate at packages/programs-core/crates/
-// sooth-account-offsets/src/lib.rs — the on-chain SPACE constants are
-// asserted to match these at compile time, so a future field reorder
-// trips the build before drifting at runtime):
+// Position layout, mirroring `sooth_core::state::Position` in
+// packages/programs-core/programs/sooth-core/src/state/. A field reorder there
+// silently changes what these offsets decode, so keep the two in step:
 //
 //   offset 0..8     : Anchor discriminator
 //   offset 8..40    : user (Pubkey)
@@ -86,7 +84,7 @@ function requireEnv(name: string): string {
 const POSITION_YES_SHARES_OFFSET = 72;
 
 // 10 shares of YES (default amount in SimpleTradingPanel buy mode) →
-// 10 * 10^18 in WAD (sooth_amm internal share unit).
+// 10 * 10^18 in WAD (sooth_core internal share unit).
 const EXPECTED_DELTA_YES_WAD = 10n * 10n ** 18n;
 
 // ─── Browser-side tx hash capture ────────────────────────────────────────
@@ -231,7 +229,7 @@ test.describe("AMM buy-yes (real e2e against solana-test-validator)", () => {
         1500,
       );
     } catch (timeoutErr) {
-      // Diagnostic dump — see SKILL.md "Diagnostic dumps when click does
+      // Diagnostic dump — surfaces why a click did
       // nothing" for the rule-out order: button → tx → revert → wrong PDA.
       const lastSig = await getLastSig(page);
       const ctaDisabled = await buyButton.getAttribute("aria-disabled");

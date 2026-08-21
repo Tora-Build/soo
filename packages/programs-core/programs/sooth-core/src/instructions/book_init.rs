@@ -3,8 +3,9 @@
 //! Split into two instructions because Solana caps `realloc` at
 //! [`MAX_PERMITTED_DATA_INCREASE`] (10,240 bytes) **per instruction**, measured
 //! from the account's length at instruction entry. At 64 bytes per block that
-//! is 160 blocks a call, so reaching the 256-order cap from empty takes two
-//! calls. A single `init` that tried to allocate the maximum would simply fail.
+//! is 160 blocks a call, so reaching [`MAX_ORDERS`] from empty takes several
+//! calls. A single `init` that tried to allocate the maximum would simply
+//! fail.
 //!
 //! The account is created by hand rather than with Anchor's `init` because it
 //! is loaded by raw cast — there is no `#[account]` type for Anchor to size or

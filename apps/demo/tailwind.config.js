@@ -122,5 +122,8 @@ export default {
       },
     },
   },
-  plugins: [],
+  // `animate-in` / `fade-in` / `slide-in-from-right` / `zoom-in-95` in
+  // Dialog.tsx and Drawer.tsx come from this plugin; without it those
+  // classes emit no CSS and the overlays appear with no transition.
+  plugins: [require("tailwindcss-animate")],
 };

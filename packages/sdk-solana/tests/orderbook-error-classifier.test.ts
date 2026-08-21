@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { classifyError } from "../src/orderbook/error-classifier.js";
+import { soothCoreIdl } from "../src/anchor/index.js";
 
 function anchorErr(code: string): Error & {
   error: { errorCode: { code: string } };
@@ -116,5 +117,52 @@ describe("classifyError", () => {
     );
     expect(out.code).toBe("LegacyDrainAlreadyExecuted");
     expect(out.category).toBe("state");
+  });
+});
+
+describe("bare numeric codes", () => {
+  const errorsByName = new Map(
+    (
+      soothCoreIdl as unknown as {
+        errors: Array<{ code: number; name: string }>;
+      }
+    ).errors.map((e) => [e.name, e.code]),
+  );
+
+  function customErr(code: number): Error {
+    return new Error(
+      `Transaction simulation failed: custom program error: 0x${code.toString(16)}`,
+    );
+  }
+
+  it("resolves a code with no log line to the same entry the name resolves to", () => {
+    // A failure caught before the logs are attached — a wallet rejection, an
+    // RPC that returns only `err: { InstructionError: [0, { Custom: 6044 }] }`
+    // — arrives as a number. It has to land on the same advice.
+    const byName = classifyError(anchorErr("BookSideFull"));
+    const byCode = classifyError(customErr(errorsByName.get("BookSideFull")!));
+    expect(byCode).toEqual(byName);
+  });
+
+  it("follows the aliases the named path follows", () => {
+    // `SlippageExceeded` is the program's name; `Slippage` is the catalog's.
+    // The numeric path went through a separate hand-written table that knew
+    // neither, so it reported the raw ordinal instead.
+    const out = classifyError(
+      customErr(errorsByName.get("SlippageExceeded")!),
+    );
+    expect(out.code).toBe("Slippage");
+    expect(out.category).toBe("validation");
+  });
+
+  it("names an unmapped code instead of printing the ordinal", () => {
+    // Not in the catalog, so there is no advice to give — but the program has
+    // a name for it, and "ZkAttestorMismatch" is answerable where "6077" is
+    // not.
+    const out = classifyError(
+      customErr(errorsByName.get("ZkAttestorMismatch")!),
+    );
+    expect(out.code).toBe("ZkAttestorMismatch");
+    expect(out.category).toBe("unknown");
   });
 });

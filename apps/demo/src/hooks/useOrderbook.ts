@@ -5,15 +5,6 @@ import { SOOTHBOOK_ABI } from "../config/abis";
 import { encodePacked, formatUnits, keccak256 } from "@/lib/chain-shim";
 import { useDeployments } from "./useDeployments";
 import { useChainStore } from "../store/useChainStore";
-import { fetchFromIndexer } from "./indexer/config";
-
-interface IndexerOrder {
-  side: number;
-  tick: number;
-  amount: string;
-  filledAmount?: string;
-  status: string;
-}
 
 export interface Order {
   id: string;
@@ -97,15 +88,9 @@ export function useOrderbook(marketAddress: `0x${string}`) {
           const [totalAmount] = result.result as readonly [bigint, bigint];
           if (totalAmount <= 0n) continue;
 
-          // One axis: the tick IS the YES price on BOTH sides.
-          //
-          // `tickToYesPrice(tick, 0)` returns the COMPLEMENT, which the legacy
-          // two-sided book needed because its side 0 was the NO side. The
-          // redesigned book quotes everything on the YES axis, so complementing
-          // the asks rendered them at 1 - p: a ladder seeded with asks at
-          // 530/545/560 displayed as 0.470/0.455/0.440, landing on top of the
-          // bids that really were at those prices. Two sides of the book
-          // showing the same numbers.
+          // One axis: the tick IS the YES price on BOTH sides, so no
+          // complement is applied. Complementing the asks would render them at
+          // 1 - p, landing them on top of the bids at the same price.
           const yesPriceValue = tickYesPrice(tick);
           const yesPrice = yesPriceValue.toFixed(4);
 
@@ -126,67 +111,6 @@ export function useOrderbook(marketAddress: `0x${string}`) {
     },
     [marketKey, publicClient, soothBookAddress],
   );
-
-  /**
-   * Fetch the orderbook depth from the Ponder indexer. Aggregates by
-   * (side, tick), subtracting `filledAmount` from each order so the result
-   * matches the on-chain `getOrdersAtTick` view (which returns the remaining
-   * size, not the originally placed amount).
-   *
-   * Returns null if the indexer is unreachable — the caller falls back to
-   * the RPC multicall scan.
-   */
-  const fetchFromIndexerDepth = useCallback(async (): Promise<{
-    bids: Order[];
-    asks: Order[];
-  } | null> => {
-    if (!storeChainId || !marketKey) return null;
-    const orders = await fetchFromIndexer<IndexerOrder[]>(
-      `/v12/orders/${storeChainId}/${marketKey}`,
-    );
-    if (orders === null) return null;
-
-    const agg = new Map<
-      string,
-      { tick: number; total: bigint; side: number }
-    >();
-    for (const o of orders) {
-      if (o.status !== "active") continue;
-      const filled = BigInt(o.filledAmount ?? "0");
-      const remaining = BigInt(o.amount) - filled;
-      if (remaining <= 0n) continue;
-      const key = `${o.side}:${o.tick}`;
-      const existing = agg.get(key);
-      if (existing) {
-        existing.total += remaining;
-      } else {
-        agg.set(key, { tick: o.tick, total: remaining, side: o.side });
-      }
-    }
-
-    const bids: Order[] = [];
-    const asks: Order[] = [];
-    for (const entry of agg.values()) {
-      // Same single axis as the RPC path above.
-      const yesPriceValue = tickYesPrice(entry.tick);
-      const yesPrice = yesPriceValue.toFixed(4);
-      const order: Order = {
-        id: `${entry.side}:${entry.tick}`,
-        maker: "aggregated",
-        yesPrice,
-        displayPrice: yesPrice,
-        amount: formatUnits(entry.total, 18),
-        timestamp: 0,
-        isBuySide: entry.side === 1,
-        side: entry.side === 1 ? "bid" : "ask",
-      };
-      if (entry.side === 1) bids.push(order);
-      else asks.push(order);
-    }
-    bids.sort((a, b) => parseFloat(b.yesPrice) - parseFloat(a.yesPrice));
-    asks.sort((a, b) => parseFloat(a.yesPrice) - parseFloat(b.yesPrice));
-    return { bids, asks };
-  }, [storeChainId, marketKey]);
 
   const fetchOrderbook = useCallback(
     async (isBackground = false) => {
@@ -217,39 +141,6 @@ export function useOrderbook(marketAddress: `0x${string}`) {
 
       if (!isBackground) setIsLoading(true);
       try {
-        // Preferred path: indexer. On strict-cap chains (MegaETH/HyperEVM)
-        // the RPC multicall of 999 getOrdersAtTick calls is slow and costly;
-        // the indexer returns the same aggregated view in one request.
-        const indexerDepth = await fetchFromIndexerDepth();
-        if (indexerDepth !== null) {
-          setOrderbook(indexerDepth);
-          setLastUpdated(Date.now());
-          setIsSupported(true);
-
-          // Still fetch user balance from chain (indexer doesn't expose it
-          // per-market in a single endpoint). Guard against chain errors.
-          if (userAddress && marketKey) {
-            try {
-              const balRes = (await publicClient.readContract({
-                address: soothBookAddress,
-                abi: SOOTHBOOK_ABI,
-                functionName: "getBalance",
-                args: [marketKey, userAddress],
-              })) as readonly [bigint, bigint];
-              setUserYesShares(parseFloat(formatUnits(balRes[0], 18)));
-              setUserNoShares(parseFloat(formatUnits(balRes[1], 18)));
-            } catch {
-              setUserYesShares(0);
-              setUserNoShares(0);
-            }
-          } else {
-            setUserYesShares(0);
-            setUserNoShares(0);
-          }
-          return;
-        }
-
-        // Fallback: RPC multicall scan
         const snapshotBlock = await publicClient.getBlockNumber();
 
         const [marketRes] = await publicClient.multicall({
@@ -326,7 +217,6 @@ export function useOrderbook(marketAddress: `0x${string}`) {
       scanTickDepth,
       soothBookAddress,
       userAddress,
-      fetchFromIndexerDepth,
     ],
   );
 

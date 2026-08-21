@@ -2,7 +2,7 @@
 //
 // Pre-condition (adapter-direct, NOT the action under test): buy 10 YES
 // shares so the user has a position to sell. The setup path is the same
-// `sooth_amm::trade_positions` ix the 00-buy spec exercises via the UI;
+// `sooth_core::trade_positions` ix the 00-buy spec exercises via the UI;
 // driving it here through `buyViaAdapter` keeps this spec focused on the
 // sell-side assertions.
 //
@@ -10,10 +10,10 @@
 // SELL mode (`trade-mode-sell`), enter "5", click `sell-button`. The shim
 // in apps/demo/src/lib/chain-shim/amm-bridge.ts routes the EVM
 // `tradePositions` call with negative deltaShares to `buildSell` →
-// `sooth_amm::sell_positions` ix, which:
+// `sooth_core::sell_positions` ix, which:
 //   - decrements Position.yes_shares by 5·WAD,
 //   - allocates a fresh LockEntry PDA at seeds [b"lock_entry", positionPda,
-//     position.lock_nonce.to_le_bytes()] under sooth_amm::ID, populated
+//     position.lock_nonce.to_le_bytes()] under sooth_core::ID, populated
 //     with proceeds + unlock_at = now + LOCK_DURATION_SECS (86_400).
 //
 // Verifications (post-sell):

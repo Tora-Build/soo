@@ -54,7 +54,3 @@ export function formatAmmAmount(value: number): string {
   return `${formatCurrencyCompact(value, "")} ${tokenSymbols.amm}`;
 }
 
-/** Money in the book venue's token (USDC), rendered with the usual `$`. */
-export function formatBookAmount(value: number): string {
-  return formatCurrencyCompact(value, "$");
-}

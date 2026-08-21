@@ -33,18 +33,6 @@ export async function fetchRegistryCapabilities() {
   };
 }
 
-export async function fetchRegistryNode(nodeId: string) {
-  const res = await fetch(`${getRegistryUrl()}/v1/nodes/${nodeId}`);
-  if (res.status === 404) {
-    return undefined;
-  }
-  if (!res.ok) {
-    throw new Error(`Failed to fetch node ${nodeId}: HTTP ${res.status}`);
-  }
-  const payload = (await res.json()) as { data?: RegistryNode };
-  return payload.data;
-}
-
 export async function fetchRegistryNodeForDeployment(
   chainId: number,
   launchpadEngine: string,

@@ -3,21 +3,18 @@
  * factored out so it can render both as a standalone page (Orderbook.tsx)
  * and inside the wide MarketDrawer launched from the markets listing.
  *
- * Behavior is identical to the previous inline Orderbook.tsx implementation.
- *
  * The optional `onModeChange` prop is forwarded to TradingContextBar so
  * that when this body is rendered inside MarketDrawer, the AMM/Orderbook
  * toggle swaps the drawer's body in place instead of navigating away.
  */
 import { lookupMarketQuestion } from "../../../lib/market-questions";
-import { useContext, useMemo, useState } from "react";
-import { keccak256, encodePacked } from "@/lib/chain-shim";
+import { useContext, useMemo } from "react";
 
 import { TradingContextBar } from "../TradingContextBar";
 import { MarketDetailsCard } from "./MarketDetailsCard";
 import { useTruthMarketDirect, useLaunchpadMarketDirect } from "../../../hooks";
 import { useOnChainMarkets } from "../../../hooks/useOnChainMarkets";
-import { SoothBookTerminal, HistoricalPriceCard } from "../pro";
+import { SoothBookTerminal } from "../pro";
 import { useChainStore } from "../../../store/useChainStore";
 import { DEFAULT_CHAIN_ID } from "../../../lib/chains";
 import { ErrorBoundary } from "../../ui/ErrorBoundary";
@@ -76,13 +73,6 @@ export const OrderbookPageBody = ({
     (m) => m.address.toLowerCase() === marketAddress.toLowerCase(),
   );
 
-  const marketKey = useMemo(() => {
-    if (!marketAddress) return undefined;
-    return keccak256(
-      encodePacked(["address"], [marketAddress as `0x${string}`]),
-    );
-  }, [marketAddress]);
-
   // Stage order: finalized > settled > live > expired > bonding.
   // See useOnChainMarkets.ts for the canonical derivation.
   const nowSec = Math.floor(Date.now() / 1000);
@@ -103,21 +93,12 @@ export const OrderbookPageBody = ({
               ? "expired"
               : "bonding");
 
-  const [viewOutcome, setViewOutcome] = useState<"yes" | "no">(initialOutcome);
   const pageMarketRef = useMemo(() => {
     if (!marketAddress) return null;
     if (marketAddress.startsWith("sol:")) return marketAddress;
     if (marketAddress.startsWith("0x")) return `sol:${marketAddress.slice(2)}`;
     return `sol:${marketAddress}`;
   }, [marketAddress]);
-
-  const priceCard = (
-    <HistoricalPriceCard
-      chainId={chainId}
-      marketKey={marketKey}
-      viewOutcome={viewOutcome}
-    />
-  );
 
   return (
     <div
@@ -208,8 +189,6 @@ export const OrderbookPageBody = ({
         >
           <SoothBookTerminal
             marketAddress={marketAddress as `0x${string}`}
-            beforeOrderbookPane={priceCard}
-            onOutcomeChange={setViewOutcome}
             initialOutcome={initialOutcome}
             variant={variant}
             onTradeConfirmed={onTradeConfirmed}

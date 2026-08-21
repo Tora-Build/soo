@@ -14,7 +14,7 @@
 // Action under test (UI):
 //   1. Navigate to /portfolio, swap-connect as creator.
 //   2. Click REQUEST LOCK → Market.lifecycle: Open → Locked.
-//   3. Click ATTEST YES → CPIs into sooth_market::settle:
+//   3. Click ATTEST YES → CPIs into sooth_core::settle:
 //        Adjudicator.attested_outcome = Some(1)
 //        Market.lifecycle: Locked → Settled
 //        Market.winning_outcome = 1
@@ -65,13 +65,9 @@ test.describe("attest + settle (UI-driven via OperatorActionsPanel)", () => {
   // deadline 7 days out, so this chain only runs once the clock has been moved
   // past it — which needs surfnet_timeTravel.
   //
-  // These two specs never time-travelled themselves; they relied on
-  // 09-trading-window's time travel persisting in the shared ledger. That
-  // implicit ordering dependency was invisible on Surfpool (where 09 runs) and
-  // made them fail on solana-test-validator (where 09 skips, so the clock never
-  // advances). Stating the requirement explicitly is the honest fix; making
-  // them self-sufficient would mean each one time-travelling, which changes the
-  // shared clock for everything after.
+  // The skip is declared here rather than each spec time-travelling for
+  // itself: the clock is shared across the whole ledger, so a spec that
+  // advances it changes the clock for everything that runs after.
   test.beforeAll(async () => {
     test.skip(
       !(await isSurfpool()),
@@ -194,8 +190,8 @@ test.describe("attest + settle (UI-driven via OperatorActionsPanel)", () => {
     expect(adjAfter).not.toBeNull();
     expect(adjAfter!.attestedOutcome).toBe(WINNING_YES);
 
-    // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.
-    // Asserted before the cleanup wallet swap so any error toast surfaced
+    // UI health invariants, asserted before the cleanup wallet swap so any
+    // error toast surfaced
     // by the operator-panel actions is captured against the creator-bound
     // page state.
     await expect(

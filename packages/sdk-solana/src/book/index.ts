@@ -18,7 +18,7 @@
 // The program walks its own book: a taker sends one instruction with a
 // `matchLimit` and the on-chain matcher discovers makers itself. Nothing is
 // precomputed off-chain, so no client-side match plan can go stale between
-// planning and execution (the failure class of audit finding H1).
+// planning and execution.
 
 import {
   ComputeBudgetProgram,

@@ -1,21 +1,12 @@
-/**
- * Hooks Index - Flat structure
- *
- * All hooks are now at the root level with clear naming.
- * No versioned folders (v5/, v8/, v9/) - use descriptive names instead.
- */
+/** Barrel for the demo's chain-reading hooks. */
 
 // ============================================================
 // Market/AMM Hooks
 // ============================================================
-export { useTruthMarket } from "./useTruthMarket";
-export type { TruthMarketData } from "./useTruthMarket";
 
 export { useAmmMarket, useAmmTradeCost } from "./useAmmMarket";
 export type { AmmMarketData, AmmTradeCostData } from "./useAmmMarket";
 
-export { useLaunchpadMarket } from "./useLaunchpadMarket";
-export type { LaunchpadMarketData } from "./useLaunchpadMarket";
 
 
 
@@ -41,15 +32,12 @@ export { useAMMQuoteDirect } from "./useAMMQuoteDirect";
 // ============================================================
 export { useAvailableBalance } from "./useAvailableBalance";
 export type { AvailableBalanceData } from "./useAvailableBalance";
-export { useClaimUnlocked } from "./useClaimUnlocked";
-export type { ClaimUnlockedData } from "./useClaimUnlocked";
 export { useTokenBalances } from "./useTokenBalances";
 
 // ============================================================
 // Launchpad Hooks
 // ============================================================
 export { useLaunchpadMarkets } from "./useLaunchpadMarkets";
-export { useLPHolders } from "./useLPHolders";
 export { useLockedProceeds } from "./useLockedProceeds";
 export { useOnChainMarkets, useOnChainMarketCount } from "./useOnChainMarkets";
 export { useVisibleMarkets } from "./useVisibleMarkets";
@@ -70,12 +58,3 @@ export { useTraderVault } from "./useTraderVault";
 export { useDeployments, getDeployments } from "./useDeployments";
 export { useOrderbook } from "./useOrderbook";
 export { useOrderbookTrade } from "./useOrderbookTrade";
-export { useSoothBookMarket } from "./useSoothBook";
-export type { SoothBookMarketState, SoothBookPrices } from "./useSoothBook";
-
-// ============================================================
-// Price History Hooks
-// ============================================================
-export { useSoothBookPriceHistory } from "./useSoothBookPriceHistory";
-export type { CandleInterval, PriceCandle } from "./useSoothBookPriceHistory";
-export { useAmmPriceHistory } from "./useAmmPriceHistory";

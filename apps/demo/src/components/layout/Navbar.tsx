@@ -30,7 +30,6 @@ import {
   Wallet,
   Zap,
 } from "lucide-react";
-import { ChainSelector } from "../ui/ChainSelector";
 import { Drawer } from "../ui/Drawer";
 import { useAccentStore, ACCENT_PRESETS } from "../../store/useAccentStore";
 import {
@@ -138,7 +137,6 @@ export const Navbar = () => {
             <div className="hidden lg:block">
               <LangToggle compact />
             </div>
-            <ChainSelector />
 
             {!isConnected ? (
               <button onClick={() => open()} className="arcade-connect-button">

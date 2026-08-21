@@ -2,19 +2,17 @@
 //
 // ## Why this exists
 //
-// The EVM-shaped live-update path — `ActivityListener` watching
-// PositionTraded, MarketGraduated, LPRedeemed and four others — is inert on
-// Solana: the chain-shim's `useWatchContractEvent` is a no-op stub, so those
-// handlers never fire and nothing invalidates. Without this hook the app runs
-// on polling alone, and a trade can land on-chain while the page keeps
-// showing stale numbers until the next interval elapses.
+// The chain-shim's `useWatchContractEvent` is a no-op stub, so the app has no
+// EVM-shaped event path to invalidate on. Without this hook it runs on polling
+// alone, and a trade can land on-chain while the page keeps showing stale
+// numbers until the next interval elapses.
 //
 // ## Why account subscriptions rather than synthetic logs
 //
 // The tempting fix is to make `useWatchContractEvent` fabricate EVM-shaped
-// logs so the existing handlers fire. That means reproducing seven event
-// payloads faithfully enough that every `log.args.*` read is correct — a large
-// surface where one wrong field is a silently wrong toast or a bad refetch.
+// logs. That means reproducing event payloads faithfully enough that every
+// `log.args.*` read is correct — a large surface where one wrong field is a
+// silently wrong toast or a bad refetch.
 //
 // Solana offers something strictly better. `onAccountChange` delivers the
 // account's new STATE, not a delta describing it, so nothing has to be

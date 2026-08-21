@@ -77,7 +77,7 @@ Growth is incremental because the runtime permits at most
 
 | Instruction                        | Behaviour                                                                                                 |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `book_init(initial_capacity: u16)` | clamps to `MAX_ORDERS`, then requires `book_space(capacity) <= 10_240` (`BookCapacityTooLarge`) — max 158 blocks |
+| `book_init(initial_capacity: u16)` | clamps to `MAX_ORDERS`, then requires `book_space(capacity) <= 10_240` (`BookCapacityTooLarge`) — max 157 blocks (`blocks_offset()` is 136, so 158 needs 10,248 bytes) |
 | `book_grow(wanted_capacity: u16)`  | one realloc step, at most 160 blocks; tops up rent from `payer` **before** `realloc`; reaching 4096 takes 26 calls |
 
 Asking `book_grow` for a capacity the book already has is a logged no-op, not an
@@ -158,8 +158,9 @@ book_place(ctx, side: u8, limit_tick: u16, amount: u64, match_limit: u32, post_r
 The fee rate is **not** an argument — the handler passes
 `ProtocolConfig.book_fee_bps`.
 
-Preconditions: `market.is_open()`, `market.book_enabled` (`NotGraduated`), and
-`require_not_paused`. `limit_tick` is not validated up front; an out-of-domain
+Preconditions: `require_not_paused`, `market.is_open()`, `market.book_enabled`
+(`NotGraduated`), and `assert_within_trading_window(now, market.deadline)`
+(`TradingClosed`) — so a resting order cannot outlive the deadline. `limit_tick` is not validated up front; an out-of-domain
 tick fails inside `leg_costs` and surfaces as `MatchFailed`. There is no minimum
 order size.
 
@@ -347,7 +348,7 @@ permanently, to learn one bit.
 | ------------------ | --------------------------------------- |
 | `book_init`        | none — permissionless, rent only        |
 | `book_grow`        | none                                    |
-| `book_place`       | `is_open` + `book_enabled` + not paused |
+| `book_place`       | `is_open` + `book_enabled` + not paused + before `deadline` |
 | `book_cancel`      | owner signature only                    |
 | `book_withdraw`    | signature only                          |
 | `redeem_book_seat` | `is_settled`                            |

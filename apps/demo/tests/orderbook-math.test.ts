@@ -1,14 +1,10 @@
-// Characterisation tests for the demo's orderbook arithmetic.
+// Characterisation tests for the demo's orderbook arithmetic: the tick
+// ladder, the price conversion, the cancel-by-level parser and the refund
+// maths.
 //
-// Until now these paths had NO unit coverage: the demo's other tests cover
-// AMM, markets, portfolio and rendering, and the tick ladder, price conversion,
-// cancel-by-level parser and refund maths were reachable only through
-// Surfpool-gated e2e specs — which do not run in CI.
-//
-// They are written BEFORE the orderbook migration, not after, because the
-// redesign changes what a tick means. The new book quotes a single unified YES
-// axis, so the complement flip disappears; these tests are what will show that
-// removing it is a simplification rather than a silent inversion of the market.
+// These paths are otherwise reachable only through the Surfpool-gated e2e
+// specs, so without this file a change to the tick meaning would land
+// unchecked in CI.
 
 import { describe, expect, it } from "vitest";
 

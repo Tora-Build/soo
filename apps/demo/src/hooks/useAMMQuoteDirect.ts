@@ -40,7 +40,7 @@ interface AMMQuoteResult {
 }
 
 /**
- * Hook to get AMM trade quotes (V9 Architecture)
+ * Hook to get AMM trade quotes
  */
 export function useAMMQuoteDirect(
   marketAddress: Address | undefined,
@@ -188,7 +188,7 @@ export function useAMMQuoteDirect(
     ];
     const feeRateBps = BigInt(launchpad.launchpad?.currentFeeBps ?? 500);
     const feeRate = Number(feeRateBps);
-    // v0.1.2: contract returns (cost, fee, netAmount, newPrice)
+    // The call returns (cost, fee, netAmount, newPrice).
     // cost = raw LMSR cost, fee = protocol fee, netAmount = cost + fee (buy) or cost - fee (sell)
     const costOrProceeds = cost;
     const fee = contractFee;

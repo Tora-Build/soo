@@ -100,7 +100,7 @@ export default async function globalSetup(): Promise<void> {
   // The app reads VITE_SOOTH_CORE_ID; the AMM alias is still written by the
   // seed for this assertion's benefit and points at the same program.
   const ammIdStr =
-    env.VITE_SOOTH_CORE_ID ?? env.VITE_SOOTH_AMM_ID ?? requireEnv("SOOTH_CORE_ID");
+    env.VITE_SOOTH_CORE_ID ?? requireEnv("SOOTH_CORE_ID");
   const marketRef = env.VITE_DEMO_MARKET_REF;
   if (!marketRef) {
     die(
@@ -193,7 +193,7 @@ export default async function globalSetup(): Promise<void> {
     conn,
     marketPda,
     marketIdBytes,
-    launchpadIdStr: env.VITE_SOOTH_CORE_ID ?? env.VITE_SOOTH_LAUNCHPAD_ID,
+    launchpadIdStr: env.VITE_SOOTH_CORE_ID,
     usdcMint,
   });
 
@@ -294,17 +294,8 @@ async function runSeedLpIfMissing(inp: SeedLpInputs): Promise<void> {
   );
   const [ammStatePda] = PublicKey.findProgramAddressSync(
     [Buffer.from("amm"), inp.marketIdBytes],
-    new PublicKey(coreIdl.address) /* placeholder, overwritten below */,
+    new PublicKey(coreIdl.address),
   );
-  // amm_state lives under the AMM program, not the launchpad — recompute.
-  const ammIdlPath = resolve(SDK_ANCHOR_DIR, "sooth_amm.json");
-  const ammIdl = JSON.parse(readFileSync(ammIdlPath, "utf8"));
-  const ammProgramId = new PublicKey(ammIdl.address);
-  const [ammStatePdaCorrect] = PublicKey.findProgramAddressSync(
-    [Buffer.from("amm"), inp.marketIdBytes],
-    ammProgramId,
-  );
-  void ammStatePda; // satisfy lint — only the second derivation is used
 
   const creatorLpAta = getAssociatedTokenAddressSync(lpMint, creator.publicKey);
 
@@ -355,7 +346,7 @@ async function runSeedLpIfMissing(inp: SeedLpInputs): Promise<void> {
     .accounts({
       config: protocolConfig,
       market: inp.marketPda,
-      ammState: ammStatePdaCorrect,
+      ammState: ammStatePda,
       lpMint,
       lpMintAuthority,
       creatorLpAta,

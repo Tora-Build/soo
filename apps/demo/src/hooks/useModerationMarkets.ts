@@ -1,34 +1,9 @@
 import { useMemo } from "react";
-import marketsConfigRaw from "../config/markets.json";
 import { CATEGORY_LABELS, inferCategory } from "../lib/categories";
 import { useNodeModeration } from "./useNodeModeration";
 import { useOnChainMarkets } from "./useOnChainMarkets";
 
-interface MarketConfig {
-  id: string;
-  name: string;
-  symbol: string;
-  description?: string;
-  contractAddress: string;
-  chainId: number;
-  version?: string;
-  category?: string;
-}
-
-interface MarketsConfigJson {
-  markets: MarketConfig[];
-}
-
-const marketsConfig = marketsConfigRaw as MarketsConfigJson;
-
 export const MODERATION_CATEGORY_LABELS = CATEGORY_LABELS;
-
-const staticMarketIndex = new Map(
-  marketsConfig.markets.map((market) => [
-    market.contractAddress.toLowerCase(),
-    market,
-  ]),
-);
 
 const getStoredMarketMeta = (address: string) => {
   if (typeof window === "undefined") return null;
@@ -68,13 +43,10 @@ export function useModerationMarkets() {
 
   const rows = useMemo(() => {
     return allMarkets.map((market) => {
-      const staticMarket = staticMarketIndex.get(market.address.toLowerCase());
       const storedMeta = getStoredMarketMeta(market.address);
-      const question =
-        staticMarket?.name || storedMeta?.name || market.question;
+      const question = storedMeta?.name || market.question;
       const category =
-        (staticMarket?.category ||
-          market.category?.toLowerCase() ||
+        (market.category?.toLowerCase() ||
           storedMeta?.category?.toLowerCase() ||
           inferCategory(question)) ??
         "others";

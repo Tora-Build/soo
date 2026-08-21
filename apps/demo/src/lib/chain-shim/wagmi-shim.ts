@@ -30,9 +30,8 @@ import type { Address, Chain, Hash, TransactionReceipt } from "./viem-shim";
  *  the UI even though it exists on chain. */
 function knownMarketRefs(demo: {
   marketRef: string | null;
-  // Required, not optional. Typing it `?:` is what let the field be missing
-  // from DemoCtx entirely while this silently returned only the seeded
-  // market — a loose signature hiding the very bug it was added to fix.
+  // Required, not optional: a `?:` here lets the field go missing from
+  // DemoCtx while this silently returns only the seeded market.
   extraMarketRefs: string[];
 }): string[] {
   const refs = new Set<string>();
@@ -80,8 +79,8 @@ import { DEFAULT_CHAIN_ID } from "../chains";
 //      (hook-shape).
 //
 // Function-name uniqueness: when multiple bridges define a name, the
-// earlier one wins. Today's collisions: `totalSupply` (was portfolio-bridge,
-// now markets-bridge) intentionally moved to surface a non-zero LP anchor.
+// earlier one wins. Today's collision: `totalSupply` is claimed by
+// markets-bridge, which is what surfaces a non-zero LP anchor.
 async function dispatchRead(
   call: ReadCallShape,
   amm: AmmBridgeCtx,
@@ -235,7 +234,7 @@ function makeShimPublicClient(
   // bridge and falls through to `undefined` for unhandled function names.
   //
   // `getLogs`: synthesize EVM-shaped `OrderPlaced` logs from on-chain
-  // sooth_book Order PDAs so `useIndexerOrders.fetchOpenOrdersFromRpc`
+  // sooth_book Order PDAs so `useBookOrders.fetchOpenOrdersFromBook`
   // populates the My-Orders panel. Only the buy-path (forOutcome=true)
   // shape is emitted — see orderbook-reads.ts for the full mapping. All
   // other event topics fall through to `[]` (empty), preserving the
@@ -246,7 +245,7 @@ function makeShimPublicClient(
     const eventName: string | undefined =
       args?.event?.name ?? args?.eventName ?? undefined;
     // OrderPlaced is the only event upstream's open-orders RPC fallback
-    // path (`useIndexerOrders.fetchOpenOrdersFromRpc`) inspects to
+    // path (`useBookOrders.fetchOpenOrdersFromBook`) inspects to
     // reconstruct level-aggregated rows. Cancelled / Filled aggregates
     // would also be synthesized here once the SELL / fill paths are
     // wired — until then we deliberately emit `[]` for them so the
@@ -338,11 +337,11 @@ function makeShimPublicClient(
 export function usePublicClient(_args?: unknown): ShimPublicClient {
   const { connection } = useConnection();
   const demo = useContext(DemoContextObj);
-  // Use the adapter's connection (e.g. BankrunConnection in tests). In
-  // production both routes converge on the same Connection instance via
-  // ProductionDemoProvider — but the test override path replaces it
-  // with a bankrun-backed shim, and balance reads need to flow through
-  // *that* connection (not the wallet-adapter ConnectionProvider's).
+  // Use the adapter's connection (LiteSvmConnection in tests). In production
+  // both routes converge on the same Connection instance via
+  // ProductionDemoProvider — but the test override path replaces it with a
+  // LiteSVM-backed shim, and balance reads need to flow through *that*
+  // connection (not the wallet-adapter ConnectionProvider's).
   const effectiveConnection = demo?.adapter?.connection ?? connection;
   // Memoize on the actual identity inputs. Without this the function
   // returns a NEW ShimPublicClient on every render, which thrashes any

@@ -8,6 +8,13 @@
 
 import { describe, expect, it } from "vitest";
 import { __testing } from "../src/adapter.js";
+import { soothCoreIdl } from "../src/anchor/index.js";
+
+const IDL_ERRORS = (
+  soothCoreIdl as unknown as {
+    errors: Array<{ code: number; name: string; msg: string }>;
+  }
+).errors;
 
 const CORE_ID = "EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw";
 
@@ -117,5 +124,66 @@ describe("extractFailingProgramId", () => {
     expect(
       __testing.extractFailingProgramId(new Error("nope")),
     ).toBeUndefined();
+  });
+});
+
+describe("the error table covers the whole program", () => {
+  it("decodes every code the program can raise, with the program's message", () => {
+    // Codes the table does not know decode as "Unknown program error code
+    // 6072" — a number, from a path a user reached, that names nothing. The
+    // zk and veto variants were exactly that until the table was read out of
+    // the IDL instead of restated.
+    const unmapped: string[] = [];
+    for (const { code, name, msg } of IDL_ERRORS) {
+      const e = __testing.decodeSubmitError(
+        makeErr(CORE_ID, code.toString(16)),
+        undefined,
+        lookup,
+      );
+      if (e.fields.msg !== msg) unmapped.push(`${code} ${name}`);
+    }
+    expect(unmapped, "codes with no message of their own").toEqual([]);
+  });
+
+  it("gives the kinds callers branch on to the codes that mean them", () => {
+    // The rest are `ProgramError`; these are the ones a UI switches on, so a
+    // renumbering that quietly moved one would change what the app does.
+    const byName = new Map(IDL_ERRORS.map((e) => [e.name, e.code]));
+    const expected: Array<[string, string]> = [
+      ["MarketNotOpen", "MarketNotActive"],
+      ["MarketDismissed", "MarketNotActive"],
+      ["TradingClosed", "TradingClosed"],
+      ["TradingNotStarted", "TradingNotStarted"],
+      ["SlippageExceeded", "SlippageExceeded"],
+      ["InsufficientShares", "InsufficientShares"],
+      ["InsufficientOutcomeShares", "InsufficientShares"],
+      ["AlreadyGraduated", "AlreadyGraduated"],
+      ["AlreadyDismissed", "AlreadyDismissed"],
+      ["NotGraduated", "NotGraduated"],
+      ["LockNotElapsed", "LockNotElapsed"],
+      ["TrialNotExpired", "TrialNotExpired"],
+    ];
+    for (const [errorName, kind] of expected) {
+      const code = byName.get(errorName);
+      expect(code, `${errorName} is missing from the IDL`).toBeTypeOf("number");
+      const e = __testing.decodeSubmitError(
+        makeErr(CORE_ID, code!.toString(16)),
+        undefined,
+        lookup,
+      );
+      expect(e.kind, `${errorName} (${code})`).toBe(kind);
+    }
+  });
+
+  it("still refuses to read another program's codes off this table", () => {
+    // Every code is mapped now, which makes the program-ID guard the only
+    // thing stopping a foreign 6014 from being reported as slippage.
+    const e = __testing.decodeSubmitError(
+      makeErr("11111111111111111111111111111111", (6014).toString(16)),
+      undefined,
+      lookup,
+    );
+    expect(e.kind).toBe("ProgramError");
+    expect(e.fields.msg).toMatch(/Unknown program error code/);
   });
 });

@@ -1,7 +1,7 @@
 // One-shot auto-registration of the connected wallet on the adjudicator
 // allowlist. Without this, every new wallet that tries to call
 // `createMarket` or operator settle/attest paths fails on-chain with
-// `sooth_market::AdjudicatorNotAllowlisted` (6012). Manual workaround is
+// `sooth_core::AdjudicatorNotAllowlisted` (6012). Manual workaround is
 // running `addAdjudicator` from a CLI signed by the allowlist authority —
 // surfaces a sharp edge for first-time users on localnet.
 //

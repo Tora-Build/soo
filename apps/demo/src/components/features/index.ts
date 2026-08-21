@@ -4,4 +4,3 @@ export { MarketStats } from "./MarketStats";
 export { LPHolders } from "./LPHolders";
 export { SimpleTradingPanel } from "./SimpleTradingPanel";
 export { AMMSettlementCard } from "./AMMSettlementCard";
-export { ActivityListener } from "./ActivityListener";

@@ -46,8 +46,8 @@ pub struct AdjudicatorEntry {
 
     // ── zkTLS adjudication ───────────────────────────────────────────────
     //
-    // Carved out of `_reserved`, so the account length is unchanged and no
-    // migration is needed. Every one of these reads as zero on an entry
+    // These occupy bytes carved from `_reserved`, so the account length is the
+    // same for both registration paths. Every one reads as zero on an entry
     // written by `register_adjudicator`, and zero means "manual" — see
     // `zk_comparator`.
     /// How the attested value is tested against `zk_threshold`, and — because
@@ -83,9 +83,8 @@ pub struct AdjudicatorEntry {
     /// that loads it. (Unlike EVM, where appending a storage slot is free.)
     ///
     /// When you add a field, shrink this by exactly its serialized size and
-    /// leave `SPACE` unchanged. The zk block above consumed 62 of the
-    /// original 64 bytes, so the next field larger than two bytes needs a
-    /// separate PDA rather than this region.
+    /// leave `SPACE` unchanged. Only two bytes are left, so the next field
+    /// larger than that needs a separate PDA rather than this region.
     pub _reserved: [u8; 2],
 }
 
@@ -157,7 +156,7 @@ mod tests {
         AdjudicatorEntry {
             market: Pubkey::new_unique(),
             authority,
-            // v1 collapses the two roles at register time.
+            // Registration points both roles at one key.
             dispute_authority: authority,
             attested_outcome: None,
             attested_at: None,

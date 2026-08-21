@@ -37,7 +37,6 @@ import {
   deriveMarketVaultAta,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
-  orderbookPositionPda,
 } from "../src/pdas.js";
 import { decodeBook } from "../src/book/index.js";
 import { bootSmoke } from "./fixtures/setup.js";
@@ -56,7 +55,6 @@ import {
   SHARES,
   anchorProgram,
   createFundedMaker,
-  fillBundle,
   enableBook,
   initMarketFeePool,
   sendTx,

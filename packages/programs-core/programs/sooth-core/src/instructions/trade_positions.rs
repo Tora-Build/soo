@@ -6,10 +6,8 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 use crate::error::SoothCoreError;
 use crate::events::{MarketGraduated, PositionTraded};
 use crate::math::{cost_delta, wad_mul, wad_to_usdc_ceil, MathError, LN2_WAD};
+use crate::state::market::{OUTCOME_NO, OUTCOME_YES};
 use crate::state::{require_not_paused, AmmState, Market, Position, ProtocolConfig};
-
-const OUTCOME_NO: u8 = 0;
-const OUTCOME_YES: u8 = 1;
 
 #[derive(Accounts)]
 pub struct TradePositions<'info> {

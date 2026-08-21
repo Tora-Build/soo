@@ -1,7 +1,10 @@
-// Public surface of `@sooth/sdk-solana`. The umbrella `@sooth/sdk` (per Phase
-// A in `docs/implementation-guide.md §8`) will dynamically import this
-// package when `node.chainKind === "solana"` and route ChainAdapter calls
-// through `SolanaChainAdapter`.
+// Public surface of `@sooth/sdk-solana`.
+//
+// `SolanaChainAdapter` is the entry point: the umbrella SDK imports this
+// package when `node.chainKind === "solana"` and routes ChainAdapter calls
+// through it. Everything else exported here is something a caller needs
+// WITHOUT an adapter in hand — PDA derivation for an indexer, LMSR math for an
+// off-chain quote, the book decoder, the event decoder, the IDL.
 
 export { marketIdForQuestion } from "./adapter.js";
 export {
@@ -11,28 +14,22 @@ export {
 export { SoothError, notImplemented } from "./errors.js";
 export type { SoothErrorInit, SoothErrorKind } from "./errors.js";
 
-// PDA helpers and refs are re-exported because tests + future SDK callers
-// derive accounts independently of the adapter (e.g. an indexer mirroring
-// the seed conventions).
+// PDA helpers and refs: an indexer mirrors the seed conventions without
+// constructing an adapter.
 export {
   deriveAdjudicatorEntryPda,
   deriveAmmStatePda,
-  bookSidePda,
   deriveLockAuthorityPda,
   deriveLockEntryPda,
   deriveLockVaultAta,
   deriveLpYieldAuthority,
   deriveMarketPda,
   deriveMarketVaultAta,
-  deriveNoMintPda,
   derivePositionPda,
   deriveUserUsdcAta,
   deriveVaultAuthorityPda,
-  deriveYesMintPda,
-  marketBookPda,
   feePoolAmmPda,
   feePoolBookPda,
-  orderbookPositionPda,
   SOOTH_CORE_PROGRAM_ID,
   type MarketId,
   type ProgramIds,
@@ -59,9 +56,8 @@ export {
   SOL_REF_PREFIX,
 } from "./refs.js";
 
-// Math is part of the public surface — integrators sometimes want the
-// off-chain LMSR cost without going through `readQuote` (e.g. simulating
-// trades against a hypothetical book).
+// Math is public: an integrator can price a hypothetical state without the
+// round trip `readQuote` makes.
 export {
   WAD,
   WAD_TO_USDC_SCALAR,
@@ -132,6 +128,5 @@ export {
   type ClassifiedError as ClassifiedOrderbookError,
 } from "./orderbook/error-classifier.js";
 
-// VENDORED chain-adapter types — see top of `./types.ts` for the Phase A
-// swap-out comment.
+// The vendored cross-chain adapter interface — see `./types.ts`.
 export * from "./types.js";

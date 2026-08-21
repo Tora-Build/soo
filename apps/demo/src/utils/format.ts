@@ -25,26 +25,6 @@ export const formatPercent = (value: number, decimals: number = 1): string => {
 };
 
 /**
- * Format a bigint as a decimal number
- */
-export const formatBigInt = (
-    value: bigint,
-    decimals: number = 18,
-    displayDecimals: number = 2
-): string => {
-    const divisor = 10n ** BigInt(decimals);
-    const integerPart = value / divisor;
-    const fractionalPart = value % divisor;
-
-    // Convert to number for formatting
-    const numValue = Number(integerPart) + Number(fractionalPart) / Number(divisor);
-    return numValue.toLocaleString(undefined, {
-        minimumFractionDigits: displayDecimals,
-        maximumFractionDigits: displayDecimals
-    });
-};
-
-/**
  * Shorten an address for display
  */
 export const shortenAddress = (address: string, chars: number = 4): string => {

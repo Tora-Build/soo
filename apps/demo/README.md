@@ -1,7 +1,7 @@
 # @sooth/demo
 
-> The forked demo app. Classic pages, the Eastboard shell at `/options`, and
-> Arena at `/play`, all driven by `@sooth/sdk-solana` through a chain-shim.
+> The frontend. Arena at `/play` and the Eastboard shell at `/eastboard/*`,
+> both driven by `@sooth/sdk-solana` through a chain-shim.
 
 This is a **faithful** fork of the EVM demo, not a clean reimplementation.
 Upstream's React tree — pages, components, hooks, stores, validation, toast UX,
@@ -10,27 +10,42 @@ swapped, under `src/lib/chain-shim/`. Running upstream's real UX flows against
 the Solana SDK is the point: a lean rebuild would only validate what we already
 know works.
 
-This app is the whole frontend: two surfaces, Eastboard and Arena, over one
-chain-shim.
-
 ## Routes
+
+Two surfaces over one chain-shim. Arena is the product; Eastboard is an older
+internal trading UI, kept reachable but not linked from the game.
+
+### Arena
 
 | Route | What it is |
 | ----- | ---------- |
-| `/options` | **Eastboard** — the option-chain shell wrapping the main trading surfaces |
-| `/positions` | Eastboard portfolio |
-| `/play` | **Arena** — the gameplay surface over the same markets |
-| `/markets` | Market list |
+| `/play` | The gameplay surface over the same markets — deck plus sidecar |
+| `/explore` | Market list |
+| `/forge` | Market creation and `seed_lp` |
+| `/locker` | Positions, pending unlocks, redemptions, LP, operator panel |
+| `/power` | Mint devnet/localnet venue tokens |
+| `/vault` | LP holdings |
+
+### Shared pages (arcade shell)
+
+| Route | What it is |
+| ----- | ---------- |
 | `/amm`, `/amm/:marketAddress` | LMSR bonding venue: quote, buy, sell, sell-cooldown claims |
 | `/orderbook`, `/orderbook/:marketAddress` | The CLOB: ladder, place, cancel, withdraw, open orders |
-| `/portfolio` | Positions, pending unlocks, redemptions, LP, operator panel |
-| `/launchpad`, `/create` | Market creation and `seed_lp` |
-| `/liquidity`, `/lp-forecast` | LP holdings and yield forecasting |
 | `/operator` | Adjudicator console: request lock, attest, dispute, settle |
-| `/faucet` | Mint devnet/localnet venue tokens |
 | `/learn` | Static explainer content |
+| `/lp-forecast` | Creator LP cashflow model |
 | `/geek` | Command terminal over the adapter; unwired commands say so |
 | `/__check` | Health check |
+
+### Eastboard
+
+`/eastboard/options` (the option chain), `/eastboard/positions`, and the shared
+pages again under `/eastboard/{markets,amm,orderbook,create,launchpad,portfolio,faucet,liquidity}`.
+
+`/` redirects to `/play`. The pre-arena paths `/options`, `/markets`,
+`/faucet`, `/portfolio`, `/liquidity`, `/create` and `/launchpad` redirect into
+the arena.
 
 The book is gated closed until a market graduates — the program enforces it — so
 `/orderbook` shows the gate rather than a tradeable ladder on a market that is
@@ -46,9 +61,8 @@ the import substitutions".
 | --------- | ------- |
 | `viem-shim.ts` | `Address` / `Hash` / `Hex`, `formatUnits`, `parseUnits`, `keccak256`, `encodePacked`, `parseAbi*`, `defineChain`, `http`, `fallback` |
 | `wagmi-shim.ts` | `useAccount`, `useChainId`, `useDisconnect`, `useConnect`, `useReadContract*`, `useWriteContract`, `useWaitForTransactionReceipt`, `useWatchContractEvent`, `usePublicClient`, `useWalletClient`, `useBalance` |
-| `wagmi-actions-shim.ts` | `waitForTransactionReceipt`, `getAccount`, `connect`, `reconnect`, `readContract`, `writeContract` |
 | `appkit-shim.ts` | `useAppKit`, `useAppKitAccount`, `WagmiAdapter`, `createAppKit` |
-| `sooth-sdk-shim.ts` | `WAD`, `MAX_UINT256`, `OutputLine`, `CommandResult` |
+| `sooth-sdk-shim.ts` | `WAD`, `MAX_UINT256`, `OutputLine`, `CommandResult`, empty ABI stubs |
 | `amm-bridge.ts` | AMM reads and writes onto the adapter |
 | `markets-bridge.ts` | Market list and metadata |
 | `orderbook-reads.ts` | Book ladder, depth, and a trader's open orders |
@@ -113,8 +127,8 @@ book, `graduate-market.mjs` trades a market past its `b·ln(2)` threshold, and
 | `VITE_SOLANA_WS_URL` | public devnet WS | Subscription endpoint for confirms — kept separate because keyed providers often serve reads but not `signatureSubscribe` |
 | `VITE_SOOTH_CORE_ID` | from the bundled IDL | `sooth_core` program ID |
 | `VITE_USDC_MINT` | `ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX` | **Book** venue token |
-| `VITE_AMM_MINT` | `CUsiEVc29hQa9xLBFB7nPQxP1aEiWq1cZkdfn8ATFHBu` | **AMM** venue token |
-| `VITE_AMM_TOKEN_LABEL` / `VITE_AMM_TOKEN_SYMBOL` | `Mock EAST` / `EAST` | Display name for the AMM token — chosen per deployment, so it cannot be a constant |
+| `VITE_AMM_MINT` | `ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX` | **AMM** venue token. Same mint as the book on this deployment; a build that splits the venues points it elsewhere |
+| `VITE_AMM_TOKEN_LABEL` / `VITE_AMM_TOKEN_SYMBOL` | `Mock EAST` / `USDC` | Display name for the AMM token — chosen per deployment, so it cannot be a constant |
 | `VITE_BOOK_TOKEN_LABEL` / `VITE_BOOK_TOKEN_SYMBOL` | `Mock USDC` / `USDC` | Display name for the book token |
 | `VITE_DEMO_MARKET_REF` | (none) | `sol:<base58>` of the seeded market |
 | `VITE_DEMO_EXTRA_MARKET_REFS` | (none) | Comma-separated extra markets to list |
@@ -122,16 +136,21 @@ book, `graduate-market.mjs` trades a market past its `b·ln(2)` threshold, and
 | `VITE_TEST_MODE`, `VITE_TEST_KEYPAIR_BYTES` | (none) | Drive the app with a local keypair adapter; e2e only |
 | `VITE_TEST_MINT_AUTHORITY_BYTES` | set by `seed:init` | Signs faucet mints. **Localnet only** |
 | `VITE_TEST_AUTHORITY_BYTES` | set by `seed:init` | Protocol authority for auto-registration. Localnet only |
+| `VITE_ARENA_API_BASE` | (none) | Base URL of the deployed `infra/arena-api` Worker. Without it the arena's profile, leaderboard and social calls are skipped |
+| `VITE_EASTBOARD_FIXTURES` | (none) | `true` renders the Eastboard option chain from fixtures instead of chain reads |
+| `VITE_ICON_RESOLVER_URL` | (none) | Optional market-icon resolver endpoint |
+| `VITE_REGISTRY_URL` | (none) | Optional market registry endpoint |
 
 There is no on-chain market registry, so the market list is served from
 `VITE_DEMO_MARKET_REF` plus `VITE_DEMO_EXTRA_MARKET_REFS`. A market created
-outside that list is reachable by URL but will not appear in the feed. An
-indexer is the fix, when it matters.
+outside that list is reachable by URL but will not appear in the feed.
+`packages/sooth-data` indexes the same data and would fix this, but no instance
+is deployed and the app does not read from one.
 
 ## Tests
 
 ```sh
-pnpm -F @sooth/demo test        # vitest — 16 files
+pnpm -F @sooth/demo test        # vitest — 17 files
 pnpm -F @sooth/demo e2e         # Playwright, against a real validator
 pnpm -F @sooth/demo typecheck
 ```

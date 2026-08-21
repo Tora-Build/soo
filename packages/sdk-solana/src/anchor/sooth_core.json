@@ -1497,14 +1497,15 @@
         {
           "name": "vault_amm",
           "docs": [
+            "`vault_authority`; created and initialized in the handler, which",
+            "re-derives the address before signing.",
             "",
-            "Seeds `[b\"vault_amm\", market_id]` — its own address, NOT an ATA. The",
-            "book vault is the vault authority's ATA, and an ATA is one account",
-            "per (authority, mint) pair: a deployment that fills both venue roles",
-            "with the same mint would collapse the two vaults into one and merge",
-            "venue accounting. Own seeds keep the vaults distinct under any mint",
-            "pairing. Token-account authority is still `vault_authority`, so every",
-            "downstream transfer path signs exactly as before."
+            "Its own PDA, NOT an ATA. The book vault is the vault authority's ATA,",
+            "and an ATA is one account per (authority, mint) pair: a deployment that",
+            "fills both venue roles with the same mint would collapse the two vaults",
+            "into one and merge venue accounting. Own seeds keep the vaults distinct",
+            "under any mint pairing, while the token-account authority stays",
+            "`vault_authority`, so every downstream transfer path signs identically."
           ],
           "writable": true
         },
@@ -4945,32 +4946,6 @@
       ]
     },
     {
-      "name": "DustOrderSkipped",
-      "discriminator": [
-        250,
-        13,
-        138,
-        190,
-        137,
-        145,
-        78,
-        77
-      ]
-    },
-    {
-      "name": "FeesCollected",
-      "discriminator": [
-        233,
-        23,
-        117,
-        225,
-        107,
-        178,
-        254,
-        8
-      ]
-    },
-    {
       "name": "LockClaimed",
       "discriminator": [
         226,
@@ -5098,45 +5073,6 @@
         117,
         215,
         99
-      ]
-    },
-    {
-      "name": "OrderCancelled",
-      "discriminator": [
-        108,
-        56,
-        128,
-        68,
-        168,
-        113,
-        168,
-        239
-      ]
-    },
-    {
-      "name": "OrderPlaced",
-      "discriminator": [
-        96,
-        130,
-        204,
-        234,
-        169,
-        219,
-        216,
-        227
-      ]
-    },
-    {
-      "name": "OrdersFilled",
-      "discriminator": [
-        71,
-        6,
-        206,
-        44,
-        193,
-        220,
-        148,
-        85
       ]
     },
     {
@@ -5839,9 +5775,8 @@
               "that loads it. (Unlike EVM, where appending a storage slot is free.)",
               "",
               "When you add a field, shrink this by exactly its serialized size and",
-              "leave `SPACE` unchanged. The zk block above consumed 62 of the",
-              "original 64 bytes, so the next field larger than two bytes needs a",
-              "separate PDA rather than this region."
+              "leave `SPACE` unchanged. Only two bytes are left, so the next field",
+              "larger than that needs a separate PDA rather than this region."
             ],
             "type": {
               "array": [
@@ -6231,128 +6166,6 @@
           {
             "name": "new_outcome",
             "type": "u8"
-          },
-          {
-            "name": "ts",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "DustOrderSkipped",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "market",
-            "type": "pubkey"
-          },
-          {
-            "name": "side",
-            "type": "u8"
-          },
-          {
-            "name": "tick",
-            "type": "u16"
-          },
-          {
-            "name": "user",
-            "type": "pubkey"
-          },
-          {
-            "name": "amount",
-            "type": "u128"
-          },
-          {
-            "name": "escrow",
-            "type": "bool"
-          }
-        ]
-      }
-    },
-    {
-      "name": "FeesCollected",
-      "docs": [
-        "Mirror of EVM `FeeRouter.FeesDistributed`. Emitted by `distribute_fees`",
-        "when the accumulator drains to the four destinations (architecture §8)."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "market",
-            "type": "pubkey"
-          },
-          {
-            "name": "total_wad",
-            "docs": [
-              "Total fees moved out of `AmmState.fee_b_base_wad` in this call (WAD)."
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "to_b_base",
-            "docs": [
-              "Slice routed to the bBase LP-yield ATA."
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "to_lp_yield",
-            "type": "u64"
-          },
-          {
-            "name": "to_adjudicator",
-            "type": "u64"
-          },
-          {
-            "name": "to_protocol",
-            "type": "u64"
-          },
-          {
-            "name": "ts",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "FillRecord",
-      "docs": [
-        "One maker fill inside a `buy`. Ticks are recorded as (yes, no) rather than",
-        "(taker, maker) so a consumer never has to know which side the taker was on",
-        "to price the trade."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "maker",
-            "type": "pubkey"
-          },
-          {
-            "name": "maker_order_id",
-            "type": "u64"
-          },
-          {
-            "name": "yes_tick",
-            "type": "u16"
-          },
-          {
-            "name": "no_tick",
-            "type": "u16"
-          },
-          {
-            "name": "amount",
-            "type": "u128"
-          },
-          {
-            "name": "surplus",
-            "docs": [
-              "Rebate to the taker when yes_tick + no_tick > NUM_TICKS."
-            ],
-            "type": "u128"
           },
           {
             "name": "ts",
@@ -7062,118 +6875,6 @@
           {
             "name": "ts",
             "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "OrderCancelled",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "market",
-            "type": "pubkey"
-          },
-          {
-            "name": "side",
-            "type": "u8"
-          },
-          {
-            "name": "tick",
-            "type": "u16"
-          },
-          {
-            "name": "maker",
-            "type": "pubkey"
-          },
-          {
-            "name": "order_id",
-            "type": "u64"
-          },
-          {
-            "name": "remaining",
-            "docs": [
-              "Unfilled amount at the moment of cancellation. An indexer cannot",
-              "reconstruct this after the fact: `cancel` zeroes the order in place, so",
-              "the size that was withdrawn is gone from state."
-            ],
-            "type": "u128"
-          }
-        ]
-      }
-    },
-    {
-      "name": "OrderPlaced",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "market",
-            "type": "pubkey"
-          },
-          {
-            "name": "side",
-            "type": "u8"
-          },
-          {
-            "name": "tick",
-            "type": "u16"
-          },
-          {
-            "name": "maker",
-            "type": "pubkey"
-          },
-          {
-            "name": "amount",
-            "type": "u128"
-          },
-          {
-            "name": "escrow",
-            "type": "bool"
-          },
-          {
-            "name": "order_id",
-            "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "OrdersFilled",
-      "docs": [
-        "All fills from one `buy`, batched into a single event.",
-        "",
-        "Batched deliberately: per-fill emission exhausts the 32 KB heap. Emitted",
-        "with `emit_cpi!` (a self-CPI), not `emit!` — see the versioned-book-events",
-        "section below for why. Consumers must verify this arrives as a",
-        "direct inner instruction of a successful `sooth_core::buy`; the event",
-        "itself is permissionless."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "market",
-            "type": "pubkey"
-          },
-          {
-            "name": "taker",
-            "type": "pubkey"
-          },
-          {
-            "name": "taker_side",
-            "type": "u8"
-          },
-          {
-            "name": "fills",
-            "type": {
-              "vec": {
-                "defined": {
-                  "name": "FillRecord"
-                }
-              }
-            }
           }
         ]
       }

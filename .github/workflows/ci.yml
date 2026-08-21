@@ -26,9 +26,7 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile=false
 
-      # `pnpm -r build` is a no-op while packages/* is empty (no recursive
-      # targets resolved). Once packages exist, each is responsible for its
-      # own `build` script.
+      # Each workspace package owns its `build` script.
       - name: Build (recursive)
         run: pnpm -r build
 
@@ -46,16 +44,12 @@ jobs:
       - name: Cargo build
         run: cargo build --workspace
 
-      # Empty workspace has zero .rs files, so fmt/clippy succeed trivially.
-      # Once members are added under packages/programs-core/, these gates
-      # start enforcing.
       - name: Cargo fmt
         run: cargo fmt --all -- --check
 
       - name: Cargo clippy
-        # The workspace is one crate, `sooth_core`; the vendored `sooth_book`
-        # package this used to exclude no longer exists. Allows are for
-        # stylistic lints in our own code that don't catch real bugs:
+        # The workspace is one crate, `sooth_core`. Allows are for stylistic
+        # lints in our own code that don't catch real bugs:
         #   doc_overindented_list_items: 4-space `key — value` alignment
         #   too_many_arguments: test helpers with 13+ args (tests are
         #     allowed to be ergonomic for the test author)

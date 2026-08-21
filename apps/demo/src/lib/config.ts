@@ -19,10 +19,8 @@ const AMM_MINT_DEVNET = "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX";
 
 // Sourced from the IDL `address` field, which mirrors the program's
 // `declare_id!`. Keeps the config in lockstep with deploy keypair rotations
-// without a second hand-pinned constant.
-//
-// One program now, not five: the 5→1 merge folded sooth_amm, sooth_market,
-// sooth_book, sooth_launchpad and sooth_adjudicator into sooth_core.
+// without a second hand-pinned constant. One program id covers the whole
+// protocol.
 const SOOTH_CORE_ID = soothCoreIdl.address;
 
 export interface DemoConfig {
@@ -106,13 +104,12 @@ export const demoConfig: DemoConfig = {
     cluster: "devnet",
     rpcUrl,
     programs: {
-      // The adapter reads `soothCore` and `usdcMint` — nothing else. The
-      // previous `soothAmm`/`soothMarket` keys were silently ignored after
-      // the merge, which meant VITE_SOOTH_*_ID overrides did nothing and the
-      // demo always fell back to the SDK's compiled-in default id.
+      // The adapter reads `soothCore` and `usdcMint` — nothing else. Any
+      // other key here is silently ignored, so an override under a different
+      // name leaves the demo on the SDK's compiled-in default id.
       soothCore: env?.VITE_SOOTH_CORE_ID ?? SOOTH_CORE_ID,
-      // `usdcMint` is the BOOK venue's token (the name predates the split and
-      // is what the adapter still reads). `ammMint` is the AMM's.
+      // `usdcMint` is the BOOK venue's token — the name the adapter reads.
+      // `ammMint` is the AMM's.
       usdcMint: env?.VITE_USDC_MINT ?? USDC_MINT_DEVNET,
       ammMint: env?.VITE_AMM_MINT ?? AMM_MINT_DEVNET,
     },

@@ -4,7 +4,7 @@
 # specs see the cheats as live state mutations on the same RPC.
 #
 # Most useful subcommand for this repo: `time-travel`. The 24h sell-lock
-# in sooth_amm gates `claim_unlocked` and the operator
+# in sooth_core gates `claim_unlocked` and the operator
 # request_lock → attest_outcome bridge on real wall-clock; on
 # solana-test-validator there is no setClock so localnet UI smoke can't
 # bridge those flows. Surfpool's `surfnet_timeTravel` does — call it once

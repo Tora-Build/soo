@@ -2,7 +2,6 @@
 
 pub mod adjudicator;
 pub mod amm_state;
-pub mod legacy_fee_drain_marker;
 pub mod lifecycle;
 pub mod lock_entry;
 pub mod lp_position;
@@ -13,7 +12,6 @@ pub mod protocol_config;
 
 pub use adjudicator::{AdjudicatorEntry, ADJUDICATOR_ENTRY_SEED};
 pub use amm_state::AmmState;
-pub use legacy_fee_drain_marker::LegacyFeeDrainMarker;
 pub use lifecycle::MarketLifecycle;
 pub use lock_entry::LockEntry;
 pub use lp_position::LpPosition;

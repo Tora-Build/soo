@@ -11,7 +11,6 @@ import { ModeBanner } from '../components/layout/ModeBanner';
 import { ArenaPlayerProvider } from '../features/arena/ArenaPlayerProvider';
 import { Navbar } from '../components/layout/Navbar';
 import { Footer } from '../components/layout/Footer';
-import { ActivityListener } from '../components/features/ActivityListener';
 
 import { useAccentStore } from '../store/useAccentStore';
 import { SEASON } from '../features/arena/season';
@@ -41,7 +40,6 @@ export const AppLayout = () => {
           <span className="arcade-noise" />
         </div>
         <Navbar />
-        <ActivityListener />
         <ArenaDock />
 
         <main className="relative flex-1 px-4 py-6 md:px-6 md:py-8 lg:ml-[92px] lg:px-8">

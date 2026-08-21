@@ -13,8 +13,10 @@
    manual adjudicator's trust story.
 3. **Observability.** Measure transaction retry rate under devnet load, with a
    target below 5%, and report RPC fallback behaviour during user testing.
-4. **Indexing at production scale.** Event-log and account reads suffice at demo
-   scale; a busy market wants Geyser. Decide the boundary before mainnet.
+4. **Indexing at production scale.** `apps/demo` reads accounts and CPI events
+   directly, which suffices at demo scale. `packages/sooth-data` indexes the
+   same data but is not deployed and not wired into the frontend; a busy market
+   wants Geyser behind it. Decide the boundary before mainnet.
 
 ## Not in scope for this repo
 
@@ -22,5 +24,5 @@
 - EVM-only apps (`sooth-alpha/apps/{telegram,market,world}`).
 - HyperEVM precompile adjudicator and Lens post-action (chain-locked to EVM).
 - The multi-actor CLI test harness — EVM-only.
-- zkTLS adjudication, off-chain signed orders, retroactive `T*` settlement, and
-  three-outcome markets.
+- Off-chain signed orders, retroactive `T*` settlement, and three-outcome
+  markets.

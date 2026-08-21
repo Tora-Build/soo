@@ -5,8 +5,8 @@ import toast from "react-hot-toast";
 
 import { cn } from "../../../lib/utils";
 import { SimpleTooltip } from "../../ui/SimpleTooltip";
-import { useIndexerOrders } from "../../../hooks/useIndexerOrders";
-import type { OpenOrder, HistoryRow } from "../../../hooks/useIndexerOrders";
+import { useBookOrders } from "../../../hooks/useBookOrders";
+import type { OpenOrder, HistoryRow } from "../../../hooks/useBookOrders";
 
 type OrderSort = "newest" | "price" | "fill";
 type OrdersGroup = "open" | "history";
@@ -463,7 +463,7 @@ export function UserOrdersPanel({
     historyRows,
     isLoading: isIndexerLoading,
     refresh,
-  } = useIndexerOrders(
+  } = useBookOrders(
     chainId,
     marketKey as `0x${string}` | undefined,
     marketAddress,

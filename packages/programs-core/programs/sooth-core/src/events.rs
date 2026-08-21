@@ -137,21 +137,6 @@ pub struct MarketCreated {
     pub ts: i64,
 }
 
-/// Mirror of EVM `FeeRouter.FeesDistributed`. Emitted by `distribute_fees`
-/// when the accumulator drains to the four destinations (architecture §8).
-#[event]
-pub struct FeesCollected {
-    pub market: Pubkey,
-    /// Total fees moved out of `AmmState.fee_b_base_wad` in this call (WAD).
-    pub total_wad: u128,
-    /// Slice routed to the bBase LP-yield ATA.
-    pub to_b_base: u64,
-    pub to_lp_yield: u64,
-    pub to_adjudicator: u64,
-    pub to_protocol: u64,
-    pub ts: i64,
-}
-
 /// Per-market fee distribution event emitted by `distribute_fees(market)`.
 #[event]
 pub struct MarketFeesDistributed {
@@ -272,72 +257,6 @@ pub struct ZkOutcomeAttested {
     /// The attestation's own timestamp, normalized to unix seconds.
     pub attestation_ts: i64,
     pub ts: i64,
-}
-
-// ── Orderbook (CLOB) ─────────────────────────────────────────────────────────
-
-#[event]
-pub struct OrderPlaced {
-    pub market: Pubkey,
-    pub side: u8,
-    pub tick: u16,
-    pub maker: Pubkey,
-    pub amount: u128,
-    pub escrow: bool,
-    pub order_id: u64,
-}
-
-/// One maker fill inside a `buy`. Ticks are recorded as (yes, no) rather than
-/// (taker, maker) so a consumer never has to know which side the taker was on
-/// to price the trade.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
-pub struct FillRecord {
-    pub maker: Pubkey,
-    pub maker_order_id: u64,
-    pub yes_tick: u16,
-    pub no_tick: u16,
-    pub amount: u128,
-    /// Rebate to the taker when yes_tick + no_tick > NUM_TICKS.
-    pub surplus: u128,
-    pub ts: i64,
-}
-
-/// All fills from one `buy`, batched into a single event.
-///
-/// Batched deliberately: per-fill emission exhausts the 32 KB heap. Emitted
-/// with `emit_cpi!` (a self-CPI), not `emit!` — see the versioned-book-events
-/// section below for why. Consumers must verify this arrives as a
-/// direct inner instruction of a successful `sooth_core::buy`; the event
-/// itself is permissionless.
-#[event]
-pub struct OrdersFilled {
-    pub market: Pubkey,
-    pub taker: Pubkey,
-    pub taker_side: u8,
-    pub fills: Vec<FillRecord>,
-}
-
-#[event]
-pub struct OrderCancelled {
-    pub market: Pubkey,
-    pub side: u8,
-    pub tick: u16,
-    pub maker: Pubkey,
-    pub order_id: u64,
-    /// Unfilled amount at the moment of cancellation. An indexer cannot
-    /// reconstruct this after the fact: `cancel` zeroes the order in place, so
-    /// the size that was withdrawn is gone from state.
-    pub remaining: u128,
-}
-
-#[event]
-pub struct DustOrderSkipped {
-    pub market: Pubkey,
-    pub side: u8,
-    pub tick: u16,
-    pub user: Pubkey,
-    pub amount: u128,
-    pub escrow: bool,
 }
 
 // ── Protocol / circuit-breaker ───────────────────────────────────────────────

@@ -25,9 +25,7 @@ import { useOrderbook } from "../../../hooks/useOrderbook";
 import { useOrderbookTrade } from "../../../hooks/useOrderbookTrade";
 import { useChainStore } from "../../../store/useChainStore";
 import { shortenAddress } from "../../../utils/format";
-import { MintMergePanel } from "./MintMergePanel";
 import { LiquidityMap } from "./LiquidityMap";
-import { HistoricalPriceCard } from "./HistoricalPriceCard";
 import { UserOrdersPanel } from "./UserOrdersPanel";
 import { orderCollateral } from "../../../lib/order-collateral";
 import type { ConfirmedArenaTrade } from "../../../features/arena/types";
@@ -59,7 +57,6 @@ interface SoothBookTerminalProps {
   onTradeConfirmed?: (trade: ConfirmedArenaTrade) => void | Promise<void>;
 }
 
-type BottomRightTab = "orders" | "mint";
 
 const MAX_OB_ROWS = 12;
 
@@ -147,9 +144,9 @@ function SoothBookTerminalActive({
 }) {
   const isMegaEthVariant = variant === "megaeth";
   const { address: user } = useAccount();
-  // Use the app-selected chain (store) as source of truth for reads so users
-  // browsing MegaETH still see its on-chain state when their wallet is on a
-  // different chain. Fall back to wagmi chainId when no store value exists.
+  // The app-selected chain (store) is the source of truth for reads, so the
+  // page shows the cluster the user is browsing even when the wallet sits on
+  // another. Falls back to the wagmi chainId when the store has no value.
   const walletChainId = useChainId();
   const { selectedChainId } = useChainStore();
   const chainId = Number(selectedChainId) || walletChainId;
@@ -209,8 +206,8 @@ function SoothBookTerminalActive({
   // `isMarketRegistered(address)` is the authoritative registration flag;
   // backing can legitimately be zero on an active but currently empty book.
   // chainId MUST be passed explicitly — without it wagmi defaults to the
-  // wallet's chain, so browsing MegaETH with a Base Sepolia wallet would
-  // read the wrong contract and wrongly flag the market as inactive.
+  // wallet's chain, so a wallet on a different cluster than the one being
+  // browsed reads the wrong accounts and flags the market inactive.
   const { data: sbMarketData, isLoading: sbMarketLoading } = useReadContracts({
     contracts:
       resolvedSB && marketAddress
@@ -266,8 +263,6 @@ function SoothBookTerminalActive({
   // limitPrice stored as cents (0.1–99.9 in 0.1¢ steps), converted to fraction at submit time
   const [limitPrice, setLimitPrice] = useState("50.0");
   const [shares, setShares] = useState("1");
-  const [bottomRightTab, setBottomRightTab] =
-    useState<BottomRightTab>("orders");
 
   const isYes = selectedOutcome === "yes";
   const viewOutcome: "yes" | "no" = isYes ? "yes" : "no";
@@ -1014,59 +1009,29 @@ function SoothBookTerminalActive({
         </div>
         {/* end bg-raised */}
 
-        {/* Orders / Mint */}
+        {/* Orders */}
         <div className="bg-raised flex flex-col">
-          {/* Tab bar */}
           <div className="flex items-center gap-4 px-4 pt-3 border-b border-rule">
-            {[
-              { id: "orders" as const, label: t("orderbook.orders") },
-              { id: "mint" as const, label: t("orderbook.mintMerge") },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                data-testid={`bottom-right-tab-${tab.id}`}
-                onClick={() => setBottomRightTab(tab.id)}
-                className={cn(
-                  "pb-2 font-mono text-xs uppercase tracking-[0.12em] transition-colors duration-100 border-b-2 -mb-px",
-                  bottomRightTab === tab.id
-                    ? "text-ink border-accent"
-                    : "text-faint border-transparent hover:text-muted",
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
+            <span className="pb-2 font-mono text-xs uppercase tracking-[0.12em] text-ink border-b-2 border-accent -mb-px">
+              {t("orderbook.orders")}
+            </span>
           </div>
 
           {/* Tab content */}
           <div className="flex-1 min-h-0">
-            {bottomRightTab === "orders" && (
-              <div className="p-4">
-                <UserOrdersPanel
-                  marketAddress={marketAddress as `0x${string}`}
-                  marketKey={marketKey}
-                  soothBookAddress={resolvedSB}
-                  isLoading={obLoading}
-                  onRefresh={refetchOb}
-                  chainId={chainId}
-                  viewOutcome={viewOutcome}
-                  onCancelOrder={cancelOrder}
-                  onCancelOrders={cancelOrders}
-                />
-              </div>
-            )}
-
-            {bottomRightTab === "mint" && marketKey && (
-              <div className="p-4">
-                <MintMergePanel
-                  marketAddress={marketAddress as Address}
-                  marketKey={marketKey}
-                  soothBookAddress={resolvedSB}
-                />
-              </div>
-            )}
-
-            {/* LiquidityMap moved to top-left quadrant */}
+            <div className="p-4">
+              <UserOrdersPanel
+                marketAddress={marketAddress as `0x${string}`}
+                marketKey={marketKey}
+                soothBookAddress={resolvedSB}
+                isLoading={obLoading}
+                onRefresh={refetchOb}
+                chainId={chainId}
+                viewOutcome={viewOutcome}
+                onCancelOrder={cancelOrder}
+                onCancelOrders={cancelOrders}
+              />
+            </div>
           </div>
         </div>
         {afterTradePane}

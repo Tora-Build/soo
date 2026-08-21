@@ -3,14 +3,10 @@
  * can be rendered both as a standalone page (apps/demo/src/pages/AMM.tsx)
  * and inside the wide MarketDrawer launched from the markets listing.
  *
- * Behavior is identical to the previous inline AMM.tsx implementation —
- * this is a pure refactor. All hooks, layout, and conditional rendering
- * are preserved.
- *
  * The optional `onModeChange` prop is forwarded to TradingContextBar so
  * that when this body is rendered inside MarketDrawer, the AMM/Orderbook
  * toggle swaps the drawer's body in place instead of navigating away.
- * Standalone page mode (no callback) keeps the original Link navigation.
+ * Without the callback the toggle navigates with a router Link.
  */
 import { lookupMarketQuestion } from "../../../lib/market-questions";
 import { useCallback } from "react";
@@ -118,7 +114,7 @@ export const AMMPageBody = ({
           address: contracts.LaunchpadEngine as `0x${string}`,
           abi: [
             {
-              name: "redeemLP",
+              name: "redeemLp",
               type: "function",
               inputs: [
                 { name: "market", type: "address" },
@@ -128,7 +124,7 @@ export const AMMPageBody = ({
               stateMutability: "nonpayable",
             },
           ],
-          functionName: "redeemLP",
+          functionName: "redeemLp",
           args: [marketAddr as `0x${string}`, lpBalance],
         });
         toast.success(t("liquidityDetail.redeemedSuccess"));
@@ -196,7 +192,6 @@ export const AMMPageBody = ({
       <EventChartCard
         event={sqfMeta?.event ?? ""}
         category={sqfMeta?.category}
-        chainId={chainId}
         currentAddress={marketAddress}
         basePath="/amm"
         markets={chartMarkets}

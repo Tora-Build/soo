@@ -14,12 +14,10 @@ use crate::error::SoothCoreError;
 use crate::events::{MarketGraduated, PositionSold};
 use crate::instructions::trade_positions::graduation_threshold_wad;
 use crate::math::{cost_delta, wad_to_usdc_floor, MathError};
+use crate::state::market::{OUTCOME_NO, OUTCOME_YES};
 use crate::state::{require_not_paused, AmmState, LockEntry, Market, Position, ProtocolConfig};
 
 const LOCK_DURATION_SECS: i64 = 24 * 60 * 60;
-
-const OUTCOME_NO: u8 = 0;
-const OUTCOME_YES: u8 = 1;
 
 #[derive(Accounts)]
 #[instruction(_outcome: u8, _delta_shares: i128, _min_proceeds_wad: u128, lock_nonce: u64)]

@@ -1,10 +1,8 @@
 const MIN_PROBABILITY = 0.01;
 const MAX_PROBABILITY = 0.99;
-const WAD_NUMBER = 1e18;
 
 export type CashflowType = "deposit" | "withdrawal";
 export type LpScenarioId = "downside" | "expected" | "upside";
-export type LpActivitySource = "amm" | "orderbook";
 
 export interface LpCashflowEvent {
   day: number;
@@ -44,7 +42,6 @@ export interface LpScenarioConfig {
 export interface LpForecastPoint {
   day: number;
   timestamp?: number;
-  source: "modeled" | LpActivitySource;
   price: number;
   bCurrent: number;
   lpShare: number;
@@ -94,43 +91,6 @@ export interface LpForecastResult {
   scenarios: LpScenarioResult[];
 }
 
-export interface IndexerAmmTrade {
-  timestamp: string;
-  cost: string;
-  qYesAfter: string;
-  qNoAfter: string;
-  bAfter: string;
-  yesProbability: number;
-}
-
-export interface IndexerFill {
-  timestamp: string;
-  amount: string;
-  yesTick: number;
-}
-
-export interface LpObservedActivity {
-  source: LpActivitySource;
-  timestamp: number;
-  volume: number;
-  price: number;
-  qYesAfter?: number;
-  qNoAfter?: number;
-  bAfter?: number;
-}
-
-export interface LpBacktestResult {
-  actual: Omit<LpScenarioResult, "id" | "label" | "description">;
-  forecastScenario: LpScenarioResult;
-  comparison: {
-    totalVolumeDelta: number;
-    totalFeesDelta: number;
-    feeIncomeDelta: number;
-    maxExposureDelta: number;
-    finalPnlDelta: number;
-  };
-}
-
 interface AccountingState {
   poolCapital: number;
   bCurrent: number;
@@ -170,41 +130,6 @@ export function calculateCreatorDeposit(
   return Math.max(0, initialLiquidity) * -Math.log(Math.min(p, 1 - p));
 }
 
-export function normalizeIndexerAmmTrades(
-  trades: IndexerAmmTrade[],
-): LpObservedActivity[] {
-  return trades
-    .map((trade) => {
-      const cost = Math.abs(wadStringToNumber(trade.cost));
-      const timestamp = Number(trade.timestamp);
-      return {
-        source: "amm" as const,
-        timestamp,
-        volume: cost,
-        price: clampProbability(Number(trade.yesProbability)),
-        qYesAfter: wadStringToNumber(trade.qYesAfter),
-        qNoAfter: wadStringToNumber(trade.qNoAfter),
-        bAfter: wadStringToNumber(trade.bAfter),
-      };
-    })
-    .filter((activity) => isValidActivity(activity));
-}
-
-export function normalizeIndexerFills(fills: IndexerFill[]): LpObservedActivity[] {
-  return fills
-    .map((fill) => {
-      const amount = wadStringToNumber(fill.amount);
-      const price = clampProbability(Number(fill.yesTick) / 1000);
-      return {
-        source: "orderbook" as const,
-        timestamp: Number(fill.timestamp),
-        volume: amount * price,
-        price,
-      };
-    })
-    .filter((activity) => isValidActivity(activity));
-}
-
 export function runLpForecast(
   assumptions: LpForecastAssumptions,
 ): LpForecastResult {
@@ -215,35 +140,6 @@ export function runLpForecast(
     scenarios: buildScenarios(normalized).map((scenario) =>
       simulateScenario(normalized, scenario),
     ),
-  };
-}
-
-export function runLpBacktest(
-  activities: LpObservedActivity[],
-  assumptions: LpForecastAssumptions,
-): LpBacktestResult {
-  const normalized = normalizeAssumptions(assumptions);
-  const forecastScenario = runLpForecast(normalized).scenarios.find(
-    (scenario) => scenario.id === "expected",
-  );
-  if (!forecastScenario) {
-    throw new Error("Expected forecast scenario missing");
-  }
-
-  const actual = replayObservedActivities(activities, normalized);
-  return {
-    actual,
-    forecastScenario,
-    comparison: {
-      totalVolumeDelta:
-        actual.metrics.totalVolume - forecastScenario.metrics.totalVolume,
-      totalFeesDelta: actual.metrics.totalFees - forecastScenario.metrics.totalFees,
-      feeIncomeDelta: actual.metrics.feeIncome - forecastScenario.metrics.feeIncome,
-      maxExposureDelta:
-        actual.metrics.maxInventoryExposure -
-        forecastScenario.metrics.maxInventoryExposure,
-      finalPnlDelta: actual.metrics.finalPnl - forecastScenario.metrics.finalPnl,
-    },
   };
 }
 
@@ -368,7 +264,6 @@ function simulateScenario(
         assumptions,
         day,
         price,
-        source: "modeled",
         cashflowAmount,
         cashflowType,
         note,
@@ -380,71 +275,6 @@ function simulateScenario(
     id: scenario.id,
     label: scenario.label,
     description: scenario.description,
-    points,
-    metrics: calculateMetrics(points, state, assumptions),
-  };
-}
-
-function replayObservedActivities(
-  activities: LpObservedActivity[],
-  assumptions: LpForecastAssumptions,
-): Omit<LpScenarioResult, "id" | "label" | "description"> {
-  const creatorDeposit = calculateCreatorDeposit(
-    assumptions.initialLiquidity,
-    assumptions.initialProbability,
-  );
-  const state = createInitialState(assumptions, creatorDeposit);
-  const valid = activities
-    .filter((activity) => isValidActivity(activity))
-    .sort((a, b) => a.timestamp - b.timestamp);
-  const firstTimestamp = valid[0]?.timestamp ?? 0;
-  const points: LpForecastPoint[] = [];
-
-  for (const activity of valid) {
-    const elapsedDays =
-      firstTimestamp > 0
-        ? Math.max(0, (activity.timestamp - firstTimestamp) / 86_400)
-        : points.length;
-
-    allocateTradingVolume(
-      state,
-      assumptions,
-      activity.volume,
-      Math.ceil(elapsedDays),
-    );
-    if (activity.bAfter !== undefined) {
-      state.bCurrent = Math.max(1, activity.bAfter);
-    }
-
-    const price = clampProbability(activity.price);
-    const point = snapshotPoint({
-      state,
-      assumptions,
-      day: elapsedDays,
-      timestamp: activity.timestamp,
-      price,
-      source: activity.source,
-      cashflowAmount: 0,
-    });
-
-    if (
-      activity.qYesAfter !== undefined &&
-      activity.qNoAfter !== undefined &&
-      Number.isFinite(activity.qYesAfter) &&
-      Number.isFinite(activity.qNoAfter)
-    ) {
-      point.netInventoryShares = activity.qYesAfter - activity.qNoAfter;
-      point.inventoryExposure =
-        Math.abs(point.netInventoryShares) * point.lpShare;
-      point.capitalAtRisk = Math.max(
-        point.capitalAtRisk,
-        point.inventoryExposure,
-      );
-    }
-    points.push(point);
-  }
-
-  return {
     points,
     metrics: calculateMetrics(points, state, assumptions),
   };
@@ -577,7 +407,6 @@ function snapshotPoint(args: {
   day: number;
   timestamp?: number;
   price: number;
-  source: "modeled" | LpActivitySource;
   cashflowAmount: number;
   cashflowType?: CashflowType;
   note?: string;
@@ -599,7 +428,6 @@ function snapshotPoint(args: {
   return {
     day: args.day,
     timestamp: args.timestamp,
-    source: args.source,
     price,
     bCurrent: args.state.bCurrent,
     lpShare: share,
@@ -691,24 +519,6 @@ function inventoryShares(bCurrent: number, price: number): number {
 function lpShare(state: AccountingState): number {
   if (state.totalLpSupply <= 0) return 0;
   return Math.max(0, Math.min(1, state.creatorLpTokens / state.totalLpSupply));
-}
-
-function wadStringToNumber(value: string): number {
-  try {
-    return Number(BigInt(value)) / WAD_NUMBER;
-  } catch {
-    return Number(value) / WAD_NUMBER;
-  }
-}
-
-function isValidActivity(activity: LpObservedActivity): boolean {
-  return (
-    Number.isFinite(activity.timestamp) &&
-    activity.timestamp > 0 &&
-    Number.isFinite(activity.volume) &&
-    activity.volume >= 0 &&
-    Number.isFinite(activity.price)
-  );
 }
 
 function maxOf(points: LpForecastPoint[], key: keyof LpForecastPoint): number {

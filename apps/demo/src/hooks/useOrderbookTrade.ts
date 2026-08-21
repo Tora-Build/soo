@@ -13,11 +13,9 @@ import {
   useWriteContract,
 } from "@/lib/chain-shim";
 import {
-  decodeEventLog,
   encodePacked,
   formatUnits,
   keccak256,
-  maxUint256,
   parseUnits,
 } from "@/lib/chain-shim";
 import type { TransactionReceipt } from "@/lib/chain-shim";
@@ -35,25 +33,10 @@ type WriteFunctionName =
   | "redeem";
 type ExecuteWriteOptions = {
   silent?: boolean;
-  successMessage?: (receipt: TransactionReceipt) => string;
   /** Runs after the transaction lands successfully, silent or not — carries
    *  the receipt so callers can report the confirmed trade (Arena scoring). */
   onConfirmed?: (receipt: TransactionReceipt) => void;
 };
-type RestingOrderEvent = {
-  id?: bigint;
-  side: 0 | 1;
-  tick: number;
-  amount: bigint;
-};
-type ParsedOrderReceipt = {
-  parsed: boolean;
-  filledQty: bigint;
-  restingQty: bigint;
-  restingOrders: RestingOrderEvent[];
-};
-
-const GAS_LIMIT_CAP = 25_000_000n;
 const MIN_SHARE_CHUNK = 10n ** 18n; // 1 share in WAD
 
 const clampTick = (price: string) => {
@@ -84,20 +67,8 @@ const getErrorMessage = (error: unknown): string => {
   }
 };
 
-const isGasCapMessage = (message: string): boolean => {
-  const lower = message.toLowerCase();
-  return (
-    lower.includes("exceeds maximum per-transaction gas limit") ||
-    lower.includes("gas-per-tx limit") ||
-    (lower.includes("transaction gas") && lower.includes("limit"))
-  );
-};
-
 const normalizeTxErrorMessage = (error: unknown): string => {
   const message = getErrorMessage(error);
-  if (isGasCapMessage(message)) {
-    return "Order exceeds chain gas-per-tx limit. Split size or use a less aggressive price.";
-  }
 
   const lower = message.toLowerCase();
   if (lower.includes("user rejected") || lower.includes("user denied")) {
@@ -113,105 +84,6 @@ const normalizeTxErrorMessage = (error: unknown): string => {
 
   const firstLine = message.split("\n")[0]?.trim();
   return firstLine || "Transaction failed";
-};
-
-const fmtShares = (amountWad: bigint): string => {
-  const value = Number(formatUnits(amountWad, 18));
-  return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-};
-
-const fmtPrice = (price: number): string =>
-  `$${price.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-  })}`;
-
-const sameHex = (a: unknown, b: unknown): boolean =>
-  typeof a === "string" &&
-  typeof b === "string" &&
-  a.toLowerCase() === b.toLowerCase();
-
-const toBigInt = (value: unknown): bigint => {
-  if (typeof value === "bigint") return value;
-  if (typeof value === "number") return BigInt(value);
-  if (typeof value === "string") return BigInt(value);
-  return 0n;
-};
-
-const EMPTY_PARSED_ORDER_RECEIPT: ParsedOrderReceipt = {
-  parsed: false,
-  filledQty: 0n,
-  restingQty: 0n,
-  restingOrders: [],
-};
-
-const parseOrderReceipt = (
-  receipt: TransactionReceipt,
-  soothBookAddress: `0x${string}`,
-  marketKey: `0x${string}`,
-  userAddress: `0x${string}`,
-): ParsedOrderReceipt => {
-  try {
-    let filledQty = 0n;
-    let restingQty = 0n;
-    const restingOrders: RestingOrderEvent[] = [];
-    let matchedOrderEvent = false;
-
-    for (const log of receipt.logs) {
-      if (!sameHex(log.address, soothBookAddress)) continue;
-      if (log.topics.length === 0) continue;
-
-      // Per-log try/catch: a SoothBook event missing from SOOTHBOOK_ABI
-      // (e.g., post-upgrade ABI lag) must not abort parsing of sibling logs.
-      let decoded;
-      try {
-        decoded = decodeEventLog({
-          abi: SOOTHBOOK_ABI,
-          data: log.data,
-          topics: log.topics,
-        });
-      } catch {
-        continue;
-      }
-      const args = decoded.args as Record<string, unknown>;
-      if (!sameHex(args.marketKey, marketKey)) continue;
-
-      if (decoded.eventName === "OrderFilled") {
-        if (!sameHex(args.taker, userAddress)) continue;
-        matchedOrderEvent = true;
-        filledQty += toBigInt(args.amount);
-        continue;
-      }
-
-      if (decoded.eventName === "OrderPlaced") {
-        if (!sameHex(args.maker, userAddress)) continue;
-        const amount = toBigInt(args.amount);
-        matchedOrderEvent = true;
-        restingQty += amount;
-        restingOrders.push({
-          id: args.orderId === undefined ? undefined : toBigInt(args.orderId),
-          side: Number(args.side) as 0 | 1,
-          tick: Number(args.tick),
-          amount,
-        });
-      }
-    }
-
-    if (!matchedOrderEvent) {
-      console.warn("No OrderFilled/OrderPlaced events found in order receipt");
-      return EMPTY_PARSED_ORDER_RECEIPT;
-    }
-
-    return {
-      parsed: true,
-      filledQty,
-      restingQty,
-      restingOrders,
-    };
-  } catch (error) {
-    console.warn("Failed to parse order receipt events:", error);
-    return EMPTY_PARSED_ORDER_RECEIPT;
-  }
 };
 
 export function useOrderbookTrade(marketAddress: `0x${string}`) {
@@ -247,21 +119,7 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
       query: { enabled: !!collateralAddress && !!userAddress },
     });
 
-  const { data: allowance = 0n, refetch: refetchAllowance } = useReadContract({
-    address: collateralAddress,
-    abi: ERC20_ABI,
-    functionName: "allowance",
-    args:
-      userAddress && orderEngineAddress
-        ? [userAddress, orderEngineAddress]
-        : undefined,
-    query: {
-      enabled: !!collateralAddress && !!userAddress && !!orderEngineAddress,
-    },
-  });
-
   const walletBalance = (walletBalanceRaw as bigint) ?? 0n;
-  const allowanceAmount = (allowance as bigint) ?? 0n;
   const availableBalance = toWad(walletBalance, collateralDecimals);
 
   const {
@@ -277,101 +135,18 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
   });
 
   const refetchBalance = useCallback(async () => {
-    await Promise.all([refetchWalletBalance(), refetchAllowance()]);
-  }, [refetchAllowance, refetchWalletBalance]);
-
-  const ensureApproval = useCallback(
-    async (requiredWad: bigint) => {
-      if (
-        !collateralAddress ||
-        !orderEngineAddress ||
-        !userAddress ||
-        !publicClient
-      ) {
-        toast.error("Missing approval context");
-        return false;
-      }
-
-      const requiredRaw = fromWad(requiredWad, collateralDecimals);
-      if (allowanceAmount >= requiredRaw) return true;
-
-      const toastId = toast.loading("Approving collateral...");
-      try {
-        const approveHash = await writeContractAsync({
-          address: collateralAddress,
-          abi: ERC20_ABI,
-          functionName: "approve",
-          args: [orderEngineAddress, maxUint256],
-        });
-        const approveReceipt = await publicClient.waitForTransactionReceipt({
-          hash: approveHash,
-        });
-        if (approveReceipt.status !== "success") {
-          throw new Error("Approval reverted on-chain");
-        }
-        toast.success("Approval confirmed", { id: toastId });
-        await refetchAllowance();
-        return true;
-      } catch (error: unknown) {
-        const message =
-          error instanceof Error ? error.message : "Approval failed";
-        toast.error(message, { id: toastId });
-        return false;
-      }
-    },
-    [
-      allowanceAmount,
-      collateralAddress,
-      collateralDecimals,
-      publicClient,
-      refetchAllowance,
-      orderEngineAddress,
-      userAddress,
-      writeContractAsync,
-    ],
-  );
+    await refetchWalletBalance();
+  }, [refetchWalletBalance]);
 
   const executeWrite = useCallback(
     async (
       label: string,
       functionName: WriteFunctionName,
       args: readonly unknown[],
-      approvalWad?: bigint,
       options?: ExecuteWriteOptions,
     ) => {
       if (!soothBookAddress || !marketKey || !userAddress || !publicClient) {
         toast.error("Connect wallet and select a valid market");
-        return false;
-      }
-
-      if (approvalWad && approvalWad > 0n) {
-        const approved = await ensureApproval(approvalWad);
-        if (!approved) return false;
-      }
-
-      try {
-        const estimatedGas = await publicClient.estimateContractGas({
-          address: soothBookAddress,
-          abi: SOOTHBOOK_ABI,
-          functionName: functionName as never,
-          args: args as never,
-          account: userAddress,
-        });
-        if (estimatedGas > GAS_LIMIT_CAP) {
-          toast.error(
-            `Estimated gas ${estimatedGas.toString()} exceeds chain limit ${GAS_LIMIT_CAP.toString()}. Try smaller size or less aggressive price.`,
-          );
-          return false;
-        }
-      } catch (error: unknown) {
-        if (isGasCapMessage(getErrorMessage(error))) {
-          toast.error(
-            "Order exceeds chain gas-per-tx limit. Split into smaller orders or use a less aggressive price.",
-          );
-          return false;
-        }
-        console.error("Gas estimation failed:", error);
-        toast.error(normalizeTxErrorMessage(error));
         return false;
       }
 
@@ -391,10 +166,7 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
           throw new Error("Transaction reverted on-chain");
         }
         if (!silent) {
-          toast.success(
-            options?.successMessage?.(receipt) ?? "Transaction confirmed",
-            { id: toastId },
-          );
+          toast.success("Transaction confirmed", { id: toastId });
         }
         options?.onConfirmed?.(receipt);
         await refetchBalance();
@@ -410,7 +182,6 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
       }
     },
     [
-      ensureApproval,
       marketKey,
       publicClient,
       refetchBalance,
@@ -420,38 +191,9 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
     ],
   );
 
-  const estimateGas = useCallback(
-    async (functionName: WriteFunctionName, args: readonly unknown[]) => {
-      if (!soothBookAddress || !userAddress || !publicClient) {
-        return { gasCapHit: false };
-      }
-
-      try {
-        const estimatedGas = await publicClient.estimateContractGas({
-          address: soothBookAddress,
-          abi: SOOTHBOOK_ABI,
-          functionName: functionName as never,
-          args: args as never,
-          account: userAddress,
-        });
-        return {
-          gasCapHit: estimatedGas > GAS_LIMIT_CAP,
-          estimatedGas,
-        };
-      } catch (error: unknown) {
-        if (isGasCapMessage(getErrorMessage(error))) {
-          return { gasCapHit: true };
-        }
-        return { gasCapHit: false };
-      }
-    },
-    [publicClient, soothBookAddress, userAddress],
-  );
-
-  // NOTE: This hook uses INVERTED outcome encoding internally — outcome===0 calls
-  // buyYes, outcome===1 calls buyNo. Callers must pass the inverted value
-  // (see SoothBookTerminal.tsx:312). Protocol canonical is 0=NO, 1=YES;
-  // align in a follow-up PR.
+  // `outcome` and `price` are passed raw, in caller terms. `toBookPlace` owns
+  // the single complement that maps them onto the book's one YES axis, so
+  // applying it here as well would invert every order.
   const placeOrder = useCallback(
     async (
       outcome: 0 | 1,
@@ -467,7 +209,6 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
       }
 
       let shares: bigint;
-      let maxCostWad: bigint;
       try {
         shares = parseUnits(amount, 18);
         const priceNum = Number(price);
@@ -476,8 +217,6 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
           toast.error("Invalid order inputs");
           return false;
         }
-        const estimatedCost = Math.max(0, priceNum * amountNum);
-        maxCostWad = parseUnits(estimatedCost.toFixed(18), 18);
       } catch {
         toast.error("Invalid order amount");
         return false;
@@ -491,23 +230,7 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
       let success = false;
       let actualSide: 0 | 1 = outcome;
       let actualTick = directTick;
-      const receiptSummaries: ParsedOrderReceipt[] = [];
-      const orderWriteOptions: ExecuteWriteOptions = {
-        onConfirmed,
-        successMessage: (receipt) => {
-          const summary = parseOrderReceipt(
-            receipt,
-            soothBookAddress,
-            marketKey,
-            userAddress,
-          );
-          receiptSummaries.push(summary);
-          if (summary.parsed && summary.restingQty > 0n) {
-            return `Filled ${fmtShares(summary.filledQty)} shares; ${fmtShares(summary.restingQty)} resting at ${fmtPrice(priceNum)}`;
-          }
-          return "Transaction confirmed";
-        },
-      };
+      const orderWriteOptions: ExecuteWriteOptions = { onConfirmed };
 
       // ── The book write path ────────────────────────────────────────────
       //
@@ -541,7 +264,6 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
             bookArgs.matchLimit,
             bookArgs.postRemainder,
           ],
-          maxCostWad,
           orderWriteOptions,
         );
         actualSide = bookArgs.side === 0 ? 1 : 0;
@@ -550,41 +272,7 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
 
       if (success) {
         const marketName = shortenAddress(marketAddress);
-        const allReceiptsParsed =
-          receiptSummaries.length > 0 &&
-          receiptSummaries.every((summary) => summary.parsed);
-        const restingOrders = receiptSummaries.flatMap(
-          (summary) => summary.restingOrders,
-        );
-
-        if (allReceiptsParsed) {
-          const totalFilledQty = receiptSummaries.reduce(
-            (sum, s) => sum + s.filledQty,
-            0n,
-          );
-          const preFillShares =
-            totalFilledQty > 0n ? Number(formatUnits(totalFilledQty, 18)) : 0;
-          for (const order of restingOrders) {
-            const orderId =
-              order.id?.toString() ?? `${order.side}:${order.tick}`;
-            useOrderStore.getState().addOrder({
-              id: orderId,
-              marketAddress,
-              marketName,
-              outcome: order.side,
-              price: priceNum,
-              amount: Number(formatUnits(order.amount, 18)),
-              timestamp: Date.now(),
-              isBuy,
-            });
-            if (order.id !== undefined && preFillShares > 0) {
-              useOrderStore.getState().setPreFillAmount(orderId, preFillShares);
-              // Invalidate orders query so fill % updates immediately without
-              // waiting for the 15s polling interval.
-              queryClient.invalidateQueries({ queryKey: ["indexer-orders"] });
-            }
-          }
-        } else {
+        {
           const orderId = `${actualSide}:${actualTick}`;
           useOrderStore.getState().addOrder({
             id: orderId,
@@ -602,7 +290,6 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
       return success;
     },
     [
-      estimateGas,
       executeWrite,
       marketKey,
       marketAddress,
@@ -657,7 +344,6 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
         `Cancelling ${seqs.length} order(s)...`,
         "bookCancelMany",
         [marketAddress, seqs],
-        0n,
         { silent: true },
       );
       if (ok) {
@@ -701,7 +387,6 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
           "Cancelling order...",
           "bookCancel",
           [marketAddress, target.orderId],
-          0n,
           { silent: options?.silent },
         );
       }

@@ -59,9 +59,8 @@ function loadIdl(name: string): any {
   );
 }
 
-// One program, not five. The 5→1 merge folded sooth_amm, sooth_market,
-// sooth_book, sooth_launchpad and sooth_adjudicator into sooth_core. sooth_log
-// stays separate because a program cannot CPI into itself.
+// One program: market lifecycle, the LMSR AMM, the book, LP/fee flows and
+// adjudication are modules inside `sooth_core`, not separate programs.
 export const coreIdl = loadIdl("sooth_core");
 
 function programIdOrFallback(idlAddress: unknown, fallback: PublicKey): PublicKey {
@@ -109,7 +108,6 @@ export function heapFrameIx(): TransactionInstruction {
 // VITE_TEST_KEYPAIR_BYTES wins when both are set so CI matches the
 // browser-side LocalKeypairAdapter the dapp consumes.
 const DEMO_DIR = resolve(__dirname, "..", "..");
-const LOCALNET_ENV_PATH = resolve(DEMO_DIR, ".localnet", ".env.local");
 const DEMO_ENV_PATH = resolve(DEMO_DIR, ".env.local");
 const DEFAULT_TEST_KEYPAIR_PATH = resolve(
   DEMO_DIR,
@@ -143,9 +141,7 @@ function parseEnvFile(path: string): Record<string, string> {
 
 function readE2eEnvValue(name: string): string | undefined {
   return (
-    process.env[name] ??
-    parseEnvFile(LOCALNET_ENV_PATH)[name] ??
-    parseEnvFile(DEMO_ENV_PATH)[name]
+    process.env[name] ?? parseEnvFile(DEMO_ENV_PATH)[name]
   );
 }
 
@@ -403,16 +399,16 @@ export async function fetchLockEntry(
 
 // ─── Adjudicator account fetch (attested_outcome) ───────────────────────
 //
-// Layout (per packages/sdk-solana/src/anchor/sooth_adjudicator.json types
-// → Adjudicator struct, Anchor-default ordering):
+// Layout, per `AdjudicatorEntry` in
+// packages/programs-core/programs/sooth-core/src/state/adjudicator.rs
+// (Anchor-default ordering):
 //   disc(8)
 //   market(Pubkey, 32)              @ 8
 //   authority(Pubkey, 32)           @ 40
 //   dispute_authority(Pubkey, 32)   @ 72
-//   kind(AdjudicatorKind enum, 1+)  @ 104  // Manual = unit variant → 1 byte
-//   attested_outcome(Option<u8>, 2) @ 105  // 1 byte tag + 1 byte payload
+//   attested_outcome(Option<u8>, 2) @ 104  // 1 byte tag + 1 byte payload
 //
-// We only need attested_outcome here; Manual variant tag check is one byte.
+// Only attested_outcome is read here.
 
 export interface AdjudicatorState {
   market: PublicKey;
@@ -427,10 +423,9 @@ export async function fetchAdjudicator(
   const info = await conn.getAccountInfo(adjudicatorPda);
   if (!info) return null;
   const d = info.data;
-  // attested_outcome field starts after kind(=1 byte for Manual unit variant).
   // Option<u8>: byte[0] = 0 (None) or 1 (Some), byte[1] = payload if Some.
-  const tag = d.readUInt8(105);
-  const attestedOutcome = tag === 1 ? d.readUInt8(106) : null;
+  const tag = d.readUInt8(104);
+  const attestedOutcome = tag === 1 ? d.readUInt8(105) : null;
   return {
     market: new PublicKey(d.subarray(8, 40)),
     authority: new PublicKey(d.subarray(40, 72)),
@@ -516,7 +511,7 @@ export async function fetchMarket(
     noMint: new PublicKey(d.subarray(152, 184)),
     vault: new PublicKey(d.subarray(184, 216)),
     lockVault: new PublicKey(d.subarray(216, 248)),
-    // Layout per packages/programs-core/programs/sooth_market/src/state/market.rs:
+    // Layout per packages/programs-core/programs/sooth-core/src/state/market.rs:
     //   8..24    market_id (16)
     //   24..56   creator (32)
     //   56..88   adjudicator (32)
@@ -880,9 +875,9 @@ export async function mergeCompleteSetViaAdapter(args: {
 
 // ─── Adapter-direct settle (operator path) ──────────────────────────────
 //
-// Drives sooth_adjudicator::attest_outcome with a creator-keypair signer
+// Drives sooth_core::attest_outcome with a creator-keypair signer
 // (the registered authority on the per-market Adjudicator PDA). Composes
-// with sooth_market::settle via CPI; on success Market.lifecycle = Settled,
+// with sooth_core::settle via CPI; on success Market.lifecycle = Settled,
 // Market.winning_outcome = winningOutcome.
 //
 // For the demo localnet seed, the creator wallet is the adjudicator
@@ -1344,9 +1339,8 @@ export async function placeOrderbookBuyViaAdapter(args: {
   matchLimit?: number;
 }): Promise<string> {
   const adapter = makeSolanaAdapter({ conn: args.conn, usdcMint: args.usdcMint });
-  // Repaired to the redesigned book's API: the legacy `buildOrderbookBuy`
-  // died with the per-price-level book. `escrow` has no equivalent — the new
-  // book always escrows collateral at placement.
+  // `escrow` has no equivalent in `buildBookPlace`: the book always escrows
+  // collateral at placement.
   const req = await adapter.buildBookPlace(`sol:${args.marketPda.toBase58()}`, {
     side: args.side,
     limitTick: args.tick,
@@ -1596,8 +1590,8 @@ export async function dismissMarketViaAdapter(args: {
   });
 }
 
-// Drives sooth_adjudicator::request_lock with a creator-keypair signer (the
-// registered Adjudicator.authority). CPIs into sooth_market::lock_for_resolution
+// Drives sooth_core::request_lock with a creator-keypair signer (the
+// registered Adjudicator.authority). CPIs into sooth_core::lock_for_resolution
 // → Market.lifecycle: Open → Locked. Required before attest_outcome can fire
 // market::settle, since settle gates on lifecycle == Locked.
 export async function requestLockViaAdapter(args: {

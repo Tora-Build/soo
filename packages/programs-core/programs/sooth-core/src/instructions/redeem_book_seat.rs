@@ -31,13 +31,12 @@
 //! after settlement. Draining it here would mean walking and unlinking the
 //! trader's orders inside a settlement path, for no gain.
 //!
-//! ## Why the seat is not closed
+//! ## Why the seat block is returned to the arena
 //!
-//! Zeroed, not freed — same reasoning as `redeem_amm_position` leaving its
-//! `Position` in place. A freed seat block returns to the arena free list and
-//! could be handed to a different trader; the rent is a few thousand lamports
-//! of a shared account, and reclaiming it is not worth a path where a stale
-//! index could resolve to somebody else's money.
+//! `take_settlement` zeroes both seat fields and then frees the block, so a
+//! settled market's arena does not stay full of everyone who traded it. That is
+//! only sound because this handler holds no cached block index — the matching
+//! loop, which does, must never free a block.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};

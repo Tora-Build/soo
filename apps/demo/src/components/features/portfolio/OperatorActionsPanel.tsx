@@ -12,7 +12,7 @@
 //   attest_outcome — Locked → Settled (sets winning_outcome). Idempotent
 //                    in terminal state.
 //
-// Localnet caveat: sooth_market::lock_for_resolution sets
+// Localnet caveat: sooth_core::lock_for_resolution sets
 // `Market.locked_at = now`; settle's gate is `now >= locked_at +
 // LOCK_DURATION_SECS` (24h). solana-test-validator has no setClock, so
 // even with a successful request_lock the attest_outcome won't pass the
@@ -164,7 +164,7 @@ export function OperatorActionsPanel() {
         You are the registered adjudicator for this market. The lifecycle is
         three steps, not two: REQUEST LOCK moves it to Locked (no further
         trades), ATTEST records an outcome, and SETTLE finalises it once the
-        veto window has passed. Attesting no longer settles on its own — that
+        veto window has passed. Attesting does not settle on its own; that
         window is what makes `dispute` reachable at all. Only after SETTLE can
         holders redeem.
       </p>

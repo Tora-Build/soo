@@ -1,7 +1,10 @@
-// TypeScript port of `_spikes/lmsr-cu/src/{math.rs, lib.rs}` and the matching
-// `programs/sooth_amm/src/math/{lmsr.rs, wad.rs}` modules. WAD = 1e18.
+// TypeScript port of `sooth_core`'s `math/{lmsr.rs, wad.rs}`. WAD = 1e18.
 //
-// Key invariants preserved verbatim from the on-chain port:
+// It exists so a quote can be computed without a round trip, which means it
+// must agree with the on-chain result exactly — a divergence is not a rounding
+// difference, it is a trade that quotes one price and settles at another.
+//
+// Invariants carried over from the Rust:
 //
 //   - WAD multiplication and division match the Rust 256-bit-intermediate
 //     semantics. JS bigint handles arbitrary precision natively, so the
@@ -12,11 +15,11 @@
 //     (= 64·WAD). This is what makes the log-sum-exp shifted `lmsrCost`
 //     numerically stable on imbalanced markets.
 //
-//   - The Taylor series term counts (12 for exp, 14 for ln) match the Rust
-//     port. The golden test in `tests/lmsr.test.ts` pins the small-buy case
+//   - The Taylor series term counts (12 for exp, 14 for ln) match the Rust.
+//     `tests/lmsr.test.ts` pins the small-buy case
 //     `cost_delta(q=0, q=0, b=1000·WAD, d_yes=10·WAD, d_no=0)` to within
-//     0.001% of the expected ~5.0125 USDC equivalent; that threshold matches
-//     the Rust unit test in `programs/sooth_amm/src/math/lmsr.rs::cost_delta_golden_small_buy`.
+//     0.001% of ~5.0125 USDC, the same threshold as the Rust unit test
+//     `math/lmsr.rs::cost_delta_golden_small_buy`.
 
 export const WAD = 1_000_000_000_000_000_000n;
 export const LN2_WAD = 693_147_180_559_945_309n;
@@ -172,14 +175,15 @@ export function costDelta(
 }
 
 // Convert a non-negative WAD amount to USDC base units, rounding **up**.
-// Mirrors `wad_to_usdc_ceil` in `programs/sooth_amm/src/math/wad.rs`.
+// Mirrors `wad_to_usdc_ceil` in `sooth_core`'s `math/wad.rs`.
 export function wadToUsdcCeil(wad: bigint): bigint {
   if (wad < 0n) throw new LmsrMathError(`wad_to_usdc_ceil negative: ${wad}`);
   const s = WAD_TO_USDC_SCALAR;
   return (wad + s - 1n) / s;
 }
 
-// Floor variant — used by the umbrella SDK at redemption display time.
+// Floor variant. Redemption displays round DOWN so a shown payout is never
+// larger than the one the vault will actually pay.
 export function wadToUsdcFloor(wad: bigint): bigint {
   if (wad < 0n) throw new LmsrMathError(`wad_to_usdc_floor negative: ${wad}`);
   return wad / WAD_TO_USDC_SCALAR;

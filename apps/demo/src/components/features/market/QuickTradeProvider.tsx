@@ -1,8 +1,7 @@
 /**
  * QuickTradeProvider — context that lets any market card open a centered
  * Dialog with the FULL AMM (or Order Book) trading surface for that
- * market pre-loaded. Keeps the same `useQuickTrade()` hook contract that
- * existing market cards already call, so no consumer changes are needed.
+ * market pre-loaded. Cards reach it through the `useQuickTrade()` hook.
  *
  * The modal body is the same `AMMPageBody` / `OrderbookPageBody`
  * components the standalone /amm/:addr and /orderbook/:addr routes

@@ -19,7 +19,7 @@ export function useAmmMarket(marketAddress: `0x${string}` | undefined) {
     const ammEngineAddress = deployments?.contracts
         ?.AMMEngine as `0x${string}` | undefined;
 
-    // NOTE: AMMEngine V8 ABI uses `getMarketState(market) -> (qYes, qNo, price)`
+    // The AMMEngine ABI exposes `getMarketState(market) -> (qYes, qNo, price)`
     // where `price` is the current YES price in WAD.
     const read = useReadContracts({
         contracts: [

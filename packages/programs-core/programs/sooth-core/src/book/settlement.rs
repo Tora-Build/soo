@@ -42,20 +42,12 @@
 //!
 //! `fee = rate * min(p, 1-p) * amount`, taker-only, on the **executed** price.
 //!
-//! Today's rule is `rate * cost` on the taker's *limit* tick, and escrow (sell)
-//! legs are exempt entirely. That is arbitrageable: selling 100 YES at 0.80 and
-//! buying 100 NO at 0.20 are the same position, and split/merge converts
-//! between them for free — but one leg pays nothing and the other pays
-//! `1% * $20`. Everyone routes through the free side.
-//!
-//! `min(p, 1-p)` is invariant under the YES↔NO swap, which is exactly the
-//! transformation split/merge makes free, so both routes cost the same. It is
-//! also the amount actually at risk: the smaller leg of the bet.
-//!
-//! Rounding keeps the **floor-on-sum** rule from
-//! `instructions/orderbook_common.rs`, which is bit-compatible with the EVM
-//! deployment and pinned there by golden fixtures. Fee in base units is
-//! `floor((cost + fee) / 1e12) - floor(cost / 1e12)`, never `floor(fee / 1e12)`.
+//! `min(p, 1-p)` is invariant under the YES↔NO swap. That matters because
+//! selling 100 YES at 0.80 and buying 100 NO at 0.20 are the same position and
+//! split/merge converts between them for free: a rule charging `rate * cost`
+//! would price the two routes differently and everyone would take the cheap
+//! one. `min(p, 1-p)` is also the amount actually at risk — the smaller leg of
+//! the bet.
 
 use crate::book::arena::{SIDE_ASK, SIDE_BID};
 
@@ -215,7 +207,7 @@ pub fn settle_leg(side: u8, old_net: i64, amount: u64, own_cost: u64) -> R<LegSe
 /// arithmetically identical to dividing by their product —
 /// `floor(floor(x/a)/b) == floor(x/(a*b))` for positive integers — so no
 /// defensive scaling is needed and none is used.
-pub fn taker_fee(amount: u64, price_tick: u16, fee_bps: u16, _own_cost: u64) -> R<u64> {
+pub fn taker_fee(amount: u64, price_tick: u16, fee_bps: u16) -> R<u64> {
     let tick = price_tick as u64;
     if tick == 0 || tick >= NUM_TICKS {
         return Err(SettleError::InvalidTick);
@@ -405,10 +397,10 @@ mod tests {
         // everyone would route through the free side.
         let amount = shares(100);
         let (_, ask) = fill(800, amount, SIDE_ASK, 0, 0);
-        let sell_fee = taker_fee(amount, 800, FEE_BPS, ask.collateral_in).unwrap();
+        let sell_fee = taker_fee(amount, 800, FEE_BPS).unwrap();
 
         let (bid, _) = fill(200, amount, SIDE_BID, 0, 0);
-        let buy_fee = taker_fee(amount, 200, FEE_BPS, bid.collateral_in).unwrap();
+        let buy_fee = taker_fee(amount, 200, FEE_BPS).unwrap();
 
         assert_eq!(ask.collateral_in, bid.collateral_in, "same stake: $20");
         assert_eq!(
@@ -423,11 +415,9 @@ mod tests {
         let amount = shares(50);
         for tick in [1u16, 100, 370, 499] {
             let mirror = NUM_TICKS as u16 - tick;
-            let (bid, _) = fill(tick, amount, SIDE_BID, 0, 0);
-            let (_, ask) = fill(mirror, amount, SIDE_ASK, 0, 0);
             assert_eq!(
-                taker_fee(amount, tick, FEE_BPS, bid.collateral_in).unwrap(),
-                taker_fee(amount, mirror, FEE_BPS, ask.collateral_in).unwrap(),
+                taker_fee(amount, tick, FEE_BPS).unwrap(),
+                taker_fee(amount, mirror, FEE_BPS).unwrap(),
                 "tick {tick} and its mirror must charge the same"
             );
         }
@@ -436,10 +426,7 @@ mod tests {
     #[test]
     fn the_fee_is_largest_at_the_midpoint_and_vanishes_at_the_tails() {
         let amount = shares(100);
-        let at = |tick: u16| {
-            let (bid, _) = fill(tick, amount, SIDE_BID, 0, 0);
-            taker_fee(amount, tick, FEE_BPS, bid.collateral_in).unwrap()
-        };
+        let at = |tick: u16| taker_fee(amount, tick, FEE_BPS).unwrap();
         assert!(at(500) > at(250));
         assert!(at(250) > at(50));
         assert!(at(50) > at(5));
@@ -457,7 +444,7 @@ mod tests {
         // every tick 1..999 and amounts 1..20_000.
         for amount in [1u64, 7, 999, 1_000, 123_457, ONE_SHARE, 13 * ONE_SHARE + 7] {
             for tick in [1u16, 37, 250, 500, 763, 999] {
-                let charged = taker_fee(amount, tick, FEE_BPS, 0).unwrap();
+                let charged = taker_fee(amount, tick, FEE_BPS).unwrap();
                 let risk = tick.min(NUM_TICKS as u16 - tick) as u64;
                 let two_step = (amount * risk / NUM_TICKS) * FEE_BPS as u64 / BPS_DENOMINATOR;
                 assert_eq!(charged, two_step, "amount={amount} tick={tick}");
@@ -469,7 +456,7 @@ mod tests {
     fn the_fee_matches_the_stated_rate_exactly() {
         for amount in [1u64, 7, 999, 1_000, 123_457, ONE_SHARE, 13 * ONE_SHARE + 7] {
             for tick in [1u16, 37, 250, 500, 763, 999] {
-                let charged = taker_fee(amount, tick, FEE_BPS, 0).unwrap();
+                let charged = taker_fee(amount, tick, FEE_BPS).unwrap();
                 let risk = tick.min(NUM_TICKS as u16 - tick) as u128;
                 let expected = (amount as u128 * risk * FEE_BPS as u128)
                     / (NUM_TICKS as u128 * BPS_DENOMINATOR as u128);
@@ -484,7 +471,7 @@ mod tests {
         // stated rate, which is the one direction that is not merely dust.
         for amount in [1u64, 3, 1_001, ONE_SHARE + 1] {
             for tick in [1u16, 499, 500, 999] {
-                let charged = taker_fee(amount, tick, FEE_BPS, 0).unwrap() as u128;
+                let charged = taker_fee(amount, tick, FEE_BPS).unwrap() as u128;
                 let risk = tick.min(NUM_TICKS as u16 - tick) as u128;
                 let exact_num = amount as u128 * risk * FEE_BPS as u128;
                 let denom = NUM_TICKS as u128 * BPS_DENOMINATOR as u128;
@@ -496,11 +483,7 @@ mod tests {
     #[test]
     fn a_zero_rate_charges_nothing_anywhere() {
         for tick in [1u16, 500, 999] {
-            let (bid, _) = fill(tick, shares(10), SIDE_BID, 0, 0);
-            assert_eq!(
-                taker_fee(shares(10), tick, 0, bid.collateral_in).unwrap(),
-                0
-            );
+            assert_eq!(taker_fee(shares(10), tick, 0).unwrap(), 0);
         }
     }
 

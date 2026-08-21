@@ -17,7 +17,7 @@
 //   2. `dispatchAmmWrite({ functionName, args }, ctx)` — handles
 //      `tradePositions` by calling `adapter.buildTrade` + `adapter.submit`.
 //      Returns a synthetic Hash compatible with the wagmi return shape.
-//      Other write function names (approve, redeemLP, etc.) are still
+//      Other write function names (approve, resolve, etc.) are still
 //      surfaced as `SolanaForkUnsupported` errors.
 //
 // The bridge re-shapes Solana adapter outputs into EVM-tuple shapes upstream
@@ -74,7 +74,7 @@ import { AnchorProvider, Program, type Idl } from "@coral-xyz/anchor";
  * than on every 15-second poll.
  *
  * Falls back to the remaining amount when the placement predates the fetched
- * window. That reads as "0% filled" — the old behaviour — which is better than
+ * window. That reads as "0% filled", which is better than
  * inventing a percentage.
  */
 const placedAmounts = new Map<string, bigint>();
@@ -138,11 +138,6 @@ async function placedAmountOf(
 }
 
 /** Test hook: forget cached placement sizes. */
-export function __resetPlacedAmounts(): void {
-  placedAmounts.clear();
-  placedFetchedFor = null;
-}
-
 /** USDC base units (1e6) -> WAD (1e18), the scale upstream formatters use. */
 const BASE_TO_WAD = 1_000_000_000_000n;
 
@@ -332,7 +327,7 @@ export async function dispatchAmmRead(
         // units (6 decimals), matching the convention upstream expects
         // (LaunchpadEngine.markets()'s `creatorDeposit` slot is in USDC
         // base units, not WAD). MarketStats's `seed` term reads this and
-        // feeds the legacy `gross` calculation; without a non-zero value
+        // feeds the `gross` calculation; without a non-zero value
         // the projection rows render as $0.
         const seedWad = (snap.market.b * LN2_WAD) / WAD;
         const creatorDeposit = seedWad / WAD_TO_USDC_SCALAR;
@@ -510,12 +505,11 @@ export async function dispatchAmmRead(
     }
 
     case "getMyOrderHistory": {
-      // Order history from the book's own CPI events.
-      //
-      // The legacy path replays EVM-shaped ORDER_PLACED / ORDER_CANCELLED /
-      // ORDER_FILLED logs through `getLogs`. The redesigned book emits none of
-      // those signatures, and there is no indexer on this fork
-      // (VITE_USE_INDEXER=false), so history was always empty.
+      // Order history from the book's own CPI events. The EVM-shaped
+      // ORDER_PLACED / ORDER_CANCELLED / ORDER_FILLED log replay upstream
+      // uses has no counterpart here — the book emits none of those
+      // signatures and there is no indexer — so this reads the events
+      // directly off the account's signature history.
       const marketRef = toMarketRef(call.args?.[0]);
       const owner = toAddressRef(call.args?.[1]);
       if (!marketRef || !owner) return [] as readonly unknown[];
@@ -667,7 +661,7 @@ export async function dispatchAmmRead(
 
     case "isMarketRegistered": {
       // SoothBookTerminal gates the trade form on this read. MarketBook is
-      // lazy-created by the first buy_yes/buy_no, so a valid sooth_market PDA
+      // lazy-created by the first buy_yes/buy_no, so a valid market PDA
       // is enough to consider the book available.
       // Parse through `toMarketRef` rather than by hand.
       //
@@ -783,8 +777,8 @@ export interface WriteCallShape {
  * Buy/sell dispatch: the EVM contract collapses both into one
  * `tradePositions` call where the sign of `deltaShares` selects the path
  * (positive → buy, negative → sell). On Solana the buy path lives on
- * `trade_positions` and the sell path on `sell_positions` (Wave 1A); the
- * bridge picks the SDK builder by sign here.
+ * `trade_positions` and the sell path on `sell_positions`; the bridge picks
+ * the SDK builder by sign here.
  */
 export async function dispatchAmmWrite(
   call: WriteCallShape,
@@ -897,7 +891,7 @@ async function dispatchClaim(
   call: WriteCallShape,
   ctx: AmmBridgeCtx,
 ): Promise<string> {
-  // Upstream's `useClaimUnlocked` calls `writeContract({ address: ammEngine,
+  // Upstream calls `writeContract({ address: ammEngine,
   // functionName: "claimUnlocked", args: [maxClaims] })`. EVM walks the
   // user's storage queue server-side; on Solana each LockEntry is its own
   // PDA so we drain one per ix invocation. The bridge resolves the *first*
@@ -1139,7 +1133,7 @@ async function dispatchCreateMarket(
 
 /**
  * Auto-register the connected wallet as an adjudicator. Localnet-only:
- * `sooth_market::add_adjudicator(adjudicator)` is signed by the on-chain
+ * `sooth_core::add_adjudicator(adjudicator)` is signed by the on-chain
  * allowlist authority, which on localnet is the creator keypair shipped via
  * `VITE_TEST_AUTHORITY_BYTES` (see `apps/demo/scripts/seed-localnet.mjs`).
  *
@@ -1191,7 +1185,7 @@ async function dispatchAddAdjudicator(
 
 /**
  * Operator: request_lock — adjudicator authority drives Market.lifecycle
- * Open → Locked. CPI'd into sooth_market::lock_for_resolution. Caller
+ * Open → Locked. CPI'd into sooth_core::lock_for_resolution. Caller
  * must be Adjudicator.authority for the target market (set at
  * register_adjudicator time).
  *
@@ -1217,7 +1211,7 @@ async function dispatchRequestLock(
 /**
  * Operator: attest_outcome — adjudicator authority drives
  * Market.lifecycle Locked → Settled with the chosen winning_outcome.
- * CPI'd into sooth_market::settle.
+ * CPI'd into sooth_core::settle.
  *
  * Args:
  *   args[0]: market reference — `0x<base58>` or `sol:<base58>`

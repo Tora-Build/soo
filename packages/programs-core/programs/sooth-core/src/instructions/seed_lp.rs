@@ -1,6 +1,9 @@
-//! `seed_lp` — bootstrap LP-mint hook.
+//! `seed_lp` — post the creator's LMSR subsidy and mint their LP claim.
 //!
-//! `lp_position` owner check uses `crate::ID`.
+//! Creates the market's LP mint, the creator's LP ATA and their `LpPosition`,
+//! moves `seed_deposit_wad` of the AMM token into the AMM vault, and mints
+//! `lp_amount` LP tokens to the creator. Every account here is created by hand
+//! because each is a PDA whose address the handler must sign for.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program::invoke_signed;
