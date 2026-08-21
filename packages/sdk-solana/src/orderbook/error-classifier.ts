@@ -91,6 +91,36 @@ const CATALOG: Record<string, KnownClassifiedError> = {
     message: "The legacy fee drain has already been executed.",
     retriable: false,
   },
+  // `claim_refund` parses the Position out of its raw account buffer, so
+  // Anchor raises none of its own errors there. These five used to arrive as
+  // one code (`VaultAuthorityMismatch`) which named the wrong account
+  // entirely; each now says which part of the position was wrong.
+  PositionAddressMismatch: {
+    category: "protocol-internal",
+    message:
+      "The position account passed doesn't belong to this market and wallet. Please report this.",
+    retriable: false,
+  },
+  PositionOwnerMismatch: {
+    category: "protocol-internal",
+    message: "The position account isn't owned by the Sooth program. Please report this.",
+    retriable: false,
+  },
+  PositionMalformed: {
+    category: "protocol-internal",
+    message: "The position account is malformed or mis-sized. Please report this.",
+    retriable: false,
+  },
+  PositionUserMismatch: {
+    category: "auth",
+    message: "That position belongs to a different wallet.",
+    retriable: false,
+  },
+  PositionMarketMismatch: {
+    category: "protocol-internal",
+    message: "That position belongs to a different market. Please report this.",
+    retriable: false,
+  },
 };
 
 const ALIASES: Record<string, keyof typeof CATALOG> = {

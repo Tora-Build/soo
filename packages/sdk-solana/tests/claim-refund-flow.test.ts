@@ -99,7 +99,21 @@ describe("dismissed-market refund flow", () => {
     // creator's subsidy — dismissal does not claw that back, and there is no
     // path yet for the creator to reclaim it (tracked as B0-followup).
     expect(await adapter.getMarketVaultUsdcRaw(marketRef)).toBe(LMSR_SUBSIDY);
-    expect(await conn.getAccountInfo(positionPda)).toBeNull();
+
+    // The Position SURVIVES the refund. `claim_refund` used to close it, which
+    // stranded any sell proceeds still escrowed: `LockEntry`'s seeds derive
+    // from the position's key and `claim_unlocked` deserializes it, so a
+    // closed position made that escrow unreachable for good. The claim is now
+    // spent in place — `locked_cost_usdc` goes to zero, at the cost of the
+    // account's rent — so the refund is still unrepeatable.
+    const positionAfter = await conn.getAccountInfo(positionPda);
+    expect(positionAfter, "the position must outlive the refund").not.toBeNull();
+    // `locked_cost_usdc` sits after the discriminator, user, market and the
+    // two i128 share legs.
+    const LOCKED_COST_OFFSET = 8 + 32 + 32 + 16 + 16;
+    expect(
+      Buffer.from(positionAfter!.data).readBigUInt64LE(LOCKED_COST_OFFSET),
+    ).toBe(0n);
   }, 90_000);
 });
 

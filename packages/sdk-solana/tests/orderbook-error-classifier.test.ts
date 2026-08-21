@@ -166,3 +166,42 @@ describe("bare numeric codes", () => {
     expect(out.category).toBe("unknown");
   });
 });
+
+describe("claim_refund's position-parse failures", () => {
+  // The program reports these by NUMBER, and the classifier maps numbers back
+  // to names through the bundled IDL. So this exercises the numeric path —
+  // the one a real `sendTransaction` rejection takes — rather than the name
+  // path, and it fails if the IDL copy is stale.
+  const byName = new Map(
+    ((soothCoreIdl as { errors?: Array<{ code: number; name: string }> })
+      .errors ?? []).map((e) => [e.name, e.code]),
+  );
+
+  const names = [
+    "PositionAddressMismatch",
+    "PositionOwnerMismatch",
+    "PositionMalformed",
+    "PositionUserMismatch",
+    "PositionMarketMismatch",
+  ];
+
+  it.each(names)("classifies %s from its numeric code", (name) => {
+    const code = byName.get(name);
+    expect(code, `${name} is missing from the bundled IDL`).toBeDefined();
+    const err = new Error(
+      `failed to send transaction: custom program error: 0x${code!.toString(16)}`,
+    );
+    const out = classifyError(err);
+    expect(out.code).toBe(name);
+    expect(out.category).not.toBe("unknown");
+    expect(out.retriable).toBe(false);
+  });
+
+  it("no longer hides behind VaultAuthorityMismatch", () => {
+    // Every one of these used to surface as the vault error, which sent a
+    // debugger to look at the vault for a fault in the position.
+    const codes = new Set(names.map((n) => byName.get(n)));
+    expect(codes.size).toBe(names.length);
+    expect(codes.has(byName.get("VaultAuthorityMismatch"))).toBe(false);
+  });
+});

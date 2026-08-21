@@ -14,8 +14,9 @@ no-idl = []
 no-log-ix-name = []
 cpi = ["no-entrypoint"]
 # Suppresses solana_program's default 32 KB BumpAllocator so sooth_core can
-# install a 256 KB heap (see lib.rs). The multi-fill buy path needs
-# ~5 KB + ~8 KB/fill and OOMs at 4 fills under 32 KB.
+# install a 256 KB heap (see lib.rs). Measured: `book_place` costs ~2.5 KB
+# fixed + ~516 B per fill, so the default 32 KB heap runs out at ~57 fills —
+# well inside the 203 fills the event-size limit otherwise allows.
 #
 # ON BY DEFAULT so the artifact under test is the artifact deployed. Callers
 # MUST send request_heap_frame(256 * 1024) — the SDK adapter does this.

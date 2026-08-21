@@ -43,8 +43,11 @@ pub struct ClaimRefund<'info> {
     #[account(
         mut,
         address = market.vault_amm @ SoothCoreError::VaultAuthorityMismatch,
+        // The vault ITSELF is pinned by `address` above, so a mint mismatch
+        // here means the recorded vault holds the wrong token — a mint fault,
+        // not a vault-identity one.
         constraint = market_vault.mint == AMM_TOKEN_MINT
-            @ SoothCoreError::VaultAuthorityMismatch,
+            @ SoothCoreError::WrongBaseMint,
     )]
     pub market_vault: Box<Account<'info, TokenAccount>>,
 
@@ -136,7 +139,7 @@ fn read_locked_cost(data: &[u8]) -> Result<u64> {
     Ok(u64::from_le_bytes(
         data[POSITION_LOCKED_COST_USDC_OFFSET..POSITION_LOCKED_COST_USDC_OFFSET + 8]
             .try_into()
-            .map_err(|_| error!(SoothCoreError::VaultAuthorityMismatch))?,
+            .map_err(|_| error!(SoothCoreError::PositionMalformed))?,
     ))
 }
 
@@ -146,55 +149,58 @@ fn read_and_validate_position(
     market_key: &Pubkey,
     user_key: &Pubkey,
 ) -> Result<u64> {
+    // Each check reports the thing that actually failed. They are separate
+    // variants rather than one because they fail for different reasons: a
+    // wrong address is a caller bug, a wrong owner is an account substituted
+    // from another program, a short buffer is a layout drift, and a user or
+    // market mismatch is a position belonging to somebody or something else.
     let (expected_position, _) =
         Pubkey::find_program_address(&[b"pos", market_id.as_ref(), user_key.as_ref()], &crate::ID);
     require_keys_eq!(
         position.key(),
         expected_position,
-        SoothCoreError::VaultAuthorityMismatch
+        SoothCoreError::PositionAddressMismatch
     );
     require_keys_eq!(
         *position.to_account_info().owner,
         crate::ID,
-        SoothCoreError::VaultAuthorityMismatch
+        SoothCoreError::PositionOwnerMismatch
     );
 
     let data = position.try_borrow_data()?;
     require!(
         data.len() >= POSITION_MIN_LEN,
-        SoothCoreError::VaultAuthorityMismatch
+        SoothCoreError::PositionMalformed
     );
     let pos_user = Pubkey::new_from_array(
         data[POSITION_USER_OFFSET..POSITION_USER_OFFSET + 32]
             .try_into()
-            .map_err(|_| error!(SoothCoreError::VaultAuthorityMismatch))?,
+            .map_err(|_| error!(SoothCoreError::PositionMalformed))?,
     );
     let pos_market = Pubkey::new_from_array(
         data[POSITION_MARKET_OFFSET..POSITION_MARKET_OFFSET + 32]
             .try_into()
-            .map_err(|_| error!(SoothCoreError::VaultAuthorityMismatch))?,
+            .map_err(|_| error!(SoothCoreError::PositionMalformed))?,
     );
     let locked_cost_usdc = read_locked_cost(&data)?;
     drop(data);
 
-    require_keys_eq!(pos_user, *user_key, SoothCoreError::VaultAuthorityMismatch);
+    require_keys_eq!(pos_user, *user_key, SoothCoreError::PositionUserMismatch);
     require_keys_eq!(
         pos_market,
         *market_key,
-        SoothCoreError::VaultAuthorityMismatch
+        SoothCoreError::PositionMarketMismatch
     );
     Ok(locked_cost_usdc)
 }
 
-/// Close a position account by zeroing its data and moving its lamports to
-/// the user.
 /// Zero the refund field in the raw buffer, leaving the rest of the position
 /// intact. Writes through the same offset `read_locked_cost` reads, so the
 /// two cannot disagree about which bytes hold the claim.
 fn clear_locked_cost(position: &UncheckedAccount) -> Result<()> {
     let mut data = position.try_borrow_mut_data()?;
     let end = POSITION_LOCKED_COST_USDC_OFFSET + 8;
-    require!(data.len() >= end, SoothCoreError::VaultAuthorityMismatch);
+    require!(data.len() >= end, SoothCoreError::PositionMalformed);
     data[POSITION_LOCKED_COST_USDC_OFFSET..end].fill(0);
     Ok(())
 }

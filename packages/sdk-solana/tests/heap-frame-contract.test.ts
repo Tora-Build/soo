@@ -45,8 +45,10 @@ import {
 } from "./fixtures/orderbook.js";
 import {
   ONE_SHARE,
+  SIDE_ASK,
   SIDE_BID,
   bookInitIx,
+  bookGrowIx,
   bookPlaceIx,
   sendBookTx,
   sendBookTxRaw,
@@ -129,4 +131,65 @@ describe("256 KB allocator caller contract", () => {
     expect(coreIndex).toBeGreaterThan(-1);
     expect(frameIndex).toBeLessThan(coreIndex);
   });
+
+  it("the largest book_place that can succeed still fits the frame", async () => {
+    // The number the 256 KB frame is actually sized against.
+    //
+    // Measured against the built artifact by reading the allocator's cursor:
+    // `book_place` costs ~2.5 KB fixed + ~516 B per fill, and 203 fills is
+    // the most that can succeed at all — at 204 the batched `BookFilled`
+    // event exceeds the 10,240-byte CPI instruction-data limit. So this is
+    // the worst case a real user can reach: ~107 KB of the 256 KB frame.
+    //
+    // A guard, not a measurement: if per-fill allocation grew ~2.4x, this
+    // stops passing rather than failing in production with an allocator
+    // abort. It rests ~150 orders, so it is slow by design.
+    const FILLS = 200;
+    const smoke = await bootSmoke();
+    await initMarketFeePool(
+      smoke.ctx,
+      anchorProgram(smoke.ctx, smoke.creator),
+      smoke,
+      smoke.creator,
+    );
+    await sendBookTx(smoke, smoke.creator, bookInitIx(smoke, smoke.creator.publicKey, 150));
+    // Two blocks per resting maker — their order and their seat — plus the
+    // taker's.
+    for (let g = 0; g < 40; g++) {
+      try {
+        await sendBookTx(
+          smoke,
+          smoke.creator,
+          bookGrowIx(smoke, smoke.creator.publicKey, FILLS * 2 + 16),
+        );
+      } catch {
+        break;
+      }
+    }
+    await enableBook(smoke.ctx, smoke);
+
+    for (let i = 0; i < FILLS; i++) {
+      const maker = await trader(smoke);
+      await sendBookTx(
+        smoke,
+        maker,
+        bookPlaceIx(smoke, maker.publicKey, SIDE_ASK, 400 + (i % 500), ONE_SHARE, 0, true),
+      );
+    }
+
+    const taker = await trader(smoke);
+    await sendBookTx(
+      smoke,
+      taker,
+      bookPlaceIx(
+        smoke,
+        taker.publicKey,
+        SIDE_BID,
+        990,
+        BigInt(FILLS) * ONE_SHARE,
+        FILLS + 2,
+        false,
+      ),
+    );
+  }, 600_000);
 });

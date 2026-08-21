@@ -28,6 +28,31 @@
 //! damage of a mistake: an under-counted obligation can, at worst, hand back
 //! the creator's own capital early. It can never reach into trading profits.
 //!
+//! ## Why settlement, and not dismissal
+//!
+//! `require!(market.is_settled())` excludes the other terminal state
+//! deliberately, and the reason is arithmetic rather than caution.
+//!
+//! A dismissed market refunds every position at COST — `Position
+//! .locked_cost_usdc` — and that pot is not self-funding. Writing `net_i` for
+//! a position's buys minus its sell proceeds, the vault holds
+//! `seed + Σ net_i` while refunds owe `Σ max(net_i, 0)`, because a position
+//! that exited at a profit floors at zero instead of going negative. The
+//! difference is exactly `seed − P`, where `P` is the profit already
+//! withdrawn by traders who round-tripped before the dismissal. The creator's
+//! subsidy IS the collateral for those refunds, and returning it while any
+//! refund is outstanding would strand a claim.
+//!
+//! There is no way to know `P` on chain today: refunds live one-per-`Position`
+//! and are never aggregated, and unlike settlement — where `AmmState.q`
+//! counts what is still owed and `redeem_amm_position` decrements it — nothing
+//! decrements as refunds are paid. Until an aggregate refund-obligation
+//! counter exists (there is room in `AmmState._reserved`, but it would read
+//! zero for every market already on chain, which is the unsafe direction), a
+//! dismissed market's subsidy stays in the vault. Documented rather than
+//! quietly paid: the honest cost is that a dismissed market's subsidy is
+//! stranded and `close_market` cannot run on it.
+//!
 //! ## Why it is callable repeatedly
 //!
 //! Obligations shrink as traders redeem, so the free residual grows over time.

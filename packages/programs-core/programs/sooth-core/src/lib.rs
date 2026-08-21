@@ -15,15 +15,60 @@ declare_id!("EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw");
 // ── 256 KB bump allocator ────────────────────────────────────────────────
 //
 // Solana's default allocator hardcodes a 32 KB heap and never frees, so
-// allocations accumulate for the whole instruction. The multi-fill `buy`
-// path needs roughly 5 KB + 8 KB per fill, which capped matching at THREE
-// fills: a 4-fill buy died with "memory allocation failed, out of memory" at
-// only ~226k CU (16% of budget) and ~19 writable accounts (of ~32). Neither
-// compute nor the account budget was binding — the heap was.
+// allocations accumulate for the whole instruction. This mirrors
+// solana_program's own BumpAllocator (down-bumping, never frees) over a
+// 256 KB region, the maximum `request_heap_frame` permits. The default
+// allocator is suppressed by the `custom-heap` feature.
 //
-// This mirrors solana_program's own BumpAllocator (down-bumping, never
-// frees) over a 256 KB region, the maximum `request_heap_frame` permits.
-// The default allocator is suppressed by the `custom-heap` feature.
+// ── What actually allocates, measured ───────────────────────────────────
+//
+// `book_place` is the binding path, and the per-fill cost is what makes it
+// so. One fill allocates in three places: `MatchResult.filled_orders` grows
+// by a `FilledOrder` (and a `Vec` that doubles never gives the old buffer
+// back to this allocator), `book_place` collects that into a second `Vec` of
+// `BookFill`, and `emit_cpi!` serializes the batched `BookFilled` event and
+// builds the self-invocation for it.
+//
+// Measured on LiteSVM against the built artifact, by reading the allocator's
+// own cursor at the end of the handler (the cursor only moves down, so its
+// distance from the top IS the high-water mark):
+//
+//   fills │ heap used │      CU
+//   ──────┼───────────┼───────────
+//      0  │   2,568 B │    23,744
+//      1  │   4,220 B │    38,466
+//      5  │   6,004 B │    49,579
+//     20  │  14,854 B │    62,412
+//     60  │  30,774 B │   125,388
+//    120  │  58,494 B │   263,227
+//    200  │ 105,694 B │   508,628
+//
+// ≈2.5 KB fixed (Anchor's `Box<Account<…>>` deserialization plus the token
+// CPIs) and ≈516 bytes per fill.
+//
+// ── Why 256 KB stays ────────────────────────────────────────────────────
+//
+// Two OTHER limits bound a fill loop before the heap does, and both were
+// measured on the same harness:
+//
+//   - **204 fills**: `emit_cpi!` exceeds the 10,240-byte instruction-data
+//     limit ("Invoked an instruction with data that is too large"). 203 fills
+//     is therefore the largest `book_place` that can SUCCEED — ≈107 KB.
+//   - **≈400 fills**: the 1.4M CU meter runs out (per-fill CU rises with the
+//     seat walk, so this is superlinear) — ≈209 KB had it got that far.
+//
+// So the frame covers the largest succeeding transaction 2.4× over, and still
+// covers the CU-bound ceiling of a transaction that is doomed anyway. Cutting
+// it to 128 KB would clear today's 107 KB by only ~19%, and would convert a
+// legible "instruction data too large" failure into an allocator abort as
+// soon as per-fill allocation grows. It buys nothing to spend: the runtime
+// charges 8 CU per additional 32 KB of frame, i.e. 56 CU for this one — under
+// 3% of a SINGLE fill.
+//
+// Other allocating paths are far below this and do not bind: `CreateMarketArgs
+// .question` and the `MarketCreated` event carry ≤300 bytes (MAX_QUESTION_LEN),
+// and `ZkAttestation`'s Borsh `String`/`Vec` fields are bounded by the 1232-byte
+// transaction packet before their own MAX_ZK_*_LEN checks ever run.
 //
 // ⚠️ CALLER CONTRACT: every transaction must prepend
 // `ComputeBudgetInstruction::request_heap_frame(256 * 1024)`. The runtime
@@ -34,8 +79,8 @@ declare_id!("EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw");
 // runtime, so this cannot be detected and reported nicely.
 //
 // Because sooth_core is a single merged program, this applies to EVERY
-// instruction, not just multi-fill buys. `SolanaChainAdapter` prepends the
-// frame on all paths; hand-rolled callers must do the same.
+// instruction, not just multi-fill placements. `SolanaChainAdapter` prepends
+// the frame on all paths; hand-rolled callers must do the same.
 #[cfg(all(feature = "custom-heap", target_os = "solana"))]
 #[global_allocator]
 static SOOTH_CORE_ALLOC: BumpAllocator256 = BumpAllocator256;

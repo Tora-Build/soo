@@ -3620,6 +3620,11 @@
       "accounts": [
         {
           "name": "adjudicator_entry",
+          "docs": [
+            "Read-only, and required even though no signature is checked against",
+            "it: a market with no registered adjudicator can never be attested and",
+            "so can never settle, and locking it would only freeze it sooner."
+          ],
           "pda": {
             "seeds": [
               {
@@ -3671,6 +3676,11 @@
         },
         {
           "name": "authority",
+          "docs": [
+            "Any signer. Present so the transaction has a fee payer; the account",
+            "list is unchanged from the adjudicator-only version so callers built",
+            "against the old IDL keep working."
+          ],
           "signer": true
         }
       ],
@@ -4412,7 +4422,21 @@
             "before the creator runs `reclaim_subsidy` — confiscating their posted",
             "capital to the treasury. The gate above protects winners; this",
             "reservation protects the creator. Both are claimants; neither may be",
-            "raced."
+            "raced.",
+            "",
+            "Unchecked rather than `Account<LpPosition>` so that a market which was",
+            "never seeded can still be swept. `seed_lp` is a SEPARATE instruction",
+            "from `create_market`, so a market can be created, traded and settled",
+            "with no `LpPosition` ever existing — and an `Account<…>` here would",
+            "fail to deserialize, leaving that market's surplus unsweepable and",
+            "`close_market` (which requires an empty vault) blocked forever.",
+            "",
+            "Absence is PROVEN, not assumed: the seeds pin the address, and only",
+            "the real PDA can be system-owned and empty. So a cranker cannot skip",
+            "the creator's reserve by omitting the account — there is nothing to",
+            "omit, and substituting a different account fails the seeds.",
+            "",
+            "handler before it is deserialized."
           ],
           "pda": {
             "seeds": [
@@ -5636,6 +5660,31 @@
       "code": 6085,
       "name": "ZkAttestationTimestampInvalid",
       "msg": "Attestation timestamp is outside the accepted window"
+    },
+    {
+      "code": 6086,
+      "name": "PositionAddressMismatch",
+      "msg": "Position account is not the PDA for this (market, user) pair"
+    },
+    {
+      "code": 6087,
+      "name": "PositionOwnerMismatch",
+      "msg": "Position account is not owned by sooth_core"
+    },
+    {
+      "code": 6088,
+      "name": "PositionMalformed",
+      "msg": "Position account buffer is shorter than a serialized Position"
+    },
+    {
+      "code": 6089,
+      "name": "PositionUserMismatch",
+      "msg": "Position.user does not match the signer"
+    },
+    {
+      "code": 6090,
+      "name": "PositionMarketMismatch",
+      "msg": "Position.market does not match the supplied market"
     }
   ],
   "types": [

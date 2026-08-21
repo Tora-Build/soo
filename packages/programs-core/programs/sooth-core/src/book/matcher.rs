@@ -83,10 +83,12 @@ pub struct MatchResult {
     pub resting_seq: u64,
     /// Per-fill records for the event log, in execution order.
     ///
-    /// A `Vec` allocates, which the arena otherwise avoids — but the 256 KB
-    /// heap frame is mandatory program-wide (see `lib.rs`), so this costs
-    /// nothing that is not already paid. If that frame ever goes, this becomes
-    /// a fixed-size array and `match_limit` gains a ceiling to match.
+    /// A `Vec` allocates, which the arena otherwise avoids. It is the single
+    /// largest consumer of the 256 KB heap frame (see `lib.rs`): this Vec, the
+    /// `BookFill` collect it feeds, and the `emit_cpi!` payload together cost
+    /// ~516 bytes per fill, measured. The frame is mandatory program-wide, so
+    /// nothing here is paid twice — but if that frame ever shrinks, this
+    /// becomes a fixed-size array and `match_limit` gains a ceiling to match.
     pub filled_orders: Vec<FilledOrder>,
 }
 

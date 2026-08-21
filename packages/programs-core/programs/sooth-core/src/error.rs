@@ -271,4 +271,65 @@ pub enum SoothCoreError {
 
     #[msg("Attestation timestamp is outside the accepted window")]
     ZkAttestationTimestampInvalid,
+
+    // ── Raw `Position` parsing (claim_refund) ────────────────────────────────
+    // Appended, never reordered. `claim_refund` reads the Position out of the
+    // raw account buffer rather than through `Account<Position>`, so Anchor
+    // raises none of its own errors on that path and every distinct failure
+    // used to surface as `VaultAuthorityMismatch` — a name that points a
+    // debugger at the vault when the fault is in the position.
+    #[msg("Position account is not the PDA for this (market, user) pair")]
+    PositionAddressMismatch,
+
+    #[msg("Position account is not owned by sooth_core")]
+    PositionOwnerMismatch,
+
+    #[msg("Position account buffer is shorter than a serialized Position")]
+    PositionMalformed,
+
+    #[msg("Position.user does not match the signer")]
+    PositionUserMismatch,
+
+    #[msg("Position.market does not match the supplied market")]
+    PositionMarketMismatch,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Anchor numbers these positionally from 6000 and the deployed program
+    /// reports the NUMBER; the SDK maps it back to a name through the IDL. So
+    /// the ordinals are the wire format, and this pins the two ends of the
+    /// enum: an insertion anywhere in the middle moves every variant after it
+    /// and breaks every client already in the field.
+    #[test]
+    fn discriminants_are_append_only() {
+        assert_eq!(SoothCoreError::MarketNotOpen as u32 + 6000, 6000);
+        // The zk block closed the enum before the Position-parsing variants
+        // were appended; both must stay last, in this order.
+        assert_eq!(
+            SoothCoreError::PositionMarketMismatch as u32,
+            SoothCoreError::ZkAttestationTimestampInvalid as u32 + 5
+        );
+    }
+
+    /// `claim_refund` used to report all of these as `VaultAuthorityMismatch`,
+    /// which sent a debugger to look at the vault for a fault in the position.
+    #[test]
+    fn the_position_parse_failures_are_all_distinct() {
+        let codes = [
+            SoothCoreError::PositionAddressMismatch as u32,
+            SoothCoreError::PositionOwnerMismatch as u32,
+            SoothCoreError::PositionMalformed as u32,
+            SoothCoreError::PositionUserMismatch as u32,
+            SoothCoreError::PositionMarketMismatch as u32,
+            SoothCoreError::VaultAuthorityMismatch as u32,
+        ];
+        for (i, a) in codes.iter().enumerate() {
+            for b in &codes[i + 1..] {
+                assert_ne!(a, b, "two failures share one error code");
+            }
+        }
+    }
 }
