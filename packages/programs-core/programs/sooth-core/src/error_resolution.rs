@@ -54,4 +54,19 @@ pub enum ResolutionError {
 
     #[msg("Resolution commitment account is not owned by sooth_core")]
     CommitmentOwnerMismatch,
+
+    #[msg("The abandonment timeout has not elapsed; this market may not be forced to INVALID")]
+    AbandonmentTimeoutNotElapsed,
+
+    #[msg("Book net entitlement exceeds the net this seat actually holds")]
+    EntitlementExceedsSeat,
+
+    #[msg("Book void refund exceeds the value of the voided fills")]
+    BookVoidRefundExceedsVoidedValue,
+
+    #[msg("Book void refund exceeds the published book total for this market")]
+    BookVoidRefundExceedsPublishedTotal,
+
+    #[msg("The vault does not cover the refunds and payouts this commitment claims")]
+    CommitmentExceedsVault,
 }

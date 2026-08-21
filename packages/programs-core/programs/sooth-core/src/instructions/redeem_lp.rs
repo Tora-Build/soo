@@ -16,6 +16,16 @@
 //! claimable only against its own LP supply. A global vault would let payout
 //! divide the GLOBAL pool by THIS market's LP supply — a dust market's sole
 //! LP could take every market's yield.
+//!
+//! ## When this path is closed
+//!
+//! Payout is `vault * lp_amount / supply`, so a zero supply has no answer and
+//! this instruction refuses it. LP tokens are ordinary SPL tokens and a holder
+//! can `burn` them directly, so a supply CAN reach zero with the vaults still
+//! funded. `sweep_lp_yield` is the recovery for exactly that state: it sends
+//! the remainder to the treasury, since the holders who could have claimed it
+//! destroyed their claim. This instruction stays the only path while any LP
+//! token exists.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};

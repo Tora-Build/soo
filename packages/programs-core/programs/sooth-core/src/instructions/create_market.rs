@@ -7,8 +7,6 @@
 //! 3. Init `AmmState` PDA
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::program::invoke_signed;
-use anchor_lang::solana_program::system_instruction;
 use anchor_lang::Discriminator;
 use anchor_spl::associated_token::{self, AssociatedToken, Create};
 use anchor_spl::token::{self, InitializeAccount3, Mint, Token};
@@ -18,6 +16,7 @@ use anchor_lang::solana_program::hash::hash;
 use crate::constants::MAX_QUESTION_LEN;
 use crate::error::SoothCoreError;
 use crate::events::MarketCreated;
+use crate::pda::create_pda_account;
 use crate::state::{AmmState, Market, MarketLifecycle, ProtocolConfig};
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -165,23 +164,19 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
 
     // ── Leg 1: Init Market PDA ────────────────────────────────────────────
     {
-        let space = Market::SPACE;
-        let lamports = ctx.accounts.rent.minimum_balance(space);
-        let signer_seeds: &[&[&[u8]]] = &[&[b"market", market_id.as_ref(), &[market_bump]]];
-        invoke_signed(
-            &system_instruction::create_account(
-                &creator_key,
-                &ctx.accounts.market.key(),
-                lamports,
-                space as u64,
-                &crate::ID,
-            ),
-            &[
-                ctx.accounts.creator.to_account_info(),
-                ctx.accounts.market.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            signer_seeds,
+        // `create_pda_account`, not a bare `create_account`: this address is
+        // sha256(question)-derived and therefore public before the market
+        // exists, so one lamport sent here would otherwise censor the
+        // question forever. The helper still refuses a live Market or the
+        // tombstone of a closed one.
+        create_pda_account(
+            &ctx.accounts.creator.to_account_info(),
+            &ctx.accounts.market.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            &ctx.accounts.rent,
+            Market::SPACE,
+            &crate::ID,
+            &[b"market", market_id.as_ref(), &[market_bump]],
         )?;
         let market_state = Market {
             // A new market is ungraduated, so the book stays shut until
@@ -235,22 +230,14 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
                 ctx.accounts.vault_amm.key(),
                 SoothCoreError::VaultAuthorityMismatch
             );
-            let space = anchor_spl::token::TokenAccount::LEN;
-            let lamports = ctx.accounts.rent.minimum_balance(space);
-            invoke_signed(
-                &system_instruction::create_account(
-                    &creator_key,
-                    &vault_amm_key,
-                    lamports,
-                    space as u64,
-                    &anchor_spl::token::ID,
-                ),
-                &[
-                    ctx.accounts.creator.to_account_info(),
-                    ctx.accounts.vault_amm.to_account_info(),
-                    ctx.accounts.system_program.to_account_info(),
-                ],
-                &[&[b"vault_amm", market_id.as_ref(), &[vault_amm_bump]]],
+            create_pda_account(
+                &ctx.accounts.creator.to_account_info(),
+                &ctx.accounts.vault_amm.to_account_info(),
+                &ctx.accounts.system_program.to_account_info(),
+                &ctx.accounts.rent,
+                anchor_spl::token::TokenAccount::LEN,
+                &anchor_spl::token::ID,
+                &[b"vault_amm", market_id.as_ref(), &[vault_amm_bump]],
             )?;
             token::initialize_account3(CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
@@ -294,23 +281,14 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
         let trial_end_at =
             compute_trial_end_at(now, args.deadline, ctx.accounts.config.default_trial_period);
 
-        let space = AmmState::SPACE;
-        let lamports = ctx.accounts.rent.minimum_balance(space);
-        let amm_signer: &[&[&[u8]]] = &[&[b"amm", market_id.as_ref(), &[amm_bump]]];
-        invoke_signed(
-            &system_instruction::create_account(
-                &creator_key,
-                &ctx.accounts.amm_state.key(),
-                lamports,
-                space as u64,
-                &crate::ID,
-            ),
-            &[
-                ctx.accounts.creator.to_account_info(),
-                ctx.accounts.amm_state.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            amm_signer,
+        create_pda_account(
+            &ctx.accounts.creator.to_account_info(),
+            &ctx.accounts.amm_state.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            &ctx.accounts.rent,
+            AmmState::SPACE,
+            &crate::ID,
+            &[b"amm", market_id.as_ref(), &[amm_bump]],
         )?;
         let market_key = ctx.accounts.market.key();
         let amm = AmmState {

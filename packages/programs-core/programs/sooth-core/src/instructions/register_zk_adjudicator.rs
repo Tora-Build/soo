@@ -128,7 +128,8 @@ pub fn handler(ctx: Context<RegisterZkAdjudicator>, args: RegisterZkAdjudicatorA
     entry.zk_attestor_evm = args.attestor_evm;
     entry.zk_rule_hash = args.rule_hash;
     entry.zk_threshold = args.threshold;
-    entry._reserved = [0u8; 2];
+    entry.forced_invalid = false;
+    entry._reserved = [0u8; 1];
 
     let now = Clock::get()?.unix_timestamp;
     emit!(ZkAdjudicatorRegistered {

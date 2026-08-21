@@ -39,6 +39,15 @@ const BUILDS_BOTH = new Set([
   // would forfeit the holder's share of the other, so the mixing is the
   // feature, not a slip.
   "redeem_lp",
+  // The recovery mirror of `redeem_lp`: when no LP token is left to burn, the
+  // remainder in BOTH vaults goes to the treasury. It has to reach both for
+  // the same reason `redeem_lp` does — one atomic exit, or the other venue's
+  // balance strands and `close_market` blocks on it.
+  "sweep_lp_yield",
+  // Publishing a T* voiding commitment READS both vaults — the solvency bound
+  // it enforces is per venue, and a bound that saw only one of them would let
+  // an AMM surplus vouch for a book promise. It moves no money in either.
+  "publish_resolution",
 ]);
 
 type Venue = "amm" | "book";

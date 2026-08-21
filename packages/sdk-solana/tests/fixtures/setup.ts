@@ -131,6 +131,11 @@ export interface SmokeOptions {
   // market's adjudicator; pass a distinct key when a test needs to tell the
   // adjudicator's share apart from the protocol's.
   treasury?: PublicKey;
+  // Send 1 lamport to every PDA this fixture is about to create, immediately
+  // before creating it — the squat a griefer performs to censor a question.
+  // Every PDA address here derives from a public `market_id`, so anyone can
+  // compute it in advance. The whole boot must still succeed.
+  squatPdas?: boolean;
 }
 
 // Boot LiteSVM with sooth_core deployed. Returns a context
@@ -352,6 +357,14 @@ export async function bootSmoke(
   const lockVault = deriveLockVaultAta(marketId, AMM_MINT_DEVNET, PROGRAMS);
   const [ammStatePda] = deriveAmmStatePda(marketId, PROGRAMS);
 
+  // The squat: one lamport at each address, before the instruction that
+  // creates it. `create_account` refuses a funded target, so this is exactly
+  // what used to make the whole flow unreachable.
+  const squat = async (...pdas: PublicKey[]): Promise<void> => {
+    if (!opts.squatPdas) return;
+    for (const pda of pdas) await fundLamports(ctx, pda, 1n);
+  };
+
   const startTime = 1_000_000;
   const deadline = startTime + 7 * 24 * 60 * 60;
 
@@ -366,6 +379,8 @@ export async function bootSmoke(
   // made trial_end_at collapse to `now`, which is why trial-period assertions
   // happened to pass. LiteSVM boots at 0, which surfaced the inconsistency.
   warpClockTo(ctx, BigInt(startTime));
+
+  await squat(marketPda, vaultAmm, ammStatePda);
 
   await sendTx(
     ctx,
@@ -453,6 +468,9 @@ export async function bootSmoke(
   // Exactly the LMSR worst-case subsidy the program now requires: b * ln(2).
   const LN2_WAD = 693_147_180_559_945_309n;
   const seedDepositWad = (bWad * LN2_WAD) / WAD;
+
+  await squat(lpMint, lpPosition);
+
   await sendTx(
     ctx,
     [creator],
@@ -561,6 +579,15 @@ function setAcc(
     data: init.data,
     rentEpoch: init.rentEpoch ?? 0n,
   });
+}
+
+/** Park lamports at an address that holds no data — the griefer's move. */
+export async function squatLamports(
+  ctx: SvmContext,
+  to: PublicKey,
+  lamports = 1n,
+): Promise<void> {
+  await fundLamports(ctx, to, lamports);
 }
 
 async function fundLamports(

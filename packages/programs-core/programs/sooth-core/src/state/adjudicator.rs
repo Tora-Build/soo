@@ -76,6 +76,20 @@ pub struct AdjudicatorEntry {
     /// Threshold in `10^zk_value_scale` units.
     pub zk_threshold: i64,
 
+    /// Was this entry's outcome written by the abandonment escape hatch
+    /// (`force_invalid_attestation`) rather than by an adjudicator?
+    ///
+    /// One byte carved from `_reserved`, so every entry already on chain
+    /// reads `false` — which is exactly right, since none of them was forced.
+    ///
+    /// It is what lets `attest_outcome` distinguish "already resolved" from
+    /// "resolved by a timeout in the adjudicator's absence": the real
+    /// authority may attest OVER a forced outcome, restarting the veto
+    /// window, so the escape hatch can never take a market away from an
+    /// adjudicator who is merely late. Cleared by that overwrite, and one-way
+    /// otherwise — an outcome the authority attested is never forced.
+    pub forced_invalid: bool,
+
     /// Forward-compat padding. Adding a field consumes bytes from here
     /// instead of changing the account's length, so no migration is needed:
     /// Solana accounts are fixed-length buffers, and an `#[account]` struct
@@ -83,9 +97,9 @@ pub struct AdjudicatorEntry {
     /// that loads it. (Unlike EVM, where appending a storage slot is free.)
     ///
     /// When you add a field, shrink this by exactly its serialized size and
-    /// leave `SPACE` unchanged. Only two bytes are left, so the next field
-    /// larger than that needs a separate PDA rather than this region.
-    pub _reserved: [u8; 2],
+    /// leave `SPACE` unchanged. ONE byte is left, so the next field larger
+    /// than a bool needs a separate PDA rather than this region.
+    pub _reserved: [u8; 1],
 }
 
 impl AdjudicatorEntry {
@@ -104,7 +118,8 @@ impl AdjudicatorEntry {
         + 20                       // zk_attestor_evm
         + 32                       // zk_rule_hash
         + 8                        // zk_threshold
-        + 2; // _reserved
+        + 1                        // forced_invalid
+        + 1; // _reserved
 
     pub fn is_attested(&self) -> bool {
         self.attested_outcome.is_some()
@@ -112,6 +127,12 @@ impl AdjudicatorEntry {
 
     pub fn is_disputed(&self) -> bool {
         self.disputed
+    }
+
+    /// True iff the recorded outcome came from the abandonment escape hatch
+    /// and no adjudicator has since attested over it.
+    pub fn is_forced_invalid(&self) -> bool {
+        self.forced_invalid
     }
 
     /// True iff `register_zk_adjudicator` configured this entry. Keyed on the
@@ -168,7 +189,8 @@ mod tests {
             zk_attestor_evm: [0; 20],
             zk_rule_hash: [0; 32],
             zk_threshold: 0,
-            _reserved: [0; 2],
+            forced_invalid: false,
+            _reserved: [0; 1],
         }
     }
 
@@ -192,7 +214,8 @@ mod tests {
             + 20           // zk_attestor_evm
             + 32           // zk_rule_hash
             + 8            // zk_threshold
-            + 2; // _reserved
+            + 1            // forced_invalid
+            + 1; // _reserved
         assert_eq!(AdjudicatorEntry::SPACE, expected);
         assert_eq!(AdjudicatorEntry::SPACE, 190);
     }
@@ -254,6 +277,41 @@ mod tests {
         adj.zk_comparator = 9;
         assert!(adj.comparator().is_err());
         assert!(adj.require_zk_rule().is_err());
+    }
+
+    #[test]
+    fn a_legacy_entry_deserializes_with_the_forced_flag_clear() {
+        // `forced_invalid` is carved from `_reserved`, which is zeroed on
+        // every entry already on chain. A legacy entry reading `true` would
+        // hand `attest_outcome` permission to overwrite a real attestation.
+        let entry = fresh();
+        let mut bytes = Vec::new();
+        AnchorSerialize::serialize(&entry, &mut bytes).unwrap();
+        // Shorter than SPACE, because Borsh writes a `None` as one byte while
+        // SPACE reserves room for the `Some`. The account is rented for the
+        // maximum either way.
+        assert!(bytes.len() <= AdjudicatorEntry::SPACE - 8);
+        let decoded = AdjudicatorEntry::deserialize(&mut bytes.as_slice()).unwrap();
+        assert!(!decoded.is_forced_invalid());
+    }
+
+    #[test]
+    fn a_forced_outcome_is_distinguishable_from_an_attested_one() {
+        // Both are `is_attested()`. The flag is the only thing separating "an
+        // adjudicator said so" from "a timeout said so", and the escape
+        // hatch's safety rests on that distinction.
+        let mut forced = fresh();
+        forced.attested_outcome = Some(2);
+        forced.attested_at = Some(1_000);
+        forced.forced_invalid = true;
+
+        let mut attested = fresh();
+        attested.attested_outcome = Some(2);
+        attested.attested_at = Some(1_000);
+
+        assert!(forced.is_attested() && attested.is_attested());
+        assert!(forced.is_forced_invalid());
+        assert!(!attested.is_forced_invalid());
     }
 
     #[test]

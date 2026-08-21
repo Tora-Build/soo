@@ -306,6 +306,18 @@ pub enum SoothCoreError {
     // outstanding.
     #[msg("Dismissed market still owes refunds; the subsidy cannot be reclaimed")]
     RefundsOutstanding,
+
+    // Appended, never reordered. A PDA that already carries data, or that is
+    // already assigned away from the system program, is a live account — a
+    // market, a mint, or the tombstone of a closed market. Creating over it
+    // would resurrect a spent id, so `pda::create_pda_account` refuses.
+    #[msg("Target PDA is already initialized and cannot be created again")]
+    PdaAlreadyInitialized,
+
+    // Appended, never reordered. The LP-yield remainder may only be swept to
+    // the treasury once no LP token exists to claim it.
+    #[msg("LP supply is nonzero: holders can still redeem this yield themselves")]
+    LpSupplyNotZero,
 }
 
 #[cfg(test)]
@@ -335,6 +347,14 @@ mod tests {
         assert_eq!(
             SoothCoreError::RefundsOutstanding as u32,
             SoothCoreError::MarketNotSeeded as u32 + 1
+        );
+        assert_eq!(
+            SoothCoreError::PdaAlreadyInitialized as u32,
+            SoothCoreError::RefundsOutstanding as u32 + 1
+        );
+        assert_eq!(
+            SoothCoreError::LpSupplyNotZero as u32,
+            SoothCoreError::PdaAlreadyInitialized as u32 + 1
         );
     }
 

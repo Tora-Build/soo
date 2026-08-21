@@ -6,8 +6,6 @@
 //! because each is a PDA whose address the handler must sign for.
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::program::invoke_signed;
-use anchor_lang::solana_program::system_instruction;
 use anchor_lang::Discriminator;
 use anchor_spl::associated_token::{self, AssociatedToken, Create};
 use anchor_spl::token::{self, InitializeMint, Mint, MintTo, Token, TokenAccount, Transfer};
@@ -16,6 +14,7 @@ use crate::constants::AMM_TOKEN_MINT;
 use crate::error::SoothCoreError;
 use crate::events::LpSeeded;
 use crate::math::{wad_mul, wad_to_usdc_ceil, LN2_WAD};
+use crate::pda::create_pda_account;
 use crate::state::{require_not_paused, AmmState, LpPosition, Market, ProtocolConfig};
 
 const LP_MINT_DECIMALS: u8 = 6;
@@ -168,26 +167,20 @@ pub fn handler(ctx: Context<SeedLp>, args: SeedLpArgs) -> Result<()> {
     let market_key = ctx.accounts.market.key();
     let lp_mint_key = ctx.accounts.lp_mint.key();
 
-    // ── 2. Hand-rolled create_account for lp_mint ─────────────────────────
+    // ── 2. Create the lp_mint account ─────────────────────────────────────
+    //
+    // Via `create_pda_account`, which tolerates lamports parked at the
+    // address by a griefer and still refuses an already-initialized mint —
+    // so `seed_lp` remains once-only per market.
     {
-        let rent = &ctx.accounts.rent;
-        let mint_space = Mint::LEN;
-        let lamports = rent.minimum_balance(mint_space);
-        let signer_seeds: &[&[&[u8]]] = &[&[b"lp", market_id.as_ref(), &[lp_mint_bump]]];
-        invoke_signed(
-            &system_instruction::create_account(
-                &creator_key,
-                &lp_mint_key,
-                lamports,
-                mint_space as u64,
-                &token::ID,
-            ),
-            &[
-                ctx.accounts.creator.to_account_info(),
-                ctx.accounts.lp_mint.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            signer_seeds,
+        create_pda_account(
+            &ctx.accounts.creator.to_account_info(),
+            &ctx.accounts.lp_mint.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            &ctx.accounts.rent,
+            Mint::LEN,
+            &token::ID,
+            &[b"lp", market_id.as_ref(), &[lp_mint_bump]],
         )?;
     }
 
@@ -223,31 +216,21 @@ pub fn handler(ctx: Context<SeedLp>, args: SeedLpArgs) -> Result<()> {
         ))?;
     }
 
-    // ── 5. Hand-rolled create_account for lp_position ─────────────────────
+    // ── 5. Create the lp_position account ─────────────────────────────────
     {
-        let rent = &ctx.accounts.rent;
-        let space = LpPosition::SPACE;
-        let lamports = rent.minimum_balance(space);
-        let signer_seeds: &[&[&[u8]]] = &[&[
-            b"lp_position",
-            market_id.as_ref(),
-            creator_key.as_ref(),
-            &[lp_position_bump],
-        ]];
-        invoke_signed(
-            &system_instruction::create_account(
-                &creator_key,
-                &ctx.accounts.lp_position.key(),
-                lamports,
-                space as u64,
-                &crate::ID, // owner = sooth_core
-            ),
+        create_pda_account(
+            &ctx.accounts.creator.to_account_info(),
+            &ctx.accounts.lp_position.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            &ctx.accounts.rent,
+            LpPosition::SPACE,
+            &crate::ID, // owner = sooth_core
             &[
-                ctx.accounts.creator.to_account_info(),
-                ctx.accounts.lp_position.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
+                b"lp_position",
+                market_id.as_ref(),
+                creator_key.as_ref(),
+                &[lp_position_bump],
             ],
-            signer_seeds,
         )?;
 
         let position = LpPosition {

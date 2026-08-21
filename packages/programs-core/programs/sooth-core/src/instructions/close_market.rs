@@ -15,12 +15,16 @@
 //!
 //! So the Market account stays alive as a TOMBSTONE: shrunk to 8 bytes,
 //! discriminator overwritten with a marker that is not any Anchor account's,
-//! rent above the 8-byte minimum refunded. `create_market` allocates the Market
-//! PDA with a system `create_account`, which fails on an account that already
-//! holds lamports, and every other instruction that loads `Account<Market>`
-//! fails its discriminator check — the tombstone poisons the whole id, which is
-//! exactly the point. Cost: ~0.001 SOL per market stays locked forever, out of
-//! ~0.017 reclaimed.
+//! rent above the 8-byte minimum refunded. `create_market` allocates the
+//! Market PDA through `pda::create_pda_account`, which refuses any target
+//! this program already owns — the tombstone is exactly that — and every
+//! other instruction that loads `Account<Market>` fails its discriminator
+//! check. The tombstone poisons the whole id, which is exactly the point.
+//! Cost: ~0.001 SOL per market stays locked forever, out of ~0.017 reclaimed.
+//!
+//! The refusal is an explicit ownership check, not a side effect of
+//! `create_account` rejecting a funded account: that older behaviour also let
+//! one lamport censor an unborn market, so it had to go. See `crate::pda`.
 //!
 //! ## Why the preconditions are balances, not time
 //!
@@ -107,7 +111,10 @@ pub struct CloseMarket<'info> {
     pub fee_pool_book: Box<Account<'info, TokenAccount>>,
 
     // LP yield is a claim like any other: nonzero means some LP has not
-    // burned for their share yet, and closing would strand it.
+    // burned for their share yet, and closing would strand it. When the LP
+    // supply is gone the claim is gone with it, and `sweep_lp_yield` moves
+    // the remainder to the treasury — so this requirement can always be met
+    // and no market is stuck open on an unclaimable balance.
     #[account(mut, seeds = [b"lp_yield_amm", market_id.as_ref()], bump)]
     pub lp_yield_amm: Box<Account<'info, TokenAccount>>,
     #[account(mut, seeds = [b"lp_yield_book", market_id.as_ref()], bump)]

@@ -1923,7 +1923,11 @@
             "a holder to exist), and it would block `close_market` forever too. So",
             "when supply is zero the LP slice folds into the protocol remainder",
             "instead: the last LP out forfeits nothing they were owed — the fees",
-            "arriving now were earned after they exited."
+            "arriving now were earned after they exited.",
+            "",
+            "This fold covers fees arriving AFTER supply hit zero. Anything already",
+            "sitting in the vault when it did is recovered by `sweep_lp_yield`, to",
+            "the same destination — one rule, applied at both moments."
           ],
           "pda": {
             "seeds": [
@@ -2181,7 +2185,11 @@
             "a holder to exist), and it would block `close_market` forever too. So",
             "when supply is zero the LP slice folds into the protocol remainder",
             "instead: the last LP out forfeits nothing they were owed — the fees",
-            "arriving now were earned after they exited."
+            "arriving now were earned after they exited.",
+            "",
+            "This fold covers fees arriving AFTER supply hit zero. Anything already",
+            "sitting in the vault when it did is recovered by `sweep_lp_yield`, to",
+            "the same destination — one rule, applied at both moments."
           ],
           "pda": {
             "seeds": [
@@ -2259,6 +2267,93 @@
         {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "force_invalid_attestation",
+      "docs": [
+        "Write `INVALID` onto a market whose adjudicator never attested, once",
+        "`settle::ABANDONED_MARKET_TIMEOUT_SECS` has passed since its deadline.",
+        "Permissionless, and does NOT settle: the ordinary veto window and the",
+        "ordinary `settle` still stand between it and a final outcome. See",
+        "`instructions/settle.rs`."
+      ],
+      "discriminator": [
+        169,
+        247,
+        145,
+        58,
+        211,
+        254,
+        248,
+        148
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "docs": [
+            "Read-only. Forcing an attestation changes no lifecycle — `settle`",
+            "still does that, after the veto window, exactly as for an outcome an",
+            "adjudicator wrote."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "adjudicator_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "cranker",
+          "docs": [
+            "Whoever cranks it. Unconstrained by design: the whole point is that no",
+            "key is required, because the key that was supposed to act is gone."
+          ],
+          "signer": true
         }
       ],
       "args": []
@@ -2829,6 +2924,66 @@
           }
         },
         {
+          "name": "amm_state",
+          "docs": [
+            "Read-only. Supplies the outstanding share ledger the solvency bound",
+            "below is computed against."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_amm",
+          "docs": [
+            "The cash the AMM's claims are payable from. Read-only — publication",
+            "moves no money; it only refuses to promise more than this holds."
+          ]
+        },
+        {
+          "name": "book",
+          "docs": [
+            "never graduated has no book account. Emptiness is read as \"no book",
+            "obligations\", and a commitment that claims a book refund on such a",
+            "market is refused rather than believed."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_book"
+        },
+        {
           "name": "authority",
           "writable": true,
           "signer": true
@@ -3286,6 +3441,39 @@
           "writable": true
         },
         {
+          "name": "resolution_commitment",
+          "docs": [
+            "`Account<'_, ResolutionCommitment>` would fail every ordinary market's",
+            "redemption. The seeds pin the address, so an empty account here is",
+            "proof of absence rather than an omission the caller chose; the handler",
+            "checks the owner and discriminator before reading a live one."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  111,
+                  108,
+                  117,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
           "name": "user",
           "writable": true,
           "signer": true
@@ -3295,7 +3483,18 @@
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "voided_claim",
+          "type": {
+            "option": {
+              "defined": {
+                "name": "VoidedBookClaimArgs"
+              }
+            }
+          }
+        }
+      ]
     },
     {
       "name": "redeem_lp",
@@ -4657,6 +4856,248 @@
       "args": []
     },
     {
+      "name": "sweep_lp_yield",
+      "docs": [
+        "Recover an LP-yield balance that no LP token can claim, so the market",
+        "can still reach the all-zero balances `close_market` requires.",
+        "Permissionless; destinations pinned by `config.treasury`."
+      ],
+      "discriminator": [
+        109,
+        46,
+        123,
+        73,
+        234,
+        119,
+        45,
+        130
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "amm_state",
+          "docs": [
+            "Read for `is_graduated` / `is_dismissed` — half the gate that proves",
+            "LP minting has stopped."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_mint",
+          "docs": [
+            "Read for its SUPPLY, which must be zero. Bound by seeds: an unbound",
+            "mint would let a caller present any zero-supply mint and drain the",
+            "vaults while real LP holders still had claims."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_yield_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "amm_mint",
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
+        },
+        {
+          "name": "book_mint",
+          "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
+        },
+        {
+          "name": "lp_yield_amm",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  97,
+                  109,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_yield_book",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  121,
+                  105,
+                  101,
+                  108,
+                  100,
+                  95,
+                  98,
+                  111,
+                  111,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury_amm_vault",
+          "docs": [
+            "Treasury account for the AMM's token — owner pinned by config, the",
+            "same binding `distribute_fees` uses. The cranker chooses nothing."
+          ],
+          "writable": true
+        },
+        {
+          "name": "treasury_book_vault",
+          "docs": [
+            "Treasury account for the book's token. Two accounts because one SPL",
+            "account holds one mint, and the venues are denominated differently."
+          ],
+          "writable": true
+        },
+        {
+          "name": "cranker",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "sweep_residual",
       "discriminator": [
         230,
@@ -5339,6 +5780,19 @@
       ]
     },
     {
+      "name": "InvalidAttestationForced",
+      "discriminator": [
+        242,
+        35,
+        106,
+        252,
+        165,
+        65,
+        10,
+        15
+      ]
+    },
+    {
       "name": "LockClaimed",
       "discriminator": [
         226,
@@ -5375,6 +5829,19 @@
         105,
         240,
         100
+      ]
+    },
+    {
+      "name": "LpYieldSwept",
+      "discriminator": [
+        204,
+        18,
+        153,
+        211,
+        118,
+        60,
+        155,
+        30
       ]
     },
     {
@@ -5596,6 +6063,19 @@
         38,
         175,
         75
+      ]
+    },
+    {
+      "name": "VoidedBookRedeem",
+      "discriminator": [
+        157,
+        97,
+        33,
+        64,
+        87,
+        172,
+        216,
+        157
       ]
     },
     {
@@ -6103,6 +6583,16 @@
       "code": 6092,
       "name": "RefundsOutstanding",
       "msg": "Dismissed market still owes refunds; the subsidy cannot be reclaimed"
+    },
+    {
+      "code": 6093,
+      "name": "PdaAlreadyInitialized",
+      "msg": "Target PDA is already initialized and cannot be created again"
+    },
+    {
+      "code": 6094,
+      "name": "LpSupplyNotZero",
+      "msg": "LP supply is nonzero: holders can still redeem this yield themselves"
     }
   ],
   "types": [
@@ -6233,6 +6723,24 @@
             "type": "i64"
           },
           {
+            "name": "forced_invalid",
+            "docs": [
+              "Was this entry's outcome written by the abandonment escape hatch",
+              "(`force_invalid_attestation`) rather than by an adjudicator?",
+              "",
+              "One byte carved from `_reserved`, so every entry already on chain",
+              "reads `false` — which is exactly right, since none of them was forced.",
+              "",
+              "It is what lets `attest_outcome` distinguish \"already resolved\" from",
+              "\"resolved by a timeout in the adjudicator's absence\": the real",
+              "authority may attest OVER a forced outcome, restarting the veto",
+              "window, so the escape hatch can never take a market away from an",
+              "adjudicator who is merely late. Cleared by that overwrite, and one-way",
+              "otherwise — an outcome the authority attested is never forced."
+            ],
+            "type": "bool"
+          },
+          {
             "name": "_reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
@@ -6242,13 +6750,13 @@
               "that loads it. (Unlike EVM, where appending a storage slot is free.)",
               "",
               "When you add a field, shrink this by exactly its serialized size and",
-              "leave `SPACE` unchanged. Only two bytes are left, so the next field",
-              "larger than that needs a separate PDA rather than this region."
+              "leave `SPACE` unchanged. ONE byte is left, so the next field larger",
+              "than a bool needs a separate PDA rather than this region."
             ],
             "type": {
               "array": [
                 "u8",
-                2
+                1
               ]
             }
           }
@@ -6740,6 +7248,48 @@
       }
     },
     {
+      "name": "InvalidAttestationForced",
+      "docs": [
+        "Emitted by `force_invalid_attestation`: a market whose adjudicator never",
+        "attested has had `INVALID` written onto it by a stranger, so that it can",
+        "settle at all. The ordinary veto window runs from `ts`, and the outcome is",
+        "still overridable inside it — by the authority attesting over it, or by the",
+        "dispute authority correcting it."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator_entry",
+            "type": "pubkey"
+          },
+          {
+            "name": "cranker",
+            "docs": [
+              "Whoever cranked it. Unprivileged by construction."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "deadline",
+            "docs": [
+              "The deadline the timeout was measured from, so the log carries the",
+              "whole justification without a second account read."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "LockClaimed",
       "docs": [
         "Emitted by `claim_unlocked` after a successful payout. Mirrors the EVM",
@@ -6964,6 +7514,50 @@
           {
             "name": "seed_deposit_wad",
             "type": "u128"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LpYieldSwept",
+      "docs": [
+        "Emitted by `sweep_lp_yield`. The LP supply that would have claimed this",
+        "yield no longer exists, so the remainder went to the treasury and the",
+        "market can reach the all-zero balances `close_market` requires."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_id",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "amm_amount",
+            "docs": [
+              "AMM-token remainder moved out of `lp_yield_amm`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "book_amount",
+            "docs": [
+              "Book-token remainder moved out of `lp_yield_book`."
+            ],
+            "type": "u64"
           },
           {
             "name": "ts",
@@ -7816,7 +8410,16 @@
           {
             "name": "total_void_refund_usdc",
             "docs": [
-              "Ceiling on the USDC the void path may pay out across every leaf."
+              "Ceiling on the USDC the AMM void path may pay out across every leaf."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_book_void_refund_usdc",
+            "docs": [
+              "The same ceiling for the BOOK venue, whose refunds leave a different",
+              "vault. Zero on a market that never graduated — and a market with no",
+              "book account may publish nothing else."
             ],
             "type": "u64"
           }
@@ -8080,6 +8683,25 @@
             "type": "u8"
           },
           {
+            "name": "total_book_void_refund_usdc",
+            "docs": [
+              "The same ceiling as `total_void_refund_usdc`, for the BOOK venue.",
+              "",
+              "Separate because the two venues are separate vaults holding separate",
+              "mints: one ceiling over both would let an AMM refund consume the",
+              "allowance a book refund was sized against, and no observer could tell",
+              "which vault the published number was a claim about."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "book_void_refund_paid_usdc",
+            "docs": [
+              "Running total paid out by `redeem_book_seat`'s void path."
+            ],
+            "type": "u64"
+          },
+          {
             "name": "_reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
@@ -8094,7 +8716,7 @@
             "type": {
               "array": [
                 "u8",
-                32
+                16
               ]
             }
           }
@@ -8146,7 +8768,14 @@
           {
             "name": "total_void_refund_usdc",
             "docs": [
-              "Ceiling on the USDC the void path may pay across every leaf."
+              "Ceiling on the USDC the AMM void path may pay across every leaf."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_book_void_refund_usdc",
+            "docs": [
+              "The same ceiling for the book venue."
             ],
             "type": "u64"
           },
@@ -8206,6 +8835,100 @@
           {
             "name": "seed_deposit_wad",
             "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VoidedBookClaimArgs",
+      "docs": [
+        "A seat's entitlement under a published `ResolutionCommitment`, plus the",
+        "proof that it is in the tree.",
+        "",
+        "The two values are the leaf preimage — they are not trusted, they are",
+        "HASHED, and the hash must be provably in the published root. What the",
+        "program additionally enforces is that even a leaf the resolver signed",
+        "cannot settle a bigger net than the seat holds, nor refund more than the",
+        "voided fills could possibly have cost."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "valid_net",
+            "docs": [
+              "Signed net acquired at or before T* and still held: `> 0` long YES,",
+              "`< 0` long NO."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "book_void_refund_usdc",
+            "docs": [
+              "USDC paid for post-T* fills, returned at cost."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "proof",
+            "docs": [
+              "Sibling hashes from the leaf up to the root."
+            ],
+            "type": {
+              "vec": {
+                "array": [
+                  "u8",
+                  32
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VoidedBookRedeem",
+      "docs": [
+        "Emitted by `redeem_book_seat` when the payout came from a published",
+        "entitlement rather than from the raw seat. `Redeemed` still fires alongside",
+        "it, so consumers that only track payouts need no change."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "valid_net",
+            "docs": [
+              "Signed net acquired at or before T* — the part that settled."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "book_void_refund_usdc",
+            "docs": [
+              "USDC returned at cost for post-T* fills."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "held_net",
+            "docs": [
+              "The seat's whole net. The difference against `valid_net` is what was",
+              "voided."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
           }
         ]
       }

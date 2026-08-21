@@ -453,6 +453,114 @@ impl<'a> Book<'a> {
         Ok(total)
     }
 
+    /// A trader's signed net, without draining it and without allocating a
+    /// seat. A wallet that never traded reads zero rather than costing the
+    /// arena a block — the same rule [`Book::credit_of`] follows.
+    ///
+    /// Read by `redeem_book_seat` BEFORE it pays, because the T\* voiding
+    /// bound ("your entitlement cannot exceed what you hold") is checked
+    /// against this number.
+    pub fn net_of(&self, trader: Pubkey) -> R<i64> {
+        let Some(idx) = self.seat_of(trader) else {
+            return Ok(0);
+        };
+        let node = self
+            .blocks
+            .get(idx as usize)
+            .ok_or(BookError::InvalidIndex)?;
+        Ok(as_seat(node).net)
+    }
+
+    /// Settle a seat against a T\* entitlement instead of against its whole
+    /// net: `valid_net` settles, the rest of the position is voided and paid
+    /// for by `void_refund` instead.
+    ///
+    /// The seat is retired in full either way — both fields zeroed, the block
+    /// freed — because the voided shares are not still owned by anybody after
+    /// this; they were bought after the answer was public and the trade is
+    /// being unwound.
+    ///
+    /// `valid_net` is NOT trusted: the caller has proved it against a
+    /// published root, but a root can be wrong, so the bound
+    /// `|valid_net| <= |net|` with a matching sign is re-checked here. It
+    /// keeps a bad tree to UNDER-paying — the case the veto window exists to
+    /// catch — rather than to paying for shares the seat never held.
+    ///
+    /// `credit` is paid out untouched. It is USDC already released to the
+    /// trader by a cancel or a closing fill, and clawing it back is the same
+    /// unsolved problem as clawing back a post-T\* AMM sell: the money left
+    /// the position before the commitment existed.
+    pub fn take_settlement_voided(
+        &mut self,
+        trader: Pubkey,
+        winning_outcome: u8,
+        valid_net: i64,
+        void_refund: u64,
+    ) -> R<u64> {
+        let Some(idx) = self.seat_of(trader) else {
+            // No seat is no entitlement. A refund against nothing would be a
+            // withdrawal, so it is refused rather than quietly paid.
+            if valid_net != 0 || void_refund != 0 {
+                return Err(MatchError::Book(BookError::InvalidIndex));
+            }
+            return Ok(0);
+        };
+        let node = self
+            .blocks
+            .get_mut(idx as usize)
+            .ok_or(BookError::InvalidIndex)?;
+        let seat = as_seat_mut(node);
+        let net = seat.net;
+
+        // Same side, no larger. Sign is checked as a product rather than by
+        // cases so that `valid_net == 0` — void everything — stays legal on
+        // either side.
+        let same_side = valid_net == 0 || (valid_net > 0) == (net > 0);
+        if !same_side || valid_net.unsigned_abs() > net.unsigned_abs() {
+            return Err(MatchError::Settle(SettleError::Overflow));
+        }
+
+        // Every voided share was bought for at most one whole unit — book
+        // prices are ticks strictly inside (0, 1) — so the shares no longer
+        // settling are the ceiling on what may be refunded for them. Without
+        // this, a tree could refund an arbitrary amount per seat and only the
+        // market-wide total would stand in the way.
+        let voided = net.unsigned_abs() - valid_net.unsigned_abs();
+        if void_refund > voided {
+            return Err(MatchError::Settle(SettleError::Overflow));
+        }
+
+        let magnitude = valid_net.unsigned_abs();
+        let payout = match winning_outcome {
+            OUTCOME_YES => {
+                if valid_net > 0 {
+                    magnitude
+                } else {
+                    0
+                }
+            }
+            OUTCOME_NO => {
+                if valid_net < 0 {
+                    magnitude
+                } else {
+                    0
+                }
+            }
+            OUTCOME_INVALID => magnitude / 2,
+            _ => return Err(MatchError::Book(BookError::InvalidSide)),
+        };
+
+        let total = seat
+            .credit
+            .checked_add(payout)
+            .and_then(|t| t.checked_add(void_refund))
+            .ok_or(MatchError::Settle(SettleError::Overflow))?;
+        seat.credit = 0;
+        seat.net = 0;
+        self.free_seat_if_empty(trader)?;
+        Ok(total)
+    }
+
     /// Everything this book still owes, in USDC base units, under
     /// `winning_outcome`.
     ///
@@ -859,6 +967,171 @@ mod tests {
             vec![first_seq, second_seq],
             "time priority holds across the skipped order",
         );
+    }
+
+    // ── T* voiding ──────────────────────────────────────────────────────────
+
+    /// A filled market: trader(2) bought 10 shares from trader(1)'s ask at
+    /// tick 400. Long YES and long NO, 10 shares each side.
+    fn filled(a: &mut Acct) -> Book<'_> {
+        let mut book = load_book(a.bytes()).unwrap();
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1))
+            .unwrap();
+        book.place(trader(2), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
+            .unwrap();
+        book
+    }
+
+    #[test]
+    fn a_post_t_star_book_fill_is_refunded_instead_of_paid() {
+        // The gap this closes: `redeem_book_seat` used to pay a seat in full
+        // however late its fills landed. Here the buyer's whole 10 shares came
+        // after T*, so none of them settle and the 4.00 they cost comes back.
+        let mut a = Acct::new(32);
+        let mut book = filled(&mut a);
+        assert_eq!(
+            book.take_settlement_voided(trader(2), OUTCOME_YES, 0, 4 * ONE_SHARE)
+                .unwrap(),
+            4 * ONE_SHARE,
+            "a voided buyer is refunded at cost, not paid at face",
+        );
+    }
+
+    #[test]
+    fn both_legs_of_a_voided_fill_return_exactly_what_was_escrowed() {
+        // The solvency property. Each matched share was backed by one unit
+        // split across the two seats — 0.40 from the buyer, 0.60 from the
+        // seller — so voiding both legs returns exactly that unit and no more.
+        let mut a = Acct::new(32);
+        let mut book = filled(&mut a);
+        let buyer = book
+            .take_settlement_voided(trader(2), OUTCOME_YES, 0, 4 * ONE_SHARE)
+            .unwrap();
+        let seller = book
+            .take_settlement_voided(trader(1), OUTCOME_YES, 0, 6 * ONE_SHARE)
+            .unwrap();
+        assert_eq!(buyer + seller, 10 * ONE_SHARE);
+    }
+
+    #[test]
+    fn a_partly_valid_seat_settles_its_valid_half_and_is_refunded_the_rest() {
+        let mut a = Acct::new(32);
+        let mut book = filled(&mut a);
+        // 4 of the 10 were bought before T*; the other 6 cost 2.40.
+        let paid = book
+            .take_settlement_voided(trader(2), OUTCOME_YES, 4 * ONE_SHARE as i64, 2_400_000)
+            .unwrap();
+        assert_eq!(paid, 4 * ONE_SHARE + 2_400_000);
+        // Strictly less than the unvoided payout — that IS the voiding.
+        assert!(paid < 10 * ONE_SHARE);
+    }
+
+    #[test]
+    fn a_fully_valid_seat_is_paid_exactly_what_it_was_paid_before() {
+        // A market where nothing needed voiding must pay what it pays today,
+        // or publishing a commitment would quietly change every payout.
+        let mut a = Acct::new(32);
+        let mut book = filled(&mut a);
+        let voided = book
+            .take_settlement_voided(trader(2), OUTCOME_YES, 10 * ONE_SHARE as i64, 0)
+            .unwrap();
+        assert_eq!(voided, 10 * ONE_SHARE);
+
+        let mut b = Acct::new(32);
+        let mut plain = filled(&mut b);
+        assert_eq!(
+            plain.take_settlement(trader(2), OUTCOME_YES).unwrap(),
+            voided
+        );
+    }
+
+    #[test]
+    fn a_voided_seat_cannot_be_redeemed_twice() {
+        // Both fields are zeroed and the block is freed, so a replayed proof
+        // finds nothing — and a refund against nothing is refused outright.
+        let mut a = Acct::new(32);
+        let mut book = filled(&mut a);
+        book.take_settlement_voided(trader(2), OUTCOME_YES, 0, 4 * ONE_SHARE)
+            .unwrap();
+        assert_eq!(
+            book.take_settlement_voided(trader(2), OUTCOME_YES, 0, 0)
+                .unwrap(),
+            0
+        );
+        assert!(book
+            .take_settlement_voided(trader(2), OUTCOME_YES, 0, 1)
+            .is_err());
+        assert!(book
+            .take_settlement_voided(trader(2), OUTCOME_YES, ONE_SHARE as i64, 0)
+            .is_err());
+    }
+
+    #[test]
+    fn a_tree_cannot_settle_more_than_the_seat_holds() {
+        let mut a = Acct::new(32);
+        let mut book = filled(&mut a);
+        assert!(book
+            .take_settlement_voided(trader(2), OUTCOME_YES, 10 * ONE_SHARE as i64 + 1, 0)
+            .is_err());
+        // Nor flip the seat to the other side.
+        assert!(book
+            .take_settlement_voided(trader(2), OUTCOME_YES, -(ONE_SHARE as i64), 0)
+            .is_err());
+    }
+
+    #[test]
+    fn a_tree_cannot_refund_more_than_the_voided_shares_were_worth() {
+        // 10 held, 4 valid -> 6 voided -> at most 6.00 back, because a book
+        // fill costs strictly less than one unit per share.
+        let mut a = Acct::new(32);
+        let mut book = filled(&mut a);
+        assert!(book
+            .take_settlement_voided(
+                trader(2),
+                OUTCOME_YES,
+                4 * ONE_SHARE as i64,
+                6 * ONE_SHARE + 1
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn voiding_never_pays_a_seat_more_than_the_unvoided_rule_could() {
+        // The bound that makes this path safe to add at all: whatever the
+        // tree says, the seat's ceiling is its own net.
+        for valid in [0i64, 3, 7, 10] {
+            let mut a = Acct::new(32);
+            let mut book = filled(&mut a);
+            let valid_net = valid * ONE_SHARE as i64;
+            let voided = 10 * ONE_SHARE - valid_net as u64;
+            let paid = book
+                .take_settlement_voided(trader(2), OUTCOME_YES, valid_net, voided)
+                .unwrap();
+            assert!(paid <= 10 * ONE_SHARE, "paid {paid} for a 10-share seat");
+        }
+    }
+
+    #[test]
+    fn a_voided_seat_returns_its_block_to_the_arena() {
+        // Same rule the unvoided path follows: a settled market's arena must
+        // not stay full of everyone who traded it.
+        let mut a = Acct::new(32);
+        let mut book = filled(&mut a);
+        book.take_settlement_voided(trader(2), OUTCOME_YES, 0, 4 * ONE_SHARE)
+            .unwrap();
+        assert_eq!(book.seat_of(trader(2)), None);
+    }
+
+    #[test]
+    fn the_seat_net_reads_without_allocating() {
+        // `redeem_book_seat` reads the net before it pays, and a wallet that
+        // never traded must not cost the arena a block for saying zero.
+        let mut a = Acct::new(32);
+        let book = filled(&mut a);
+        assert_eq!(book.net_of(trader(2)).unwrap(), 10 * ONE_SHARE as i64);
+        assert_eq!(book.net_of(trader(1)).unwrap(), -(10 * ONE_SHARE as i64));
+        assert_eq!(book.net_of(trader(9)).unwrap(), 0);
+        assert_eq!(book.seat_of(trader(9)), None);
     }
 
     #[test]

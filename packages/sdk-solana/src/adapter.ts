@@ -1804,7 +1804,11 @@ export class SolanaChainAdapter implements ChainAdapter {
     );
 
     const ix: TransactionInstruction = await (this.program.methods as any)
-      .redeemBookSeat()
+      // `null` = no T* voiding claim, exactly as on the AMM side: a market
+      // with a published `ResolutionCommitment` rejects a null claim, and the
+      // caller then has to carry the seat's entitlement and merkle proof. See
+      // docs/design/t-star-voiding.md.
+      .redeemBookSeat(null)
       .accounts({
         book,
         market: marketPda,
@@ -1815,6 +1819,13 @@ export class SolanaChainAdapter implements ChainAdapter {
           this.programIds,
         ),
         userUsdcAta: getAssociatedTokenAddressSync(this.bookMint, userPk),
+        // Passed whether or not it exists: the program cannot detect an
+        // account it was not handed, so this is what stops a voided market's
+        // seat from redeeming at full value by simply omitting it.
+        resolutionCommitment: deriveResolutionCommitmentPda(
+          marketPda,
+          this.programIds,
+        )[0],
         user: userPk,
         tokenProgram: TOKEN_PROGRAM_ID,
       })

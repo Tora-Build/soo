@@ -485,7 +485,9 @@ mod tests {
             publisher: Pubkey::new_unique(),
             published_at: 600,
             bump: 254,
-            _reserved: [0u8; 32],
+            total_book_void_refund_usdc: 0,
+            book_void_refund_paid_usdc: 0,
+            _reserved: [0u8; 16],
         }
     }
 

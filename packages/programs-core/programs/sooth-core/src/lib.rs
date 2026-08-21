@@ -125,6 +125,7 @@ pub mod events;
 pub mod instructions;
 pub mod math;
 pub mod merkle;
+pub mod pda;
 pub mod state;
 pub mod zk;
 
@@ -251,6 +252,15 @@ pub mod sooth_core {
         dispute::handler(ctx, new_outcome)
     }
 
+    /// Write `INVALID` onto a market whose adjudicator never attested, once
+    /// `settle::ABANDONED_MARKET_TIMEOUT_SECS` has passed since its deadline.
+    /// Permissionless, and does NOT settle: the ordinary veto window and the
+    /// ordinary `settle` still stand between it and a final outcome. See
+    /// `instructions/settle.rs`.
+    pub fn force_invalid_attestation(ctx: Context<ForceInvalidAttestation>) -> Result<()> {
+        settle::force_invalid_handler(ctx)
+    }
+
     /// Finalize an attested market. Permissionless once the veto window has
     /// closed; the outcome comes from the `AdjudicatorEntry`, not the caller.
     pub fn settle(ctx: Context<Settle>) -> Result<()> {
@@ -284,6 +294,13 @@ pub mod sooth_core {
 
     pub fn sweep_residual(ctx: Context<SweepResidual>) -> Result<()> {
         instructions::sweep_residual::handler(ctx)
+    }
+
+    /// Recover an LP-yield balance that no LP token can claim, so the market
+    /// can still reach the all-zero balances `close_market` requires.
+    /// Permissionless; destinations pinned by `config.treasury`.
+    pub fn sweep_lp_yield(ctx: Context<SweepLpYield>) -> Result<()> {
+        instructions::sweep_lp_yield::handler(ctx)
     }
 
     pub fn close_market(ctx: Context<CloseMarket>, market_id: [u8; 16]) -> Result<()> {
@@ -340,8 +357,11 @@ pub mod sooth_core {
 
     /// Pay out a winning book seat position after settlement. See
     /// `redeem_book_seat`.
-    pub fn redeem_book_seat(ctx: Context<RedeemBookSeat>) -> Result<()> {
-        redeem_book_seat::handler(ctx)
+    pub fn redeem_book_seat(
+        ctx: Context<RedeemBookSeat>,
+        voided_claim: Option<VoidedBookClaimArgs>,
+    ) -> Result<()> {
+        redeem_book_seat::handler(ctx, voided_claim)
     }
 
     // ── CLOB ──────────────────────────────────────────────────────────────────

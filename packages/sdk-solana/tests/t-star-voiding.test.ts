@@ -32,6 +32,7 @@ import {
   deriveLpMintAuthorityPda,
   deriveLpMintPda,
   deriveMarketVaultAmm,
+  deriveMarketVaultAta,
   derivePositionPda,
   deriveProtocolConfigPda,
   deriveResolutionCommitmentPda,
@@ -40,6 +41,7 @@ import {
   deriveVaultAuthorityPda,
   feePoolAmmPda,
 } from "../src/pdas.js";
+import { bookPda } from "../src/book/index.js";
 import { WAD } from "../src/math/lmsr.js";
 import { bootSmoke, warpClockTo, type SmokeContext } from "./fixtures/setup.js";
 import { LiteSvmConnection } from "./fixtures/svm.js";
@@ -141,6 +143,10 @@ function accountsFor(smoke: SmokeContext, user: PublicKey) {
       smoke.marketPda,
       programs,
     )[0],
+    // Publication is gated on the vaults covering what it promises, per
+    // venue, so it reads both — see `assert_commitment_fits_the_vaults`.
+    book: bookPda(marketId, programs)[0],
+    vaultBook: deriveMarketVaultAta(marketId, ammMint, programs),
   };
 }
 
@@ -272,12 +278,18 @@ async function publish(
           tStar: new BN(tStar.toString()),
           leafCount,
           totalVoidRefundUsdc: new BN(totalVoidRefund.toString()),
+          // This market has no book, so it may promise no book refund.
+          totalBookVoidRefundUsdc: new BN(0),
         })
         .accounts({
           resolutionCommitment: a.resolutionCommitment,
           market: smoke.marketPda,
           adjudicatorEntry: a.adjudicatorEntry,
           protocolConfig: a.protocolConfig,
+          ammState: a.ammState,
+          vaultAmm: a.marketVault,
+          book: a.book,
+          vaultBook: a.vaultBook,
           authority: smoke.creator.publicKey,
           systemProgram: SystemProgram.programId,
         })

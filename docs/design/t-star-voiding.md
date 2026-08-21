@@ -1,7 +1,7 @@
 # T\* voiding — refunding trades made after the event already happened
 
-Status: designed, partially implemented (`sooth_core` program side; SDK resolver
-and book coverage outstanding).
+Status: implemented on the `sooth_core` program side for BOTH venues (AMM
+positions and book seats); SDK resolver outstanding.
 
 ## The problem
 
@@ -147,6 +147,9 @@ honest; it is that the resolver's claim is (i) *bounded* by on-chain state and
 - **`redeem_amm_position`** takes the commitment PDA as an additional account
   and an `Option<VoidedClaimArgs>`. Empty PDA → today's behaviour, and the
   option must be `None`. Live PDA → the option is required and verified.
+- **`redeem_book_seat`** takes the same PDA and an
+  `Option<VoidedBookClaimArgs>` under exactly the same rule, against a BOOK
+  leaf in the same tree.
 
 ### Why redemption has to take the account
 
@@ -182,6 +185,26 @@ property doing the work.
 `market` is inside the leaf as well as in the seeds: it makes a proof from one
 market's tree unusable against another's root even if the roots were ever
 confused.
+
+The book's leaf is a second KIND of leaf in the same tree, separated by its own
+domain byte:
+
+```text
+book leaf = sha256( 0x02 ‖ market(32) ‖ user(32)
+                  ‖ valid_net(8 LE, signed) ‖ book_void_refund_usdc(8 LE) )
+```
+
+A wallet that traded both venues owns one leaf of each kind, and `leaf_count`
+counts both. The domain byte is what stops an AMM entitlement being spent on a
+seat, and it is also why adding the book leaf changed nothing about the AMM
+one: every existing proof and every existing caller is untouched.
+
+`valid_net` is signed because a seat's own net is — buying NO and selling YES
+are one trade on a single price axis. What the chain enforces against the seat
+is that the entitlement is the same SIDE and no larger, and that the refund
+does not exceed the voided shares' face value (a book fill costs strictly less
+than one unit per share). Together those mean a voided seat can never be paid
+more than the unvoided rule would have paid it at most.
 
 ### What the payout becomes
 
@@ -258,43 +281,83 @@ that gives markets a per-market voiding policy flag.
 
 ## What this does NOT solve
 
-1. **The book.** `redeem_book_seat` pays out seat positions and is untouched, so
-   a post-T\* *book* trade is not voided. The event data is there
-   (`OrdersFilled` carries per-fill `maker`, `taker`, `ts`), and the same
-   commitment can gate it — the leaf just needs a book net alongside the AMM
-   legs. It needs edits to `redeem_book_seat` plus seat accounting in `book/`.
-2. **Post-T\* sells.** An informed trader who *dumps* a soon-to-be-worthless
-   position after T\* is not caught. Their proceeds went into a `LockEntry` at
-   sell time, and `claim_unlocked` pays that out with no reference to any
-   commitment. Clawing it back means gating `claim_unlocked` on the commitment
-   and letting a leaf carry a negative adjustment — which needs
-   `instructions/sell_positions.rs` and `state/lock_entry.rs`, and is a bigger
-   change than the buy side because the money has already left the AMM vault's
-   accounting.
-3. **Vault solvency under heavy voiding.** Refunding a voided buyer at cost while
-   retiring their shares is the right economics — it undoes the trade — but LMSR
-   is only path-independent for the *pool*, not for a mid-path unwind at
-   historical cost. If the voided trades moved the price a long way, refunds at
-   cost plus payouts to valid winners can in principle exceed what the vault
-   holds, and the shortfall lands on the subsidy that `reclaim_subsidy` would
-   otherwise return. `total_void_refund_usdc` bounds the exposure and makes it
-   inspectable before settlement, but the program does not *prove* solvency. A
-   proof needs a void-refund pool tracked in `AmmState`, sized at publish time
-   out of the residual.
-4. **Choosing T\* itself.** For a zkTLS market the Primus attestation carries a
+1. **Post-T\* sells, on either venue.** An informed trader who *dumps* a
+   soon-to-be-worthless position after T\* is still not caught, and this is
+   the one gap that is only partly closeable in principle.
+
+   On the AMM the proceeds went into a `LockEntry` at sell time, and
+   `claim_unlocked` pays that out with no reference to any commitment. What is
+   *not* missing is the evidence: `LockEntry::sold_at()` recovers the moment of
+   the sell exactly (`unlock_at - LOCK_DURATION_SECS`, written at one site), so
+   a claw-back needs no new state, no account-size change and no merkle leaf —
+   only `require!(sold_at <= t_star)` against a live commitment, inside
+   `claim_unlocked`.
+
+   What bounds it is TIMING, not information. A commitment publishes inside the
+   veto window after the attestation, which follows the lock, which follows
+   every sell; `LockEntry::is_escrowed_at()` is the test. A gate therefore
+   catches exactly the sells still inside their 24h cooldown when the
+   commitment lands — all of them when the adjudicator locks, attests and
+   publishes promptly, none of them when that takes longer than a day. So this
+   is *partly* fixable, and honestly not more than that: money that has already
+   matured is gone, and no on-chain gate reaches it.
+
+   The book's version of the same thing is the seat's `credit`: USDC released
+   by a closing fill or a cancel, which `redeem_book_seat` pays out untouched
+   and `book_withdraw` can drain before settlement. Same shape, same limit.
+
+2. **Solvency is bounded at publication, not proven forever.**
+   `publish_resolution_commitment` now refuses a commitment whose ceilings the
+   vaults cannot cover, per venue:
+
+   ```text
+   vault_amm  >= total_void_refund_usdc      + payout(outcome, q - seed)
+   vault_book >= total_book_void_refund_usdc + book.total_obligations(outcome)
+   ```
+
+   The right-hand side is an upper bound on what the market can pay after
+   voiding, because voiding only ever moves a share from "settles" to
+   "refunded" and every refund is capped by the ceiling. A commitment that
+   would not fit is refused, after which the market redeems unvoided — the same
+   safe degradation as never publishing. The check is deliberately
+   conservative: a voided share is counted twice, once at face in the
+   outstanding ledger and again inside the ceiling, and the slack is bounded by
+   the voided volume that a well-chosen T\* keeps small.
+
+   What it does not do is hold that bound open afterwards. `reclaim_subsidy`
+   and `redeem_lp` compute their residual from the share ledger alone and know
+   nothing about a refund ceiling, so a creator reclaiming after publication
+   can still take back the room this check found. Closing it means subtracting
+   `void_refund_remaining()` inside those two instructions.
+
+3. **Choosing T\* itself.** For a zkTLS market the Primus attestation carries a
    signed `timestamp` (`zk/primus.rs`, surfaced as `ZkOutcomeAttested
    .attestation_ts`), which is the attestor's observation time and is the
    natural T\* — but note it is when the *attestor looked*, not when the event
    occurred, so it is an upper bound on the true T\*, and a conservative one is
    fine here. `attest_outcome_zk` does not currently persist it, so the
    publisher supplies T\* and it is checked against the public event: the
-   `ZkOutcomeAttested` log is right there for a disputer. For manual markets T\*
-   is the adjudicator's judgement, evidenced off-chain and disputable like
+   `ZkOutcomeAttested` log is right there for a disputer. For manual markets
+   T\* is the adjudicator's judgement, evidenced off-chain and disputable like
    everything else. The program only enforces
    `market.start_time <= t_star <= min(attested_at, deadline)`.
-5. **`AdjudicatorEntry` has 2 reserved bytes**, so none of this could live
-   there, and `Market._reserved` was off-limits for this change. The
-   consequence is the extra account on redemption (see above). If a future
-   change is already touching `Market`, a single `has_resolution_commitment`
-   bit there would let `redeem_amm_position` skip the `find_program_address` on
-   the ~all markets that never void.
+
+4. **`AdjudicatorEntry` has one reserved byte left**, so none of this could
+   live there, and `Market._reserved` was off-limits for this change. The
+   consequence is the extra account on both redemption paths (see above). If a
+   future change is already touching `Market`, a single
+   `has_resolution_commitment` bit there would let both redeem instructions
+   skip the `find_program_address` on the ~all markets that never void.
+
+5. **The SDK resolver.** Nothing off-chain builds these trees yet. The leaf
+   tables are a pure function of the event tape (`readMarketPlays`), T\* and a
+   stated accounting convention, and both leaf shapes are pinned byte-for-byte
+   by unit tests against the preimages documented above.
+
+### Closed since the first draft
+
+- **The book.** `redeem_book_seat` now takes the commitment and a book leaf, so
+  a post-T\* book *fill* is refunded at cost exactly as an AMM one is. See the
+  leaf section above and `Book::take_settlement_voided`.
+- **An unbounded published total.** Publication is now gated on the vaults
+  covering it, per venue, as described in (2).

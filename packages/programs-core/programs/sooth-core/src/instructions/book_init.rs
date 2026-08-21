@@ -50,21 +50,20 @@ pub fn init_handler(ctx: Context<BookInit>, initial_capacity: u16) -> Result<()>
 
     let market_id = ctx.accounts.market.market_id;
     let bump = ctx.bumps.book;
-    let seeds: &[&[&[u8]]] = &[&[b"book", market_id.as_ref(), &[bump]]];
-
+    // `create_pda_account` rather than a bare `create_account`: the book's
+    // address derives from a public `market_id`, so one lamport sent ahead of
+    // this call would otherwise lock the market out of its own order book
+    // forever. Re-init is still refused — a book that exists is program-owned
+    // with data.
     let rent = Rent::get()?;
-    system_program::create_account(
-        CpiContext::new_with_signer(
-            ctx.accounts.system_program.to_account_info(),
-            system_program::CreateAccount {
-                from: ctx.accounts.payer.to_account_info(),
-                to: ctx.accounts.book.to_account_info(),
-            },
-            seeds,
-        ),
-        rent.minimum_balance(space),
-        space as u64,
+    crate::pda::create_pda_account(
+        &ctx.accounts.payer.to_account_info(),
+        &ctx.accounts.book.to_account_info(),
+        &ctx.accounts.system_program.to_account_info(),
+        &rent,
+        space,
         &crate::ID,
+        &[b"book", market_id.as_ref(), &[bump]],
     )?;
 
     let info = ctx.accounts.book.to_account_info();

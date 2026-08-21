@@ -374,8 +374,10 @@ pub struct ResolutionCommitmentPublished {
     /// The moment the market's event became public knowledge.
     pub t_star: i64,
     pub leaf_count: u32,
-    /// Ceiling on the USDC the void path may pay across every leaf.
+    /// Ceiling on the USDC the AMM void path may pay across every leaf.
     pub total_void_refund_usdc: u64,
+    /// The same ceiling for the book venue.
+    pub total_book_void_refund_usdc: u64,
     pub ts: i64,
 }
 
@@ -408,5 +410,53 @@ pub struct VoidedRedeem {
     /// valid legs is what was voided.
     pub held_yes_wad: u128,
     pub held_no_wad: u128,
+    pub ts: i64,
+}
+
+/// Emitted by `redeem_book_seat` when the payout came from a published
+/// entitlement rather than from the raw seat. `Redeemed` still fires alongside
+/// it, so consumers that only track payouts need no change.
+#[event]
+pub struct VoidedBookRedeem {
+    pub market: Pubkey,
+    pub user: Pubkey,
+    /// Signed net acquired at or before T* — the part that settled.
+    pub valid_net: i64,
+    /// USDC returned at cost for post-T* fills.
+    pub book_void_refund_usdc: u64,
+    /// The seat's whole net. The difference against `valid_net` is what was
+    /// voided.
+    pub held_net: i64,
+    pub ts: i64,
+}
+
+/// Emitted by `force_invalid_attestation`: a market whose adjudicator never
+/// attested has had `INVALID` written onto it by a stranger, so that it can
+/// settle at all. The ordinary veto window runs from `ts`, and the outcome is
+/// still overridable inside it — by the authority attesting over it, or by the
+/// dispute authority correcting it.
+#[event]
+pub struct InvalidAttestationForced {
+    pub market: Pubkey,
+    pub adjudicator_entry: Pubkey,
+    /// Whoever cranked it. Unprivileged by construction.
+    pub cranker: Pubkey,
+    /// The deadline the timeout was measured from, so the log carries the
+    /// whole justification without a second account read.
+    pub deadline: i64,
+    pub ts: i64,
+}
+
+/// Emitted by `sweep_lp_yield`. The LP supply that would have claimed this
+/// yield no longer exists, so the remainder went to the treasury and the
+/// market can reach the all-zero balances `close_market` requires.
+#[event]
+pub struct LpYieldSwept {
+    pub market: Pubkey,
+    pub market_id: [u8; 16],
+    /// AMM-token remainder moved out of `lp_yield_amm`.
+    pub amm_amount: u64,
+    /// Book-token remainder moved out of `lp_yield_book`.
+    pub book_amount: u64,
     pub ts: i64,
 }

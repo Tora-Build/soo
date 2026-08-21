@@ -34,6 +34,16 @@ pub const LEAF_DOMAIN: u8 = 0x00;
 /// Domain byte prefixed to every internal-node preimage.
 pub const NODE_DOMAIN: u8 = 0x01;
 
+/// Domain byte prefixed to a BOOK entitlement leaf.
+///
+/// One tree carries both kinds of leaf — a wallet that traded both venues has
+/// one of each — so the two shapes need separating for the same reason leaves
+/// and nodes do: an AMM leaf and a book leaf must never share a preimage, or a
+/// proof of one would prove the other. The redeeming instruction composes only
+/// its own domain, so `redeem_book_seat` cannot be handed an AMM entitlement
+/// and vice versa.
+pub const BOOK_LEAF_DOMAIN: u8 = 0x02;
+
 /// Longest proof the program accepts, and therefore the deepest tree.
 ///
 /// 32 levels is 2^32 leaves — far past any market, and far past what the
@@ -47,7 +57,16 @@ pub const MAX_MERKLE_PROOF_LEN: usize = 32;
 /// Callers pass the preimage as slices so the composition stays visible at the
 /// call site; the domain byte is prepended here so no caller can forget it.
 pub fn hash_leaf(parts: &[&[u8]]) -> [u8; 32] {
-    let domain = [LEAF_DOMAIN];
+    hash_leaf_in_domain(LEAF_DOMAIN, parts)
+}
+
+/// Hash a leaf preimage under an explicit domain byte.
+///
+/// The domain is what keeps two leaf KINDS in one tree from colliding, so it
+/// is a parameter rather than a constant here — and every caller passes a
+/// distinct one.
+pub fn hash_leaf_in_domain(domain_byte: u8, parts: &[&[u8]]) -> [u8; 32] {
+    let domain = [domain_byte];
     let mut buf: Vec<&[u8]> = Vec::with_capacity(parts.len() + 1);
     buf.push(&domain);
     buf.extend_from_slice(parts);
@@ -329,6 +348,21 @@ mod tests {
         // leaf does. This test records the property rather than wishing it away.
         assert_eq!(a, b);
         assert_ne!(hash_leaf(&[b"a"]), hash_leaf(&[b"b"]));
+    }
+
+    #[test]
+    fn the_three_domains_are_mutually_unreachable() {
+        // One tree holds AMM leaves, book leaves and internal nodes. Any two
+        // sharing a preimage would make a proof of one a proof of another.
+        let parts: &[&[u8]] = &[&[1u8; 32][..], &[2u8; 32][..]];
+        let amm = hash_leaf(parts);
+        let book = hash_leaf_in_domain(BOOK_LEAF_DOMAIN, parts);
+        let node = hash_pair([1u8; 32], [2u8; 32]);
+        assert_ne!(amm, book);
+        assert_ne!(amm, node);
+        assert_ne!(book, node);
+        assert_ne!(LEAF_DOMAIN, BOOK_LEAF_DOMAIN);
+        assert_ne!(NODE_DOMAIN, BOOK_LEAF_DOMAIN);
     }
 
     #[test]

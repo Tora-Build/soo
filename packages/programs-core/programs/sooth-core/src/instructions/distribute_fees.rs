@@ -85,6 +85,10 @@ pub struct DistributeFeesAmm<'info> {
     /// when supply is zero the LP slice folds into the protocol remainder
     /// instead: the last LP out forfeits nothing they were owed — the fees
     /// arriving now were earned after they exited.
+    ///
+    /// This fold covers fees arriving AFTER supply hit zero. Anything already
+    /// sitting in the vault when it did is recovered by `sweep_lp_yield`, to
+    /// the same destination — one rule, applied at both moments.
     #[account(seeds = [b"lp", market.market_id.as_ref()], bump)]
     pub lp_mint: Box<Account<'info, Mint>>,
 

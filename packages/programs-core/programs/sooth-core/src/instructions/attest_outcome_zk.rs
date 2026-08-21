@@ -69,8 +69,16 @@ pub fn handler(ctx: Context<AttestOutcomeZk>, attestation: ZkAttestation) -> Res
         matches!(ctx.accounts.market.lifecycle, MarketLifecycle::Locked),
         SoothCoreError::InvalidLifecycleTransition
     );
+    // One-shot, with the same single exception the manual path makes: an
+    // outcome the permissionless abandonment hatch wrote. A zk market whose
+    // attestation was merely late must not be stuck with INVALID when a valid
+    // Primus attestation finally arrives — and this path is not a trust
+    // concession, since the attestation still has to verify against the
+    // registered attestor and rule. The write below clears the flag and
+    // restarts the veto window.
     require!(
-        !ctx.accounts.adjudicator_entry.is_attested(),
+        !ctx.accounts.adjudicator_entry.is_attested()
+            || ctx.accounts.adjudicator_entry.is_forced_invalid(),
         SoothCoreError::AlreadyAttested
     );
 
@@ -87,6 +95,7 @@ pub fn handler(ctx: Context<AttestOutcomeZk>, attestation: ZkAttestation) -> Res
         let entry = &mut ctx.accounts.adjudicator_entry;
         entry.attested_outcome = Some(verdict.winning_outcome);
         entry.attested_at = Some(now);
+        entry.forced_invalid = false;
     }
 
     // Both events fire: consumers that only track outcomes keep working

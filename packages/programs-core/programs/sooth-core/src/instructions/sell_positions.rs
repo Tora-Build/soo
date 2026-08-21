@@ -19,7 +19,15 @@ use crate::state::{
     require_not_paused, require_seeded, AmmState, LockEntry, Market, Position, ProtocolConfig,
 };
 
-const LOCK_DURATION_SECS: i64 = 24 * 60 * 60;
+/// How long sell proceeds sit in `lock_vault` before `claim_unlocked` may
+/// drain them.
+///
+/// Public because it is the other half of `LockEntry::sold_at`: the entry
+/// stores only `unlock_at`, and subtracting this constant is what recovers the
+/// moment of the sell — which is the quantity a T\* claw-back has to compare
+/// against. See `LockEntry::sold_at` and gap (2) in
+/// `docs/design/t-star-voiding.md`.
+pub const LOCK_DURATION_SECS: i64 = 24 * 60 * 60;
 
 #[derive(Accounts)]
 #[instruction(_outcome: u8, _delta_shares: i128, _min_proceeds_wad: u128, lock_nonce: u64)]

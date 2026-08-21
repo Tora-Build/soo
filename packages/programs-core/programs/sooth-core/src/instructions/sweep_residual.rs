@@ -38,6 +38,10 @@
 //! Book-venue residuals need no sweep: the book is zero-sum between seats
 //! (fees leave via the fee pool), so `vault_book` reaches zero organically
 //! once every seat withdraws.
+//!
+//! The LP yield vaults strand for a different reason and are recovered by
+//! `sweep_lp_yield`, in its own module: it names both venues' mints, and the
+//! venue-separation invariant is asserted per source file.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};

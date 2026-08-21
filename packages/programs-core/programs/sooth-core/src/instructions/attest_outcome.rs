@@ -43,6 +43,28 @@ pub struct AttestOutcome<'info> {
     pub authority: Signer<'info>,
 }
 
+/// Attestation is one-shot, with exactly one exception: an outcome the
+/// ABANDONMENT escape hatch wrote.
+///
+/// `force_invalid_attestation` is permissionless and fires purely on a
+/// timeout, so treating what it wrote as final would let a stranger take a
+/// market away from an adjudicator who was merely late. Letting the real
+/// authority attest over it — and restarting the veto window, since the
+/// handler rewrites `attested_at` — makes the hatch a fallback rather than a
+/// race.
+///
+/// It does not become a general amend: a FORCED outcome is the only one this
+/// admits, the handler clears `forced_invalid` as it writes, and the hatch
+/// cannot re-fire against an attested entry. Amending a real attestation is
+/// still `dispute`'s job, under the dispute authority.
+fn assert_attestable(entry: &AdjudicatorEntry) -> Result<()> {
+    require!(
+        !entry.is_attested() || entry.is_forced_invalid(),
+        SoothCoreError::AlreadyAttested
+    );
+    Ok(())
+}
+
 pub fn handler(ctx: Context<AttestOutcome>, winning_outcome: u8) -> Result<()> {
     require!(
         winning_outcome == OUTCOME_NO
@@ -57,10 +79,7 @@ pub fn handler(ctx: Context<AttestOutcome>, winning_outcome: u8) -> Result<()> {
         SoothCoreError::Unauthorized
     );
 
-    require!(
-        !ctx.accounts.adjudicator_entry.is_attested(),
-        SoothCoreError::AlreadyAttested
-    );
+    assert_attestable(&ctx.accounts.adjudicator_entry)?;
 
     // Attestation must gate the lifecycle itself — otherwise an Open market
     // could be attested and would then settle straight out of trading once
@@ -78,6 +97,7 @@ pub fn handler(ctx: Context<AttestOutcome>, winning_outcome: u8) -> Result<()> {
         let entry = &mut ctx.accounts.adjudicator_entry;
         entry.attested_outcome = Some(winning_outcome);
         entry.attested_at = Some(now);
+        entry.forced_invalid = false;
     }
 
     emit!(OutcomeAttested {
@@ -88,4 +108,52 @@ pub fn handler(ctx: Context<AttestOutcome>, winning_outcome: u8) -> Result<()> {
     });
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::instructions::settle::tests::silent_entry;
+
+    #[test]
+    fn a_fresh_entry_is_attestable() {
+        assert!(assert_attestable(&silent_entry(Pubkey::new_unique())).is_ok());
+    }
+
+    #[test]
+    fn a_real_attestation_is_one_shot() {
+        let mut entry = silent_entry(Pubkey::new_unique());
+        entry.attested_outcome = Some(OUTCOME_YES);
+        entry.attested_at = Some(1_000);
+        assert!(assert_attestable(&entry).is_err());
+    }
+
+    #[test]
+    fn the_authority_may_attest_over_a_forced_invalid() {
+        // The regression for the escape hatch's one real risk: a stranger
+        // forcing INVALID onto a market whose adjudicator was merely late
+        // must not be able to keep it there.
+        let mut entry = silent_entry(Pubkey::new_unique());
+        entry.attested_outcome = Some(OUTCOME_INVALID);
+        entry.attested_at = Some(1_000);
+        entry.forced_invalid = true;
+        assert!(assert_attestable(&entry).is_ok());
+    }
+
+    #[test]
+    fn attesting_over_a_forced_outcome_closes_the_door_behind_it() {
+        // The overwrite clears the flag, so the exception is used once and
+        // the entry goes back to being one-shot.
+        let mut entry = silent_entry(Pubkey::new_unique());
+        entry.attested_outcome = Some(OUTCOME_INVALID);
+        entry.attested_at = Some(1_000);
+        entry.forced_invalid = true;
+        assert!(assert_attestable(&entry).is_ok());
+
+        // What the handler writes.
+        entry.attested_outcome = Some(OUTCOME_NO);
+        entry.attested_at = Some(2_000);
+        entry.forced_invalid = false;
+        assert!(assert_attestable(&entry).is_err());
+    }
 }
