@@ -225,7 +225,8 @@ export async function sendBookTxRaw(
     const logs = (res.meta?.logMessages ?? []).join("\n");
     throw new Error(`${res.result}\n${logs}`);
   }
-  smoke.ctx.expireBlockhash?.();
+  // No blockhash roll here: `SvmClient.tryProcessTransaction` advances it
+  // itself, so every send already lands in its own block.
   const msg = tx.compileMessage();
   return {
     cu: Number(res.meta?.computeUnitsConsumed ?? 0),

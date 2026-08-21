@@ -75,6 +75,13 @@ pub struct BookPlace<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+/// Placement and matching are permitted strictly before the deadline. At the
+/// deadline the book stops taking orders, whether or not the lock has landed.
+fn assert_within_trading_window(now: i64, deadline: i64) -> Result<()> {
+    require!(now < deadline, SoothCoreError::TradingClosed);
+    Ok(())
+}
+
 pub fn handler(
     ctx: Context<BookPlace>,
     side: u8,
@@ -94,10 +101,7 @@ pub fn handler(
     // (`trade_positions` and `sell_positions` both require `is_open`).
     // `book_cancel` stays ungated on purpose — a maker must always be able to
     // get out, and after settlement that is the only way to recover escrow.
-    require!(
-        ctx.accounts.market.is_open(),
-        SoothCoreError::MarketNotOpen
-    );
+    require!(ctx.accounts.market.is_open(), SoothCoreError::MarketNotOpen);
 
     // The book opens at graduation, and not before. Enforced on chain, not
     // by the front end declining to show the panel.
@@ -113,6 +117,21 @@ pub fn handler(
         ctx.accounts.market.book_enabled,
         SoothCoreError::NotGraduated
     );
+
+    // Trading also stops at the advertised deadline, not merely whenever the
+    // lock authority gets round to submitting the transition.
+    //
+    // The lifecycle check above is a check on someone else's transaction. The
+    // gap between the deadline passing and `Locked` landing is time in which
+    // the outcome may already be public while resting orders are still
+    // fillable — the same free money, taken from makers who did exactly what
+    // the market told them and left an order up until the cutoff.
+    //
+    // `book_cancel` is deliberately outside this gate: after the deadline,
+    // cancelling is the only way a maker recovers escrow, so it must stay
+    // available for as long as the order does.
+    let now = Clock::get()?.unix_timestamp;
+    assert_within_trading_window(now, ctx.accounts.market.deadline)?;
 
     require!(
         side == SIDE_BID || side == SIDE_ASK,
@@ -205,7 +224,7 @@ pub fn handler(
         )?;
     }
 
-    let ts = Clock::get()?.unix_timestamp;
+    let ts = now;
     let market_key = ctx.accounts.market.key();
 
     if !result.filled_orders.is_empty() {
@@ -256,4 +275,56 @@ pub fn handler(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::market::market_fixture;
+    use crate::state::MarketLifecycle;
+
+    const DEADLINE: i64 = 1_000;
+
+    #[test]
+    fn an_order_places_before_the_deadline() {
+        assert!(assert_within_trading_window(DEADLINE - 1, DEADLINE).is_ok());
+    }
+
+    #[test]
+    fn an_order_is_refused_at_the_deadline() {
+        // The boundary is exclusive: the advertised cutoff is the first
+        // instant at which no order may be placed or filled.
+        assert!(assert_within_trading_window(DEADLINE, DEADLINE).is_err());
+    }
+
+    #[test]
+    fn a_resting_order_cannot_be_filled_after_the_deadline() {
+        // A fill is a `book_place` that crosses, so the taker side of every
+        // fill passes through this gate — including while the market is still
+        // Open because the lock transition has not landed yet.
+        let market = market_fixture(MarketLifecycle::Open);
+        assert!(market.is_open());
+        assert!(assert_within_trading_window(market.deadline + 60, market.deadline).is_err());
+    }
+
+    #[test]
+    fn cancellation_is_not_caught_by_the_deadline_gate() {
+        // `book_cancel` has its own handler in `book_ops.rs` and calls neither
+        // this guard nor `is_open`; a maker's exit stays open indefinitely.
+        // Pinned here because the gate above is what would otherwise trap
+        // their escrow.
+        let market = market_fixture(MarketLifecycle::Settled);
+        let cancel_src = include_str!("book_ops.rs");
+        let cancel_handler = cancel_src
+            .split("pub fn cancel_handler")
+            .nth(1)
+            .expect("book_ops.rs defines cancel_handler");
+        let body = &cancel_handler[..cancel_handler
+            .find("\n}\n")
+            .expect("cancel_handler has a body")];
+        assert!(!body.contains("assert_within_trading_window"));
+        assert!(!body.contains("is_open"));
+        assert!(!body.contains("deadline"));
+        assert!(!market.is_open());
+    }
 }

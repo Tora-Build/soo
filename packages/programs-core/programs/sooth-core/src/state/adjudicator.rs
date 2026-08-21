@@ -50,7 +50,6 @@ pub struct AdjudicatorEntry {
     // migration is needed. Every one of these reads as zero on an entry
     // written by `register_adjudicator`, and zero means "manual" — see
     // `zk_comparator`.
-
     /// How the attested value is tested against `zk_threshold`, and — because
     /// `ZkComparator::None` is discriminant zero — whether this entry is
     /// zk-enabled at all. An entry from the manual `register_adjudicator`

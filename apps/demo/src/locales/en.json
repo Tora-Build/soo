@@ -91,7 +91,7 @@
     "graduating": "Graduating..."
   },
   "orderbook": {
-    "title": "SoothBook Terminal",
+    "title": "SooBook Terminal",
     "orderBook": "Order Book",
     "chart": "Chart",
     "orders": "Orders",
@@ -115,8 +115,8 @@
     "collateral": "Collateral",
     "payoutIfCorrect": "Payout if correct",
     "return": "Return",
-    "notOnSoothBook": "Market not yet on SoothBook",
-    "bondingPhase": "This market has graduated from Launchpad bonding, but SoothBook trading is not available for it yet. For now, trade via the AMM page.",
+    "notOnSoothBook": "Market not yet on SooBook",
+    "bondingPhase": "This market has graduated from Launchpad bonding, but SooBook trading is not available for it yet. For now, trade via the AMM page.",
     "goToAmm": "Go to AMM"
   },
   "portfolio": {
@@ -124,12 +124,12 @@
     "walletCollateral": "Wallet Collateral",
     "approved": "Approved",
     "readyToTrade": "Ready to Trade",
-    "soothBookApproval": "SoothBook Approval",
+    "soothBookApproval": "SooBook Approval",
     "refreshBalance": "Refresh Balance",
     "walletUsdcBalance": "Wallet USDC Balance",
-    "depositInstruction": "Deposit USDC to place limit orders on the SoothBook orderbook.",
+    "depositInstruction": "Deposit USDC to place limit orders on the SooBook orderbook.",
     "reservedTooltip": "On-chain reserved collateral for open orders or short positions. May differ from visible orders if orders were placed in a previous session.",
-    "approveUsdcForSoothBook": "Approve USDC for SoothBook",
+    "approveUsdcForSoothBook": "Approve USDC for SooBook",
     "amountToApprove": "Amount to approve",
     "processing": "Processing...",
     "walletModeActive": "Wallet Mode Active",
@@ -418,12 +418,12 @@
   },
   "faucet": {
     "title": "Protocol Faucet",
-    "subtitle": "Get test tokens to interact with the Sooth Protocol",
+    "subtitle": "Get test tokens to interact with the Soo Protocol",
     "yourBalance": "Your Balance",
     "requestTokens": "Request 100,000 mUSDC",
     "requesting": "Requesting...",
     "mockUsdc": "Mock USDC",
-    "mintDescription": "Mint 100,000 mUSDC to your wallet. This token is used as collateral for all trading on Sooth.",
+    "mintDescription": "Mint 100,000 mUSDC to your wallet. This token is used as collateral for all trading on Soo.",
     "notDeployed": "Not deployed"
   },
   "geek": {
@@ -625,7 +625,7 @@
     "remaining": "remaining"
   },
   "footer": {
-    "protocol": "SOOTH PROTOCOL",
+    "protocol": "SOO PROTOCOL",
     "rpc": "RPC",
     "block": "Block"
   },
@@ -709,7 +709,7 @@
       "aliceStrategy": "Alice's Strategy:",
       "aliceDesc": "Trade early to earn LP tokens from fees. Even wrong predictions can profit!",
       "bobStrategy": "Bob's Strategy:",
-      "bobDesc": "Capture price differences between AMM and SoothBook. Risk-free profit when spread exceeds costs!",
+      "bobDesc": "Capture price differences between AMM and SooBook. Risk-free profit when spread exceeds costs!",
       "daveStrategy": "Dave's Strategy:",
       "daveDesc": "Bet on conviction against other traders. No LP safety net — winner takes all!",
       "influenceFactors": "Influence Factors",
@@ -782,7 +782,7 @@
       "settlementMitigation": "LP floor formula guarantees a minimum redemption value.",
       "smartContractTitle": "Smart Contract Risk",
       "smartContractDesc": "All DeFi protocols carry inherent smart contract risk.",
-      "smartContractMitigation": "Sooth Protocol has been audited. Only deposit what you can afford to lose.",
+      "smartContractMitigation": "Soo Protocol has been audited. Only deposit what you can afford to lose.",
       "lpFloorProtection": "LP Floor Protection",
       "lpFloorDesc": "Your LP tokens have a guaranteed minimum value based on the floor formula:",
       "lpFloorWorstCase": "Even in the worst-case scenario (all winners redeem), LPs are guaranteed at least the floor value.",
@@ -885,7 +885,7 @@
           "headers": {
             "0": "Feature",
             "1": "Traditional",
-            "2": "Sooth"
+            "2": "Soo"
           },
           "rows": {
             "0": {
@@ -905,7 +905,7 @@
             }
           }
         },
-        "title": "The Sooth Advantage"
+        "title": "The Soo Advantage"
       },
       "context": {
         "mechanisms": {
@@ -1008,7 +1008,7 @@
             "name": "LP Valuation (ExRate)"
           },
           "3": {
-            "desc": "Markets graduate to the SoothBook once cumulative trading fees reach 100% of the initial creator deposit (default graduationBps = 10000).",
+            "desc": "Markets graduate to the SooBook once cumulative trading fees reach 100% of the initial creator deposit (default graduationBps = 10000).",
             "formula": "Deposit × graduationBps / 10000",
             "name": "Graduation Threshold"
           },
@@ -1018,7 +1018,7 @@
             "name": "Creator Deposit"
           }
         },
-        "subtitle": "Sooth V8.1 uses a Dual-Venue ledger with automated reconciliation.",
+        "subtitle": "Soo V8.1 uses a Dual-Venue ledger with automated reconciliation.",
         "title": "Protocol Accounting"
       },
       "gaming": {
@@ -1037,7 +1037,7 @@
       },
       "header": {
         "subtitle": "\"When every participant has aligned incentives, the protocol doesn't need gatekeepers. Truth emerges from the market itself.\"",
-        "title": "Learn Sooth Protocol"
+        "title": "Learn Soo Protocol"
       },
       "pillars": {
         "launchpad": {
@@ -1048,7 +1048,7 @@
         "soothBook": {
           "description": "On-chain orderbook with 1,000-tick depth.",
           "innovation": "High-throughput CLOB",
-          "title": "SoothBook"
+          "title": "SooBook"
         },
         "zkRules": {
           "description": "Autonomous, retroactive settlement via T*.",
@@ -1079,7 +1079,7 @@
           "title": "AMM (Retail)"
         },
         "arb": {
-          "description": "Arbitrageurs keep prices efficient by bridging the gap between AMM and SoothBook. They buy cheap on one venue and sell expensive on the other.",
+          "description": "Arbitrageurs keep prices efficient by bridging the gap between AMM and SooBook. They buy cheap on one venue and sell expensive on the other.",
           "title": "The Arbitrageur's Role"
         },
         "architectureTitle": "Dual Venue Architecture",
@@ -1090,12 +1090,12 @@
         },
         "evolutionStates": {
           "0": "AMM Only",
-          "1": "AMM + SoothBook",
-          "2": "SoothBook Dominant"
+          "1": "AMM + SooBook",
+          "2": "SooBook Dominant"
         },
         "evolutionTitle": "Market Evolution",
         "pvp": {
-          "description": "The SoothBook is where conviction meets conviction. No AMM buffer—just peer-to-peer trading. Winners take the loser's stake with zero LP spread extraction.",
+          "description": "The SooBook is where conviction meets conviction. No AMM buffer—just peer-to-peer trading. Winners take the loser's stake with zero LP spread extraction.",
           "title": "PvP Conviction"
         },
         "soothBook": {
@@ -1117,10 +1117,10 @@
               "1": "None (Instant)"
             }
           },
-          "title": "SoothBook (Pro)"
+          "title": "SooBook (Pro)"
         }
       },
-      "proTip": "Sooth is a cooperative network. Every participant's actions help discover the true price of future events.",
+      "proTip": "Soo is a cooperative network. Every participant's actions help discover the true price of future events.",
       "ready": {
         "actors": {
           "0": {
@@ -1140,13 +1140,13 @@
             "title": "PvP Trader"
           }
         },
-        "subtitle": "Sooth's ecosystem is a cooperative network. Which actor role will you play today?",
+        "subtitle": "Soo's ecosystem is a cooperative network. Which actor role will you play today?",
         "title": "Choose Your Path"
       },
       "steps": {
         "0": {
           "badge": "Pillar 0 · Introduction",
-          "description": "Sooth Protocol is designed around one core thesis: **decentralization creates better markets**. Traditional platforms suffer from gatekept creation and centralized resolution. Sooth solves this through three foundational pillars.",
+          "description": "Soo Protocol is designed around one core thesis: **decentralization creates better markets**. Traditional platforms suffer from gatekept creation and centralized resolution. Soo solves this through three foundational pillars.",
           "id": "thesis",
           "title": "The Decentralization Thesis"
         },
@@ -1163,13 +1163,13 @@
           "title": "The Gaming Trader"
         },
         "3": {
-          "badge": "Pillar III · SoothBook",
-          "description": "Sooth operates **dual trading venues** to serve different trader archetypes. Sophisticated traders use the SoothBook for CEX-grade execution.",
+          "badge": "Pillar III · SooBook",
+          "description": "Soo operates **dual trading venues** to serve different trader archetypes. Sophisticated traders use the SooBook for CEX-grade execution.",
           "id": "pro",
           "title": "The Arbitrageur & PvP Trader"
         },
         "4": {
-          "description": "Sooth's ecosystem is a cooperative network. Which actor role will you play today?",
+          "description": "Soo's ecosystem is a cooperative network. Which actor role will you play today?",
           "id": "ready",
           "title": "Start Your Journey"
         }
@@ -1251,14 +1251,14 @@
       "restricted": {
         "description": "Hyper-orderbook venues are only available for graduated markets. This market is still in its bonding phase.",
         "switchButton": "Switch to Trade",
-        "title": "SoothBook Restricted"
+        "title": "SooBook Restricted"
       },
       "shortcuts": {
         "buy": "BUY",
         "price": "PRICE",
         "sell": "SELL",
         "shortcuts": "SHORTCUTS",
-        "terminal": "V12 SOOTHBOOK TERMINAL"
+        "terminal": "V12 SOOBOOK TERMINAL"
       },
       "tabs": {
         "history": "HISTORY",
@@ -1366,7 +1366,7 @@
     "smartContract": {
       "title": "Smart Contract Risk",
       "description": "All DeFi protocols carry inherent smart contract risk.",
-      "mitigation": "Sooth Protocol has been audited. Only deposit what you can afford to lose."
+      "mitigation": "Soo Protocol has been audited. Only deposit what you can afford to lose."
     },
     "likelihood": {
       "low": "low",
@@ -1403,7 +1403,7 @@
     },
     "shell": {
       "testnetBanner": "Devnet — funds have no value",
-      "networkFooter": "Solana Devnet · Sooth Core"
+      "networkFooter": "Solana Devnet · Soo Core"
     },
     "wallet": {
       "connectedTitle": "Connected with {{connector}}. Click to disconnect.",
@@ -1654,7 +1654,7 @@
         "emptyBook": "empty book",
         "oneSidedBook": "one-sided book",
         "midpointExplanation": "This number is the midpoint between the best indexed CLOB bid and ask; it is a reference, not a guaranteed fill.",
-        "protocolExplanation": "The order book cannot form a midpoint, so this number comes from the live protocol state. Your order still executes on SoothBook.",
+        "protocolExplanation": "The order book cannot form a midpoint, so this number comes from the live protocol state. Your order still executes on SooBook.",
         "unavailableExplanation": "Indexed depth is unavailable, so this reference cannot be treated as an executable price. Order submission is paused.",
         "loadingExplanation": "Reading indexed depth before presenting an executable price reference.",
         "noReference": "No chain or indexer price reference is available yet. The app is not inventing one."

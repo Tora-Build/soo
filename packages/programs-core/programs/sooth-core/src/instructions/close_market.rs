@@ -146,7 +146,10 @@ pub fn handler(ctx: Context<CloseMarket>, market_id: [u8; 16]) -> Result<()> {
         Market::try_deserialize(&mut &data[..])
             .map_err(|_| error!(SoothCoreError::MarketNotClosable))?
     };
-    require!(market.market_id == market_id, SoothCoreError::MarketNotClosable);
+    require!(
+        market.market_id == market_id,
+        SoothCoreError::MarketNotClosable
+    );
     require_keys_eq!(
         market.creator,
         ctx.accounts.creator.key(),
@@ -178,9 +181,18 @@ pub fn handler(ctx: Context<CloseMarket>, market_id: [u8; 16]) -> Result<()> {
     );
 
     // ── Nothing may be owed ──────────────────────────────────────────────
-    require!(ctx.accounts.vault_book.amount == 0, SoothCoreError::VaultNotEmpty);
-    require!(ctx.accounts.vault_amm.amount == 0, SoothCoreError::VaultNotEmpty);
-    require!(ctx.accounts.lock_vault.amount == 0, SoothCoreError::VaultNotEmpty);
+    require!(
+        ctx.accounts.vault_book.amount == 0,
+        SoothCoreError::VaultNotEmpty
+    );
+    require!(
+        ctx.accounts.vault_amm.amount == 0,
+        SoothCoreError::VaultNotEmpty
+    );
+    require!(
+        ctx.accounts.lock_vault.amount == 0,
+        SoothCoreError::VaultNotEmpty
+    );
     require!(
         ctx.accounts.fee_pool_amm.amount == 0,
         SoothCoreError::FeePoolNotEmpty
@@ -204,12 +216,9 @@ pub fn handler(ctx: Context<CloseMarket>, market_id: [u8; 16]) -> Result<()> {
         if info.owner == &crate::ID && info.data_len() > 0 {
             {
                 let mut data = info.try_borrow_mut_data()?;
-                let book = load_book(&mut data)
-                    .map_err(|_| error!(SoothCoreError::BookNotEmpty))?;
-                require!(
-                    book.header.order_count == 0,
-                    SoothCoreError::BookNotEmpty
-                );
+                let book =
+                    load_book(&mut data).map_err(|_| error!(SoothCoreError::BookNotEmpty))?;
+                require!(book.header.order_count == 0, SoothCoreError::BookNotEmpty);
                 // Walk the seat list. `vault_book == 0` already made any
                 // remaining credit worthless, but a nonzero credit over an
                 // empty vault is evidence of insolvency, and this ledger is
@@ -338,7 +347,6 @@ pub fn handler(ctx: Context<CloseMarket>, market_id: [u8; 16]) -> Result<()> {
                 .try_borrow_mut_lamports()? += lam;
         }
     }
-
 
     // ── Tombstone the Market ─────────────────────────────────────────────
     // Shrink to 8 bytes, stamp the marker, refund the difference. The

@@ -349,7 +349,7 @@ describe("adapter book surface", () => {
     expect(req.kind).toBe("trade");
     expect((req.meta as { operation?: string }).operation).toBe("bookPlace");
     // Flat account list — no per-fill bundles, which is what retires H1.
-    expect(req.accounts.length).toBe(11);
+    expect(req.accounts!.length).toBe(11);
   }, 60_000);
 
   it("buildBookCancel and buildBookWithdraw round-trip too", async () => {

@@ -3,16 +3,18 @@
 //! Uses PDA-signed token transfers:
 //!   - `token::transfer(market_vault → fee_pool_amm)`.
 //!   - `token::transfer(market_vault → lock_vault)`.
+//!
+//! The fee also advances `AmmState.fee_b_base_wad` and runs the graduation
+//! check, exactly as `trade_positions` does — see §6a.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 use crate::error::SoothCoreError;
-use crate::events::PositionSold;
+use crate::events::{MarketGraduated, PositionSold};
+use crate::instructions::trade_positions::graduation_threshold_wad;
 use crate::math::{cost_delta, wad_to_usdc_floor, MathError};
-use crate::state::{
-    require_not_paused, AmmState, LockEntry, Market, Position, ProtocolConfig,
-};
+use crate::state::{require_not_paused, AmmState, LockEntry, Market, Position, ProtocolConfig};
 
 const LOCK_DURATION_SECS: i64 = 24 * 60 * 60;
 
@@ -22,7 +24,11 @@ const OUTCOME_YES: u8 = 1;
 #[derive(Accounts)]
 #[instruction(_outcome: u8, _delta_shares: i128, _min_proceeds_wad: u128, lock_nonce: u64)]
 pub struct SellPositions<'info> {
+    /// `mut` for exactly one write: `book_enabled` is flipped here when the
+    /// sell's fee carries the graduation odometer over its threshold. Nothing
+    /// else in this instruction touches `Market`.
     #[account(
+        mut,
         seeds = [b"market", market.market_id.as_ref()],
         bump = market.bump,
     )]
@@ -161,7 +167,10 @@ pub fn handler(
         !ctx.accounts.amm_state.is_dismissed,
         SoothCoreError::MarketDismissed
     );
-    require!(ctx.accounts.amm_state.b > 0, SoothCoreError::InvalidLiquidity);
+    require!(
+        ctx.accounts.amm_state.b > 0,
+        SoothCoreError::InvalidLiquidity
+    );
 
     let (d_yes, d_no) = if outcome == OUTCOME_YES {
         (delta_shares, 0i128)
@@ -182,6 +191,7 @@ pub fn handler(
     let proceeds_wad: u128 = cost_wad.unsigned_abs();
 
     let fee_bps = ctx.accounts.protocol_config.amm_fee_bps;
+    let cfg_graduation_bps = ctx.accounts.protocol_config.graduation_bps;
     let fee_wad: u128 = proceeds_wad
         .checked_mul(fee_bps as u128)
         .map(|v| v / 10_000)
@@ -251,6 +261,48 @@ pub fn handler(
             ),
             fee_usdc,
         )?;
+    }
+
+    // ── 6a. The fee joins the graduation odometer ─────────────────────────
+    //
+    // Sell fees count toward graduation exactly as buy fees do. The odometer
+    // measures fees the venue has EARNED against the subsidy the creator put
+    // at risk (`b·ln(2) × graduation_bps`), and a sell's fee lands in
+    // `fee_pool_amm` alongside a buy's. Accruing only one side would make the
+    // odometer disagree with the pool it is measuring, and would make a
+    // churn-heavy market harder to graduate than a buy-only one that earned
+    // the protocol the same money.
+    ctx.accounts.amm_state.fee_b_base_wad = ctx
+        .accounts
+        .amm_state
+        .fee_b_base_wad
+        .checked_add(fee_wad)
+        .ok_or(error!(SoothCoreError::MathOverflow))?;
+
+    // The check runs at both trading sites, so graduation stays atomic with
+    // the trade that crosses the threshold rather than waiting for the next
+    // buy. It is still one-way, and `AmmState.is_graduated` and
+    // `Market.book_enabled` are still written together.
+    {
+        let mut just_graduated = false;
+        {
+            let amm = &mut ctx.accounts.amm_state;
+            if !amm.is_graduated {
+                let threshold_wad = graduation_threshold_wad(amm.b, cfg_graduation_bps)?;
+                if amm.fee_b_base_wad >= threshold_wad {
+                    amm.is_graduated = true;
+                    just_graduated = true;
+                    emit!(MarketGraduated {
+                        market: amm.market,
+                        fees_accumulated_wad: amm.fee_b_base_wad,
+                        threshold_wad,
+                    });
+                }
+            }
+        }
+        if just_graduated {
+            ctx.accounts.market.book_enabled = true;
+        }
     }
 
     // ── 6b. PDA-signed net transfer: market_vault → lock_vault ────────────

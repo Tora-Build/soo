@@ -166,8 +166,7 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
     {
         let space = Market::SPACE;
         let lamports = ctx.accounts.rent.minimum_balance(space);
-        let signer_seeds: &[&[&[u8]]] =
-            &[&[b"market", market_id.as_ref(), &[market_bump]]];
+        let signer_seeds: &[&[&[u8]]] = &[&[b"market", market_id.as_ref(), &[market_bump]]];
         invoke_signed(
             &system_instruction::create_account(
                 &creator_key,
@@ -187,12 +186,15 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
             // A new market is ungraduated, so the book stays shut until
             // `trade_positions` opens it.
             book_enabled: false,
-            _reserved: [0u8; 97],
+            // Dismissal is a decision the creator takes later, inside the
+            // trial window.
+            is_dismissed: false,
+            _reserved: [0u8; 96],
             market_id,
             creator: creator_key,
             adjudicator: args.adjudicator,
             question_hash: args.question_hash,
-            vault_book: Pubkey::default(),  // all three filled after leg 2
+            vault_book: Pubkey::default(), // all three filled after leg 2
             vault_amm: Pubkey::default(),
             lock_vault: Pubkey::default(),
             start_time: args.start_time,
@@ -225,10 +227,8 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
         {
             // The AMM vault at its own seeds. create_account must be signed
             // by the new account itself, so the vault PDA's seeds sign.
-            let (vault_amm_key, vault_amm_bump) = Pubkey::find_program_address(
-                &[b"vault_amm", market_id.as_ref()],
-                &crate::ID,
-            );
+            let (vault_amm_key, vault_amm_bump) =
+                Pubkey::find_program_address(&[b"vault_amm", market_id.as_ref()], &crate::ID);
             require_keys_eq!(
                 vault_amm_key,
                 ctx.accounts.vault_amm.key(),

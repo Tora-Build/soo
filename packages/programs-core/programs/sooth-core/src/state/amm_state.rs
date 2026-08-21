@@ -56,3 +56,23 @@ impl AmmState {
 /// Layout sync guard: pins `POSITION_TOTAL_LEN` in `constants.rs` so the
 /// `Position` layout cannot drift from the offsets used by raw parsers.
 const _: () = assert!(POSITION_TOTAL_LEN == 153);
+
+/// Fixture for the instruction-level guard tests: a live, ungraduated AMM
+/// whose trial window has already closed.
+#[cfg(test)]
+pub(crate) fn amm_fixture() -> AmmState {
+    AmmState {
+        market: Pubkey::new_unique(),
+        q_yes: 0,
+        q_no: 0,
+        b: 1,
+        seed_q_yes: 0,
+        seed_q_no: 0,
+        fee_b_base_wad: 0,
+        trial_end_at: 1_000,
+        is_graduated: false,
+        is_dismissed: false,
+        bump: 255,
+        _reserved: [0u8; 64],
+    }
+}

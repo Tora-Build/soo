@@ -57,6 +57,19 @@ pub struct Market {
     /// cannot drift: graduation is one-way and set at exactly one site.
     pub book_enabled: bool,
 
+    /// Has this market been dismissed?
+    ///
+    /// Mirrors `AmmState.is_dismissed`, written by `dismiss_market` alongside
+    /// it. It lives here because dismissal and settlement are the two terminal
+    /// outcomes of one market and must exclude each other: `settle` loads
+    /// `Market` and does NOT load `AmmState`, so without the mirror the
+    /// exclusion would cost an account and 32 bytes on the settle path — and
+    /// the check that is not cheap is the check that gets skipped.
+    ///
+    /// The two flags cannot drift: dismissal is one-way and set at exactly one
+    /// site, `dismiss_market`, which writes both.
+    pub is_dismissed: bool,
+
     /// Forward-compat padding. Adding a field consumes bytes from here
     /// instead of changing the account's length, so no migration is needed:
     /// Solana accounts are fixed-length buffers, and an `#[account]` struct
@@ -65,7 +78,7 @@ pub struct Market {
     ///
     /// When you add a field, shrink this by exactly its serialized size and
     /// leave `SPACE` unchanged.
-    pub _reserved: [u8; 97],
+    pub _reserved: [u8; 96],
 }
 
 impl Market {
@@ -86,10 +99,14 @@ impl Market {
         + 1                          // vault_authority_bump
         + 1                          // lock_authority_bump
         + 1                          // book_enabled
-        + 97; // _reserved
+        + 1                          // is_dismissed
+        + 96; // _reserved
 
+    /// Trading is permitted. A dismissed market is never open: dismissal
+    /// refunds every deposit at cost, so a trade after it would price shares
+    /// that will never pay out.
     pub fn is_open(&self) -> bool {
-        matches!(self.lifecycle, MarketLifecycle::Open)
+        matches!(self.lifecycle, MarketLifecycle::Open) && !self.is_dismissed
     }
 
     pub fn is_locked(&self) -> bool {
@@ -98,5 +115,85 @@ impl Market {
 
     pub fn is_settled(&self) -> bool {
         matches!(self.lifecycle, MarketLifecycle::Settled)
+    }
+}
+
+/// Fixtures shared by the instruction-level guard tests. Constructing the
+/// account struct directly is the only way to exercise a guard without a
+/// validator, so the shape lives beside the struct it mirrors.
+#[cfg(test)]
+pub(crate) fn market_fixture(lifecycle: MarketLifecycle) -> Market {
+    Market {
+        market_id: [7u8; 16],
+        creator: Pubkey::new_unique(),
+        adjudicator: Pubkey::new_unique(),
+        question_hash: [0u8; 32],
+        vault_book: Pubkey::new_unique(),
+        vault_amm: Pubkey::new_unique(),
+        lock_vault: Pubkey::new_unique(),
+        start_time: 0,
+        deadline: 1_000,
+        lifecycle,
+        winning_outcome: OUTCOME_YES,
+        bump: 255,
+        vault_authority_bump: 254,
+        lock_authority_bump: 253,
+        book_enabled: false,
+        is_dismissed: false,
+        _reserved: [0u8; 96],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn space_constant_is_self_consistent() {
+        // Anchor's `init` rents exactly SPACE bytes and never re-checks it
+        // against the struct. `is_dismissed` is carved from `_reserved`, so
+        // the total must be unchanged — live accounts are fixed-length
+        // buffers and a longer struct stops deserializing on every path.
+        let expected = 8   // discriminator
+            + 16           // market_id
+            + 32 * 6       // creator, adjudicator, question_hash, three vaults
+            + 8 * 2        // start_time, deadline
+            + 7            // lifecycle, winning_outcome, three bumps, two flags
+            + 96; // _reserved
+        assert_eq!(Market::SPACE, expected);
+        assert_eq!(Market::SPACE, 335);
+    }
+
+    #[test]
+    fn a_dismissed_market_is_not_open() {
+        // Every trading path gates on `is_open`, so dismissal closing it is
+        // what stops trades against a market whose shares will never pay out.
+        let mut market = market_fixture(MarketLifecycle::Open);
+        assert!(market.is_open());
+        market.is_dismissed = true;
+        assert!(!market.is_open());
+    }
+
+    #[test]
+    fn dismissal_does_not_masquerade_as_settlement() {
+        // `redeem_amm_position` keys on `is_settled`; if dismissal set that,
+        // a refunded position could also be redeemed.
+        let mut market = market_fixture(MarketLifecycle::Open);
+        market.is_dismissed = true;
+        assert!(!market.is_settled());
+        assert!(!market.is_locked());
+    }
+
+    #[test]
+    fn a_legacy_market_deserializes_with_dismissal_clear() {
+        // `_reserved` is zeroed on every account already on chain, and the
+        // byte `is_dismissed` now occupies came from it.
+        let market = market_fixture(MarketLifecycle::Open);
+        let mut bytes = Vec::new();
+        AnchorSerialize::serialize(&market, &mut bytes).unwrap();
+        assert_eq!(bytes.len(), Market::SPACE - 8);
+        let decoded = Market::deserialize(&mut bytes.as_slice()).unwrap();
+        assert!(!decoded.is_dismissed);
+        assert!(decoded.is_open());
     }
 }

@@ -43,3 +43,19 @@ impl Position {
 /// Compile-time assert: Position::SPACE must match POSITION_TOTAL_LEN in
 /// `constants.rs`.
 const _: () = assert!(Position::SPACE == POSITION_TOTAL_LEN);
+
+/// Fixture for the redemption and refund guard tests: an empty position that
+/// has paid nothing in.
+#[cfg(test)]
+pub(crate) fn position_fixture() -> Position {
+    Position {
+        user: Pubkey::new_unique(),
+        market: Pubkey::new_unique(),
+        yes_shares: 0,
+        no_shares: 0,
+        locked_cost_usdc: 0,
+        lock_nonce: 0,
+        bump: 255,
+        _reserved: [0u8; 32],
+    }
+}

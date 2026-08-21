@@ -34,7 +34,6 @@ pub struct RedeemLp<'info> {
     // `lp_mint` would let anyone bring their own SPL mint with a supply of 1,
     // burn 1 token, and take the ENTIRE yield vault; an `amm_state` gated
     // only on `is_graduated` would be satisfied by any graduated market.
-
     #[account(
         seeds = [b"market", market.market_id.as_ref()],
         bump = market.bump,

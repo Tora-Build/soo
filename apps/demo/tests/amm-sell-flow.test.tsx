@@ -173,7 +173,7 @@ test("AMM sell YES end-to-end against LiteSVM", async () => {
     () => {
       const costNode = screen.getByTestId("quote-cost");
       const text = costNode.textContent ?? "";
-      expect(text).toMatch(/\$\d+\.\d/);
+      expect(text).toMatch(/\d+\.\d+\s*[A-Z]{2,6}/);
     },
     { timeout: 15_000 },
   );

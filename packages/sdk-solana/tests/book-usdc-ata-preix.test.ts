@@ -49,7 +49,7 @@ describe("USDC ATA pre-instruction", () => {
 
   // These need a real market account to resolve, so they are skipped without a
   // validator. The assertion is about instruction SHAPE, not chain state.
-  const build = async (fn: () => Promise<{ meta: unknown }>) => {
+  const build = async (fn: () => Promise<{ meta?: unknown }>) => {
     try {
       return ((await fn()).meta as Meta).preIxs ?? [];
     } catch {
@@ -58,7 +58,7 @@ describe("USDC ATA pre-instruction", () => {
   };
 
   it("is attached to every book path that moves USDC", async () => {
-    const paths: Array<[string, () => Promise<{ meta: unknown }>]> = [
+    const paths: Array<[string, () => Promise<{ meta?: unknown }>]> = [
       ["bookPlace", () =>
         adapter.buildBookPlace(market, {
           user, side: 0, limitTick: 400, amount: 1_000_000n,

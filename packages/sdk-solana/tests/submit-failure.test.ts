@@ -432,7 +432,10 @@ describe("submit retry policy", () => {
         rpcUrl: "http://localhost:8899",
       },
       programIds: programs,
-      usdcMint,
+      // `usdcMint` was split into the two venue mints. This deployment fills
+      // both roles with the same mock USDC, which is what this fixture is.
+      bookMint: usdcMint,
+      ammMint: usdcMint,
       connection,
     });
     const signer = {

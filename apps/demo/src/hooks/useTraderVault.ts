@@ -238,7 +238,7 @@ export function useTraderVault() {
   const approveUSDC = useCallback(
     async (amount: string) => {
       if (!tokenAddress || !soothBookAddress) {
-        toast.error("USDC or SoothBook contract is unavailable on this chain.");
+        toast.error("USDC or SooBook contract is unavailable on this chain.");
         return false;
       }
 
@@ -268,7 +268,7 @@ export function useTraderVault() {
   const claimWinnings = useCallback(
     async (marketAddress: string) => {
       if (!soothBookAddress || !marketAddress.startsWith("0x")) {
-        toast("Claim requires a valid market and SoothBook deployment.", { icon: "ℹ️" });
+        toast("Claim requires a valid market and SooBook deployment.", { icon: "ℹ️" });
         return;
       }
 

@@ -15,7 +15,7 @@ export function EastboardLayout() {
         <Outlet />
       </main>
       <footer className="mx-auto flex w-full max-w-[1480px] flex-col gap-2 border-t border-rule px-4 py-7 font-mono text-[10px] uppercase tracking-[0.12em] text-faint md:flex-row md:items-center md:justify-between md:px-7 lg:px-10">
-        <span>EastBoard / Sooth Protocol</span>
+        <span>EastBoard / Soo Protocol</span>
         <span>{t("eastboard.shell.networkFooter")}</span>
       </footer>
     </div>

@@ -719,7 +719,7 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
 
   const depositShares = useCallback(
     async (_outcome: number, _amount: string) => {
-      toast("Shares are held in wallet in SoothBook mode.");
+      toast("Shares are held in wallet in SooBook mode.");
       return false;
     },
     [],

@@ -22,6 +22,4 @@ pub use market::OUTCOME_INVALID;
 pub use market::OUTCOME_NO;
 pub use market::OUTCOME_YES;
 pub use position::Position;
-pub use protocol_config::{
-    require_not_paused, ProtocolConfig, MAX_FEE_BPS, PROTOCOL_CONFIG_SEED,
-};
+pub use protocol_config::{require_not_paused, ProtocolConfig, MAX_FEE_BPS, PROTOCOL_CONFIG_SEED};

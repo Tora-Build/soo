@@ -75,7 +75,7 @@ export const Navbar = () => {
               </span>
               <span className="flex flex-col leading-none">
                 <span className="font-heading text-lg uppercase tracking-[-0.05em] text-ink">
-                  Sooth
+                  Soo
                 </span>
                 <span className="mt-1 font-mono text-[7px] font-semibold uppercase tracking-[0.24em] text-accent">
                   Reality arcade

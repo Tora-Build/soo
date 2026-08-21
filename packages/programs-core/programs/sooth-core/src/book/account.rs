@@ -116,8 +116,8 @@ pub fn load_book<'a>(data: &'a mut [u8]) -> R<Book<'a>> {
 
     // Refuse rather than panic. bytemuck's checked API turns a misaligned or
     // mis-sized cast into an error; the unchecked one aborts the program.
-    let header: &mut BookHeader = bytemuck::try_from_bytes_mut(header_bytes)
-        .map_err(|_| BookAccountError::Misaligned)?;
+    let header: &mut BookHeader =
+        bytemuck::try_from_bytes_mut(header_bytes).map_err(|_| BookAccountError::Misaligned)?;
 
     let usable = (rest.len() / BLOCK_SIZE) * BLOCK_SIZE;
     let blocks: &mut [OrderNode] = bytemuck::try_cast_slice_mut(&mut rest[..usable])
@@ -133,9 +133,8 @@ pub fn init_book(data: &mut [u8], market: anchor_lang::prelude::Pubkey, bump: u8
     }
     data[..DISCRIMINATOR_LEN].copy_from_slice(&BOOK_DISCRIMINATOR);
     let (head, _) = data.split_at_mut(blocks_offset());
-    let header: &mut BookHeader =
-        bytemuck::try_from_bytes_mut(&mut head[DISCRIMINATOR_LEN..])
-            .map_err(|_| BookAccountError::Misaligned)?;
+    let header: &mut BookHeader = bytemuck::try_from_bytes_mut(&mut head[DISCRIMINATOR_LEN..])
+        .map_err(|_| BookAccountError::Misaligned)?;
     *header = BookHeader {
         market,
         next_seq: 0,
@@ -154,11 +153,17 @@ pub fn init_book(data: &mut [u8], market: anchor_lang::prelude::Pubkey, bump: u8
 
 /// Compile-time-ish check that every cast offset lands on an 8-byte boundary.
 /// Called from tests; `const` so a violation is caught at build time too.
+///
+/// Every operand IS a constant — that is the point, and it is why the
+/// `const _: () = ...` below can evaluate the whole thing at build time.
+/// `assertions_on_constants` reads a constant assertion as a mistake; here it
+/// is the mechanism.
+#[allow(clippy::assertions_on_constants)]
 pub const fn assert_layout_offsets_are_aligned() {
-    assert!(DISCRIMINATOR_LEN % 8 == 0);
-    assert!(core::mem::size_of::<BookHeader>() % 8 == 0);
-    assert!(blocks_offset() % 8 == 0);
-    assert!(BLOCK_SIZE % 8 == 0);
+    assert!(DISCRIMINATOR_LEN.is_multiple_of(8));
+    assert!(core::mem::size_of::<BookHeader>().is_multiple_of(8));
+    assert!(blocks_offset().is_multiple_of(8));
+    assert!(BLOCK_SIZE.is_multiple_of(8));
 }
 const _: () = assert_layout_offsets_are_aligned();
 
@@ -312,8 +317,7 @@ mod tests {
         // calls a market needs to reach the ceiling.
         assert_eq!(
             steps,
-            (book_space(MAX_ORDERS as usize) - book_space(0))
-                .div_ceil(MAX_PERMITTED_DATA_INCREASE),
+            (book_space(MAX_ORDERS as usize) - book_space(0)).div_ceil(MAX_PERMITTED_DATA_INCREASE),
             "step count should be exactly the size delta over the realloc cap"
         );
     }

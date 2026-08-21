@@ -169,8 +169,9 @@ test("AMM buy YES end-to-end against LiteSVM", async () => {
     () => {
       const costNode = screen.getByTestId("quote-cost");
       const text = costNode.textContent ?? "";
-      // Initial state shows "$0.00" or em-dash; wait until non-zero.
-      expect(text).toMatch(/\$\d+\.\d/);
+      // Initial state shows an em-dash or a zero; wait for a live quote,
+      // which the panel renders in the venue token ("5.26 USDC").
+      expect(text).toMatch(/\d+\.\d+\s*[A-Z]{2,6}/);
       expect(text).not.toBe("$0.00");
     },
     { timeout: 15_000 },
@@ -331,7 +332,7 @@ test("Outcome toggle invalidates the quote before submit (no stale-quote race)",
   await waitFor(
     () => {
       const costNode = screen.getByTestId("quote-cost");
-      expect(costNode.textContent ?? "").toMatch(/\$\d+\.\d/);
+      expect(costNode.textContent ?? "").toMatch(/\d+\.\d+\s*[A-Z]{2,6}/);
     },
     { timeout: 15_000 },
   );
@@ -356,7 +357,7 @@ test("Outcome toggle invalidates the quote before submit (no stale-quote race)",
       // so we accept either: (a) the textual cost differs, or (b) the
       // submit button has re-enabled after the toggle. The point is the
       // quote isn't permanently stale.
-      expect(costNow).toMatch(/\$\d+\.\d/);
+      expect(costNow).toMatch(/\d+\.\d+\s*[A-Z]{2,6}/);
     },
     { timeout: 15_000 },
   );

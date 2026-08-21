@@ -42,10 +42,10 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
-use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
 use crate::error::SoothCoreError;
 use crate::events::ResidualSwept;
 use crate::math::wad_to_base;
+use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
 use crate::state::{AmmState, LpPosition, Market, ProtocolConfig};
 
 #[derive(Accounts)]
@@ -120,9 +120,7 @@ pub fn handler(ctx: Context<SweepResidual>) -> Result<()> {
     let drained = match ctx.accounts.market.winning_outcome {
         OUTCOME_YES => amm.q_yes == amm.seed_q_yes,
         OUTCOME_NO => amm.q_no == amm.seed_q_no,
-        OUTCOME_INVALID => {
-            amm.q_yes == amm.seed_q_yes && amm.q_no == amm.seed_q_no
-        }
+        OUTCOME_INVALID => amm.q_yes == amm.seed_q_yes && amm.q_no == amm.seed_q_no,
         _ => return err!(SoothCoreError::InvalidOutcome),
     };
     require!(drained, SoothCoreError::OutstandingClaims);

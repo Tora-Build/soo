@@ -54,6 +54,21 @@ pub struct Settle<'info> {
     pub cranker: Signer<'info>,
 }
 
+/// Settlement is the terminal alternative to dismissal and excludes it.
+///
+/// A dismissed market refunds every AMM deposit at cost via `claim_refund`;
+/// settling it as well would let the same deposit be paid twice out of the one
+/// vault. `dismiss_market` holds the other half of this exclusion by refusing
+/// to run on anything but an `Open` market.
+fn assert_settleable(market: &Market) -> Result<()> {
+    require!(!market.is_dismissed, SoothCoreError::MarketDismissed);
+    require!(
+        market.lifecycle.can_transition_to(MarketLifecycle::Settled),
+        SoothCoreError::InvalidLifecycleTransition
+    );
+    Ok(())
+}
+
 pub fn handler(ctx: Context<Settle>) -> Result<()> {
     let entry = &ctx.accounts.adjudicator_entry;
 
@@ -81,10 +96,7 @@ pub fn handler(ctx: Context<Settle>) -> Result<()> {
     require!(now >= veto_ends_at, SoothCoreError::VetoWindowOpen);
 
     let market = &mut ctx.accounts.market;
-    require!(
-        market.lifecycle.can_transition_to(MarketLifecycle::Settled),
-        SoothCoreError::InvalidLifecycleTransition
-    );
+    assert_settleable(market)?;
     market.lifecycle = MarketLifecycle::Settled;
     market.winning_outcome = winning_outcome;
 
@@ -95,4 +107,44 @@ pub fn handler(ctx: Context<Settle>) -> Result<()> {
     });
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::market::market_fixture;
+
+    #[test]
+    fn a_locked_market_settles() {
+        let market = market_fixture(MarketLifecycle::Locked);
+        assert!(assert_settleable(&market).is_ok());
+    }
+
+    #[test]
+    fn settlement_is_refused_after_dismissal() {
+        // The P0 invariant: dismiss → settle → redeem_amm_position would pay a
+        // position that claim_refund can also refund, out of the same vault.
+        let mut market = market_fixture(MarketLifecycle::Locked);
+        market.is_dismissed = true;
+        assert!(assert_settleable(&market).is_err());
+    }
+
+    #[test]
+    fn a_dismissed_open_market_never_reaches_settlement() {
+        let mut market = market_fixture(MarketLifecycle::Open);
+        market.is_dismissed = true;
+        assert!(assert_settleable(&market).is_err());
+    }
+
+    #[test]
+    fn settlement_is_one_shot() {
+        let market = market_fixture(MarketLifecycle::Settled);
+        assert!(assert_settleable(&market).is_err());
+    }
+
+    #[test]
+    fn an_open_market_cannot_skip_the_lock() {
+        let market = market_fixture(MarketLifecycle::Open);
+        assert!(assert_settleable(&market).is_err());
+    }
 }

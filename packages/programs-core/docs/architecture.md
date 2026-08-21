@@ -186,11 +186,14 @@ transfers it into the AMM vault. Without it the vault cannot pay winners. Market
 creation is permissionless but not free: roughly 693 units at `b = 1000`, 34.7 at
 `b = 50` (decision D19).
 
-**Graduation.** Every buy accrues `fee_wad` into `AmmState.fee_b_base_wad` and
-compares it against `b·ln(2) · graduation_bps / 10_000` (`graduation_bps == 0`
-reads as 10 000, i.e. the full threshold). Crossing it sets `is_graduated`,
-emits `MarketGraduated`, and flips `Market.book_enabled` to true. The threshold
-is read before the check, so the trade that graduates the market still earns LP.
+**Graduation.** Every trade — buy or sell — accrues its `fee_wad` into
+`AmmState.fee_b_base_wad` and compares it against `b·ln(2) · graduation_bps /
+10_000` (`graduation_bps == 0` reads as 10 000, i.e. the full threshold).
+Crossing it sets `is_graduated`, emits `MarketGraduated`, and flips
+`Market.book_enabled` to true. Both directions count because both pay the same
+fee into the same pool. On the buy path the graduation flag is read before the
+check, so the trade that graduates the market still earns LP; sells never mint
+LP, so that subtlety does not arise there.
 
 **Trial and dismissal.** `dismiss_market` lets the creator wind down a market
 that never graduated, after `trial_end_at`; `claim_refund` returns each trader's

@@ -262,7 +262,7 @@ describe("redesigned book — CU and transaction envelope", () => {
 
   it("measures marginal CU per fill", async () => {
     const points = [1, 3, 5, 10, 20];
-    const rows: Array<[number, Measured]> = [];
+    const rows: Array<[number, Measured & { drained: boolean }]> = [];
     for (const n of points) rows.push([n, await crossFills(n)]);
 
     // eslint-disable-next-line no-console

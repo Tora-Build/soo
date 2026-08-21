@@ -77,7 +77,6 @@ pub struct SeedLp<'info> {
     // These three accounts move the creator's LMSR subsidy into the AMM
     // vault; `seed_deposit_wad` must actually be funded, not just recorded
     // on LpPosition. See the handler for the arithmetic.
-
     #[account(
         mut,
         address = market.vault_amm @ SoothCoreError::VaultAuthorityMismatch,
@@ -230,7 +229,7 @@ pub fn handler(ctx: Context<SeedLp>, args: SeedLpArgs) -> Result<()> {
                 &ctx.accounts.lp_position.key(),
                 lamports,
                 space as u64,
-                &crate::ID,  // owner = sooth_core
+                &crate::ID, // owner = sooth_core
             ),
             &[
                 ctx.accounts.creator.to_account_info(),

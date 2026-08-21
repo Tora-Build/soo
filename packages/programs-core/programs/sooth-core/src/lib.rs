@@ -72,8 +72,8 @@ unsafe impl core::alloc::GlobalAlloc for BumpAllocator256 {
     unsafe fn dealloc(&self, _: *mut u8, _: core::alloc::Layout) {}
 }
 
-pub mod book;
 pub mod bitmap;
+pub mod book;
 pub mod constants;
 pub mod error;
 pub mod events;
@@ -102,9 +102,9 @@ pub mod sooth_core {
     use crate::instructions::init_market_fee_pool;
     use crate::instructions::lock_for_resolution;
     use crate::instructions::pause;
-    use crate::instructions::redeem_lp;
     use crate::instructions::reclaim_subsidy;
     use crate::instructions::redeem_amm_position;
+    use crate::instructions::redeem_lp;
     use crate::instructions::register_adjudicator;
     use crate::instructions::register_zk_adjudicator;
     use crate::instructions::request_lock;
@@ -133,18 +133,13 @@ pub mod sooth_core {
 
     // ── Market creation ───────────────────────────────────────────────────────
 
-    pub fn create_market(
-        ctx: Context<CreateMarket>,
-        args: CreateMarketArgs,
-    ) -> Result<()> {
+    pub fn create_market(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()> {
         create_market::handler(ctx, args)
     }
 
     // ── Fee infrastructure ────────────────────────────────────────────────────
 
-    pub fn init_market_fee_pool(
-        ctx: Context<InitMarketFeePool>,
-    ) -> Result<()> {
+    pub fn init_market_fee_pool(ctx: Context<InitMarketFeePool>) -> Result<()> {
         init_market_fee_pool::handler(ctx)
     }
 
@@ -156,13 +151,9 @@ pub mod sooth_core {
         distribute_fees_book::handler(ctx)
     }
 
-
     // ── LP lifecycle ──────────────────────────────────────────────────────────
 
-    pub fn seed_lp(
-        ctx: Context<SeedLp>,
-        args: SeedLpArgs,
-    ) -> Result<()> {
+    pub fn seed_lp(ctx: Context<SeedLp>, args: SeedLpArgs) -> Result<()> {
         seed_lp::handler(ctx, args)
     }
 
@@ -194,10 +185,7 @@ pub mod sooth_core {
         request_lock::handler(ctx)
     }
 
-    pub fn attest_outcome(
-        ctx: Context<AttestOutcome>,
-        winning_outcome: u8,
-    ) -> Result<()> {
+    pub fn attest_outcome(ctx: Context<AttestOutcome>, winning_outcome: u8) -> Result<()> {
         attest_outcome::handler(ctx, winning_outcome)
     }
 
@@ -265,9 +253,7 @@ pub mod sooth_core {
 
     // ── Settlement & redeem ───────────────────────────────────────────────────
 
-    pub fn lock_for_resolution(
-        ctx: Context<LockForResolution>,
-    ) -> Result<()> {
+    pub fn lock_for_resolution(ctx: Context<LockForResolution>) -> Result<()> {
         lock_for_resolution::handler(ctx)
     }
 
@@ -286,7 +272,6 @@ pub mod sooth_core {
     pub fn redeem_book_seat(ctx: Context<RedeemBookSeat>) -> Result<()> {
         redeem_book_seat::handler(ctx)
     }
-
 
     // ── CLOB ──────────────────────────────────────────────────────────────────
 
@@ -322,9 +307,4 @@ pub mod sooth_core {
     pub fn book_withdraw(ctx: Context<BookWithdraw>) -> Result<()> {
         book_ops::withdraw_handler(ctx)
     }
-
-
-
-
-
 }

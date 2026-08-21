@@ -16,6 +16,9 @@ import { soothCoreIdl } from "../src/anchor/index.js";
 import { SolanaChainAdapter } from "../src/adapter.js";
 import { SOOTH_CORE_PROGRAM_ID, type ProgramIds } from "../src/pdas.js";
 
+/** The fixture's mock USDC — the mint both venue roles resolve to here. */
+const MOCK_USDC = new PublicKey("ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX");
+
 type PriorityFeeSample = {
   slot: number;
   prioritizationFee: number;
@@ -101,7 +104,9 @@ function makeAdapter(connection: Connection) {
       rpcUrl: "http://localhost:8899",
     },
     programIds: programs,
-    usdcMint: new PublicKey("ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"),
+    // Both venue roles, one mock mint — as the deployment itself is.
+    bookMint: MOCK_USDC,
+    ammMint: MOCK_USDC,
     connection,
   });
   const req = buildMockRequest(programs, user.publicKey, marketPda);

@@ -1239,6 +1239,12 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, userPk),
+        // A refund is a payout into `userAmmAta`, which the program constrains
+        // to exist. A dismissed market's refund is exactly the case where the
+        // account may not: a trader can have bought, sold everything back, and
+        // closed nothing — or be claiming from a wallet that never held the
+        // AMM token outside this market.
+        preIxs: [this.ammAtaCreateIx(userPk)],
         operation: "claimRefund",
         positionPda: positionPda.toBase58(),
       },
@@ -1718,35 +1724,55 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, userPk),
-        preIxs: [this.usdcAtaCreateIx(userPk)],
+        preIxs: [this.bookAtaCreateIx(userPk)],
         operation: "bookPlace",
       },
     };
   }
 
   /**
-   * Idempotent create for a user's USDC ATA, as a pre-instruction.
+   * Idempotent create for a user's ATA of ONE venue's mint, as a
+   * pre-instruction.
    *
-   * Every instruction that moves USDC constrains `user_usdc_ata` with
-   * `token::authority = user`, which requires the account to already exist. A
-   * wallet that has never held USDC has no ATA, so without this its FIRST
-   * order fails at simulation with nothing on screen naming the cause — the
-   * wallet looks funded, because it has plenty of SOL.
+   * Every instruction that moves tokens constrains its destination with
+   * `token::authority = user` and `token::mint = <venue mint>`, which requires
+   * that exact account to already exist. A wallet that has never held the
+   * venue's token has no ATA, so without this its FIRST interaction fails at
+   * simulation with nothing on screen naming the cause — the wallet looks
+   * funded, because it has plenty of SOL.
+   *
+   * The mint is a PARAMETER, not `this.bookMint`, because the two venues are
+   * separate ledgers with separate mints. Creating the book's ATA ahead of an
+   * AMM payout prepares an account the instruction never touches and leaves
+   * the one it does touch missing — a mismatch that is invisible while a
+   * deployment happens to fill both venue roles with the same mint (this one
+   * does; see `AMM_TOKEN_MINT` in `constants.rs`) and a hard failure the
+   * moment it does not.
    *
    * Idempotent, so it is a no-op for everyone else, and data-only, so `submit`
    * can replay the identical bytes under a fresh blockhash.
    */
-  private usdcAtaCreateIx(userPk: PublicKey) {
+  private venueAtaCreateIx(mint: PublicKey, userPk: PublicKey) {
     return serializeIx(
       createAssociatedTokenAccountIdempotentInstruction(
         userPk, // payer
-        getAssociatedTokenAddressSync(this.bookMint, userPk),
+        getAssociatedTokenAddressSync(mint, userPk),
         userPk, // owner
-        this.bookMint,
+        mint,
         TOKEN_PROGRAM_ID,
         ASSOCIATED_TOKEN_PROGRAM_ID,
       ),
     );
+  }
+
+  /** ATA of the BOOK venue's mint (USDC). For book paths only. */
+  private bookAtaCreateIx(userPk: PublicKey) {
+    return this.venueAtaCreateIx(this.bookMint, userPk);
+  }
+
+  /** ATA of the AMM venue's mint. For AMM payouts only. */
+  private ammAtaCreateIx(userPk: PublicKey) {
+    return this.venueAtaCreateIx(this.ammMint, userPk);
   }
 
   /**
@@ -1795,7 +1821,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, userPk),
-        preIxs: [this.usdcAtaCreateIx(userPk)],
+        preIxs: [this.bookAtaCreateIx(userPk)],
         operation: "redeemBookSeat",
       },
     };
@@ -1852,7 +1878,9 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, userPk),
-        preIxs: [this.usdcAtaCreateIx(userPk)],
+        // The AMM venue's mint — this instruction pays into
+        // `userAmmAta`, derived from `ammMint`, and touches no book account.
+        preIxs: [this.ammAtaCreateIx(userPk)],
         operation: "redeemAmmPosition",
       },
     };
@@ -2213,7 +2241,9 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, creatorPk),
-        preIxs: [this.usdcAtaCreateIx(creatorPk)],
+        // `creatorAmmAta` is an ATA of the AMM mint; the subsidy returns in
+        // the AMM's token, so the book's ATA is the wrong account to prepare.
+        preIxs: [this.ammAtaCreateIx(creatorPk)],
         operation: "reclaimSubsidy",
       },
     };
@@ -2268,7 +2298,7 @@ export class SolanaChainAdapter implements ChainAdapter {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(withdraw, userPk),
         preIxs: [
-          this.usdcAtaCreateIx(userPk),
+          this.bookAtaCreateIx(userPk),
           ...cancels.map((ix) => serializeIx(ix)),
         ],
         // Each cancel scans the book for its order, so a full batch needs well
@@ -2321,7 +2351,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, userPk),
-        preIxs: [this.usdcAtaCreateIx(userPk)],
+        preIxs: [this.bookAtaCreateIx(userPk)],
         operation: "bookWithdraw",
       },
     };

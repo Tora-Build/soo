@@ -17,9 +17,11 @@
 
 use anchor_lang::prelude::Pubkey;
 
-use super::arena::{as_seat, as_seat_mut, Book, BookError, OrderNode, KIND_SEAT, NIL, SIDE_ASK, SIDE_BID};
-use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
+use super::arena::{
+    as_seat, as_seat_mut, Book, BookError, OrderNode, KIND_SEAT, NIL, SIDE_ASK, SIDE_BID,
+};
 use super::settlement::{leg_costs, settle_leg, taker_fee, SettleError};
+use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MatchError {
@@ -101,7 +103,10 @@ impl<'a> Book<'a> {
     pub fn seat_mut(&mut self, trader: Pubkey) -> R<u32> {
         let mut cursor = self.header.seats_head;
         while cursor != NIL {
-            let node = self.blocks.get(cursor as usize).ok_or(BookError::InvalidIndex)?;
+            let node = self
+                .blocks
+                .get(cursor as usize)
+                .ok_or(BookError::InvalidIndex)?;
             let seat = bytemuck::cast_ref::<OrderNode, super::arena::SeatNode>(node);
             if seat.trader == trader {
                 return Ok(cursor);
@@ -111,7 +116,10 @@ impl<'a> Book<'a> {
         // Allocate a new seat from the same free list orders use.
         let idx = self.alloc_block()?;
         let head = self.header.seats_head;
-        let node = self.blocks.get_mut(idx as usize).ok_or(BookError::InvalidIndex)?;
+        let node = self
+            .blocks
+            .get_mut(idx as usize)
+            .ok_or(BookError::InvalidIndex)?;
         let seat = as_seat_mut(node);
         seat.credit = 0;
         seat.trader = trader;
@@ -125,12 +133,18 @@ impl<'a> Book<'a> {
     }
 
     fn seat_net(&self, idx: u32) -> R<i64> {
-        let node = self.blocks.get(idx as usize).ok_or(BookError::InvalidIndex)?;
+        let node = self
+            .blocks
+            .get(idx as usize)
+            .ok_or(BookError::InvalidIndex)?;
         Ok(bytemuck::cast_ref::<OrderNode, super::arena::SeatNode>(node).net)
     }
 
     fn apply_to_seat(&mut self, idx: u32, net: i64, credit_delta: u64) -> R<()> {
-        let node = self.blocks.get_mut(idx as usize).ok_or(BookError::InvalidIndex)?;
+        let node = self
+            .blocks
+            .get_mut(idx as usize)
+            .ok_or(BookError::InvalidIndex)?;
         let seat = as_seat_mut(node);
         seat.net = net;
         seat.credit = seat.credit.saturating_add(credit_delta);
@@ -278,7 +292,10 @@ impl<'a> Book<'a> {
             if fill == resting.amount {
                 self.remove(idx)?;
             } else {
-                let node = self.blocks.get_mut(idx as usize).ok_or(BookError::InvalidIndex)?;
+                let node = self
+                    .blocks
+                    .get_mut(idx as usize)
+                    .ok_or(BookError::InvalidIndex)?;
                 node.amount -= fill;
             }
             cursor = next;
@@ -336,7 +353,10 @@ impl<'a> Book<'a> {
         for side in [SIDE_BID, SIDE_ASK] {
             let mut cursor = self.head_of(side);
             while cursor != NIL {
-                let node = *self.blocks.get(cursor as usize).ok_or(BookError::InvalidIndex)?;
+                let node = *self
+                    .blocks
+                    .get(cursor as usize)
+                    .ok_or(BookError::InvalidIndex)?;
                 if node.seq == seq {
                     if node.trader != trader {
                         return Err(MatchError::NotOwner);
@@ -366,7 +386,10 @@ impl<'a> Book<'a> {
         let Some(idx) = self.seat_of(trader) else {
             return Ok(0);
         };
-        let node = self.blocks.get_mut(idx as usize).ok_or(BookError::InvalidIndex)?;
+        let node = self
+            .blocks
+            .get_mut(idx as usize)
+            .ok_or(BookError::InvalidIndex)?;
         let seat = as_seat_mut(node);
         let amount = seat.credit;
         seat.credit = 0;
@@ -397,7 +420,10 @@ impl<'a> Book<'a> {
         let Some(idx) = self.seat_of(trader) else {
             return Ok(0);
         };
-        let node = self.blocks.get_mut(idx as usize).ok_or(BookError::InvalidIndex)?;
+        let node = self
+            .blocks
+            .get_mut(idx as usize)
+            .ok_or(BookError::InvalidIndex)?;
         let seat = as_seat_mut(node);
 
         let net = seat.net;
@@ -454,7 +480,10 @@ impl<'a> Book<'a> {
 
         let mut cursor = self.header.seats_head;
         while cursor != NIL {
-            let node = self.blocks.get(cursor as usize).ok_or(BookError::InvalidIndex)?;
+            let node = self
+                .blocks
+                .get(cursor as usize)
+                .ok_or(BookError::InvalidIndex)?;
             let seat = as_seat(node);
             let magnitude = seat.net.unsigned_abs();
             let owed = match winning_outcome {
@@ -485,7 +514,10 @@ impl<'a> Book<'a> {
         for side in [SIDE_BID, SIDE_ASK] {
             let mut cursor = self.head_of(side);
             while cursor != NIL {
-                let node = self.blocks.get(cursor as usize).ok_or(BookError::InvalidIndex)?;
+                let node = self
+                    .blocks
+                    .get(cursor as usize)
+                    .ok_or(BookError::InvalidIndex)?;
                 let escrow = self.escrow_of(node)?;
                 total = total
                     .checked_add(escrow)
@@ -500,7 +532,10 @@ impl<'a> Book<'a> {
     /// A trader's current credit, without draining it.
     pub fn credit_of(&mut self, trader: Pubkey) -> R<u64> {
         let idx = self.seat_mut(trader)?;
-        let node = self.blocks.get(idx as usize).ok_or(BookError::InvalidIndex)?;
+        let node = self
+            .blocks
+            .get(idx as usize)
+            .ok_or(BookError::InvalidIndex)?;
         Ok(bytemuck::cast_ref::<OrderNode, super::arena::SeatNode>(node).credit)
     }
 }
@@ -540,7 +575,8 @@ mod tests {
         // 0.45; a taker bids up to 0.60 and must pay 0.45, keeping the 0.15.
         let mut a = Acct::new(16);
         let mut book = load_book(a.bytes()).unwrap();
-        book.insert(SIDE_ASK, 450, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.insert(SIDE_ASK, 450, 10 * ONE_SHARE, trader(1))
+            .unwrap();
 
         let r = book
             .place(trader(2), SIDE_BID, 600, 10 * ONE_SHARE, 0, 8, false)
@@ -603,7 +639,8 @@ mod tests {
     fn a_partial_fill_leaves_the_makers_remainder_resting() {
         let mut a = Acct::new(16);
         let mut book = load_book(a.bytes()).unwrap();
-        book.insert(SIDE_ASK, 500, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.insert(SIDE_ASK, 500, 10 * ONE_SHARE, trader(1))
+            .unwrap();
         let r = book
             .place(trader(2), SIDE_BID, 500, 3 * ONE_SHARE, 0, 8, false)
             .unwrap();
@@ -630,7 +667,8 @@ mod tests {
         // The settlement invariant, driven through the matcher.
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
-        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1))
+            .unwrap();
 
         let maker_escrow = {
             let (bid, ask) = leg_costs(400, 10 * ONE_SHARE, SIDE_BID).unwrap();
@@ -654,7 +692,8 @@ mod tests {
     fn the_fee_is_charged_on_the_executed_price() {
         let mut a = Acct::new(16);
         let mut book = load_book(a.bytes()).unwrap();
-        book.insert(SIDE_ASK, 200, 100 * ONE_SHARE, trader(1)).unwrap();
+        book.insert(SIDE_ASK, 200, 100 * ONE_SHARE, trader(1))
+            .unwrap();
         // Taker's limit is 0.90 but they execute at 0.20.
         let r = book
             .place(trader(2), SIDE_BID, 900, 100 * ONE_SHARE, FEE_BPS, 8, false)
@@ -677,10 +716,12 @@ mod tests {
         // 3 maker seats + 1 taker seat added; the 3 orders were freed.
         assert_eq!(book.header.order_count, 0);
         let after = book.header.block_count;
-        assert!(after - before <= 4, "seats must not be reallocated per fill");
+        assert!(
+            after - before <= 4,
+            "seats must not be reallocated per fill"
+        );
     }
 
-    
     #[test]
     fn meeting_your_own_order_cancels_it_and_places_yours() {
         // The behaviour a trader expects from placing an order: the order they
@@ -705,7 +746,10 @@ mod tests {
         assert_eq!(r.self_trade_cancelled, 2 * ONE_SHARE, "the old one went");
 
         // Exactly one order left, and it is the new one.
-        assert!(book.best(SIDE_BID).is_none(), "the crossed bid was cancelled");
+        assert!(
+            book.best(SIDE_BID).is_none(),
+            "the crossed bid was cancelled"
+        );
         assert_eq!(book.best(SIDE_ASK).unwrap().1.price_tick, 485);
     }
 
@@ -716,7 +760,9 @@ mod tests {
         // a second order.
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
-        let idx = book.insert(SIDE_BID, 515, 2 * ONE_SHARE, trader(1)).unwrap();
+        let idx = book
+            .insert(SIDE_BID, 515, 2 * ONE_SHARE, trader(1))
+            .unwrap();
         let escrow = book.escrow_of(&book.node(idx).unwrap()).unwrap();
         assert!(escrow > 0);
 
@@ -776,10 +822,9 @@ mod tests {
             (SIDE_BID, 700),
             (SIDE_ASK, 300),
         ] {
-            book.place(trader(1), side, tick, ONE_SHARE, 0, 8, true).unwrap();
-            if let (Some((_, bid)), Some((_, ask))) =
-                (book.best(SIDE_BID), book.best(SIDE_ASK))
-            {
+            book.place(trader(1), side, tick, ONE_SHARE, 0, 8, true)
+                .unwrap();
+            if let (Some((_, bid)), Some((_, ask))) = (book.best(SIDE_BID), book.best(SIDE_ASK)) {
                 assert!(
                     bid.price_tick < ask.price_tick,
                     "crossed: bid {} >= ask {}",
@@ -810,7 +855,10 @@ mod tests {
 
         assert_eq!(r.fills, 2);
         assert_eq!(
-            r.filled_orders.iter().map(|f| f.maker_seq).collect::<Vec<_>>(),
+            r.filled_orders
+                .iter()
+                .map(|f| f.maker_seq)
+                .collect::<Vec<_>>(),
             vec![first_seq, second_seq],
             "time priority holds across the skipped order",
         );
@@ -821,12 +869,16 @@ mod tests {
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
         // trader(2) buys 10 from trader(1)'s resting ask at 400.
-        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1))
+            .unwrap();
         book.place(trader(2), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
             .unwrap();
 
         // YES wins: the long is paid in full, the short gets nothing.
-        assert_eq!(book.take_settlement(trader(2), OUTCOME_YES).unwrap(), 10 * ONE_SHARE);
+        assert_eq!(
+            book.take_settlement(trader(2), OUTCOME_YES).unwrap(),
+            10 * ONE_SHARE
+        );
         assert_eq!(book.take_settlement(trader(1), OUTCOME_YES).unwrap(), 0);
     }
 
@@ -834,12 +886,16 @@ mod tests {
     fn a_winning_short_is_paid_one_per_share() {
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
-        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1))
+            .unwrap();
         book.place(trader(2), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
             .unwrap();
 
         // NO wins: the seller of YES was long NO all along.
-        assert_eq!(book.take_settlement(trader(1), OUTCOME_NO).unwrap(), 10 * ONE_SHARE);
+        assert_eq!(
+            book.take_settlement(trader(1), OUTCOME_NO).unwrap(),
+            10 * ONE_SHARE
+        );
         assert_eq!(book.take_settlement(trader(2), OUTCOME_NO).unwrap(), 0);
     }
 
@@ -853,7 +909,8 @@ mod tests {
             for outcome in [OUTCOME_YES, OUTCOME_NO, OUTCOME_INVALID] {
                 let mut a = Acct::new(32);
                 let mut book = load_book(a.bytes()).unwrap();
-                book.insert(SIDE_ASK, tick, 10 * ONE_SHARE, trader(1)).unwrap();
+                book.insert(SIDE_ASK, tick, 10 * ONE_SHARE, trader(1))
+                    .unwrap();
                 book.place(trader(2), SIDE_BID, tick, 10 * ONE_SHARE, 0, 8, false)
                     .unwrap();
 
@@ -875,11 +932,18 @@ mod tests {
     fn an_invalid_outcome_splits_both_sides() {
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
-        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1))
+            .unwrap();
         book.place(trader(2), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
             .unwrap();
-        assert_eq!(book.take_settlement(trader(1), OUTCOME_INVALID).unwrap(), 5 * ONE_SHARE);
-        assert_eq!(book.take_settlement(trader(2), OUTCOME_INVALID).unwrap(), 5 * ONE_SHARE);
+        assert_eq!(
+            book.take_settlement(trader(1), OUTCOME_INVALID).unwrap(),
+            5 * ONE_SHARE
+        );
+        assert_eq!(
+            book.take_settlement(trader(2), OUTCOME_INVALID).unwrap(),
+            5 * ONE_SHARE
+        );
     }
 
     #[test]
@@ -888,10 +952,14 @@ mod tests {
         // the transfer is what stops a repeat from draining the vault.
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
-        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1))
+            .unwrap();
         book.place(trader(2), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
             .unwrap();
-        assert_eq!(book.take_settlement(trader(2), OUTCOME_YES).unwrap(), 10 * ONE_SHARE);
+        assert_eq!(
+            book.take_settlement(trader(2), OUTCOME_YES).unwrap(),
+            10 * ONE_SHARE
+        );
         assert_eq!(book.take_settlement(trader(2), OUTCOME_YES).unwrap(), 0);
     }
 
@@ -905,13 +973,16 @@ mod tests {
         let mut book = load_book(a.bytes()).unwrap();
 
         // Credit, from a cancelled order.
-        let idx = book.insert(SIDE_BID, 300, 4 * ONE_SHARE, trader(1)).unwrap();
+        let idx = book
+            .insert(SIDE_BID, 300, 4 * ONE_SHARE, trader(1))
+            .unwrap();
         let seq = book.node(idx).unwrap().seq;
         let refund = book.cancel(trader(1), seq).unwrap();
         assert!(refund > 0);
 
         // ...and a winning position on the same seat.
-        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(2)).unwrap();
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(2))
+            .unwrap();
         book.place(trader(1), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
             .unwrap();
 
@@ -931,12 +1002,17 @@ mod tests {
         // with the payout, or a trader has to make a second call for it.
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
-        let seq = book.insert(SIDE_BID, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        let seq = book
+            .insert(SIDE_BID, 400, 10 * ONE_SHARE, trader(1))
+            .unwrap();
         let node_seq = book.node(seq).unwrap().seq;
         let refund = book.cancel(trader(1), node_seq).unwrap();
         assert!(refund > 0);
         // Flat position, but the refund is sitting in credit.
-        assert_eq!(book.take_settlement(trader(1), OUTCOME_YES).unwrap(), refund);
+        assert_eq!(
+            book.take_settlement(trader(1), OUTCOME_YES).unwrap(),
+            refund
+        );
     }
 
     #[test]
@@ -955,7 +1031,8 @@ mod tests {
             for outcome in [OUTCOME_YES, OUTCOME_NO, OUTCOME_INVALID] {
                 let mut a = Acct::new(32);
                 let mut book = load_book(a.bytes()).unwrap();
-                book.insert(SIDE_ASK, tick, 10 * ONE_SHARE, trader(1)).unwrap();
+                book.insert(SIDE_ASK, tick, 10 * ONE_SHARE, trader(1))
+                    .unwrap();
                 book.place(trader(2), SIDE_BID, tick, 10 * ONE_SHARE, 0, 8, false)
                     .unwrap();
 
@@ -977,7 +1054,9 @@ mod tests {
         // money a maker is still owed.
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
-        let idx = book.insert(SIDE_BID, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        let idx = book
+            .insert(SIDE_BID, 400, 10 * ONE_SHARE, trader(1))
+            .unwrap();
         let escrow = book.escrow_of(&book.node(idx).unwrap()).unwrap();
         assert!(escrow > 0);
         assert_eq!(book.total_obligations(OUTCOME_YES).unwrap(), escrow);
@@ -989,7 +1068,9 @@ mod tests {
         // collected. It is still owed.
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
-        let idx = book.insert(SIDE_BID, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        let idx = book
+            .insert(SIDE_BID, 400, 10 * ONE_SHARE, trader(1))
+            .unwrap();
         let seq = book.node(idx).unwrap().seq;
         let refund = book.cancel(trader(1), seq).unwrap();
         // The order is gone, so escrow is zero — but the refund is in credit.
@@ -1010,7 +1091,8 @@ mod tests {
         // creator to guess when to fire it.
         let mut a = Acct::new(32);
         let mut book = load_book(a.bytes()).unwrap();
-        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1)).unwrap();
+        book.insert(SIDE_ASK, 400, 10 * ONE_SHARE, trader(1))
+            .unwrap();
         book.place(trader(2), SIDE_BID, 400, 10 * ONE_SHARE, 0, 8, false)
             .unwrap();
 
@@ -1019,5 +1101,4 @@ mod tests {
         let after = book.total_obligations(OUTCOME_YES).unwrap();
         assert!(after < before, "redeeming must reduce what is owed");
     }
-
 }

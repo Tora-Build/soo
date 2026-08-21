@@ -29,7 +29,7 @@ The AMM is binary — YES and NO only.
 | `q_yes`, `q_no`  | `i128`   | LMSR inventories, WAD; signed for math symmetry           |
 | `b`              | `i128`   | liquidity parameter, WAD; positive, stored signed         |
 | `seed_q_yes`, `seed_q_no` | `i128` | virtual floor used by `reclaim_subsidy` and `sweep_residual` |
-| `fee_b_base_wad` | `u128`   | cumulative fee WAD; the graduation odometer               |
+| `fee_b_base_wad` | `u128`   | cumulative fee WAD from BOTH directions; the graduation odometer |
 | `trial_end_at`   | `i64`    | trial window end                                          |
 | `is_graduated`   | `bool`   | one-way                                                   |
 | `is_dismissed`   | `bool`   | trial expired without graduating                          |
@@ -119,6 +119,14 @@ that is non-zero. All conversions floor, and the handler asserts
 `net_usdc + fee_usdc <= proceeds_usdc` so rounding can never overpay the vault
 out.
 
+`amm.fee_b_base_wad += fee_wad`, then the same graduation check as §4.1.
+Sell fees count toward graduation exactly as buy fees do: the odometer measures
+what the venue has EARNED against the subsidy at risk, and a sell's fee lands in
+`fee_pool_amm` beside a buy's. Accruing one side only would make the odometer
+disagree with the pool it measures and would make a churn-heavy market harder to
+graduate than a buy-only one that earned the protocol the same money. Unlike
+§4.1 there is no stale-flag subtlety here, because sells never mint LP.
+
 Two PDA-signed transfers leave `vault_amm`: the fee to `fee_pool_amm`, the net to
 `lock_vault`. A `LockEntry` records the amount and
 `unlock_at = now + LOCK_DURATION_SECS` (24 hours), then `position.lock_nonce`
@@ -153,8 +161,9 @@ has earned back the capital that was put at risk on its behalf."
 reads as 10 000 because an older config account deserializes its missing field to
 zero, and reading that literally would graduate every market on its first trade.
 
-The check runs inline in `trade_positions`, so graduation is atomic with the
-trade that triggers it and one-way. When it fires:
+The check runs inline in `trade_positions` AND in `sell_positions`, so
+graduation is atomic with the trade that triggers it, whichever direction that
+trade ran in, and one-way. When it fires:
 
 - `AmmState.is_graduated = true`, `MarketGraduated` emitted with the accumulated
   and threshold values,
@@ -175,9 +184,12 @@ converts into a claim on the market's future yield. Details of the LP mint,
   either direction opens a rounding drain.
 - **Read `is_graduated` before the fee accrues.** §4.1 — the graduating trade
   still earns LP.
-- **Graduation is one-way and written at one site.** `AmmState.is_graduated` and
-  `Market.book_enabled` are set in the same block; splitting them would let the
-  two facts drift.
+- **Graduation is one-way, and its two flags are written together.**
+  `AmmState.is_graduated` and `Market.book_enabled` are set in the same block at
+  each of the two trading sites; splitting them would let the two facts drift.
+- **Both directions feed the odometer.** `fee_b_base_wad` accrues on buys and on
+  sells. Restoring the buy-only accrual would make the odometer stop matching
+  the fee pool it is meant to measure.
 - **`b` must stay positive.** Every cost computation divides by it.
 - **`lock_nonce` is monotonic and caller-echoed.** Reusing a nonce collides with
   a live `LockEntry` PDA; skipping one strands nothing but confuses the SDK's

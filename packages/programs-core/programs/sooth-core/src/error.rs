@@ -12,7 +12,6 @@ use anchor_lang::prelude::*;
 #[error_code]
 pub enum SoothCoreError {
     // ── Market lifecycle ─────────────────────────────────────────────────────
-
     #[msg("Market is not in the Open lifecycle state")]
     MarketNotOpen,
 
@@ -56,7 +55,6 @@ pub enum SoothCoreError {
     AmountTooSmallForBaseTokenDecimals,
 
     // ── AMM ──────────────────────────────────────────────────────────────────
-
     #[msg("Slippage: cost exceeded max_cost_wad")]
     SlippageExceeded,
 
@@ -100,7 +98,6 @@ pub enum SoothCoreError {
     AmmStateMarketMismatch,
 
     // ── Market creation / LP ─────────────────────────────────────────────────
-
     #[msg("Fee bps must not exceed 10000 (100%)")]
     FeeBpsOutOfRange,
 
@@ -129,7 +126,6 @@ pub enum SoothCoreError {
     LegacyDrainAlreadyExecuted,
 
     // ── Adjudicator / resolution ─────────────────────────────────────────────
-
     #[msg("Caller is not the registered authority for this adjudicator")]
     NotAuthority,
 
@@ -146,7 +142,6 @@ pub enum SoothCoreError {
     MarketAlreadySettled,
 
     // ── Orderbook (CLOB) ─────────────────────────────────────────────────────
-
     #[msg("Order id is outside the supported composite encoding range")]
     InvalidOrderId,
 
@@ -184,7 +179,6 @@ pub enum SoothCoreError {
     WrongBundleArity,
 
     // ── Protocol / circuit-breaker ───────────────────────────────────────────
-
     #[msg("Protocol is paused; trading, new liquidity and market creation are disabled")]
     ProtocolPaused,
 
@@ -200,7 +194,6 @@ pub enum SoothCoreError {
     // ── Veto window ──────────────────────────────────────────────────────────
     // Appended, never reordered: these discriminants are the on-the-wire error
     // codes the SDK and demo match on.
-
     #[msg("Veto window is still open; settle is not callable until it closes")]
     VetoWindowOpen,
 
@@ -237,7 +230,6 @@ pub enum SoothCoreError {
     OutstandingClaims,
     // ── zkTLS adjudication ───────────────────────────────────────────────────
     // Appended, never reordered. See the module header.
-
     #[msg("Adjudicator entry is not zk-enabled; use the manual attest path")]
     ZkNotEnabled,
 

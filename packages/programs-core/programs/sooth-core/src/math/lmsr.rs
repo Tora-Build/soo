@@ -335,8 +335,7 @@ mod wide_cost_regression {
         let b = 50 * WAD;
         for q in [300i128, 320, 340] {
             let buy = cost_delta(q * WAD, q * WAD, b, 10 * WAD, 0).unwrap();
-            let sell =
-                cost_delta((q + 10) * WAD, q * WAD, b, -10 * WAD, 0).unwrap();
+            let sell = cost_delta((q + 10) * WAD, q * WAD, b, -10 * WAD, 0).unwrap();
             assert_eq!(buy, -sell, "q={q}");
         }
     }

@@ -91,7 +91,7 @@
     "graduating": "毕业中..."
   },
   "orderbook": {
-    "title": "SoothBook 终端",
+    "title": "SooBook 终端",
     "orderBook": "订单簿",
     "chart": "图表",
     "orders": "订单",
@@ -115,8 +115,8 @@
     "collateral": "抵押品",
     "payoutIfCorrect": "正确时收益",
     "return": "回报",
-    "notOnSoothBook": "市场尚未进入 SoothBook",
-    "bondingPhase": "该市场已从 Launchpad 绑定期毕业，但暂时仍未开放 SoothBook 订单簿交易。目前请通过 AMM 页面交易。",
+    "notOnSoothBook": "市场尚未进入 SooBook",
+    "bondingPhase": "该市场已从 Launchpad 绑定期毕业，但暂时仍未开放 SooBook 订单簿交易。目前请通过 AMM 页面交易。",
     "goToAmm": "前往 AMM"
   },
   "portfolio": {
@@ -124,12 +124,12 @@
     "walletCollateral": "钱包抵押品",
     "approved": "已授权",
     "readyToTrade": "准备交易",
-    "soothBookApproval": "SoothBook 授权",
+    "soothBookApproval": "SooBook 授权",
     "refreshBalance": "刷新余额",
     "walletUsdcBalance": "钱包 USDC 余额",
-    "depositInstruction": "存入 USDC 即可在 SoothBook 订单簿上挂限价单。",
+    "depositInstruction": "存入 USDC 即可在 SooBook 订单簿上挂限价单。",
     "reservedTooltip": "用于未成交订单或空头仓位的链上预留抵押品。如果订单是在之前的会话中下达，可能与可见订单不同。",
-    "approveUsdcForSoothBook": "为 SoothBook 授权 USDC",
+    "approveUsdcForSoothBook": "为 SooBook 授权 USDC",
     "amountToApprove": "待授权金额",
     "processing": "处理中...",
     "walletModeActive": "钱包模式已启用",
@@ -418,12 +418,12 @@
   },
   "faucet": {
     "title": "协议水龙头",
-    "subtitle": "获取测试代币以体验 Sooth 协议",
+    "subtitle": "获取测试代币以体验 Soo 协议",
     "yourBalance": "您的余额",
     "requestTokens": "领取 100,000 mUSDC",
     "requesting": "领取中...",
     "mockUsdc": "模拟 USDC",
-    "mintDescription": "向您的钱包铸造 100,000 mUSDC。该代币用作 Sooth 所有交易的抵押品。",
+    "mintDescription": "向您的钱包铸造 100,000 mUSDC。该代币用作 Soo 所有交易的抵押品。",
     "notDeployed": "未部署"
   },
   "geek": {
@@ -625,7 +625,7 @@
     "remaining": "剩余"
   },
   "footer": {
-    "protocol": "SOOTH 协议",
+    "protocol": "SOO 协议",
     "rpc": "RPC",
     "block": "区块"
   },
@@ -709,7 +709,7 @@
       "aliceStrategy": "Alice 的策略：",
       "aliceDesc": "早期交易赚取 LP 代币。即使预测错误也能获利！",
       "bobStrategy": "Bob 的策略：",
-      "bobDesc": "捕获 AMM 和 SoothBook 之间的价差。当价差超过成本时即为无风险利润！",
+      "bobDesc": "捕获 AMM 和 SooBook 之间的价差。当价差超过成本时即为无风险利润！",
       "daveStrategy": "Dave 的策略：",
       "daveDesc": "凭信念与其他交易者对赌。没有 LP 安全网——赢家通吃！",
       "influenceFactors": "影响因素",
@@ -782,7 +782,7 @@
       "settlementMitigation": "LP 底价公式保证了最低赎回价值。",
       "smartContractTitle": "智能合约风险",
       "smartContractDesc": "所有 DeFi 协议都存在固有的智能合约风险。",
-      "smartContractMitigation": "Sooth 协议已通过审计。只存入您能承受损失的金额。",
+      "smartContractMitigation": "Soo 协议已通过审计。只存入您能承受损失的金额。",
       "lpFloorProtection": "LP 底价保护",
       "lpFloorDesc": "您的 LP 代币基于底价公式具有最低保证价值：",
       "lpFloorWorstCase": "即使在最坏的情况下（所有赢家赎回），LP 也能保证获得至少底价价值。",
@@ -885,7 +885,7 @@
           "headers": {
             "0": "特性",
             "1": "传统方式",
-            "2": "Sooth"
+            "2": "Soo"
           },
           "rows": {
             "0": {
@@ -905,7 +905,7 @@
             }
           }
         },
-        "title": "Sooth 的优势"
+        "title": "Soo 的优势"
       },
       "context": {
         "mechanisms": {
@@ -1008,7 +1008,7 @@
             "name": "LP 估值 (ExRate)"
           },
           "3": {
-            "desc": "当累计交易手续费达到初始创建者存款的 100% 时，市场毕业至 SoothBook（默认 graduationBps = 10000）。",
+            "desc": "当累计交易手续费达到初始创建者存款的 100% 时，市场毕业至 SooBook（默认 graduationBps = 10000）。",
             "formula": "Deposit × graduationBps / 10000",
             "name": "毕业门槛"
           },
@@ -1018,7 +1018,7 @@
             "name": "创建者存款"
           }
         },
-        "subtitle": "Sooth V8.1 使用双场所账本和自动核算。",
+        "subtitle": "Soo V8.1 使用双场所账本和自动核算。",
         "title": "协议会计"
       },
       "gaming": {
@@ -1037,7 +1037,7 @@
       },
       "header": {
         "subtitle": "「当每个参与者的激励都对齐时，协议不需要看门人。真相从市场本身中涌现。」",
-        "title": "学习 Sooth 协议"
+        "title": "学习 Soo 协议"
       },
       "pillars": {
         "launchpad": {
@@ -1048,7 +1048,7 @@
         "soothBook": {
           "description": "链上订单簿，1,000 档深度。",
           "innovation": "高吞吐量 CLOB",
-          "title": "SoothBook"
+          "title": "SooBook"
         },
         "zkRules": {
           "description": "通过 T* 实现自治、追溯式结算。",
@@ -1079,7 +1079,7 @@
           "title": "AMM（散户）"
         },
         "arb": {
-          "description": "套利者通过弥合 AMM 和 SoothBook 之间的价差来保持价格效率。他们在一个场所低价买入，在另一个场所高价卖出。",
+          "description": "套利者通过弥合 AMM 和 SooBook 之间的价差来保持价格效率。他们在一个场所低价买入，在另一个场所高价卖出。",
           "title": "套利者的角色"
         },
         "architectureTitle": "双场所架构",
@@ -1090,12 +1090,12 @@
         },
         "evolutionStates": {
           "0": "仅 AMM",
-          "1": "AMM + SoothBook",
-          "2": "SoothBook 主导"
+          "1": "AMM + SooBook",
+          "2": "SooBook 主导"
         },
         "evolutionTitle": "市场演进",
         "pvp": {
-          "description": "SoothBook 是信念碰撞信念的地方。没有 AMM 缓冲——纯粹的点对点交易。赢家获取输家的本金，零 LP 价差抽取。",
+          "description": "SooBook 是信念碰撞信念的地方。没有 AMM 缓冲——纯粹的点对点交易。赢家获取输家的本金，零 LP 价差抽取。",
           "title": "PvP 信念交易"
         },
         "soothBook": {
@@ -1117,10 +1117,10 @@
               "1": "无（即时）"
             }
           },
-          "title": "SoothBook（专业）"
+          "title": "SooBook（专业）"
         }
       },
-      "proTip": "Sooth 是一个合作网络。每个参与者的行为都有助于发现未来事件的真实价格。",
+      "proTip": "Soo 是一个合作网络。每个参与者的行为都有助于发现未来事件的真实价格。",
       "ready": {
         "actors": {
           "0": {
@@ -1140,13 +1140,13 @@
             "title": "PvP 交易者"
           }
         },
-        "subtitle": "Sooth 的生态是一个合作网络。你今天想扮演哪个角色？",
+        "subtitle": "Soo 的生态是一个合作网络。你今天想扮演哪个角色？",
         "title": "选择你的路径"
       },
       "steps": {
         "0": {
           "badge": "支柱 0 · 介绍",
-          "description": "Sooth 协议围绕一个核心论点设计：**去中心化创造更好的市场**。传统平台受制于受限的创建权和中心化的裁决。Sooth 通过三大基础支柱来解决这一问题。",
+          "description": "Soo 协议围绕一个核心论点设计：**去中心化创造更好的市场**。传统平台受制于受限的创建权和中心化的裁决。Soo 通过三大基础支柱来解决这一问题。",
           "id": "thesis",
           "title": "去中心化论"
         },
@@ -1163,13 +1163,13 @@
           "title": "博弈交易者"
         },
         "3": {
-          "badge": "支柱 III · SoothBook",
-          "description": "Sooth 运营**双交易场所**以服务不同类型的交易者。专业交易者使用 SoothBook 获得交易所级别的执行体验。",
+          "badge": "支柱 III · SooBook",
+          "description": "Soo 运营**双交易场所**以服务不同类型的交易者。专业交易者使用 SooBook 获得交易所级别的执行体验。",
           "id": "pro",
           "title": "套利者与 PvP 交易者"
         },
         "4": {
-          "description": "Sooth 的生态是一个合作网络。你今天想扮演哪个角色？",
+          "description": "Soo 的生态是一个合作网络。你今天想扮演哪个角色？",
           "id": "ready",
           "title": "开始你的旅程"
         }
@@ -1251,14 +1251,14 @@
       "restricted": {
         "description": "高性能订单簿场所仅对已毕业市场开放。该市场仍处于绑定期。",
         "switchButton": "切换至交易",
-        "title": "SoothBook 受限"
+        "title": "SooBook 受限"
       },
       "shortcuts": {
         "buy": "买入",
         "price": "价格",
         "sell": "卖出",
         "shortcuts": "快捷键",
-        "terminal": "V12 SOOTHBOOK 终端"
+        "terminal": "V12 SOOBOOK 终端"
       },
       "tabs": {
         "history": "历史",
@@ -1366,7 +1366,7 @@
     "smartContract": {
       "title": "智能合约风险",
       "description": "所有 DeFi 协议都存在固有的智能合约风险。",
-      "mitigation": "Sooth 协议已经过审计。请只投入您能承受损失的金额。"
+      "mitigation": "Soo 协议已经过审计。请只投入您能承受损失的金额。"
     },
     "likelihood": {
       "low": "低",
@@ -1403,7 +1403,7 @@
     },
     "shell": {
       "testnetBanner": "Devnet 测试网——资金无实际价值",
-      "networkFooter": "Solana Devnet · Sooth Core"
+      "networkFooter": "Solana Devnet · Soo Core"
     },
     "wallet": {
       "connectedTitle": "已通过 {{connector}} 连接。点击即可断开。",
@@ -1654,7 +1654,7 @@
         "emptyBook": "订单簿为空",
         "oneSidedBook": "仅有单边挂单",
         "midpointExplanation": "该数值是索引到的最高买价与最低卖价的中间值，仅供参考，不保证成交。",
-        "protocolExplanation": "订单簿暂时无法形成中间价，因此这里显示实时协议状态。您的订单仍会在 SoothBook 上执行。",
+        "protocolExplanation": "订单簿暂时无法形成中间价，因此这里显示实时协议状态。您的订单仍会在 SooBook 上执行。",
         "unavailableExplanation": "索引深度不可用，因此该参考值不能视为可成交价格；订单提交已暂停。",
         "loadingExplanation": "正在读取索引深度，确认可成交的参考价格。",
         "noReference": "目前没有可用的链上或索引参考价格，应用不会虚构价格。"

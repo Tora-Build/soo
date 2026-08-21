@@ -156,7 +156,7 @@ export function LPForecast() {
               Forecast whether liquidity pays for itself
             </h1>
             <p className="mt-3 text-body text-muted">
-              Model creator deposits, Sooth fees, LP dilution, inventory
+              Model creator deposits, Soo fees, LP dilution, inventory
               exposure, drawdowns, and ending P&L. Observed backtests replay
               indexer AMM trades and orderbook fills separately from the
               modeled assumptions.
@@ -184,7 +184,7 @@ export function LPForecast() {
         <aside className="space-y-4">
           <Panel
             eyebrow="Market"
-            title="Select a Sooth market"
+            title="Select a Soo market"
             icon={Database}
           >
             <label className="block space-y-2">
@@ -353,7 +353,7 @@ export function LPForecast() {
             <div className="space-y-3 text-small text-muted">
               <p>
                 The model keeps assumptions separate from observed trades. It
-                estimates creator capital using the Sooth launch formula, then
+                estimates creator capital using the Soo launch formula, then
                 allocates pre-graduation fees to liquidity growth and
                 post-graduation fees across b growth and LP yield.
               </p>
@@ -482,7 +482,7 @@ export function LPForecast() {
               ) : (
                 <div className="mt-5 border border-rule p-6 text-center text-small text-faint">
                   Observed replay will appear here once this market has indexed
-                  AMM trades or SoothBook fills.
+                  AMM trades or SooBook fills.
                 </div>
               )}
             </Panel>
@@ -816,7 +816,7 @@ function buildAssumptions(
   const depositAmount = parseNumber(form.depositAmount, 0);
   const withdrawalAmount = parseNumber(form.withdrawalAmount, 0);
   return {
-    marketName: marketName ?? "Selected Sooth market",
+    marketName: marketName ?? "Selected Soo market",
     initialLiquidity: parseNumber(form.initialLiquidity, 1_000),
     initialProbability: parsePercent(form.initialProbability, 0.5),
     expectedOutcomeProbability: parsePercent(

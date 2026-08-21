@@ -125,10 +125,7 @@ pub(crate) struct BookFeeSplit {
 /// `b_base_share_bps` is deliberately unread — see the module docs. Its share
 /// lands in the protocol remainder rather than being dropped, because a pool
 /// that does not fully drain accumulates dust nobody can claim.
-pub(crate) fn compute_book_fee_split(
-    total: u64,
-    cfg: &ProtocolConfig,
-) -> Result<BookFeeSplit> {
+pub(crate) fn compute_book_fee_split(total: u64, cfg: &ProtocolConfig) -> Result<BookFeeSplit> {
     let total_u128 = total as u128;
     let to_lp_yield: u64 = ((total_u128 * cfg.lp_yield_share_bps as u128) / 10_000)
         .try_into()
@@ -172,7 +169,10 @@ pub fn handler(ctx: Context<DistributeFeesBook>) -> Result<()> {
     let signer_seeds: &[&[&[u8]]] = &[&[b"fee_pool_authority", &[bump]]];
 
     for (to, amount) in [
-        (ctx.accounts.lp_yield_vault.to_account_info(), split.to_lp_yield),
+        (
+            ctx.accounts.lp_yield_vault.to_account_info(),
+            split.to_lp_yield,
+        ),
         (
             ctx.accounts.adjudicator_fee_vault.to_account_info(),
             split.to_adjudicator,

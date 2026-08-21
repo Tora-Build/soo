@@ -27,7 +27,7 @@ export const AppLayout = () => {
     // The dock watermark reads this — CSS content cannot import SEASON.
     document.documentElement.style.setProperty(
       '--season-tag',
-      JSON.stringify(`SOOTH / ${SEASON.id}`),
+      JSON.stringify(`SOO / ${SEASON.id}`),
     );
   }, [accent]);
 

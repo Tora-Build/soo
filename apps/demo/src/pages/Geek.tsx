@@ -27,7 +27,7 @@ const ERC20_ABI = parseAbi([
 ]);
 
 const WELCOME_OUTPUT: OutputLine[] = [
-  { type: "bold", text: "SOOTH PROTOCOL SDK CLI v1.0" },
+  { type: "bold", text: "SOO PROTOCOL SDK CLI v1.0" },
   { type: "dim", text: "────────────────────────────────────────" },
   { type: "plain", text: "" },
   { type: "info", text: 'Type "help" for available commands' },
@@ -412,7 +412,7 @@ export function Geek() {
                 />
               </div>
               <span className="ml-3 font-mono text-xs uppercase tracking-[0.12em] text-faint">
-                sooth-cli — {currentChain?.name ?? "unknown"}
+                soo-cli — {currentChain?.name ?? "unknown"}
               </span>
             </div>
             <span className="font-mono text-xs text-faint">v0.1.2</span>
@@ -421,7 +421,7 @@ export function Geek() {
           <div className="flex-1 min-h-0">
             <WebTerminal
               onCommand={handleCommandWithRefresh}
-              prompt="sooth>"
+              prompt="soo>"
               initialOutput={WELCOME_OUTPUT}
             />
           </div>

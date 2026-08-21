@@ -1579,7 +1579,28 @@
       ],
       "accounts": [
         {
-          "name": "market"
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
         },
         {
           "name": "amm_state",
@@ -3891,6 +3912,12 @@
       "accounts": [
         {
           "name": "market",
+          "docs": [
+            "`mut` for exactly one write: `book_enabled` is flipped here when the",
+            "sell's fee carries the graduation odometer over its threshold. Nothing",
+            "else in this instruction touches `Market`."
+          ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -6746,6 +6773,23 @@
             "type": "bool"
           },
           {
+            "name": "is_dismissed",
+            "docs": [
+              "Has this market been dismissed?",
+              "",
+              "Mirrors `AmmState.is_dismissed`, written by `dismiss_market` alongside",
+              "it. It lives here because dismissal and settlement are the two terminal",
+              "outcomes of one market and must exclude each other: `settle` loads",
+              "`Market` and does NOT load `AmmState`, so without the mirror the",
+              "exclusion would cost an account and 32 bytes on the settle path — and",
+              "the check that is not cheap is the check that gets skipped.",
+              "",
+              "The two flags cannot drift: dismissal is one-way and set at exactly one",
+              "site, `dismiss_market`, which writes both."
+            ],
+            "type": "bool"
+          },
+          {
             "name": "_reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
@@ -6760,7 +6804,7 @@
             "type": {
               "array": [
                 "u8",
-                97
+                96
               ]
             }
           }

@@ -457,7 +457,7 @@ export const Learn = () => {
                                   key={hi}
                                   className={cn(
                                     "pb-2 font-medium",
-                                    h === "Sooth" && "font-bold text-ink",
+                                    h === "Soo" && "font-bold text-ink",
                                   )}
                                 >
                                   {h}
@@ -803,7 +803,7 @@ export const Learn = () => {
                       </p>
                       <div className="p-4 bg-raised font-mono text-xs text-ink">
                         AMM Price: 62% <br />
-                        SoothBook Ask: 58% <br />
+                        SooBook Ask: 58% <br />
                         <span className="text-ink">→ Arb: +4¢ per share</span>
                       </div>
                     </div>
@@ -974,7 +974,7 @@ export const Learn = () => {
 
         {/* Footer info */}
         <p className="text-center text-xs text-muted mt-8 uppercase tracking-[0.2em]">
-          Sooth Protocol Tutorial • Step {currentStep + 1} of {STEP_IDS.length}
+          Soo Protocol Tutorial • Step {currentStep + 1} of {STEP_IDS.length}
         </p>
       </div>
     </div>

@@ -17,19 +17,24 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Download .so binaries from anchor-build job
-        # Cargo tests use LiteSVM and load target/deploy/*.so at runtime
-        # (see programs/sooth_amm/tests/common/mod.rs:593). Without this
-        # download the LiteSVM tests panic with "target/deploy not found".
+        # The workspace is one member, `sooth_core`, and its Rust tests are
+        # pure unit tests today. The artifact is still pulled so a future
+        # LiteSVM-backed Rust test can load `target/deploy/*.so` without this
+        # job silently starting to fail with "target/deploy not found".
         uses: actions/download-artifact@v4
         with:
           name: target-deploy
           path: target/deploy/
 
+      # `--workspace` is one crate: `sooth_core`. The book, the AMM and the
+      # market lifecycle are modules inside it, not separate packages — there
+      # is no `sooth_book` to test on its own. The book's compute-unit ceiling
+      # is measured against the real program by
+      # `packages/sdk-solana/tests/book-cu-budget.test.ts`, which the SDK
+      # Vitest job below runs; it lives there because the measurement needs
+      # LiteSVM plus the TypeScript book builders.
       - name: Cargo test
-        run: cargo test
-
-      - name: SoothBook CU ceiling
-        run: NO_DNA=1 cargo test -p sooth_book --test cu_measurement -- --nocapture
+        run: cargo test --workspace
 
   sdk-vitest:
     name: SDK Vitest
@@ -69,12 +74,10 @@ jobs:
 
   anchor-build:
     # Catches SBF stack-offset errors + IDL-gen regressions on every
-    # PR. Per-program cargo build-sbf misses 2 of the 6 stack-offset
-    # cases that surface only during anchor's combined build pipeline
-    # (e.g. CreateOrderRequest +504 / ProcessOrderRequest +1200 in
-    # sooth_book pre-W2). The full e2e job ALSO does anchor build but
-    # only runs on push-to-main, which would let regressions land
-    # before being caught. This job is the PR-time guard.
+    # PR. `cargo build-sbf` misses stack-offset cases that surface only
+    # during anchor's combined build pipeline. The full e2e job ALSO does
+    # anchor build but only runs on push-to-main, which would let
+    # regressions land before being caught. This job is the PR-time guard.
     # No untrusted input (static commands).
     name: Anchor build
     runs-on: ubuntu-latest

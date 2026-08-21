@@ -156,7 +156,9 @@ pub fn leg_costs(price_tick: u16, amount: u64, taker_side: u8) -> R<(u64, u64)> 
         .checked_mul(maker_ticks)
         .ok_or(SettleError::Overflow)?
         / NUM_TICKS;
-    let taker_cost = amount.checked_sub(maker_cost).ok_or(SettleError::Overflow)?;
+    let taker_cost = amount
+        .checked_sub(maker_cost)
+        .ok_or(SettleError::Overflow)?;
     Ok(if taker_is_bid {
         (taker_cost, maker_cost)
     } else {
@@ -457,8 +459,7 @@ mod tests {
             for tick in [1u16, 37, 250, 500, 763, 999] {
                 let charged = taker_fee(amount, tick, FEE_BPS, 0).unwrap();
                 let risk = tick.min(NUM_TICKS as u16 - tick) as u64;
-                let two_step =
-                    (amount * risk / NUM_TICKS) * FEE_BPS as u64 / BPS_DENOMINATOR;
+                let two_step = (amount * risk / NUM_TICKS) * FEE_BPS as u64 / BPS_DENOMINATOR;
                 assert_eq!(charged, two_step, "amount={amount} tick={tick}");
             }
         }
@@ -496,7 +497,10 @@ mod tests {
     fn a_zero_rate_charges_nothing_anywhere() {
         for tick in [1u16, 500, 999] {
             let (bid, _) = fill(tick, shares(10), SIDE_BID, 0, 0);
-            assert_eq!(taker_fee(shares(10), tick, 0, bid.collateral_in).unwrap(), 0);
+            assert_eq!(
+                taker_fee(shares(10), tick, 0, bid.collateral_in).unwrap(),
+                0
+            );
         }
     }
 
@@ -520,12 +524,24 @@ mod tests {
         // A bids 515 (buy YES @ 0.515). B asks 485 (buy NO @ 0.515).
         // B is the taker, so the fill executes at A's resting 515.
         let (bid, ask) = leg_costs(515, 2 * ONE_SHARE, SIDE_ASK).unwrap();
-        println!("A (bid maker) pays {} for 2 YES  -> {}/share", bid, bid as f64 / 2.0 / 1e6);
-        println!("B (ask taker) pays {} for 2 NO   -> {}/share", ask, ask as f64 / 2.0 / 1e6);
-        println!("sum = {} (must equal 2 shares x $1 = {})", bid + ask, 2 * ONE_SHARE);
+        println!(
+            "A (bid maker) pays {} for 2 YES  -> {}/share",
+            bid,
+            bid as f64 / 2.0 / 1e6
+        );
+        println!(
+            "B (ask taker) pays {} for 2 NO   -> {}/share",
+            ask,
+            ask as f64 / 2.0 / 1e6
+        );
+        println!(
+            "sum = {} (must equal 2 shares x $1 = {})",
+            bid + ask,
+            2 * ONE_SHARE
+        );
         assert_eq!(bid + ask, 2 * ONE_SHARE);
         assert_eq!(bid, 1_030_000); // A pays exactly its 0.515 limit
-        assert_eq!(ask, 970_000);   // B pays 0.485 — better than its 0.515 limit
+        assert_eq!(ask, 970_000); // B pays 0.485 — better than its 0.515 limit
     }
 
     #[test]
@@ -533,8 +549,12 @@ mod tests {
         // If the two legs DID match each other, the fill happens at ONE tick and
         // the split sums to 100c by construction — not 51.5 + 51.5 = 103.
         let (bid, ask) = leg_costs(515, ONE_SHARE, SIDE_ASK).unwrap();
-        println!("buy-YES leg {}c   buy-NO leg {}c   total {}c",
-            bid as f64 / 10_000.0, ask as f64 / 10_000.0, (bid + ask) as f64 / 10_000.0);
+        println!(
+            "buy-YES leg {}c   buy-NO leg {}c   total {}c",
+            bid as f64 / 10_000.0,
+            ask as f64 / 10_000.0,
+            (bid + ask) as f64 / 10_000.0
+        );
         assert_eq!(bid + ask, ONE_SHARE, "a pair always costs exactly 1.00");
     }
 
@@ -545,12 +565,18 @@ mod tests {
         // the complement of each.
         let (mine_yes, theirs_no) = leg_costs(515, ONE_SHARE, SIDE_ASK).unwrap();
         let (theirs_yes, mine_no) = leg_costs(485, ONE_SHARE, SIDE_BID).unwrap();
-        println!("quoter pays {}c + {}c = {}c for a pair worth 100c",
-            mine_yes as f64 / 10_000.0, mine_no as f64 / 10_000.0,
-            (mine_yes + mine_no) as f64 / 10_000.0);
-        println!("arb    pays {}c + {}c = {}c",
-            theirs_yes as f64 / 10_000.0, theirs_no as f64 / 10_000.0,
-            (theirs_yes + theirs_no) as f64 / 10_000.0);
+        println!(
+            "quoter pays {}c + {}c = {}c for a pair worth 100c",
+            mine_yes as f64 / 10_000.0,
+            mine_no as f64 / 10_000.0,
+            (mine_yes + mine_no) as f64 / 10_000.0
+        );
+        println!(
+            "arb    pays {}c + {}c = {}c",
+            theirs_yes as f64 / 10_000.0,
+            theirs_no as f64 / 10_000.0,
+            (theirs_yes + theirs_no) as f64 / 10_000.0
+        );
         assert_eq!(mine_yes + mine_no, 1_030_000);
         assert_eq!(theirs_yes + theirs_no, 970_000);
     }
@@ -577,19 +603,28 @@ mod tests {
 
         println!("bid leg -> new_net {}", bid.new_net);
         println!("ask leg -> new_net {}", ask.new_net);
-        println!("paid {}c total", (bid.collateral_in + ask.collateral_in) / 10_000);
+        println!(
+            "paid {}c total",
+            (bid.collateral_in + ask.collateral_in) / 10_000
+        );
 
         // Applied in sequence, the second write lands on top of the first:
         // `new_net` is absolute, not a delta.
         let after_both = ask.new_net;
-        assert_eq!(after_both, -(ONE_SHARE as i64), "second leg overwrites the first");
+        assert_eq!(
+            after_both,
+            -(ONE_SHARE as i64),
+            "second leg overwrites the first"
+        );
 
         // And the honest combined position — long one, short one — is zero.
         let combined = bid.new_net + ask.new_net;
-        assert_eq!(combined, 0, "a minted pair is indistinguishable from nothing");
+        assert_eq!(
+            combined, 0,
+            "a minted pair is indistinguishable from nothing"
+        );
 
         // Either way the trader paid a full dollar.
         assert_eq!(bid.collateral_in + ask.collateral_in, ONE_SHARE);
     }
-
 }

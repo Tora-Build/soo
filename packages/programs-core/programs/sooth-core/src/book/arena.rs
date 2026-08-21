@@ -158,7 +158,8 @@ const _: () = assert!(core::mem::size_of::<SeatNode>() == BLOCK_SIZE);
 const _: () = assert!(core::mem::align_of::<SeatNode>() <= 8);
 // `kind` and `flags` must share a byte offset, or a block cannot be identified
 // before it is interpreted and a seat could be read as an order.
-const _: () = assert!(core::mem::offset_of!(OrderNode, flags) == core::mem::offset_of!(SeatNode, kind));
+const _: () =
+    assert!(core::mem::offset_of!(OrderNode, flags) == core::mem::offset_of!(SeatNode, kind));
 // The alignment contract with Solana's account data. If this ever exceeds 8 the
 // zero-copy cast stops being sound on-chain.
 const _: () = assert!(core::mem::align_of::<OrderNode>() <= 8);
@@ -547,8 +548,16 @@ mod tests {
             b.insert(SIDE_BID, tick, 1, trader(1)).unwrap();
             b.insert(SIDE_ASK, tick, 1, trader(2)).unwrap();
         }
-        let bids: Vec<u16> = b.iter_side(SIDE_BID).iter().map(|(_, n)| n.price_tick).collect();
-        let asks: Vec<u16> = b.iter_side(SIDE_ASK).iter().map(|(_, n)| n.price_tick).collect();
+        let bids: Vec<u16> = b
+            .iter_side(SIDE_BID)
+            .iter()
+            .map(|(_, n)| n.price_tick)
+            .collect();
+        let asks: Vec<u16> = b
+            .iter_side(SIDE_ASK)
+            .iter()
+            .map(|(_, n)| n.price_tick)
+            .collect();
         assert_eq!(bids, vec![700, 600, 500, 300], "best bid is the highest");
         assert_eq!(asks, vec![300, 500, 600, 700], "best ask is the lowest");
     }
@@ -595,7 +604,11 @@ mod tests {
         b.remove(ids[4]).unwrap(); // head
         b.remove(ids[2]).unwrap(); // middle
         b.remove(ids[0]).unwrap(); // tail
-        let ticks: Vec<u16> = b.iter_side(SIDE_BID).iter().map(|(_, n)| n.price_tick).collect();
+        let ticks: Vec<u16> = b
+            .iter_side(SIDE_BID)
+            .iter()
+            .map(|(_, n)| n.price_tick)
+            .collect();
         assert_eq!(ticks, vec![503, 501]);
         assert_eq!(b.header.order_count, 2);
     }
@@ -646,7 +659,10 @@ mod tests {
     struct Lcg(u64);
     impl Lcg {
         fn next(&mut self) -> u64 {
-            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             self.0 >> 33
         }
         fn below(&mut self, n: u64) -> u64 {
@@ -686,7 +702,10 @@ mod tests {
             }
         }
 
-        assert_eq!(total, live, "order_count drifted from the actual list length");
+        assert_eq!(
+            total, live,
+            "order_count drifted from the actual list length"
+        );
         assert_eq!(b.header.order_count as usize, live);
 
         // The free list must be disjoint from the book and acyclic.
@@ -698,7 +717,10 @@ mod tests {
                 "block {cursor} is on the free list AND in the book"
             );
             free_len += 1;
-            assert!(free_len <= b.header.block_count as usize, "free list is cyclic");
+            assert!(
+                free_len <= b.header.block_count as usize,
+                "free list is cyclic"
+            );
             cursor = b.blocks[cursor as usize].next;
         }
 
@@ -723,7 +745,11 @@ mod tests {
         for step in 0..4000 {
             let insert = live.is_empty() || (live.len() < CAPACITY && rng.below(100) < 60);
             if insert {
-                let side = if rng.below(2) == 0 { SIDE_BID } else { SIDE_ASK };
+                let side = if rng.below(2) == 0 {
+                    SIDE_BID
+                } else {
+                    SIDE_ASK
+                };
                 // A narrow price band on purpose: it forces frequent ties,
                 // which is exactly where time priority is tested.
                 let tick = 495 + rng.below(11) as u16;
@@ -764,7 +790,10 @@ mod tests {
             BLOCK_SIZE * MAX_ORDERS as usize,
             "the arena must be exactly block-sized, with no per-order overhead"
         );
-        assert!(fixed < 200, "the fixed prefix must stay negligible, got {fixed}");
+        assert!(
+            fixed < 200,
+            "the fixed prefix must stay negligible, got {fixed}"
+        );
 
         // Rent, in lamports, for the fully-extended book vs today's thin book
         // of 19 separate accounts totalling 2,640 payload bytes.
@@ -784,7 +813,6 @@ mod tests {
              {new_thin} vs {old_thin}"
         );
     }
-
 
     /// What `MAX_ORDERS` means in participants, pinned because it is the
     /// number anyone sizing a market actually needs and it is not 256.
@@ -828,7 +856,10 @@ mod tests {
         while b2.seat_mut(trader_wide(holders)).is_ok() {
             holders += 1;
         }
-        assert_eq!(holders, MAX_ORDERS, "a position holder costs exactly one block");
+        assert_eq!(
+            holders, MAX_ORDERS,
+            "a position holder costs exactly one block"
+        );
     }
 
     fn trader_wide(i: u32) -> Pubkey {
@@ -880,7 +911,10 @@ mod tests {
         for i in 0..8u8 {
             assert_eq!(b.take_credit(trader(i)).unwrap(), 0);
         }
-        assert_eq!(b.header.block_count, 0, "a no-op withdraw must allocate nothing");
+        assert_eq!(
+            b.header.block_count, 0,
+            "a no-op withdraw must allocate nothing"
+        );
         assert_eq!(b.header.seats_head, NIL);
     }
 
@@ -898,7 +932,10 @@ mod tests {
 
         // Reused rather than merely forgotten.
         b.seat_mut(trader(2)).unwrap();
-        assert_eq!(b.header.block_count, 1, "should have recycled the freed block");
+        assert_eq!(
+            b.header.block_count, 1,
+            "should have recycled the freed block"
+        );
     }
 
     #[test]
@@ -950,7 +987,7 @@ mod tests {
         let mut b = f.book();
         b.seat_mut(trader(1)).unwrap();
         assert!(!b.free_seat_if_empty(trader(9)).unwrap());
-        assert_eq!(b.seat_of(trader(1)).is_some(), true);
+        assert!(b.seat_of(trader(1)).is_some());
         assert_eq!(b.header.block_count, 1);
     }
 
@@ -965,7 +1002,12 @@ mod tests {
             as_seat_mut(b.blocks.get_mut(idx as usize).unwrap()).credit = 1;
         }
         // seats_head is trader(2); free the middle one.
-        as_seat_mut(b.blocks.get_mut(b.seat_of(trader(1)).unwrap() as usize).unwrap()).credit = 0;
+        as_seat_mut(
+            b.blocks
+                .get_mut(b.seat_of(trader(1)).unwrap() as usize)
+                .unwrap(),
+        )
+        .credit = 0;
         assert!(b.free_seat_if_empty(trader(1)).unwrap());
 
         assert_eq!(b.seat_of(trader(1)), None);

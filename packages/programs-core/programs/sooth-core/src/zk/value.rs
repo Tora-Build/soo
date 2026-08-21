@@ -75,13 +75,7 @@ impl ZkComparator {
 pub fn compute_rule_hash(url: &str, parse_path: &str) -> [u8; 32] {
     let url_len = (url.len() as u32).to_le_bytes();
     let path_len = (parse_path.len() as u32).to_le_bytes();
-    hashv(&[
-        &url_len,
-        url.as_bytes(),
-        &path_len,
-        parse_path.as_bytes(),
-    ])
-    .to_bytes()
+    hashv(&[&url_len, url.as_bytes(), &path_len, parse_path.as_bytes()]).to_bytes()
 }
 
 /// Reads the resolved value out of `data` and returns it scaled by
@@ -245,9 +239,18 @@ mod tests {
     #[test]
     fn rule_hash_is_deterministic_and_endpoint_specific() {
         let base = compute_rule_hash("https://api.test/price", "$.data.price");
-        assert_eq!(base, compute_rule_hash("https://api.test/price", "$.data.price"));
-        assert_ne!(base, compute_rule_hash("https://evil.test/price", "$.data.price"));
-        assert_ne!(base, compute_rule_hash("https://api.test/price", "$.data.volume"));
+        assert_eq!(
+            base,
+            compute_rule_hash("https://api.test/price", "$.data.price")
+        );
+        assert_ne!(
+            base,
+            compute_rule_hash("https://evil.test/price", "$.data.price")
+        );
+        assert_ne!(
+            base,
+            compute_rule_hash("https://api.test/price", "$.data.volume")
+        );
     }
 
     #[test]

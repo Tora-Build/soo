@@ -75,10 +75,10 @@ const fmtUsd = (v: number) =>
 // Component
 // ---------------------------------------------------------------------------
 
-// Outer dispatcher: resolves the sooth_book deployment address and either
+// Outer dispatcher: resolves the sooth_core deployment address and either
 // renders the unavailable card OR mounts the heavy Active variant. Splitting
 // this way means the ~30 hooks inside `SoothBookTerminalActive` only mount
-// when sooth_book is deployed — Rules of Hooks stays satisfied unconditionally
+// when the book is available — Rules of Hooks stays satisfied unconditionally
 // and the Solana fork (where SoothBook is undefined per docs/decision-log.md
 // spike P1) renders the empty-state card without ever touching useOrderbook /
 // useOrderbookTrade / the SoothBook multicalls.
@@ -111,8 +111,8 @@ function SoothBookUnavailable({
           </h2>
           <p className="text-sm text-muted max-w-md mx-auto">
             Orderbook not available on this chain — the{" "}
-            <span className="font-mono">sooth_book</span> program is not
-            deployed (gated on spike P1).
+            <span className="font-mono">sooth_core</span> program is not
+            deployed here.
           </p>
           <a
             href={`/amm/${marketAddress}`}

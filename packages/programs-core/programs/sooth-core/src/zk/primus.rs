@@ -416,19 +416,58 @@ mod tests {
         sign_attestation(&mut base, &ATTESTOR_KEY);
         let signer = address_for(&ATTESTOR_KEY);
 
-        let mutations: Vec<(&str, Box<dyn Fn(&mut ZkAttestation)>)> = vec![
-            ("recipient", Box::new(|a: &mut ZkAttestation| a.recipient[0] ^= 1)),
-            ("url", Box::new(|a: &mut ZkAttestation| a.request.url.push('x'))),
-            ("header", Box::new(|a: &mut ZkAttestation| a.request.header.push('x'))),
-            ("method", Box::new(|a: &mut ZkAttestation| a.request.method = "POST".into())),
-            ("body", Box::new(|a: &mut ZkAttestation| a.request.body.push('x'))),
-            ("key_name", Box::new(|a: &mut ZkAttestation| a.response_resolve[0].key_name.push('x'))),
-            ("parse_type", Box::new(|a: &mut ZkAttestation| a.response_resolve[0].parse_type.push('x'))),
-            ("parse_path", Box::new(|a: &mut ZkAttestation| a.response_resolve[0].parse_path.push('x'))),
-            ("data", Box::new(|a: &mut ZkAttestation| a.data = r#"{"price":"1"}"#.into())),
-            ("att_conditions", Box::new(|a: &mut ZkAttestation| a.att_conditions.push('x'))),
-            ("timestamp", Box::new(|a: &mut ZkAttestation| a.timestamp += 1)),
-            ("addition_params", Box::new(|a: &mut ZkAttestation| a.addition_params.push('x'))),
+        // Named because the tuple is otherwise a `type_complexity` violation:
+        // each entry is a label plus the single-field mutation it applies.
+        type Mutation = (&'static str, Box<dyn Fn(&mut ZkAttestation)>);
+        let mutations: Vec<Mutation> = vec![
+            (
+                "recipient",
+                Box::new(|a: &mut ZkAttestation| a.recipient[0] ^= 1),
+            ),
+            (
+                "url",
+                Box::new(|a: &mut ZkAttestation| a.request.url.push('x')),
+            ),
+            (
+                "header",
+                Box::new(|a: &mut ZkAttestation| a.request.header.push('x')),
+            ),
+            (
+                "method",
+                Box::new(|a: &mut ZkAttestation| a.request.method = "POST".into()),
+            ),
+            (
+                "body",
+                Box::new(|a: &mut ZkAttestation| a.request.body.push('x')),
+            ),
+            (
+                "key_name",
+                Box::new(|a: &mut ZkAttestation| a.response_resolve[0].key_name.push('x')),
+            ),
+            (
+                "parse_type",
+                Box::new(|a: &mut ZkAttestation| a.response_resolve[0].parse_type.push('x')),
+            ),
+            (
+                "parse_path",
+                Box::new(|a: &mut ZkAttestation| a.response_resolve[0].parse_path.push('x')),
+            ),
+            (
+                "data",
+                Box::new(|a: &mut ZkAttestation| a.data = r#"{"price":"1"}"#.into()),
+            ),
+            (
+                "att_conditions",
+                Box::new(|a: &mut ZkAttestation| a.att_conditions.push('x')),
+            ),
+            (
+                "timestamp",
+                Box::new(|a: &mut ZkAttestation| a.timestamp += 1),
+            ),
+            (
+                "addition_params",
+                Box::new(|a: &mut ZkAttestation| a.addition_params.push('x')),
+            ),
         ];
 
         for (name, mutate) in mutations {
@@ -462,7 +501,10 @@ mod tests {
         for bad_v in [0u8, 1, 26, 29, 255] {
             let mut sig = att.signature;
             sig[64] = bad_v;
-            assert!(recover_evm_signer(&att.encode(), &sig).is_err(), "v={bad_v}");
+            assert!(
+                recover_evm_signer(&att.encode(), &sig).is_err(),
+                "v={bad_v}"
+            );
         }
     }
 

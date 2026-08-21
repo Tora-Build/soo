@@ -122,12 +122,16 @@ pub struct TradePositions<'info> {
 /// `graduation_bps == 0` means 10 000, not "graduate immediately". Zero is
 /// what a config account laid out without this field deserialises to, and
 /// reading that as zero would graduate every market on its first trade.
-fn graduation_threshold_wad(b: i128, graduation_bps: u16) -> Result<u128> {
+pub(crate) fn graduation_threshold_wad(b: i128, graduation_bps: u16) -> Result<u128> {
     let deposit_wad: u128 = wad_mul(b, LN2_WAD)
         .map_err(map_math_err)?
         .try_into()
         .map_err(|_| error!(SoothCoreError::MathOverflow))?;
-    let bps = if graduation_bps == 0 { 10_000u128 } else { graduation_bps as u128 };
+    let bps = if graduation_bps == 0 {
+        10_000u128
+    } else {
+        graduation_bps as u128
+    };
     deposit_wad
         .checked_mul(bps)
         .ok_or(error!(SoothCoreError::MathOverflow))?

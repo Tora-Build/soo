@@ -14,7 +14,7 @@ export const Footer = () => {
       <div className="container mx-auto max-w-7xl px-6 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-4">
           <span className="font-mono text-xs text-faint uppercase tracking-[0.1em]">
-            Sooth Protocol | {deployments.version}
+            Soo Protocol | {deployments.version}
           </span>
 
           <div className="flex items-center gap-3">

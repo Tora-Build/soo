@@ -328,7 +328,7 @@ export const ArenaPlay = () => {
   const shareMarket = async () => {
     if (!activeMarket) return;
     const shareData = {
-      title: "Play this reality on Sooth",
+      title: "Play this reality on Soo",
       text: activeMarket.question,
       url: window.location.href,
     };
@@ -530,7 +530,7 @@ const RealityCard = ({
           <span className="reality-pot">${depth.toFixed(0)} in play</span>
         </div>
         <div className="reality-scene-score">
-          <span>SOOTH LIVE</span>
+          <span>SOO LIVE</span>
           <strong>{Math.round(yes * 100)}</strong>
           <small>crowd signal</small>
         </div>

@@ -88,8 +88,7 @@ pub fn handler(ctx: Context<ClaimUnlocked>) -> Result<()> {
     let lock_authority_bump = ctx.accounts.market.lock_authority_bump;
 
     if amount > 0 {
-        let signer_seeds: &[&[&[u8]]] =
-            &[&[b"lock", market_id.as_ref(), &[lock_authority_bump]]];
+        let signer_seeds: &[&[&[u8]]] = &[&[b"lock", market_id.as_ref(), &[lock_authority_bump]]];
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),

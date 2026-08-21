@@ -259,7 +259,7 @@ function normalizeAssumptions(
 
   return {
     ...assumptions,
-    marketName: assumptions.marketName.trim() || "Selected Sooth market",
+    marketName: assumptions.marketName.trim() || "Selected Soo market",
     initialLiquidity: Math.max(1, assumptions.initialLiquidity),
     initialProbability: clampProbability(assumptions.initialProbability),
     expectedOutcomeProbability: clampProbability(
