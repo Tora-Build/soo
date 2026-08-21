@@ -490,10 +490,18 @@ async function handleProfile(ctx) {
       "INVALID_HANDLE",
     );
   }
-  await ctx.env.ARENA_DB
-    .prepare("UPDATE arena_players SET handle = ?, updated_at = ? WHERE wallet = ?")
-    .bind(handle, nowSeconds(), wallet)
-    .run();
+  try {
+    await ctx.env.ARENA_DB
+      .prepare("UPDATE arena_players SET handle = ?, updated_at = ? WHERE wallet = ?")
+      .bind(handle, nowSeconds(), wallet)
+      .run();
+  } catch (error) {
+    // The case-folded unique index makes a taken handle a constraint hit.
+    if (String(error).includes("UNIQUE constraint")) {
+      throw new ApiError(409, "That handle is taken", "HANDLE_TAKEN");
+    }
+    throw error;
+  }
   return json({
     profile: await getProfile(ctx.env.ARENA_DB, wallet),
     leaderboard: await getLeaderboard(ctx.env.ARENA_DB),

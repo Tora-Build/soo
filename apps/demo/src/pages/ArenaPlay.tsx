@@ -819,6 +819,7 @@ const LeaderRow = ({
   index,
   positionLabel,
   tag,
+  handle,
 }: {
   entry: WalletScore;
   position: number;
@@ -828,17 +829,19 @@ const LeaderRow = ({
   positionLabel?: string;
   /** Small chip after the wallet — the "HOUSE" marker on operator rows. */
   tag?: string;
+  /** Service-registered name; the address is the fallback identity. */
+  handle?: string;
 }) => (
   <div className={cn("play-leader-row", isYou && "is-you")}>
     <span className={cn("play-leader-rank", rankTone(position))}>
       {positionLabel ?? position}
     </span>
     <span className={`play-mini-avatar is-${AVATAR_TONES[index % 4]}`}>
-      {entry.wallet.slice(0, 2).toUpperCase()}
+      {(handle ?? entry.wallet).slice(0, 2).toUpperCase()}
     </span>
     <div>
       <strong className="inline-flex items-center gap-1.5">
-        {shortenAddress(entry.wallet, 4)}
+        {handle ?? shortenAddress(entry.wallet, 4)}
         {tag && (
           <span className="rounded border border-white/15 bg-white/5 px-1.5 py-px font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-faint">
             {tag}
@@ -854,7 +857,16 @@ const LeaderRow = ({
 );
 
 const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
-  const { wallet: sessionWallet } = useArenaPlayer();
+  const { wallet: sessionWallet, leaderboard: serviceBoard, profile } =
+    useArenaPlayer();
+  // Chain scores rank wallets; the service knows their chosen names. Joined
+  // here so a registered handle shows on the league instead of the address.
+  const handleFor = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of serviceBoard) map.set(row.wallet, row.handle);
+    if (profile) map.set(profile.wallet, profile.handle);
+    return (wallet: string) => map.get(wallet);
+  }, [serviceBoard, profile]);
   const [leagueOpen, setLeagueOpen] = useState(false);
   // The one merged stats source — the same hook the navbar pill and the
   // player card render from, so the three can never disagree.
@@ -930,6 +942,7 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
               position={index + 1}
               index={index}
               isYou={isYou(entry)}
+              handle={handleFor(entry.wallet)}
             />
           ))}
           {youOutsideTop && (
@@ -939,6 +952,7 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
               positionLabel={`#${youOutsideTop.position} · you`}
               index={3}
               isYou
+              handle={handleFor(youOutsideTop.wallet)}
             />
           )}
         </div>
@@ -979,6 +993,7 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
               position={index + 1}
               index={index}
               isYou={isYou(entry)}
+              handle={handleFor(entry.wallet)}
             />
           ))}
           {/* The house trades for real, so it is shown — but it does not
@@ -991,6 +1006,7 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
               positionLabel="—"
               index={index}
               isYou={isYou(entry)}
+              handle={handleFor(entry.wallet)}
               tag="House"
             />
           ))}
