@@ -34,14 +34,14 @@ import { Drawer } from "../ui/Drawer";
 import { useAccentStore, ACCENT_PRESETS } from "../../store/useAccentStore";
 import {
   ARENA_RANKS,
-  levelFromXp,
-  levelProgressFromXp,
   rankIndexFromLevel,
   useArenaPlayerStore,
   XP_PER_LEVEL,
 } from "../../store/useArenaPlayerStore";
 import { useArenaPlayer } from "../../features/arena/ArenaPlayerProvider";
-import { useSeasonLeaderboard } from "../../features/arena/useSeasonLeaderboard";
+import { usePlayerStats } from "../../features/arena/usePlayerStats";
+import { ArenaApiError } from "../../features/arena/arenaApi";
+import { SEASON } from "../../features/arena/season";
 import { shortenAddress } from "../../utils/format";
 import { useTranslation } from "react-i18next";
 
@@ -49,34 +49,6 @@ import { useTranslation } from "react-i18next";
 // one configured the HUD runs on local progress alone and the sync-only
 // controls stay hidden rather than offering an action that cannot succeed.
 const ARENA_SYNC_CONFIGURED = Boolean(import.meta.env.VITE_ARENA_API_BASE);
-
-/** Server profile when the arena service answers, local ledger otherwise —
- *  and once the connected wallet's on-chain play history scores higher than
- *  either, the chain-derived number wins. Guest plays stay local. */
-function usePlayerStats() {
-  const { profile } = useArenaPlayer();
-  const { you: chainScore } = useSeasonLeaderboard();
-  const localXp = useArenaPlayerStore((s) => s.xp);
-  const localStreak = useArenaPlayerStore((s) => s.streak);
-  const localTickets = useArenaPlayerStore((s) => s.tickets);
-  const localPlays = useArenaPlayerStore((s) => s.scoutedMarkets.length);
-  const localDailyClaim = useArenaPlayerStore((s) => s.lastDailyClaim);
-
-  const baseXp = profile?.xp ?? localXp;
-  const chainWins = chainScore !== null && chainScore.xp > baseXp;
-  const xp = chainWins ? chainScore.xp : baseXp;
-  return {
-    isSynced: profile !== null,
-    handle: profile?.handle ?? null,
-    xp,
-    streak: chainWins ? chainScore.streakDays : (profile?.streak ?? localStreak),
-    tickets: profile?.tickets ?? localTickets,
-    plays: chainWins ? chainScore.plays : (profile?.plays ?? localPlays),
-    lastDailyClaim: profile?.lastDailyClaim ?? localDailyClaim,
-    level: levelFromXp(xp),
-    levelProgress: levelProgressFromXp(xp),
-  };
-}
 
 export const Navbar = () => {
   const { t } = useTranslation();
@@ -113,13 +85,13 @@ export const Navbar = () => {
             <div className="hidden h-8 w-px bg-rule md:block" />
 
             <div className="hidden items-center gap-3 md:flex">
-              <span className="arcade-season-badge">S01</span>
+              <span className="arcade-season-badge">{SEASON.id}</span>
               <div>
                 <div className="font-mono text-[8px] font-semibold uppercase tracking-[0.18em] text-faint">
                   Current season
                 </div>
                 <div className="mt-0.5 text-xs font-bold uppercase tracking-wide text-ink">
-                  Reality Rush
+                  {SEASON.name}
                 </div>
               </div>
             </div>
@@ -233,6 +205,7 @@ const PlayerProfile = ({
     authenticate,
     claimDaily,
     updateHandle,
+    refresh,
   } = useArenaPlayer();
   const {
     isSynced,
@@ -247,12 +220,19 @@ const PlayerProfile = ({
   const claimLocalDrop = useArenaPlayerStore((s) => s.claimDailyDrop);
   const [handle, setHandle] = useState(syncedHandle ?? "edge_runner");
   const [isSavingHandle, setIsSavingHandle] = useState(false);
+  // Covers the gap where the server says 409 (today's drop exists) but the
+  // profile in memory predates the claim — the button still disables now.
+  const [claimedRemotely, setClaimedRemotely] = useState(false);
   useEffect(() => setHandle(syncedHandle ?? "edge_runner"), [syncedHandle]);
-  const claimedToday = lastDailyClaim === new Date().toISOString().slice(0, 10);
+  // The server's marker is a UTC day string, so "today" is the UTC day too —
+  // the drop resets at 00:00 UTC, not local midnight.
+  const claimedToday =
+    claimedRemotely || lastDailyClaim === new Date().toISOString().slice(0, 10);
   const rankIndex = rankIndexFromLevel(level);
 
   // With a server the drop is credited to the wallet; without one it is
-  // credited to this device. Either way the button does something.
+  // credited to this device. Either way the button does something —
+  // including kicking off the wallet sign-in when no session exists yet.
   const claimDrop = async () => {
     if (!ARENA_SYNC_CONFIGURED) {
       if (claimLocalDrop()) {
@@ -265,9 +245,18 @@ const PlayerProfile = ({
       return;
     }
     try {
+      // claimDaily authenticates first when there is no session — the
+      // sign-message prompt is part of the claim, not a separate step.
       await claimDaily();
       toast.success("Daily drop unlocked · +250 XP · +1 ticket");
     } catch (error) {
+      if (error instanceof ArenaApiError && error.status === 409) {
+        // Already claimed today is a state, not a failure.
+        setClaimedRemotely(true);
+        toast("Today's drop is claimed — come back tomorrow", { icon: "✨" });
+        void refresh(undefined, true);
+        return;
+      }
       toast.error(error instanceof Error ? error.message : "Daily drop failed");
     }
   };

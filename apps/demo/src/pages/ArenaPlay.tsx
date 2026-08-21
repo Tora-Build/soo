@@ -43,12 +43,12 @@ import {
 import type { WalletScore } from "../features/arena/scoring";
 import {
   ARENA_RANKS,
-  levelFromXp,
-  levelProgressFromXp,
   rankIndexFromLevel,
   useArenaPlayerStore,
   XP_PER_LEVEL,
 } from "../store/useArenaPlayerStore";
+import { usePlayerStats } from "../features/arena/usePlayerStats";
+import { SEASON } from "../features/arena/season";
 import { shortenAddress } from "../utils/format";
 import type {
   ArenaOutcome,
@@ -818,6 +818,7 @@ const LeaderRow = ({
   isYou,
   index,
   positionLabel,
+  tag,
 }: {
   entry: WalletScore;
   position: number;
@@ -825,6 +826,8 @@ const LeaderRow = ({
   index: number;
   /** Overrides the plain position number (the pinned "#12 · you" row). */
   positionLabel?: string;
+  /** Small chip after the wallet — the "HOUSE" marker on operator rows. */
+  tag?: string;
 }) => (
   <div className={cn("play-leader-row", isYou && "is-you")}>
     <span className={cn("play-leader-rank", rankTone(position))}>
@@ -834,7 +837,14 @@ const LeaderRow = ({
       {entry.wallet.slice(0, 2).toUpperCase()}
     </span>
     <div>
-      <strong>{shortenAddress(entry.wallet, 4)}</strong>
+      <strong className="inline-flex items-center gap-1.5">
+        {shortenAddress(entry.wallet, 4)}
+        {tag && (
+          <span className="rounded border border-white/15 bg-white/5 px-1.5 py-px font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-faint">
+            {tag}
+          </span>
+        )}
+      </strong>
       <small>
         LV {entry.level} · {entry.rank} · {entry.plays} plays
       </small>
@@ -844,24 +854,13 @@ const LeaderRow = ({
 );
 
 const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
-  const { wallet: sessionWallet, profile } = useArenaPlayer();
+  const { wallet: sessionWallet } = useArenaPlayer();
   const [leagueOpen, setLeagueOpen] = useState(false);
-  // The local/server ledger is the floor; once the wallet's on-chain history
-  // scores higher, the chain number wins. Guest plays stay local.
-  const localXp = useArenaPlayerStore((s) => s.xp);
-  const localStreak = useArenaPlayerStore((s) => s.streak);
-  const localTickets = useArenaPlayerStore((s) => s.tickets);
-  const localPlays = useArenaPlayerStore((s) => s.scoutedMarkets.length);
-  const baseXp = profile?.xp ?? localXp;
+  // The one merged stats source — the same hook the navbar pill and the
+  // player card render from, so the three can never disagree.
+  const { streak, tickets, plays, level, levelProgress } = usePlayerStats();
   const chain = board.you;
-  const chainWins = chain !== null && chain.xp > baseXp;
-  const xp = chainWins ? chain.xp : baseXp;
-  const streak = chainWins ? chain.streakDays : (profile?.streak ?? localStreak);
-  const plays = chainWins ? chain.plays : (profile?.plays ?? localPlays);
-  const tickets = profile?.tickets ?? localTickets;
-  const level = levelFromXp(xp);
   const levelTitle = ARENA_RANKS[rankIndexFromLevel(level)];
-  const levelProgress = levelProgressFromXp(xp);
 
   const leaders = board.leaders.slice(0, 5);
   const youOutsideTop = chain !== null && chain.position > 5 ? chain : null;
@@ -962,7 +961,7 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
             <strong>${Math.round(board.season.totalVolume).toLocaleString()}</strong>
             <small>volume</small>
           </span>
-          <span className="play-squad-reward">S01 live</span>
+          <span className="play-squad-reward">{SEASON.id} live</span>
         </div>
       </section>
 
@@ -982,7 +981,20 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
               isYou={isYou(entry)}
             />
           ))}
-          {board.leaders.length === 0 && (
+          {/* The house trades for real, so it is shown — but it does not
+              compete, so it sits under the field without a rank. */}
+          {board.house.map((entry, index) => (
+            <LeaderRow
+              key={entry.wallet}
+              entry={entry}
+              position={0}
+              positionLabel="—"
+              index={index}
+              isYou={isYou(entry)}
+              tag="House"
+            />
+          ))}
+          {board.leaders.length === 0 && board.house.length === 0 && (
             <div className="play-leader-empty">
               No scored plays yet this season.
             </div>

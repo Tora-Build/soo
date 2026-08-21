@@ -26,6 +26,7 @@ import {
   type SeasonTotals,
   type WalletScore,
 } from "./scoring";
+import { SEASON, isHouseWallet } from "./season";
 
 // ─── Persistent per-market cache ────────────────────────────────────────────
 
@@ -127,20 +128,37 @@ function knownMarketRefs(): string[] {
 // ─── Store + fetch loop ─────────────────────────────────────────────────────
 
 interface SeasonState {
+  /** Ranked competitors only — house wallets never hold a board position. */
   board: WalletScore[];
+  /** House (operator) wallets' scores, listed apart from the ranking. */
+  house: WalletScore[];
   season: SeasonTotals;
   /** False once the board reflects at least one completed chain read. */
   hasLoaded: boolean;
   isFetching: boolean;
 }
 
-function boardFromCache(cache: PlaysCache): Pick<SeasonState, "board" | "season"> {
+function boardFromCache(
+  cache: PlaysCache,
+): Pick<SeasonState, "board" | "house" | "season"> {
   const plays: ChainPlay[] = [];
   for (const [market, entry] of Object.entries(cache)) {
     plays.push(...toChainPlays(market, entry.plays ?? []));
   }
-  const board = buildLeaderboard(plays);
-  return { board, season: seasonTotals(board) };
+  // The cache keeps the full tape; the season is a fold-time window, so past
+  // seasons stay recomputable from the same cache.
+  const seasonPlays = plays.filter((p) => p.ts >= SEASON.startTs);
+  const full = buildLeaderboard(seasonPlays);
+  const board = full.filter((entry) => !isHouseWallet(entry.wallet));
+  const house = full.filter((entry) => isHouseWallet(entry.wallet));
+  // House trades are real market activity — plays and volume count them.
+  // The wallet count is the field of competitors, so it does not.
+  const totals = seasonTotals(full);
+  return {
+    board,
+    house,
+    season: { ...totals, activeWallets: board.length },
+  };
 }
 
 const useSeasonStore = create<SeasonState>(() => {
@@ -221,8 +239,10 @@ export function refreshSeasonLeaderboard(): Promise<void> {
 // ─── Hook ───────────────────────────────────────────────────────────────────
 
 export interface SeasonLeaderboard {
-  /** Sorted best-first; index 0 is rank #1. */
+  /** Sorted best-first; index 0 is rank #1. House wallets are not here. */
   leaders: WalletScore[];
+  /** House wallets' season scores — shown, tagged, but never ranked. */
+  house: WalletScore[];
   /** The connected wallet's score, with its 1-based board position. */
   you: (WalletScore & { position: number }) | null;
   season: SeasonTotals;
@@ -254,18 +274,24 @@ export function useSeasonLeaderboard(): SeasonLeaderboard {
   }, [adapter]);
 
   const board = useSeasonStore((s) => s.board);
+  const house = useSeasonStore((s) => s.house);
   const season = useSeasonStore((s) => s.season);
   const hasLoaded = useSeasonStore((s) => s.hasLoaded);
 
   const you = useMemo(() => {
     if (!wallet) return null;
     const index = board.findIndex((entry) => entry.wallet === wallet);
-    if (index < 0) return null;
-    return { ...board[index], position: index + 1 };
-  }, [board, wallet]);
+    if (index >= 0) return { ...board[index], position: index + 1 };
+    // A connected house wallet still sees its own run — pinned after the
+    // ranked field, where the house rows live.
+    const houseIndex = house.findIndex((entry) => entry.wallet === wallet);
+    if (houseIndex < 0) return null;
+    return { ...house[houseIndex], position: board.length + houseIndex + 1 };
+  }, [board, house, wallet]);
 
   return {
     leaders: board,
+    house,
     you,
     season,
     isLoading: !hasLoaded,

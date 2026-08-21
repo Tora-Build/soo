@@ -14,6 +14,7 @@ import { Footer } from '../components/layout/Footer';
 import { ActivityListener } from '../components/features/ActivityListener';
 
 import { useAccentStore } from '../store/useAccentStore';
+import { SEASON } from '../features/arena/season';
 import { useEffect } from 'react';
 
 export const AppLayout = () => {
@@ -23,6 +24,11 @@ export const AppLayout = () => {
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', accent);
     document.documentElement.style.setProperty('--accent-muted', accent + '0F');
+    // The dock watermark reads this — CSS content cannot import SEASON.
+    document.documentElement.style.setProperty(
+      '--season-tag',
+      JSON.stringify(`SOOTH / ${SEASON.id}`),
+    );
   }, [accent]);
 
   return (

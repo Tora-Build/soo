@@ -3252,7 +3252,8 @@
     }
 
     .arena-dock::before {
-      content: "SOOTH / S01";
+      /* Season id injected by AppLayout as --season-tag — one source. */
+      content: var(--season-tag, "SOOTH");
       position: absolute;
       left: 50%;
       bottom: 26px;
@@ -4867,4 +4868,157 @@
       animation: none;
     }
   }
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   ARCADE SHELL — neutral reroute for the classic pages
+   Every route inside the arcade shell (`.app-shell`, see AppLayout) shares
+   the arena's palette. The var-driven tokens (--accent, --pos, --neg,
+   --warn, surfaces) already resolve to the arcade values via the REALITY
+   ARCADE :root above, so anything styled through them is on-palette.
+   What isn't: Tailwind's neutral utilities. tailwind.config.js pins
+   canvas/raised/inset/rule/subtle/ink/muted/faint to literal warm-grey hex
+   (upstream byte-parity), so `bg-raised`, `text-ink`, `border-rule` on the
+   classic pages paint the old slate scheme inside the arcade shell — and
+   the Eastboard surface (which never mounts `.app-shell`) still needs
+   those literals untouched. Rerouting them here, scoped to `.app-shell`,
+   recolors every arena room in one place and leaves /eastboard alone.
+   Full-strength rules point at the vars so they track the arcade :root;
+   alpha variants mirror Tailwind's `/NN` output via color-mix.
+   Directional colors (pos/neg) are untouched: they flow through --pos and
+   --neg, already the arcade mint/pink, so YES/profit stays green-family
+   and NO/loss stays red-family. ─────────────────────────────────────── */
+
+/* Soft directional fills. The arcade :root remaps --pos/--neg/--warn but
+   not their -soft companions, so mint/pink text would sit on the old warm
+   olive/rust washes. Re-derive the washes from the arcade values here;
+   Tailwind's pos-soft/neg-soft/warn-soft utilities read these vars. */
+.app-shell {
+  --pos-soft: color-mix(in srgb, var(--pos) 12%, transparent);
+  --neg-soft: color-mix(in srgb, var(--neg) 12%, transparent);
+  --warn-soft: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+
+/* Surfaces */
+.app-shell .bg-canvas {
+  background-color: var(--bg);
+}
+.app-shell .bg-raised,
+.app-shell .hover\:bg-raised:hover {
+  background-color: var(--bg-raised);
+}
+.app-shell .bg-inset,
+.app-shell .hover\:bg-inset:hover,
+.app-shell .focus-within\:bg-inset:focus-within {
+  background-color: var(--bg-inset);
+}
+.app-shell .bg-rule {
+  background-color: var(--border);
+}
+.app-shell .bg-subtle,
+.app-shell .hover\:bg-subtle:hover {
+  background-color: var(--border-subtle);
+}
+.app-shell .bg-ink,
+.app-shell .hover\:bg-ink:hover {
+  background-color: var(--text);
+}
+.app-shell .bg-muted {
+  background-color: var(--text-muted);
+}
+.app-shell .bg-faint {
+  background-color: var(--text-faint);
+}
+
+/* Surface alpha variants (Tailwind `/NN`) — arcade hex + the same alpha */
+.app-shell .bg-canvas\/90 {
+  background-color: color-mix(in srgb, var(--bg) 90%, transparent);
+}
+.app-shell .bg-raised\/30,
+.app-shell .hover\:bg-raised\/30:hover {
+  background-color: color-mix(in srgb, var(--bg-raised) 30%, transparent);
+}
+.app-shell .bg-raised\/40,
+.app-shell .hover\:bg-raised\/40:hover {
+  background-color: color-mix(in srgb, var(--bg-raised) 40%, transparent);
+}
+.app-shell .bg-raised\/50,
+.app-shell .hover\:bg-raised\/50:hover {
+  background-color: color-mix(in srgb, var(--bg-raised) 50%, transparent);
+}
+.app-shell .bg-raised\/60 {
+  background-color: color-mix(in srgb, var(--bg-raised) 60%, transparent);
+}
+.app-shell .bg-raised\/80 {
+  background-color: color-mix(in srgb, var(--bg-raised) 80%, transparent);
+}
+.app-shell .bg-inset\/40 {
+  background-color: color-mix(in srgb, var(--bg-inset) 40%, transparent);
+}
+.app-shell .bg-inset\/50 {
+  background-color: color-mix(in srgb, var(--bg-inset) 50%, transparent);
+}
+.app-shell .bg-inset\/60 {
+  background-color: color-mix(in srgb, var(--bg-inset) 60%, transparent);
+}
+.app-shell .bg-inset\/80 {
+  background-color: color-mix(in srgb, var(--bg-inset) 80%, transparent);
+}
+.app-shell .bg-rule\/40 {
+  background-color: color-mix(in srgb, var(--border) 40%, transparent);
+}
+.app-shell .bg-ink\/5 {
+  background-color: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.app-shell .bg-ink\/30 {
+  background-color: color-mix(in srgb, var(--text) 30%, transparent);
+}
+
+/* Text */
+.app-shell .text-ink,
+.app-shell .hover\:text-ink:hover,
+.app-shell .group\/row:hover .group-hover\/row\:text-ink {
+  color: var(--text);
+}
+.app-shell .text-muted,
+.app-shell .hover\:text-muted:hover {
+  color: var(--text-muted);
+}
+.app-shell .text-faint {
+  color: var(--text-faint);
+}
+.app-shell .text-canvas {
+  color: var(--bg);
+}
+.app-shell .placeholder-faint::placeholder,
+.app-shell .placeholder\:text-faint::placeholder {
+  color: var(--text-faint);
+}
+
+/* Borders, dividers, rings */
+.app-shell .border-rule {
+  border-color: var(--border);
+}
+.app-shell .border-rule\/20 {
+  border-color: color-mix(in srgb, var(--border) 20%, transparent);
+}
+.app-shell .border-rule\/30 {
+  border-color: color-mix(in srgb, var(--border) 30%, transparent);
+}
+.app-shell .border-rule\/50 {
+  border-color: color-mix(in srgb, var(--border) 50%, transparent);
+}
+.app-shell .border-subtle,
+.app-shell .hover\:border-subtle:hover {
+  border-color: var(--border-subtle);
+}
+.app-shell .divide-rule > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--border);
+}
+.app-shell .divide-rule\/40 > :not([hidden]) ~ :not([hidden]) {
+  border-color: color-mix(in srgb, var(--border) 40%, transparent);
+}
+.app-shell .ring-rule,
+.app-shell .group:hover .group-hover\:ring-rule {
+  --tw-ring-color: var(--border);
 }
