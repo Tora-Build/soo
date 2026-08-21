@@ -89,6 +89,43 @@ once and it cannot be changed afterwards; get it wrong and the market can never
 be resolved by this service. The Primus source refuses such a market up front
 rather than burning a fee on a guaranteed `ZkAttestorMismatch`.
 
+### What a real Primus attestation actually looks like
+
+Recorded from a live `startAttestation` against Coinbase BTC-USD spot.
+`scripts/primus-probe.mjs` reproduces it standalone, for one unit of quota and
+no chain access:
+
+```
+recipient      "0x0000000000000000000000000000000000000000"   the default userAddress
+request        { url, header: "", method: "GET", body: "" }   header BLANKED
+reponseResolve [ { keyName: "amount", parseType: "", parsePath: "$.data.amount" } ]
+data           "{\"amount\":\"76656.69\"}"                     single-key object
+attConditions  "[{\"op\":\"REVEAL_STRING\",\"field\":\"$.data.amount\",\"reveal_id\":\"amount\"}]"
+timestamp      1787319198412                                  MILLISECONDS
+additionParams "{\"algorithmType\":\"proxytls\"}"               NON-EMPTY
+attestors      [ { attestorAddr: "0xdb736b13…d8ef6", url: "https://primuslabs.xyz" } ]
+signatures     [ 65 bytes, v = 0x1b ]
+```
+
+Four points that matter, all of which the program already handles:
+
+- **`header` and `parseType` come back empty.** Primus moves the request
+  headers into its own transport map and does not echo `parseType`. The digest
+  is over what Primus returns, and the resolver submits exactly those fields,
+  so the `header` / `parseType` in `markets.json` describe the request only.
+- **`data` is the single-key object form** keyed by `keyName` — precisely one
+  of the two shapes `zk/value.rs::extract_value_token` accepts.
+- **`timestamp` is milliseconds.** `zk/verify.rs::normalize_timestamp` divides
+  by 1000 above its `10^12` floor, so both readings are accepted and only one
+  is possible for a given value.
+- **`additionParams` is non-empty.** It is inside the digest and re-hashed on
+  chain verbatim, well under the 512-byte cap; nothing interprets it.
+
+Attested value precision varies between readings — 2 and 3 decimals were both
+observed within a minute — and the program REJECTS a value carrying more
+fractional digits than the registered `value_scale`. Register scale with
+headroom (8 for a USD price feed), not with the feed's typical precision.
+
 ### Gemini
 
 Optional, advisory, and **structurally off the resolution path**. It may help a

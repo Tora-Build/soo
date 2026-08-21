@@ -73,10 +73,13 @@ export function validateEntry(entry, index, path = "<registry>") {
     url: entry.url.trim(),
     parsePath: entry.parsePath.trim(),
     keyName: entry.keyName.trim(),
-    // `parseType` and `header` are inside the SIGNED digest but outside the
-    // rule hash, so the chain cannot check them and a wrong value here shows
-    // up as a signature that will not recover. Defaults match what the
-    // reference proof and the Primus SDK both use.
+    // These describe the REQUEST handed to Primus, not the attestation. Primus
+    // rewrites both on the way back: a real attestation carries `header: ""`
+    // and `parseType: ""` regardless of what was asked for (`assemblyParams`
+    // drops the header into its own transport map, and the resolve entry comes
+    // back with only `keyName` and `parsePath` populated). The resolver submits
+    // the ATTESTATION's fields, never these, so a wrong value here cannot break
+    // the digest — it only changes what Primus was asked to fetch.
     parseType: entry.parseType?.trim() || "string",
     method: (entry.method?.trim() || "GET").toUpperCase(),
     header: entry.header ?? '{"accept":"application/json"}',
