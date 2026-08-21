@@ -1,0 +1,15 @@
+{
+  "_comment": [
+    "Markets this resolver watches, and the rule preimage the chain cannot give back.",
+    "The on-chain AdjudicatorEntry stores attestor, comparator, threshold and value scale,",
+    "plus rule_hash — a COMMITMENT to (url, parsePath), not the values. A hash cannot be",
+    "inverted, so the endpoint and field have to be supplied here. Everything else is read",
+    "from the chain and never taken from this file, and the (url, parsePath) pair below is",
+    "verified against the market's rule_hash before any attestation is requested.",
+    "",
+    "Fields: market (base58 pubkey), url, parsePath, keyName are required.",
+    "parseType defaults to \"string\", method to \"GET\", header to {\"accept\":\"application/json\"}.",
+    "Set enabled:false to park a market without deleting it."
+  ],
+  "markets": []
+}
