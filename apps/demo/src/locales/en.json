@@ -1932,5 +1932,30 @@
       "unexpectedFailure": "The wallet or network request could not be completed.",
       "technicalDetails": "Technical details"
     }
+  },
+  "arena": {
+    "stats": {
+      "streakLabel": "Day streak",
+      "streakHelp": "Consecutive days with at least one play — multiplies XP up to 1.5×",
+      "ticketsLabel": "Tickets",
+      "ticketsHelp": "Play tickets — earned from daily drops, spent to score trades in the arena",
+      "playsLabel": "Plays",
+      "playsHelp": "Trades you've made this season"
+    },
+    "handle": {
+      "label": "Player handle",
+      "edit": "Edit",
+      "save": "Save",
+      "saving": "Saving",
+      "cancel": "Cancel",
+      "saved": "Player handle saved",
+      "saveFailed": "Could not save handle"
+    },
+    "ranks": {
+      "threshold": "LV {{level}} · {{xp}} XP",
+      "toNext": "{{xp}} XP to {{rank}}",
+      "topRank": "Top rank reached",
+      "prestige": "Ranks are season prestige — rewards land at season close."
+    }
   }
 }

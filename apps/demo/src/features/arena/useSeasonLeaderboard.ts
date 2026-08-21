@@ -33,6 +33,25 @@ import { SEASON, isHouseWallet } from "./season";
 /** Bump to discard tapes cached under an older play shape or scoring input. */
 import seasonSnapshot from "./season-snapshot.json";
 
+// The snapshot doubles as the market registry: every market it names is
+// registered into the same created-PDA store the whole demo reads for
+// discovery, so a market created in one browser reaches every visitor at
+// the next build — no indexer, no registry account.
+(() => {
+  try {
+    const pdas = Object.keys(seasonSnapshot.markets).map((ref) =>
+      ref.replace(/^sol:/, ""),
+    );
+    const g = globalThis as unknown as { __soothCreatedMarketPdas?: string[] };
+    const merged = [...new Set([...(g.__soothCreatedMarketPdas ?? []), ...pdas])];
+    g.__soothCreatedMarketPdas = merged;
+    localStorage.setItem("__soothCreatedMarketPdas", JSON.stringify(merged));
+    sessionStorage.setItem("__soothCreatedMarketPdas", JSON.stringify(merged));
+  } catch {
+    // Storage may be unavailable; the in-memory global still serves this tab.
+  }
+})();
+
 const CACHE_KEY = "sooth:arena:chain-plays:v1";
 const POLL_MS = 60_000;
 /** Deepest first walk per market — beyond this the tape starts mid-history,

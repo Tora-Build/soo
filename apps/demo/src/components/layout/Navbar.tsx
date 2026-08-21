@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Flame,
   Gift,
+  Pencil,
   RadioTower,
   Sparkles,
   Swords,
@@ -99,8 +100,18 @@ export const Navbar = () => {
 
           <div className="flex items-center gap-2">
             <div className="hidden items-center gap-1.5 xl:flex">
-              <HudStat icon={Flame} value={`${streak} day`} tone="heat" />
-              <HudStat icon={Ticket} value={`${tickets}`} tone="ticket" />
+              <HudStat
+                icon={Flame}
+                value={`${streak} day`}
+                tone="heat"
+                help={t("arena.stats.streakHelp")}
+              />
+              <HudStat
+                icon={Ticket}
+                value={`${tickets}`}
+                tone="ticket"
+                help={t("arena.stats.ticketsHelp")}
+              />
               <button
                 type="button"
                 onClick={() => setProfileOpen(true)}
@@ -177,16 +188,27 @@ const HudStat = ({
   icon: Icon,
   value,
   tone,
+  help,
 }: {
   icon: typeof Flame;
   value: string;
   tone: "heat" | "ticket";
+  help: string;
 }) => (
-  <div className={`arcade-hud-stat is-${tone}`}>
+  <div className={`arcade-hud-stat is-${tone}`} title={help} aria-label={help}>
     <Icon className="h-3.5 w-3.5" />
     <span>{value}</span>
   </div>
 );
+
+// Season rank thresholds, derived from the ladder in useArenaPlayerStore:
+// level = floor(xp / 1000) + 1, ranks at LV 1 / 2 / 6 / 12.
+const RANK_THRESHOLDS = [
+  { level: 1, xp: 0 },
+  { level: 2, xp: 1_000 },
+  { level: 6, xp: 5_000 },
+  { level: 12, xp: 11_000 },
+] as const;
 
 const PlayerProfile = ({
   displayAddress,
@@ -197,6 +219,7 @@ const PlayerProfile = ({
   isConnected: boolean;
   onConnect: () => void;
 }) => {
+  const { t } = useTranslation();
   const {
     profile,
     isAuthenticated,
@@ -220,6 +243,12 @@ const PlayerProfile = ({
   const claimLocalDrop = useArenaPlayerStore((s) => s.claimDailyDrop);
   const [handle, setHandle] = useState(syncedHandle ?? "edge_runner");
   const [isSavingHandle, setIsSavingHandle] = useState(false);
+  // A saved handle collapses into a read-only display; the input only comes
+  // back through the Edit affordance, pre-filled with the current handle.
+  const [isEditingHandle, setIsEditingHandle] = useState(false);
+  // Service rejections (409 handle taken, etc.) render inline under the
+  // input — a toast alone disappears before the player can read it.
+  const [handleError, setHandleError] = useState<string | null>(null);
   // Covers the gap where the server says 409 (today's drop exists) but the
   // profile in memory predates the claim — the button still disables now.
   const [claimedRemotely, setClaimedRemotely] = useState(false);
@@ -229,6 +258,9 @@ const PlayerProfile = ({
   const claimedToday =
     claimedRemotely || lastDailyClaim === new Date().toISOString().slice(0, 10);
   const rankIndex = rankIndexFromLevel(level);
+  // Total season XP, rebuilt from the level math it was split with:
+  // level = floor(xp / 1000) + 1, levelProgress = xp % 1000.
+  const totalXp = (level - 1) * XP_PER_LEVEL + levelProgress;
 
   // With a server the drop is credited to the wallet; without one it is
   // credited to this device. Either way the button does something —
@@ -264,16 +296,25 @@ const PlayerProfile = ({
   const saveHandle = async () => {
     if (handle === profile?.handle) return;
     setIsSavingHandle(true);
+    setHandleError(null);
     try {
       await updateHandle(handle);
-      toast.success("Player handle saved");
+      setIsEditingHandle(false);
+      toast.success(t("arena.handle.saved"));
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not save handle",
-      );
+      const message =
+        error instanceof Error ? error.message : t("arena.handle.saveFailed");
+      setHandleError(message);
+      toast.error(message);
     } finally {
       setIsSavingHandle(false);
     }
+  };
+
+  const startEditingHandle = () => {
+    setHandle(profile?.handle ?? handle);
+    setHandleError(null);
+    setIsEditingHandle(true);
   };
 
   return (
@@ -318,9 +359,24 @@ const PlayerProfile = ({
 
       <div className="p-5">
         <div className="grid grid-cols-3 gap-2">
-          <ProfileStat icon={Flame} value={`${streak}`} label="Day streak" />
-          <ProfileStat icon={Ticket} value={`${tickets}`} label="Tickets" />
-          <ProfileStat icon={Zap} value={`${plays}`} label="Plays" />
+          <ProfileStat
+            icon={Flame}
+            value={`${streak}`}
+            label={t("arena.stats.streakLabel")}
+            help={t("arena.stats.streakHelp")}
+          />
+          <ProfileStat
+            icon={Ticket}
+            value={`${tickets}`}
+            label={t("arena.stats.ticketsLabel")}
+            help={t("arena.stats.ticketsHelp")}
+          />
+          <ProfileStat
+            icon={Zap}
+            value={`${plays}`}
+            label={t("arena.stats.playsLabel")}
+            help={t("arena.stats.playsHelp")}
+          />
         </div>
 
         <button
@@ -363,9 +419,26 @@ const PlayerProfile = ({
             <div className={index <= rankIndex ? "is-earned" : ""} key={rank}>
               <span />
               <small>{rank}</small>
+              <small className="arcade-rank-threshold">
+                {t("arena.ranks.threshold", {
+                  level: RANK_THRESHOLDS[index].level,
+                  xp: RANK_THRESHOLDS[index].xp.toLocaleString(),
+                })}
+              </small>
             </div>
           ))}
         </div>
+        <p className="arcade-rank-note mt-3">
+          {rankIndex < ARENA_RANKS.length - 1
+            ? t("arena.ranks.toNext", {
+                xp: (RANK_THRESHOLDS[rankIndex + 1].xp - totalXp).toLocaleString(),
+                rank: ARENA_RANKS[rankIndex + 1],
+              })
+            : t("arena.ranks.topRank")}
+        </p>
+        <p className="arcade-rank-note is-muted mt-1">
+          {t("arena.ranks.prestige")}
+        </p>
 
         {ARENA_SYNC_CONFIGURED ? (
           !isConnected ? (
@@ -391,6 +464,28 @@ const PlayerProfile = ({
                 ? "Waiting for signature…"
                 : "Secure wallet profile"}
             </button>
+          ) : !isEditingHandle && profile?.handle ? (
+            <div className="arena-handle-form mt-7">
+              <label htmlFor="arena-player-handle-display">
+                {t("arena.handle.label")}
+              </label>
+              <div>
+                <span
+                  id="arena-player-handle-display"
+                  className="arena-handle-display"
+                >
+                  {profile.handle}
+                </span>
+                <button
+                  type="button"
+                  onClick={startEditingHandle}
+                  aria-label={`${t("arena.handle.edit")} — ${profile.handle}`}
+                >
+                  <Pencil className="h-3 w-3" />
+                  {t("arena.handle.edit")}
+                </button>
+              </div>
+            </div>
           ) : (
             <form
               className="arena-handle-form mt-7"
@@ -399,22 +494,42 @@ const PlayerProfile = ({
                 void saveHandle();
               }}
             >
-              <label htmlFor="arena-player-handle">Player handle</label>
+              <label htmlFor="arena-player-handle">
+                {t("arena.handle.label")}
+              </label>
               <div>
                 <input
                   id="arena-player-handle"
                   value={handle}
                   maxLength={20}
-                  onChange={(event) => setHandle(event.target.value)}
+                  onChange={(event) => {
+                    setHandle(event.target.value);
+                    setHandleError(null);
+                  }}
                   autoComplete="off"
+                  aria-invalid={handleError ? true : undefined}
+                  aria-describedby={
+                    handleError ? "arena-player-handle-error" : undefined
+                  }
                 />
                 <button
                   type="submit"
                   disabled={isSavingHandle || handle === profile?.handle}
                 >
-                  {isSavingHandle ? "Saving" : "Save"}
+                  {isSavingHandle
+                    ? t("arena.handle.saving")
+                    : t("arena.handle.save")}
                 </button>
               </div>
+              {handleError && (
+                <p
+                  id="arena-player-handle-error"
+                  className="arena-handle-error"
+                  role="alert"
+                >
+                  {handleError}
+                </p>
+              )}
             </form>
           )
         ) : (
@@ -448,12 +563,18 @@ const ProfileStat = ({
   icon: Icon,
   value,
   label,
+  help,
 }: {
   icon: typeof Flame;
   value: string;
   label: string;
+  help: string;
 }) => (
-  <div className="arcade-profile-stat">
+  <div
+    className="arcade-profile-stat"
+    title={help}
+    aria-label={`${label}: ${value}. ${help}`}
+  >
     <Icon className="h-4 w-4 text-accent" />
     <strong>{value}</strong>
     <span>{label}</span>

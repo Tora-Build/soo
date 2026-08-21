@@ -1932,5 +1932,30 @@
       "unexpectedFailure": "钱包或网络请求未能完成。",
       "technicalDetails": "技术详情"
     }
+  },
+  "arena": {
+    "stats": {
+      "streakLabel": "连续天数",
+      "streakHelp": "连续每天至少完成一次游玩——XP 加成最高 1.5×",
+      "ticketsLabel": "门票",
+      "ticketsHelp": "游玩门票——每日掉落获得，在竞技场记分交易时消耗",
+      "playsLabel": "游玩",
+      "playsHelp": "你本赛季完成的交易次数"
+    },
+    "handle": {
+      "label": "玩家昵称",
+      "edit": "编辑",
+      "save": "保存",
+      "saving": "保存中",
+      "cancel": "取消",
+      "saved": "玩家昵称已保存",
+      "saveFailed": "昵称保存失败"
+    },
+    "ranks": {
+      "threshold": "LV {{level}} · {{xp}} XP",
+      "toNext": "距 {{rank}} 还差 {{xp}} XP",
+      "topRank": "已达最高段位",
+      "prestige": "段位是赛季荣誉——奖励在赛季结束时发放。"
+    }
   }
 }

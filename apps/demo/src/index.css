@@ -388,6 +388,9 @@
 }
 
 .arena-handle-form button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   border-radius: 11px;
   background: var(--accent);
   padding: 0 14px;
@@ -400,6 +403,30 @@
 
 .arena-handle-form button:disabled {
   opacity: 0.4;
+}
+
+/* The saved handle at rest — read-only until the Edit affordance reopens
+   the input. Mirrors the input's box so the row doesn't jump. */
+.arena-handle-display {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-handle-error {
+  margin-top: 8px;
+  color: #ff9d8c;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .arena-service-warning {
@@ -1479,9 +1506,9 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    color: rgba(255, 255, 255, 0.66);
-    font-size: 6px;
-    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 11px;
+    letter-spacing: 0.05em;
   }
 
   .play-leaderboard,
@@ -2702,10 +2729,10 @@
   }
 
   .arcade-profile-stat span {
-    color: var(--text-faint);
+    color: var(--text-muted);
     font-family: var(--font-mono);
-    font-size: 7px;
-    letter-spacing: 0.1em;
+    font-size: 11px;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
   }
 
@@ -2783,8 +2810,18 @@
     margin-top: 6px;
     color: var(--text-faint);
     font-family: var(--font-mono);
-    font-size: 7px;
+    font-size: 9px;
     text-transform: uppercase;
+  }
+
+  /* Second line on each ladder node: the level / XP threshold the rank
+     unlocks at. Stays faint even on earned nodes — it is metadata. */
+  .arcade-rank-track small.arcade-rank-threshold {
+    margin-top: 2px;
+    color: var(--text-faint);
+    font-size: 8px;
+    letter-spacing: 0.02em;
+    text-transform: none;
   }
 
   .arcade-rank-track .is-earned::before,
@@ -2794,6 +2831,24 @@
 
   .arcade-rank-track .is-earned small {
     color: var(--text);
+  }
+
+  .arcade-rank-track .is-earned small.arcade-rank-threshold {
+    color: var(--text-muted);
+  }
+
+  /* Lines under the ladder: XP remaining to the next rank, and what ranks
+     actually are this season. */
+  .arcade-rank-note {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+
+  .arcade-rank-note.is-muted {
+    color: var(--text-faint);
+    font-size: 10px;
   }
 
   .arcade-profile-connect {

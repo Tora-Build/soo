@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { formatUnits } from "@/lib/chain-shim";
 import {
@@ -857,6 +858,7 @@ const LeaderRow = ({
 );
 
 const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
+  const { t } = useTranslation();
   const { wallet: sessionWallet, leaderboard: serviceBoard, profile } =
     useArenaPlayer();
   // Chain scores rank wallets; the service knows their chosen names. Joined
@@ -897,13 +899,22 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
           />
         </div>
         <div className="play-run-stats">
-          <span>
+          <span
+            title={t("arena.stats.streakHelp")}
+            aria-label={`${t("arena.stats.streakLabel")}: ${streak}. ${t("arena.stats.streakHelp")}`}
+          >
             <Flame className="h-4 w-4" /> {streak} streak
           </span>
-          <span>
+          <span
+            title={t("arena.stats.ticketsHelp")}
+            aria-label={`${t("arena.stats.ticketsLabel")}: ${tickets}. ${t("arena.stats.ticketsHelp")}`}
+          >
             <Ticket className="h-4 w-4" /> {tickets} tickets
           </span>
-          <span>
+          <span
+            title={t("arena.stats.playsHelp")}
+            aria-label={`${t("arena.stats.playsLabel")}: ${plays}. ${t("arena.stats.playsHelp")}`}
+          >
             <Target className="h-4 w-4" /> {plays} plays
           </span>
         </div>
