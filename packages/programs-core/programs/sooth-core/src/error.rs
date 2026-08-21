@@ -292,6 +292,20 @@ pub enum SoothCoreError {
 
     #[msg("Position.market does not match the supplied market")]
     PositionMarketMismatch,
+
+    // Appended, never reordered. A market whose LMSR subsidy was never posted
+    // by `seed_lp` has no liquidity behind its curve, so every trade against
+    // it prices shares the vault cannot pay. It used to fail at account
+    // validation with Anchor's `AccountNotInitialized` on the LP mint — a
+    // message that names the wrong problem.
+    #[msg("Market has no LMSR seed: seed_lp must run before it can trade")]
+    MarketNotSeeded,
+
+    // Appended, never reordered. The creator's subsidy is the collateral
+    // behind a dismissed market's refunds, so it cannot leave while one is
+    // outstanding.
+    #[msg("Dismissed market still owes refunds; the subsidy cannot be reclaimed")]
+    RefundsOutstanding,
 }
 
 #[cfg(test)]
@@ -311,6 +325,16 @@ mod tests {
         assert_eq!(
             SoothCoreError::PositionMarketMismatch as u32,
             SoothCoreError::ZkAttestationTimestampInvalid as u32 + 5
+        );
+        // `MarketNotSeeded` was appended after them and is now the last
+        // variant. Anything added later goes after it, never before.
+        assert_eq!(
+            SoothCoreError::MarketNotSeeded as u32,
+            SoothCoreError::PositionMarketMismatch as u32 + 1
+        );
+        assert_eq!(
+            SoothCoreError::RefundsOutstanding as u32,
+            SoothCoreError::MarketNotSeeded as u32 + 1
         );
     }
 

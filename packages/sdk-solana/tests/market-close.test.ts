@@ -152,7 +152,9 @@ async function redeem(smoke: SmokeContext, program: any, user: Keypair) {
     [user],
     new Transaction().add(
       await program.methods
-        .redeemAmmPosition()
+        // `null` = no T* voiding claim; the resolution commitment PDA is
+        // uninitialised for this market and resolves from the IDL seeds.
+        .redeemAmmPosition(null)
         .accounts({
           market: smoke.marketPda,
           ammState: a.ammState,

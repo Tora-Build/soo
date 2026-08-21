@@ -38,6 +38,7 @@ const SEED_LP_YIELD_AUTHORITY = enc.encode("lp_yield_authority");
 const SEED_FEE_POOL_BOOK = enc.encode("fee_pool_book");
 const SEED_FEE_POOL_AMM = enc.encode("fee_pool_amm");
 const SEED_ADJUDICATOR = enc.encode("adjudicator");
+const SEED_RESOLUTION = enc.encode("resolution");
 
 export const SOOTH_CORE_PROGRAM_ID = new PublicKey(
   "EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw",
@@ -124,6 +125,23 @@ export function deriveAdjudicatorEntryPda(
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEED_ADJUDICATOR), marketPda.toBuffer()],
+    programs.soothCore,
+  );
+}
+
+// Per-market `ResolutionCommitment` PDA owned by `sooth_core`.
+// Seeds: [b"resolution", market_pda].
+//
+// Usually DOES NOT EXIST: only a market whose adjudicator published a T*
+// voiding commitment has one, and `redeem_amm_position` reads an empty
+// account at this address as "no voiding". So callers derive it
+// unconditionally and pass it either way — see docs/design/t-star-voiding.md.
+export function deriveResolutionCommitmentPda(
+  marketPda: PublicKey,
+  programs: ProgramIds,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEED_RESOLUTION), marketPda.toBuffer()],
     programs.soothCore,
   );
 }

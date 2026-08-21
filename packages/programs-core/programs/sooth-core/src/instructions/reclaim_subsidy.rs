@@ -28,10 +28,7 @@
 //! damage of a mistake: an under-counted obligation can, at worst, hand back
 //! the creator's own capital early. It can never reach into trading profits.
 //!
-//! ## Why settlement, and not dismissal
-//!
-//! `require!(market.is_settled())` excludes the other terminal state
-//! deliberately, and the reason is arithmetic rather than caution.
+//! ## Dismissal, and the obligation that gates it
 //!
 //! A dismissed market refunds every position at COST — `Position
 //! .locked_cost_usdc` — and that pot is not self-funding. Writing `net_i` for
@@ -40,18 +37,22 @@
 //! that exited at a profit floors at zero instead of going negative. The
 //! difference is exactly `seed − P`, where `P` is the profit already
 //! withdrawn by traders who round-tripped before the dismissal. The creator's
-//! subsidy IS the collateral for those refunds, and returning it while any
-//! refund is outstanding would strand a claim.
+//! subsidy IS the collateral for those refunds, so it must not leave while
+//! one is outstanding.
 //!
-//! There is no way to know `P` on chain today: refunds live one-per-`Position`
-//! and are never aggregated, and unlike settlement — where `AmmState.q`
-//! counts what is still owed and `redeem_amm_position` decrements it — nothing
-//! decrements as refunds are paid. Until an aggregate refund-obligation
-//! counter exists (there is room in `AmmState._reserved`, but it would read
-//! zero for every market already on chain, which is the unsafe direction), a
-//! dismissed market's subsidy stays in the vault. Documented rather than
-//! quietly paid: the honest cost is that a dismissed market's subsidy is
-//! stranded and `close_market` cannot run on it.
+//! `AmmState.refund_obligation_usdc` is that outstanding total, maintained by
+//! every path that moves a `locked_cost_usdc`. So a dismissed market's
+//! subsidy is reclaimable exactly when the counter reads zero — every refund
+//! claimed or extinguished — and not before.
+//!
+//! The counter reads zero on accounts written before it existed, and zero is
+//! the direction that pays out: it would report "nothing owed" for a market
+//! whose every refund is still unclaimed. `AmmState.tracks_refund_obligation`
+//! separates the two — set by `create_market`, clear on every legacy account
+//! — and a dismissed market whose counter is untracked is refused exactly as
+//! it was before the counter existed. Its subsidy stays stranded and
+//! `close_market` cannot run on it; that is the honest cost of not being able
+//! to reconstruct `P` for a market nobody was counting.
 //!
 //! ## Why it is callable repeatedly
 //!
@@ -145,15 +146,45 @@ fn ledger_obligations(amm: &AmmState, winning_outcome: u8) -> Result<u64> {
     })
 }
 
-pub fn handler(ctx: Context<ReclaimSubsidy>) -> Result<()> {
+/// May the subsidy leave? Settlement and dismissal are the two terminal
+/// states, and each has its own arithmetic.
+///
+/// Settlement: the residual is what the share ledger no longer owes, so the
+/// lifecycle check is the whole precondition.
+///
+/// Dismissal: refunds are owed at cost out of this same vault, so the subsidy
+/// leaves only once the refund total is zero — and only when the counter is
+/// one this market has kept from birth. See the module docs.
+fn assert_reclaimable(market: &Market, amm: &AmmState) -> Result<()> {
+    if market.is_settled() {
+        return Ok(());
+    }
+    require!(amm.is_dismissed, SoothCoreError::MarketNotSettled);
     require!(
-        ctx.accounts.market.is_settled(),
+        amm.tracks_refund_obligation,
         SoothCoreError::MarketNotSettled
     );
+    require!(
+        amm.refund_obligation_usdc == 0,
+        SoothCoreError::RefundsOutstanding
+    );
+    Ok(())
+}
 
+pub fn handler(ctx: Context<ReclaimSubsidy>) -> Result<()> {
+    assert_reclaimable(&ctx.accounts.market, &ctx.accounts.amm_state)?;
+
+    // A dismissed market pays no settlement claims, and its refund total is
+    // already zero by the guard above — so the share ledger owes nothing and
+    // `winning_outcome` is meaningless on it. Reading the field anyway would
+    // hand `ledger_obligations` an outcome nothing ever wrote.
     let winning_outcome = ctx.accounts.market.winning_outcome;
 
-    let ledger_owed = ledger_obligations(&ctx.accounts.amm_state, winning_outcome)?;
+    let ledger_owed = if ctx.accounts.market.is_settled() {
+        ledger_obligations(&ctx.accounts.amm_state, winning_outcome)?
+    } else {
+        0
+    };
 
     // AMM obligations only. The book's seats are owed from the BOOK vault,
     // which holds a different token, and every book fill escrows both legs to
@@ -207,4 +238,74 @@ pub fn handler(ctx: Context<ReclaimSubsidy>) -> Result<()> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::amm_state::{amm_fixture, legacy_amm_fixture};
+    use crate::state::market::market_fixture;
+    use crate::state::MarketLifecycle;
+
+    fn dismissed() -> (Market, AmmState) {
+        let mut market = market_fixture(MarketLifecycle::Open);
+        let mut amm = amm_fixture();
+        market.is_dismissed = true;
+        amm.is_dismissed = true;
+        (market, amm)
+    }
+
+    #[test]
+    fn a_settled_market_reclaims() {
+        let market = market_fixture(MarketLifecycle::Settled);
+        assert!(assert_reclaimable(&market, &amm_fixture()).is_ok());
+    }
+
+    #[test]
+    fn a_live_market_reclaims_nothing() {
+        let market = market_fixture(MarketLifecycle::Open);
+        assert!(assert_reclaimable(&market, &amm_fixture()).is_err());
+    }
+
+    #[test]
+    fn a_dismissed_market_holds_the_subsidy_while_a_refund_stands() {
+        // The subsidy IS the collateral behind refunds-at-cost. Returning it
+        // with claims outstanding is what makes the last claimant unpayable.
+        let (market, mut amm) = dismissed();
+        amm.refund_obligation_usdc = 1;
+        assert!(assert_reclaimable(&market, &amm).is_err());
+    }
+
+    #[test]
+    fn a_dismissed_market_releases_the_subsidy_once_every_refund_is_settled() {
+        // The counter reaching zero means every claim was paid or
+        // extinguished, so the vault owes nobody and the creator's own capital
+        // stops being stranded.
+        let (market, amm) = dismissed();
+        assert_eq!(amm.refund_obligation_usdc, 0);
+        assert!(assert_reclaimable(&market, &amm).is_ok());
+    }
+
+    #[test]
+    fn a_legacy_dismissed_market_never_releases_the_subsidy() {
+        // Its counter reads zero because nothing ever counted, not because
+        // nothing is owed — and zero is the direction that pays out. Refused
+        // exactly as it was before the counter existed.
+        let (market, mut amm) = dismissed();
+        let legacy = legacy_amm_fixture();
+        amm.tracks_refund_obligation = legacy.tracks_refund_obligation;
+        amm.refund_obligation_usdc = 0;
+        assert!(assert_reclaimable(&market, &amm).is_err());
+    }
+
+    #[test]
+    fn a_dismissed_market_owes_nothing_on_the_share_ledger() {
+        // Dismissal pays at cost, never per share, so the shares still
+        // recorded in `q` back no claim. Counting them would strand the
+        // creator's capital behind an obligation that cannot be redeemed.
+        let (_, mut amm) = dismissed();
+        amm.q_yes = 10_000;
+        amm.q_no = 4_000;
+        assert!(assert_reclaimable(&market_fixture(MarketLifecycle::Settled), &amm).is_ok());
+    }
 }

@@ -138,7 +138,10 @@ async function redeemTx(smoke: SmokeContext, program: any, user: PublicKey) {
   const a = accountsFor(smoke, user);
   return new Transaction().add(
     await program.methods
-      .redeemAmmPosition()
+      // `null` = no T* voiding claim. The `resolution_commitment` account is
+      // resolved from the IDL's seeds and is uninitialised for this market,
+      // which is what the program reads as "pay the position in full".
+      .redeemAmmPosition(null)
       .accounts({
         market: smoke.marketPda,
         vaultAuthority: a.vaultAuthority,

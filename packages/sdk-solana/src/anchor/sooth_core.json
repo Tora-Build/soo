@@ -808,8 +808,12 @@
         {
           "name": "amm_state",
           "docs": [
-            "AMM state for this market. Must be dismissed."
+            "AMM state for this market. Must be dismissed.",
+            "",
+            "`mut` for exactly one write: the paid claim leaves",
+            "`refund_obligation_usdc`."
           ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -2693,6 +2697,159 @@
       "args": []
     },
     {
+      "name": "publish_resolution_commitment",
+      "docs": [
+        "Commit to a T\\* voiding computation for a market. Adjudicator-signed,",
+        "accepted only inside the veto window. See `publish_resolution`."
+      ],
+      "discriminator": [
+        103,
+        217,
+        40,
+        223,
+        240,
+        230,
+        159,
+        239
+      ],
+      "accounts": [
+        {
+          "name": "resolution_commitment",
+          "docs": [
+            "One per market, created once. `init` (not `init_if_needed`) is the",
+            "one-shot guard."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  111,
+                  108,
+                  117,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Read-only: a commitment changes no lifecycle. `settle` still does that."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "adjudicator_entry",
+          "docs": [
+            "Supplies the attestation timestamp the veto window is measured from,",
+            "and the authority allowed to publish."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "protocol_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "PublishResolutionCommitmentArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "reclaim_subsidy",
       "docs": [
         "Return the unspent LMSR subsidy to the creator after settlement.",
@@ -2844,6 +3001,13 @@
     },
     {
       "name": "redeem_amm_position",
+      "docs": [
+        "Pay out a settled AMM position.",
+        "",
+        "`voided_claim` is `Some` exactly when the market carries a published",
+        "`ResolutionCommitment` — the T\\* voiding path. Every other market",
+        "passes `None` and is paid precisely as it was before that path existed."
+      ],
       "discriminator": [
         92,
         181,
@@ -2968,6 +3132,39 @@
           "writable": true
         },
         {
+          "name": "resolution_commitment",
+          "docs": [
+            "`Account<'_, ResolutionCommitment>` would fail every ordinary market's",
+            "redemption. The seeds pin the address, so an empty account here is",
+            "proof of absence rather than an omission the caller chose; the handler",
+            "checks the owner and discriminator before reading a live one."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  111,
+                  108,
+                  117,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
           "name": "user",
           "writable": true,
           "signer": true,
@@ -2980,7 +3177,18 @@
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "voided_claim",
+          "type": {
+            "option": {
+              "defined": {
+                "name": "VoidedClaimArgs"
+              }
+            }
+          }
+        }
+      ]
     },
     {
       "name": "redeem_book_seat",
@@ -3687,6 +3895,149 @@
       "args": []
     },
     {
+      "name": "revoke_resolution_commitment",
+      "docs": [
+        "Withdraw a published commitment inside the veto window, restoring the",
+        "market's ordinary payout. The dispute authority's veto over the",
+        "entitlement tree, mirroring `dispute`'s veto over the outcome."
+      ],
+      "discriminator": [
+        236,
+        5,
+        86,
+        143,
+        109,
+        122,
+        116,
+        184
+      ],
+      "accounts": [
+        {
+          "name": "resolution_commitment",
+          "docs": [
+            "Closed, with the rent returned to whoever paid it. Closing is the",
+            "whole point: `redeem_amm_position` reads an absent account as \"no",
+            "voiding\", so revocation restores the market's pre-commitment payout",
+            "without needing a flag anywhere."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  111,
+                  108,
+                  117,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "adjudicator_entry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "protocol_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "publisher",
+          "docs": [
+            "Refunding anyone else would let a revoker pay themselves out of the",
+            "publisher's deposit."
+          ],
+          "writable": true
+        },
+        {
+          "name": "dispute_authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "seed_lp",
       "discriminator": [
         94,
@@ -3751,6 +4102,11 @@
         },
         {
           "name": "amm_state",
+          "docs": [
+            "`mut` for exactly one write: `is_seeded`, which opens the trading",
+            "paths. Nothing else in this instruction touches `AmmState`."
+          ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -4901,6 +5257,19 @@
         215,
         209
       ]
+    },
+    {
+      "name": "ResolutionCommitment",
+      "discriminator": [
+        132,
+        101,
+        69,
+        121,
+        158,
+        30,
+        226,
+        32
+      ]
     }
   ],
   "events": [
@@ -5201,6 +5570,45 @@
         124,
         150,
         130
+      ]
+    },
+    {
+      "name": "ResolutionCommitmentPublished",
+      "discriminator": [
+        26,
+        142,
+        226,
+        194,
+        33,
+        141,
+        91,
+        244
+      ]
+    },
+    {
+      "name": "ResolutionCommitmentRevoked",
+      "discriminator": [
+        211,
+        178,
+        119,
+        87,
+        177,
+        38,
+        175,
+        75
+      ]
+    },
+    {
+      "name": "VoidedRedeem",
+      "discriminator": [
+        248,
+        251,
+        79,
+        23,
+        171,
+        76,
+        129,
+        216
       ]
     },
     {
@@ -5685,6 +6093,16 @@
       "code": 6090,
       "name": "PositionMarketMismatch",
       "msg": "Position.market does not match the supplied market"
+    },
+    {
+      "code": 6091,
+      "name": "MarketNotSeeded",
+      "msg": "Market has no LMSR seed: seed_lp must run before it can trade"
+    },
+    {
+      "code": 6092,
+      "name": "RefundsOutstanding",
+      "msg": "Dismissed market still owes refunds; the subsidy cannot be reclaimed"
     }
   ],
   "types": [
@@ -5936,6 +6354,51 @@
             "type": "u8"
           },
           {
+            "name": "refund_obligation_usdc",
+            "docs": [
+              "Aggregate refund obligation: the sum of `Position.locked_cost_usdc`",
+              "over every position of this market, in AMM-token base units.",
+              "",
+              "`claim_refund` pays one position at a time out of a shared vault, so",
+              "without a total the program cannot tell whether the vault covers what",
+              "it owes. It is maintained at exactly the four sites that move",
+              "`locked_cost_usdc`: `trade_positions` (a buy adds its cost),",
+              "`sell_positions` (proceeds retire it), `redeem_amm_position`",
+              "(settlement clears it), and `claim_refund` (a refund extinguishes it).",
+              "",
+              "Trustworthy only when `tracks_refund_obligation` is set — see there."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "tracks_refund_obligation",
+            "docs": [
+              "Has this AMM counted `refund_obligation_usdc` since its first trade?",
+              "",
+              "Set once, by `create_market`. Every account created before the counter",
+              "existed reads `false` here and `0` in the counter while real positions",
+              "stand behind it, and zero is the OVER-paying direction: it would say",
+              "\"nothing is owed\" to `reclaim_subsidy` and hand the creator collateral",
+              "that still backs refunds. So the counter is read as an obligation",
+              "total only when this flag is set; when it is clear the counter is",
+              "treated as unknown, never as zero."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "is_seeded",
+            "docs": [
+              "Has `seed_lp` posted the LMSR subsidy for this market?",
+              "",
+              "Set once, by `seed_lp`. `create_market` and `seed_lp` are separate",
+              "instructions, so between them a market exists with an empty curve;",
+              "the trading paths refuse it by this flag. Legacy accounts read `false`",
+              "while being genuinely seeded, so the trading paths do not read it",
+              "alone — see `is_seeded_with`."
+            ],
+            "type": "bool"
+          },
+          {
             "name": "_reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
@@ -5950,7 +6413,7 @@
             "type": {
               "array": [
                 "u8",
-                64
+                54
               ]
             }
           }
@@ -7320,6 +7783,47 @@
       }
     },
     {
+      "name": "PublishResolutionCommitmentArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "merkle_root",
+            "docs": [
+              "Root of the per-wallet entitlement tree."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "t_star",
+            "docs": [
+              "The moment the market's event became public knowledge."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "leaf_count",
+            "docs": [
+              "Leaves in the tree. Published so the tree's shape is reproducible."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "total_void_refund_usdc",
+            "docs": [
+              "Ceiling on the USDC the void path may pay out across every leaf."
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "Redeemed",
       "docs": [
         "Mirror of EVM `OrderEngine.PositionSettled` (`OrderEngine.sol:430`).",
@@ -7485,6 +7989,212 @@
       }
     },
     {
+      "name": "ResolutionCommitment",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": [
+              "`sooth_core::Market` this commitment resolves. Redundant with the",
+              "seeds and checked anyway: the seeds bind the ADDRESS, this binds the",
+              "CONTENT, and a leaf proof is only as good as the root it is checked",
+              "against belonging to the market being redeemed."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "merkle_root",
+            "docs": [
+              "Root of the per-wallet entitlement tree. Leaves are composed by",
+              "[`voided_leaf`]; the shape is in `crate::merkle`."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "t_star",
+            "docs": [
+              "The moment the market's event actually became public knowledge. Every",
+              "trade at or before this is honest; everything after it is what the",
+              "tree voids. Unix seconds, and always",
+              "`market.start_time <= t_star <= min(attested_at, market.deadline)`."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "leaf_count",
+            "docs": [
+              "Number of leaves in the tree. Not consulted by proof verification —",
+              "it is published so a third party can reproduce the tree's exact shape",
+              "(the odd-node promotion rule depends on the leaf count at every level)",
+              "and therefore its root."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "total_void_refund_usdc",
+            "docs": [
+              "Total USDC the resolver claims the void path will pay out across all",
+              "leaves. A ceiling, not an estimate: see `void_refund_paid_usdc`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "void_refund_paid_usdc",
+            "docs": [
+              "Running total actually paid out by `redeem_amm_position`'s void path.",
+              "Together with the field above this caps the cash the whole mechanism",
+              "can move at a number published BEFORE the veto window closed — so an",
+              "observer can compare the claim against the vault while there is still",
+              "time to revoke it. Without the cap, a tree whose per-leaf bounds each",
+              "pass could still drain the vault in aggregate."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "publisher",
+            "docs": [
+              "Who published, and therefore who gets the rent back on revoke."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "published_at",
+            "docs": [
+              "Unix seconds at publication. The veto deadline is derived from the",
+              "ATTESTATION, not from this — publishing late must not extend the",
+              "window in which the commitment can be scrutinised."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Bump for the `ResolutionCommitment` PDA."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Forward-compat padding. Adding a field consumes bytes from here",
+              "instead of changing the account's length, so no migration is needed:",
+              "Solana accounts are fixed-length buffers, and an `#[account]` struct",
+              "that outgrows its buffer fails to deserialize on every instruction",
+              "that loads it.",
+              "",
+              "When you add a field, shrink this by exactly its serialized size and",
+              "leave `SPACE` unchanged."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ResolutionCommitmentPublished",
+      "docs": [
+        "Emitted by `publish_resolution_commitment`. Carries every field an",
+        "observer needs to reproduce the commitment from the market's public event",
+        "tape and compare roots inside the veto window — which is the mechanism's",
+        "entire enforcement. See `docs/design/t-star-voiding.md`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "publisher",
+            "type": "pubkey"
+          },
+          {
+            "name": "merkle_root",
+            "docs": [
+              "Root over one leaf per wallet."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "t_star",
+            "docs": [
+              "The moment the market's event became public knowledge."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "leaf_count",
+            "type": "u32"
+          },
+          {
+            "name": "total_void_refund_usdc",
+            "docs": [
+              "Ceiling on the USDC the void path may pay across every leaf."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ResolutionCommitmentRevoked",
+      "docs": [
+        "Emitted by `revoke_resolution_commitment`. The market redeems as if the",
+        "commitment had never been published."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "dispute_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "merkle_root",
+            "docs": [
+              "The root being withdrawn, so the reason for the veto stays legible in",
+              "the log after the account is gone."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "SeedLpArgs",
       "type": {
         "kind": "struct",
@@ -7496,6 +8206,116 @@
           {
             "name": "seed_deposit_wad",
             "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VoidedClaimArgs",
+      "docs": [
+        "A wallet's entitlement under a published `ResolutionCommitment`, plus the",
+        "proof that it is in the tree.",
+        "",
+        "The three values are the leaf preimage — they are not trusted, they are",
+        "HASHED, and the hash must be provably in the published root. What the",
+        "program additionally enforces (in `voided_claim_payout`) is that even a",
+        "leaf the resolver signed cannot pay more shares than the position holds or",
+        "more cash than it paid in. So a dishonest resolver can under-pay, which the",
+        "veto window catches, but cannot over-pay, which it could not."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "valid_yes_wad",
+            "docs": [
+              "YES shares acquired at or before T* and still held, in WAD."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "valid_no_wad",
+            "docs": [
+              "NO shares acquired at or before T* and still held, in WAD."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "void_refund_usdc",
+            "docs": [
+              "USDC paid for post-T* acquisitions, returned at cost."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "proof",
+            "docs": [
+              "Sibling hashes from the leaf up to the root."
+            ],
+            "type": {
+              "vec": {
+                "array": [
+                  "u8",
+                  32
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VoidedRedeem",
+      "docs": [
+        "Emitted by `redeem_amm_position` when the payout came from a published",
+        "entitlement rather than from the raw position. `Redeemed` still fires",
+        "alongside it with the shares burned and the USDC paid, so consumers that",
+        "only track payouts need no change."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "valid_yes_wad",
+            "docs": [
+              "Shares acquired at or before T* and still held — the part that settled."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "valid_no_wad",
+            "type": "u128"
+          },
+          {
+            "name": "void_refund_usdc",
+            "docs": [
+              "USDC returned at cost for post-T* acquisitions."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "held_yes_wad",
+            "docs": [
+              "Shares the position held in total. The difference against the two",
+              "valid legs is what was voided."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "held_no_wad",
+            "type": "u128"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
           }
         ]
       }

@@ -314,7 +314,16 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
         )?;
         let market_key = ctx.accounts.market.key();
         let amm = AmmState {
-            _reserved: [0u8; 64],
+            _reserved: [0u8; 54],
+            // Nothing is owed yet, and this market counts from zero — which
+            // is what makes the counter readable as a total later. Accounts
+            // written before this field existed leave the flag clear, and
+            // `reclaim_subsidy` refuses to trust their counter.
+            refund_obligation_usdc: 0,
+            tracks_refund_obligation: true,
+            // `seed_lp` posts the subsidy; until it runs the curve has no
+            // liquidity and the trading paths refuse the market.
+            is_seeded: false,
             market: market_key,
             q_yes: 0,
             q_no: 0,

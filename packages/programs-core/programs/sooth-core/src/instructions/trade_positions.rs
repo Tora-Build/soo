@@ -7,7 +7,9 @@ use crate::error::SoothCoreError;
 use crate::events::{MarketGraduated, PositionTraded};
 use crate::math::{cost_delta, wad_mul, wad_to_usdc_ceil, MathError, LN2_WAD};
 use crate::state::market::{OUTCOME_NO, OUTCOME_YES};
-use crate::state::{require_not_paused, AmmState, Market, Position, ProtocolConfig};
+use crate::state::{
+    require_not_paused, require_seeded, AmmState, Market, Position, ProtocolConfig,
+};
 
 #[derive(Accounts)]
 pub struct TradePositions<'info> {
@@ -61,6 +63,16 @@ pub struct TradePositions<'info> {
         // look at the market's state instead of at the account they passed.
         constraint = market_vault.key() == market.vault_amm
             @ SoothCoreError::VaultAuthorityMismatch,
+        // The seeding gate, placed HERE rather than in the handler because
+        // Anchor validates accounts in declaration order and `lp_mint` —
+        // which only `seed_lp` creates — is declared below. On an unseeded
+        // market that account does not exist, so without this constraint the
+        // transaction dies with `AccountNotInitialized` before the handler
+        // ever runs, naming the LP mint for a fault that is the missing
+        // subsidy. `market_vault` is created by `create_market` and therefore
+        // always loads, and it carries the balance the legacy witness reads.
+        constraint = amm_state.is_seeded_with(market_vault.amount)
+            @ SoothCoreError::MarketNotSeeded,
     )]
     pub market_vault: Box<Account<'info, TokenAccount>>,
 
@@ -175,6 +187,10 @@ pub fn handler(
     let (amm_q_yes, amm_q_no, amm_b, graduated_at_entry) = {
         let amm = &ctx.accounts.amm_state;
         require!(!amm.is_dismissed, SoothCoreError::MarketDismissed);
+        // Restated in the handler so the invariant survives a refactor of the
+        // account struct; the constraint above is what makes it the error the
+        // caller actually sees.
+        require_seeded(amm, ctx.accounts.market_vault.amount)?;
         require!(amm.b > 0, SoothCoreError::InvalidLiquidity);
         (amm.q_yes, amm.q_no, amm.b, amm.is_graduated)
     };
@@ -234,6 +250,12 @@ pub fn handler(
         .locked_cost_usdc
         .checked_add(cost_usdc)
         .ok_or(error!(SoothCoreError::MathOverflow))?;
+    // The market-wide mirror of the line above: `refund_obligation_usdc` is
+    // the sum of every position's `locked_cost_usdc`, so the two move
+    // together or the total stops meaning anything. Checked, not saturating —
+    // a total that silently pinned at `u64::MAX` would under-state nothing
+    // but would make the vault-coverage test meaningless.
+    ctx.accounts.amm_state.accrue_refund_obligation(cost_usdc)?;
 
     if fee_usdc > 0 {
         let fee_cpi = CpiContext::new(
@@ -342,4 +364,57 @@ pub fn handler(
 
 fn map_math_err(_e: MathError) -> Error {
     error!(SoothCoreError::MathOverflow)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::amm_state::{amm_fixture, legacy_amm_fixture};
+
+    /// The vault balance an unseeded, untraded market's AMM vault holds.
+    const EMPTY_VAULT: u64 = 0;
+
+    #[test]
+    fn an_unseeded_market_refuses_to_trade() {
+        // `create_market` and `seed_lp` are separate instructions, so between
+        // them a market exists with no liquidity behind its curve. Buying into
+        // it used to die at account validation on the LP mint — an error that
+        // named the wrong thing.
+        let mut amm = amm_fixture();
+        amm.is_seeded = false;
+        assert!(require_seeded(&amm, EMPTY_VAULT).is_err());
+    }
+
+    #[test]
+    fn a_seeded_market_trades() {
+        assert!(require_seeded(&amm_fixture(), EMPTY_VAULT).is_ok());
+    }
+
+    #[test]
+    fn a_legacy_seeded_market_still_trades() {
+        // The crux: every market live on devnet was written before `is_seeded`
+        // existed and reads `false`, so a bare `require!(is_seeded)` would
+        // brick all of them. Their posted subsidy sits in the AMM vault, and
+        // that balance is the witness.
+        let legacy = legacy_amm_fixture();
+        assert!(require_seeded(&legacy, 1).is_ok());
+        assert!(require_seeded(&legacy, EMPTY_VAULT).is_err());
+    }
+
+    #[test]
+    fn the_obligation_grows_by_exactly_what_the_buy_paid() {
+        let mut amm = amm_fixture();
+        amm.accrue_refund_obligation(1_250_000).unwrap();
+        amm.accrue_refund_obligation(750_000).unwrap();
+        assert_eq!(amm.refund_obligation_usdc, 2_000_000);
+    }
+
+    #[test]
+    fn an_overflowing_obligation_fails_rather_than_pinning() {
+        // A total pinned at u64::MAX would round every later pro-rata claim to
+        // nothing, which is a silent expropriation rather than a loud failure.
+        let mut amm = amm_fixture();
+        amm.refund_obligation_usdc = u64::MAX;
+        assert!(amm.accrue_refund_obligation(1).is_err());
+    }
 }

@@ -74,6 +74,7 @@ import {
   deriveMarketVaultAmm,
   deriveLpPositionPda,
   derivePositionPda,
+  deriveResolutionCommitmentPda,
   deriveProtocolConfigPda,
   deriveUserLpAta,
   deriveUserUsdcAta,
@@ -1861,7 +1862,12 @@ export class SolanaChainAdapter implements ChainAdapter {
     );
 
     const ix: TransactionInstruction = await (this.program.methods as any)
-      .redeemAmmPosition()
+      // `null` = no T* voiding claim, which is every market that has no
+      // published `ResolutionCommitment` — i.e. all of them so far. A market
+      // that HAS one rejects a null claim; the caller then has to carry the
+      // wallet's entitlement and merkle proof. See
+      // docs/design/t-star-voiding.md.
+      .redeemAmmPosition(null)
       .accounts({
         market: marketPda,
         // Redeeming retires the shares from AmmState's outstanding count
@@ -1871,6 +1877,13 @@ export class SolanaChainAdapter implements ChainAdapter {
         position,
         vault: deriveMarketVaultAmm(resolved.marketId, this.programIds),
         userAmmAta: getAssociatedTokenAddressSync(this.ammMint, userPk),
+        // Passed whether or not it exists: the program cannot detect an
+        // account it was not handed, so this is what stops a voided market's
+        // holder from redeeming at full value by simply omitting it.
+        resolutionCommitment: deriveResolutionCommitmentPda(
+          marketPda,
+          this.programIds,
+        )[0],
         user: userPk,
         tokenProgram: TOKEN_PROGRAM_ID,
       })

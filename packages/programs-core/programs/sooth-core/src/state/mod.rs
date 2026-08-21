@@ -9,9 +9,10 @@ pub mod market;
 pub mod market_fee_pool;
 pub mod position;
 pub mod protocol_config;
+pub mod resolution;
 
 pub use adjudicator::{AdjudicatorEntry, ADJUDICATOR_ENTRY_SEED};
-pub use amm_state::AmmState;
+pub use amm_state::{require_seeded, AmmState};
 pub use lifecycle::MarketLifecycle;
 pub use lock_entry::LockEntry;
 pub use lp_position::LpPosition;
@@ -21,3 +22,4 @@ pub use market::OUTCOME_NO;
 pub use market::OUTCOME_YES;
 pub use position::Position;
 pub use protocol_config::{require_not_paused, ProtocolConfig, MAX_FEE_BPS, PROTOCOL_CONFIG_SEED};
+pub use resolution::{voided_leaf, ResolutionCommitment, RESOLUTION_COMMITMENT_SEED};

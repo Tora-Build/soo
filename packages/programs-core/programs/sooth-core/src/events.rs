@@ -358,3 +358,55 @@ pub struct MarketClosed {
     pub book_rent_reclaimed: u64,
     pub ts: i64,
 }
+
+// ── T* voiding ───────────────────────────────────────────────────────────────
+
+/// Emitted by `publish_resolution_commitment`. Carries every field an
+/// observer needs to reproduce the commitment from the market's public event
+/// tape and compare roots inside the veto window — which is the mechanism's
+/// entire enforcement. See `docs/design/t-star-voiding.md`.
+#[event]
+pub struct ResolutionCommitmentPublished {
+    pub market: Pubkey,
+    pub publisher: Pubkey,
+    /// Root over one leaf per wallet.
+    pub merkle_root: [u8; 32],
+    /// The moment the market's event became public knowledge.
+    pub t_star: i64,
+    pub leaf_count: u32,
+    /// Ceiling on the USDC the void path may pay across every leaf.
+    pub total_void_refund_usdc: u64,
+    pub ts: i64,
+}
+
+/// Emitted by `revoke_resolution_commitment`. The market redeems as if the
+/// commitment had never been published.
+#[event]
+pub struct ResolutionCommitmentRevoked {
+    pub market: Pubkey,
+    pub dispute_authority: Pubkey,
+    /// The root being withdrawn, so the reason for the veto stays legible in
+    /// the log after the account is gone.
+    pub merkle_root: [u8; 32],
+    pub ts: i64,
+}
+
+/// Emitted by `redeem_amm_position` when the payout came from a published
+/// entitlement rather than from the raw position. `Redeemed` still fires
+/// alongside it with the shares burned and the USDC paid, so consumers that
+/// only track payouts need no change.
+#[event]
+pub struct VoidedRedeem {
+    pub market: Pubkey,
+    pub user: Pubkey,
+    /// Shares acquired at or before T* and still held — the part that settled.
+    pub valid_yes_wad: u128,
+    pub valid_no_wad: u128,
+    /// USDC returned at cost for post-T* acquisitions.
+    pub void_refund_usdc: u64,
+    /// Shares the position held in total. The difference against the two
+    /// valid legs is what was voided.
+    pub held_yes_wad: u128,
+    pub held_no_wad: u128,
+    pub ts: i64,
+}

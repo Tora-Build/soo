@@ -120,9 +120,11 @@ unsafe impl core::alloc::GlobalAlloc for BumpAllocator256 {
 pub mod book;
 pub mod constants;
 pub mod error;
+pub mod error_resolution;
 pub mod events;
 pub mod instructions;
 pub mod math;
+pub mod merkle;
 pub mod state;
 pub mod zk;
 
@@ -146,6 +148,7 @@ pub mod sooth_core {
     use crate::instructions::init_market_fee_pool;
     use crate::instructions::lock_for_resolution;
     use crate::instructions::pause;
+    use crate::instructions::publish_resolution;
     use crate::instructions::reclaim_subsidy;
     use crate::instructions::redeem_amm_position;
     use crate::instructions::redeem_lp;
@@ -307,8 +310,32 @@ pub mod sooth_core {
         reclaim_subsidy::handler(ctx)
     }
 
-    pub fn redeem_amm_position(ctx: Context<RedeemAmmPosition>) -> Result<()> {
-        redeem_amm_position::handler(ctx)
+    /// Pay out a settled AMM position.
+    ///
+    /// `voided_claim` is `Some` exactly when the market carries a published
+    /// `ResolutionCommitment` — the T\* voiding path. Every other market
+    /// passes `None` and is paid precisely as it was before that path existed.
+    pub fn redeem_amm_position(
+        ctx: Context<RedeemAmmPosition>,
+        voided_claim: Option<VoidedClaimArgs>,
+    ) -> Result<()> {
+        redeem_amm_position::handler(ctx, voided_claim)
+    }
+
+    /// Commit to a T\* voiding computation for a market. Adjudicator-signed,
+    /// accepted only inside the veto window. See `publish_resolution`.
+    pub fn publish_resolution_commitment(
+        ctx: Context<PublishResolutionCommitment>,
+        args: PublishResolutionCommitmentArgs,
+    ) -> Result<()> {
+        publish_resolution::publish_handler(ctx, args)
+    }
+
+    /// Withdraw a published commitment inside the veto window, restoring the
+    /// market's ordinary payout. The dispute authority's veto over the
+    /// entitlement tree, mirroring `dispute`'s veto over the outcome.
+    pub fn revoke_resolution_commitment(ctx: Context<RevokeResolutionCommitment>) -> Result<()> {
+        publish_resolution::revoke_handler(ctx)
     }
 
     /// Pay out a winning book seat position after settlement. See

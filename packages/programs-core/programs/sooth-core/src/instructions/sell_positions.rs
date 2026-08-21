@@ -15,7 +15,9 @@ use crate::events::{MarketGraduated, PositionSold};
 use crate::instructions::trade_positions::graduation_threshold_wad;
 use crate::math::{cost_delta, wad_to_usdc_floor, MathError};
 use crate::state::market::{OUTCOME_NO, OUTCOME_YES};
-use crate::state::{require_not_paused, AmmState, LockEntry, Market, Position, ProtocolConfig};
+use crate::state::{
+    require_not_paused, require_seeded, AmmState, LockEntry, Market, Position, ProtocolConfig,
+};
 
 const LOCK_DURATION_SECS: i64 = 24 * 60 * 60;
 
@@ -75,6 +77,11 @@ pub struct SellPositions<'info> {
         // look at the market's state instead of at the account they passed.
         constraint = market_vault.key() == market.vault_amm
             @ SoothCoreError::VaultAuthorityMismatch,
+        // The seeding gate, mirroring `trade_positions`. An unseeded market
+        // has no curve to sell into; the error names that rather than letting
+        // the sell price shares against liquidity that was never posted.
+        constraint = amm_state.is_seeded_with(market_vault.amount)
+            @ SoothCoreError::MarketNotSeeded,
     )]
     pub market_vault: Box<Account<'info, TokenAccount>>,
 
@@ -165,6 +172,9 @@ pub fn handler(
         !ctx.accounts.amm_state.is_dismissed,
         SoothCoreError::MarketDismissed
     );
+    // Restated in the handler so the invariant survives a refactor of the
+    // account struct; the constraint above is what the caller sees first.
+    require_seeded(&ctx.accounts.amm_state, ctx.accounts.market_vault.amount)?;
     require!(
         ctx.accounts.amm_state.b > 0,
         SoothCoreError::InvalidLiquidity
@@ -319,11 +329,21 @@ pub fn handler(
         )?;
     }
 
-    ctx.accounts.position.locked_cost_usdc = ctx
-        .accounts
-        .position
-        .locked_cost_usdc
-        .saturating_sub(vault_outflow_usdc);
+    // The refund claim shrinks by what left the vault, floored at zero: a
+    // position that sold out at a profit is owed nothing on a dismissal, not
+    // a negative. The market-wide total must move by the SAME amount, which
+    // is the floored delta and not `vault_outflow_usdc` — subtracting the raw
+    // outflow would over-retire the total by exactly the position's profit
+    // and leave the counter under the sum it mirrors.
+    let claim_before = ctx.accounts.position.locked_cost_usdc;
+    let retired = claim_retired(claim_before, vault_outflow_usdc);
+    ctx.accounts.position.locked_cost_usdc = claim_before - retired;
+    // Saturating on the aggregate: an account written before the counter
+    // existed carries positions the counter never saw, so its total can be
+    // below the claim being retired. Failing there would strand the sell path
+    // on every legacy market; clamping at zero only ever UNDER-states what is
+    // still owed on an account whose counter is already marked untrustworthy.
+    ctx.accounts.amm_state.retire_refund_obligation(retired);
 
     // ── 7. Populate the LockEntry ─────────────────────────────────────────
     let unlock_at = now
@@ -363,6 +383,50 @@ pub fn handler(
     Ok(())
 }
 
+/// How much of a position's refund claim a sell retires.
+///
+/// The claim floors at zero — a position that sold out at a profit is owed
+/// nothing on a dismissal, not a negative — so the amount retired is the
+/// vault outflow capped by what the claim still stood at. The market-wide
+/// total must move by THIS, not by the raw outflow: subtracting the outflow
+/// would over-retire the total by exactly the position's profit.
+pub(crate) fn claim_retired(claim_before: u64, vault_outflow_usdc: u64) -> u64 {
+    claim_before.min(vault_outflow_usdc)
+}
+
 fn map_math_err(_e: MathError) -> Error {
     error!(SoothCoreError::MathOverflow)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::amm_state::{amm_fixture, legacy_amm_fixture};
+
+    #[test]
+    fn an_unseeded_market_refuses_to_sell() {
+        // The sell path loads no LP mint, so nothing else stops it. Without
+        // this guard a sell would price shares against liquidity that was
+        // never posted.
+        let mut amm = amm_fixture();
+        amm.is_seeded = false;
+        assert!(require_seeded(&amm, 0).is_err());
+    }
+
+    #[test]
+    fn a_legacy_seeded_market_still_sells() {
+        assert!(require_seeded(&legacy_amm_fixture(), 1).is_ok());
+    }
+
+    #[test]
+    fn a_sell_retires_no_more_of_the_claim_than_the_claim_holds() {
+        // The profitable round trip: the position takes out more than it put
+        // in. Its claim floors at zero, so the market-wide total must fall by
+        // the floored amount — retiring the raw outflow would push the total
+        // below the sum it mirrors by exactly the profit.
+        assert_eq!(claim_retired(1_000, 400), 400);
+        assert_eq!(claim_retired(1_000, 1_000), 1_000);
+        assert_eq!(claim_retired(1_000, 2_500), 1_000);
+        assert_eq!(claim_retired(0, 900), 0);
+    }
 }

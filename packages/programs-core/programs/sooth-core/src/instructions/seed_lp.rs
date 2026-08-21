@@ -42,7 +42,10 @@ pub struct SeedLp<'info> {
     )]
     pub market: Box<Account<'info, Market>>,
 
+    /// `mut` for exactly one write: `is_seeded`, which opens the trading
+    /// paths. Nothing else in this instruction touches `AmmState`.
     #[account(
+        mut,
         seeds = [b"amm", market.market_id.as_ref()],
         bump = amm_state.bump,
     )]
@@ -150,6 +153,11 @@ pub fn handler(ctx: Context<SeedLp>, args: SeedLpArgs) -> Result<()> {
             deposit_usdc,
         )?;
     }
+
+    // The curve is funded, so the market may trade. Set after the deposit
+    // transfer, so a failed transfer leaves the market closed rather than
+    // open over an empty vault.
+    ctx.accounts.amm_state.is_seeded = true;
 
     let market_id = ctx.accounts.market.market_id;
     let lp_mint_bump = ctx.bumps.lp_mint;
