@@ -11,6 +11,7 @@
 #![allow(ambiguous_glob_reexports)]
 
 pub mod attest_outcome;
+pub mod attest_outcome_zk;
 pub mod book_init;
 pub mod book_ops;
 pub mod book_place;
@@ -31,6 +32,7 @@ pub mod reclaim_subsidy;
 pub mod redeem_amm_position;
 pub mod redeem_book_seat;
 pub mod register_adjudicator;
+pub mod register_zk_adjudicator;
 pub mod request_lock;
 pub mod seed_lp;
 pub mod sell_positions;
@@ -40,6 +42,7 @@ pub mod trade_positions;
 pub mod unpause;
 
 pub use attest_outcome::*;
+pub use attest_outcome_zk::*;
 pub use book_init::*;
 pub use book_ops::*;
 pub use book_place::*;
@@ -60,6 +63,7 @@ pub use reclaim_subsidy::*;
 pub use redeem_amm_position::*;
 pub use redeem_book_seat::*;
 pub use register_adjudicator::*;
+pub use register_zk_adjudicator::*;
 pub use request_lock::*;
 pub use seed_lp::*;
 pub use sell_positions::*;

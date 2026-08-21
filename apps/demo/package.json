@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Faithful Solana fork of sooth-alpha/apps/demo \u2014 TDD harness for @sooth/sdk-solana",
+  "description": "Faithful Solana fork of sooth-alpha/apps/demo — TDD harness for @sooth/sdk-solana",
   "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",
@@ -62,7 +62,8 @@
     "tweetnacl": "^1.0.3",
     "typescript": "^5.5.4",
     "vite": "^5.4.6",
-    "vitest": "^2.0.5"
+    "vitest": "^2.0.5",
+    "wrangler": "^4.125.0"
   },
   "engines": {
     "node": ">=20"

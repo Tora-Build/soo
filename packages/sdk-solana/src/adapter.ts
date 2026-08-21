@@ -41,6 +41,13 @@ import {
 
 import { soothCoreIdl } from "./anchor/index.js";
 import {
+  hexToBytes,
+  MAX_ZK_VALUE_SCALE,
+  ZK_COMPARATOR,
+  type ZkAttestationArg,
+  type ZkComparatorName,
+} from "./zk.js";
+import {
   costDelta,
   LN2_WAD,
   wadToUsdcCeil,
@@ -1446,6 +1453,174 @@ export class SolanaChainAdapter implements ChainAdapter {
         ...buildIxMeta(ix, userPk),
         operation: "attestOutcome",
         winningOutcome: args.winningOutcome,
+      },
+    };
+  }
+
+  /// Register a per-market adjudicator that resolves from a Primus zkTLS
+  /// attestation instead of a human signature.
+  ///
+  /// `ruleHash` must come from `computeRuleHash(url, parsePath)` for the exact
+  /// endpoint and response field the attestor will report; the program
+  /// re-derives it from every submitted attestation and rejects any mismatch.
+  ///
+  /// `authority` does not attest — nothing about `attestOutcomeZk` is
+  /// signer-gated. It holds the `dispute` veto, which is the recourse if the
+  /// attestor or the feed ever goes wrong.
+  async buildRegisterZkAdjudicator(
+    market: MarketRef,
+    args: {
+      user: AddressRef;
+      authority: AddressRef;
+      /** 20-byte EVM address, `0x`-prefixed hex or raw bytes. */
+      attestorEvm: string | Uint8Array;
+      ruleHash: Uint8Array;
+      comparator: (typeof ZK_COMPARATOR)[ZkComparatorName];
+      /** In `10 ** valueScale` units, matching the attested value. */
+      threshold: bigint;
+      valueScale: number;
+    },
+  ): Promise<TradeRequest> {
+    if (!args.user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method:
+          "buildRegisterZkAdjudicator — args.user (Solana-only meta) is required at build time",
+      });
+    }
+    const attestorEvm =
+      typeof args.attestorEvm === "string"
+        ? hexToBytes(args.attestorEvm, 20)
+        : args.attestorEvm;
+    if (attestorEvm.length !== 20) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildRegisterZkAdjudicator: attestorEvm must be 20 bytes, got ${attestorEvm.length}`,
+      });
+    }
+    if (args.ruleHash.length !== 32) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildRegisterZkAdjudicator: ruleHash must be 32 bytes, got ${args.ruleHash.length}`,
+      });
+    }
+    // Runtime-checked as well as typed, because the type only guards callers
+    // that typecheck. `None` reads as "not zk-enabled" on chain, so
+    // registering it — or any unknown discriminant — creates an entry that
+    // can never resolve.
+    const knownComparators: number[] = [
+      ZK_COMPARATOR.Gt,
+      ZK_COMPARATOR.Gte,
+      ZK_COMPARATOR.Lt,
+      ZK_COMPARATOR.Lte,
+      ZK_COMPARATOR.Eq,
+    ];
+    if (!knownComparators.includes(args.comparator)) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildRegisterZkAdjudicator: comparator must be one of Gt/Gte/Lt/Lte/Eq (1-5), got ${args.comparator}`,
+      });
+    }
+    if (
+      !Number.isInteger(args.valueScale) ||
+      args.valueScale < 0 ||
+      args.valueScale > MAX_ZK_VALUE_SCALE
+    ) {
+      throw new SoothError({
+        kind: "ProgramError",
+        msg: `buildRegisterZkAdjudicator: valueScale must be an integer in 0..=${MAX_ZK_VALUE_SCALE}, got ${args.valueScale}`,
+      });
+    }
+
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const [adjudicatorEntryPda] = deriveAdjudicatorEntryPda(
+      marketPda,
+      this.programIds,
+    );
+    const [protocolConfigPda] = deriveProtocolConfigPda(this.programIds);
+
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .registerZkAdjudicator({
+        authority: decodePubkeyRef(args.authority),
+        attestorEvm: Array.from(attestorEvm),
+        ruleHash: Array.from(args.ruleHash),
+        comparator: args.comparator,
+        threshold: bigIntToBn(args.threshold),
+        valueScale: args.valueScale,
+      })
+      .accounts({
+        adjudicatorEntry: adjudicatorEntryPda,
+        market: marketPda,
+        protocolConfig: protocolConfigPda,
+        signer: userPk,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "registerZkAdjudicator",
+        comparator: args.comparator,
+        valueScale: args.valueScale,
+      },
+    };
+  }
+
+  /// Record an outcome derived from a verified Primus zkTLS attestation.
+  ///
+  /// Permissionless: `args.user` is the fee payer only. The attestation
+  /// carries its own authority, and the program re-encodes it and recovers
+  /// the signer rather than trusting anything supplied here.
+  ///
+  /// Like `buildAttestOutcome` this only records. `settle` still finalizes
+  /// after the veto window, so `dispute` stays available against a bad
+  /// attestation.
+  async buildAttestOutcomeZk(
+    market: MarketRef,
+    args: { user: AddressRef; attestation: ZkAttestationArg },
+  ): Promise<TradeRequest> {
+    if (!args.user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method:
+          "buildAttestOutcomeZk — args.user (Solana-only meta) is required at build time",
+      });
+    }
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const [adjudicatorEntryPda] = deriveAdjudicatorEntryPda(
+      marketPda,
+      this.programIds,
+    );
+
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .attestOutcomeZk({
+        ...args.attestation,
+        timestamp: bigIntToBn(args.attestation.timestamp),
+      })
+      .accounts({
+        adjudicatorEntry: adjudicatorEntryPda,
+        market: marketPda,
+        submitter: userPk,
+      })
+      .instruction();
+
+    const accounts = ixKeysToShim(ix.keys);
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts,
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "attestOutcomeZk",
       },
     };
   }

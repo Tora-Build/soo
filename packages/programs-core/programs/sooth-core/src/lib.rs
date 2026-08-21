@@ -80,6 +80,7 @@ pub mod events;
 pub mod instructions;
 pub mod math;
 pub mod state;
+pub mod zk;
 
 pub use instructions::*;
 
@@ -87,6 +88,7 @@ pub use instructions::*;
 pub mod sooth_core {
     use super::*;
     use crate::instructions::attest_outcome;
+    use crate::instructions::attest_outcome_zk;
     use crate::instructions::book_init;
     use crate::instructions::book_ops;
     use crate::instructions::book_place;
@@ -104,6 +106,7 @@ pub mod sooth_core {
     use crate::instructions::reclaim_subsidy;
     use crate::instructions::redeem_amm_position;
     use crate::instructions::register_adjudicator;
+    use crate::instructions::register_zk_adjudicator;
     use crate::instructions::request_lock;
     use crate::instructions::seed_lp;
     use crate::instructions::sell_positions;
@@ -176,6 +179,17 @@ pub mod sooth_core {
         register_adjudicator::handler(ctx, authority)
     }
 
+    /// Register a per-market adjudicator that resolves from a Primus zkTLS
+    /// attestation rather than a human signature. Separate from
+    /// `register_adjudicator` so the manual path is untouched, and so zk mode
+    /// is fixed at creation rather than switchable under a live market.
+    pub fn register_zk_adjudicator(
+        ctx: Context<RegisterZkAdjudicator>,
+        args: RegisterZkAdjudicatorArgs,
+    ) -> Result<()> {
+        register_zk_adjudicator::handler(ctx, args)
+    }
+
     pub fn request_lock(ctx: Context<RequestLock>) -> Result<()> {
         request_lock::handler(ctx)
     }
@@ -185,6 +199,17 @@ pub mod sooth_core {
         winning_outcome: u8,
     ) -> Result<()> {
         attest_outcome::handler(ctx, winning_outcome)
+    }
+
+    /// Record an outcome derived from a verified Primus zkTLS attestation.
+    /// Permissionless: the attestation carries its own authority. Like
+    /// `attest_outcome` it records only — `settle` still finalizes after the
+    /// veto window, so `dispute` remains available against a bad attestation.
+    pub fn attest_outcome_zk(
+        ctx: Context<AttestOutcomeZk>,
+        attestation: crate::zk::ZkAttestation,
+    ) -> Result<()> {
+        attest_outcome_zk::handler(ctx, attestation)
     }
 
     pub fn dispute(ctx: Context<Dispute>, new_outcome: u8) -> Result<()> {

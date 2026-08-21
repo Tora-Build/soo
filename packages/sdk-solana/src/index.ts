@@ -38,6 +38,20 @@ export {
   type ProgramIds,
 } from "./pdas.js";
 
+// zkTLS adjudication helpers. `computeRuleHash` is the one an integrator
+// cannot skip: the market's commitment must be derived exactly this way or
+// no attestation will ever verify against it.
+export {
+  computeRuleHash,
+  hexToBytes,
+  toZkAttestationArg,
+  MAX_ZK_VALUE_SCALE,
+  ZK_COMPARATOR,
+  type PrimusAttestation,
+  type ZkAttestationArg,
+  type ZkComparatorName,
+} from "./zk.js";
+
 export {
   encodePubkeyRef,
   decodePubkeyRef,

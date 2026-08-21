@@ -34,3 +34,9 @@ anchor-lang = { version = "0.30.1", features = ["init-if-needed", "event-cpi"] }
 # a Pod array cast in place, never deserialized.
 bytemuck = { version = "1.16", features = ["derive", "min_const_generics"] }
 anchor-spl = { version = "0.30.1", features = ["token", "associated_token"] }
+
+[dev-dependencies]
+# Host-side secp256k1 signing for the zkTLS attestation tests. Already in the
+# lockfile — solana-program uses it for its own non-BPF `secp256k1_recover`
+# fallback — so this pulls in no new dependency, only a new edge.
+libsecp256k1 = "0.6"

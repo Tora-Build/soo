@@ -235,6 +235,45 @@ pub struct DisputeRaised {
     pub ts: i64,
 }
 
+/// Emitted by `register_zk_adjudicator`. Carries the full zk configuration so
+/// an indexer can reproduce the verification off-chain without re-reading the
+/// account.
+#[event]
+pub struct ZkAdjudicatorRegistered {
+    pub market: Pubkey,
+    pub adjudicator_entry: Pubkey,
+    pub authority: Pubkey,
+    pub attestor_evm: [u8; 20],
+    pub rule_hash: [u8; 32],
+    pub comparator: u8,
+    pub threshold: i64,
+    pub value_scale: u8,
+    pub ts: i64,
+}
+
+/// Emitted by `attest_outcome_zk` alongside `OutcomeAttested`.
+///
+/// `OutcomeAttested` is still emitted, so consumers that only track outcomes
+/// need no change; this carries the evidence — the recovered signer and the
+/// value that was compared — for anyone auditing why the outcome is what it
+/// is during the veto window.
+#[event]
+pub struct ZkOutcomeAttested {
+    pub market: Pubkey,
+    pub adjudicator_entry: Pubkey,
+    /// The EVM address recovered from the signature, not the one supplied.
+    pub attestor_evm: [u8; 20],
+    /// Attested value in `10^value_scale` units.
+    pub value: i128,
+    pub threshold: i64,
+    pub comparator: u8,
+    /// 0=NO, 1=YES.
+    pub winning_outcome: u8,
+    /// The attestation's own timestamp, normalized to unix seconds.
+    pub attestation_ts: i64,
+    pub ts: i64,
+}
+
 // ── Orderbook (CLOB) ─────────────────────────────────────────────────────────
 
 #[event]

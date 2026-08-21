@@ -235,4 +235,48 @@ pub enum SoothCoreError {
     BookNotEmpty,
     #[msg("Winning shares are still unredeemed — the balance is owed, not residual")]
     OutstandingClaims,
+    // ── zkTLS adjudication ───────────────────────────────────────────────────
+    // Appended, never reordered. See the module header.
+
+    #[msg("Adjudicator entry is not zk-enabled; use the manual attest path")]
+    ZkNotEnabled,
+
+    #[msg("An attestation field exceeds its maximum encoded length")]
+    ZkAttestationFieldTooLong,
+
+    #[msg("Signature v byte must be 27 or 28")]
+    ZkInvalidSignatureV,
+
+    #[msg("Signature s value is above secp256k1n/2 and therefore malleable")]
+    ZkMalleableSignature,
+
+    #[msg("secp256k1 public-key recovery failed for this attestation")]
+    ZkSignatureRecoveryFailed,
+
+    #[msg("Recovered attestor does not match the address registered for this market")]
+    ZkAttestorMismatch,
+
+    #[msg("Attestation url and parsePath do not match the registered rule_hash")]
+    ZkRuleHashMismatch,
+
+    #[msg("A zk attestation must carry exactly one responseResolve entry")]
+    ZkResponseResolveCountInvalid,
+
+    #[msg("Attested data is not a bare decimal or a single-key object holding one")]
+    ZkDataUnparseable,
+
+    #[msg("Attested value carries more fractional digits than the registered scale")]
+    ZkValuePrecisionTooHigh,
+
+    #[msg("Attested value does not fit the fixed-point range")]
+    ZkValueOutOfRange,
+
+    #[msg("Comparator discriminant is not a known ZkComparator")]
+    ZkInvalidComparator,
+
+    #[msg("value_scale exceeds MAX_ZK_VALUE_SCALE")]
+    ZkInvalidValueScale,
+
+    #[msg("Attestation timestamp is outside the accepted window")]
+    ZkAttestationTimestampInvalid,
 }

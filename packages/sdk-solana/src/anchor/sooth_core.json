@@ -87,6 +87,101 @@
       ]
     },
     {
+      "name": "attest_outcome_zk",
+      "docs": [
+        "Record an outcome derived from a verified Primus zkTLS attestation.",
+        "Permissionless: the attestation carries its own authority. Like",
+        "`attest_outcome` it records only — `settle` still finalizes after the",
+        "veto window, so `dispute` remains available against a bad attestation."
+      ],
+      "discriminator": [
+        106,
+        199,
+        227,
+        243,
+        107,
+        125,
+        46,
+        196
+      ],
+      "accounts": [
+        {
+          "name": "adjudicator_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Read-only: attestation does not change the lifecycle. `settle` does",
+            "that, after the veto window."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "submitter",
+          "docs": [
+            "Fee payer only. This instruction is permissionless by design — the",
+            "attestation carries its own authority, so gating submission on a",
+            "signer would reintroduce exactly the trusted party being removed."
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "attestation",
+          "type": {
+            "defined": {
+              "name": "ZkAttestation"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "book_cancel",
       "docs": [
         "Cancel a resting book order; the escrow lands in the owner's seat",
@@ -3371,6 +3466,124 @@
       ]
     },
     {
+      "name": "register_zk_adjudicator",
+      "docs": [
+        "Register a per-market adjudicator that resolves from a Primus zkTLS",
+        "attestation rather than a human signature. Separate from",
+        "`register_adjudicator` so the manual path is untouched, and so zk mode",
+        "is fixed at creation rather than switchable under a live market."
+      ],
+      "discriminator": [
+        116,
+        53,
+        214,
+        178,
+        55,
+        188,
+        229,
+        24
+      ],
+      "accounts": [
+        {
+          "name": "adjudicator_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "protocol_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "RegisterZkAdjudicatorArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "request_lock",
       "discriminator": [
         184,
@@ -5002,6 +5215,32 @@
         150,
         130
       ]
+    },
+    {
+      "name": "ZkAdjudicatorRegistered",
+      "discriminator": [
+        31,
+        90,
+        12,
+        133,
+        188,
+        40,
+        175,
+        44
+      ]
+    },
+    {
+      "name": "ZkOutcomeAttested",
+      "discriminator": [
+        99,
+        58,
+        3,
+        252,
+        40,
+        224,
+        174,
+        186
+      ]
     }
   ],
   "errors": [
@@ -5364,6 +5603,76 @@
       "code": 6071,
       "name": "OutstandingClaims",
       "msg": "Winning shares are still unredeemed — the balance is owed, not residual"
+    },
+    {
+      "code": 6072,
+      "name": "ZkNotEnabled",
+      "msg": "Adjudicator entry is not zk-enabled; use the manual attest path"
+    },
+    {
+      "code": 6073,
+      "name": "ZkAttestationFieldTooLong",
+      "msg": "An attestation field exceeds its maximum encoded length"
+    },
+    {
+      "code": 6074,
+      "name": "ZkInvalidSignatureV",
+      "msg": "Signature v byte must be 27 or 28"
+    },
+    {
+      "code": 6075,
+      "name": "ZkMalleableSignature",
+      "msg": "Signature s value is above secp256k1n/2 and therefore malleable"
+    },
+    {
+      "code": 6076,
+      "name": "ZkSignatureRecoveryFailed",
+      "msg": "secp256k1 public-key recovery failed for this attestation"
+    },
+    {
+      "code": 6077,
+      "name": "ZkAttestorMismatch",
+      "msg": "Recovered attestor does not match the address registered for this market"
+    },
+    {
+      "code": 6078,
+      "name": "ZkRuleHashMismatch",
+      "msg": "Attestation url and parsePath do not match the registered rule_hash"
+    },
+    {
+      "code": 6079,
+      "name": "ZkResponseResolveCountInvalid",
+      "msg": "A zk attestation must carry exactly one responseResolve entry"
+    },
+    {
+      "code": 6080,
+      "name": "ZkDataUnparseable",
+      "msg": "Attested data is not a bare decimal or a single-key object holding one"
+    },
+    {
+      "code": 6081,
+      "name": "ZkValuePrecisionTooHigh",
+      "msg": "Attested value carries more fractional digits than the registered scale"
+    },
+    {
+      "code": 6082,
+      "name": "ZkValueOutOfRange",
+      "msg": "Attested value does not fit the fixed-point range"
+    },
+    {
+      "code": 6083,
+      "name": "ZkInvalidComparator",
+      "msg": "Comparator discriminant is not a known ZkComparator"
+    },
+    {
+      "code": 6084,
+      "name": "ZkInvalidValueScale",
+      "msg": "value_scale exceeds MAX_ZK_VALUE_SCALE"
+    },
+    {
+      "code": 6085,
+      "name": "ZkAttestationTimestampInvalid",
+      "msg": "Attestation timestamp is outside the accepted window"
     }
   ],
   "types": [
@@ -5438,6 +5747,62 @@
             "type": "u8"
           },
           {
+            "name": "zk_comparator",
+            "docs": [
+              "How the attested value is tested against `zk_threshold`, and — because",
+              "`ZkComparator::None` is discriminant zero — whether this entry is",
+              "zk-enabled at all. An entry from the manual `register_adjudicator`",
+              "path has a zeroed reserved region and therefore reads as `None`,",
+              "which is what keeps `attest_outcome_zk` off every existing market."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "zk_value_scale",
+            "docs": [
+              "Decimal places the attested value and `zk_threshold` share. An",
+              "attested value carrying more fractional digits than this is rejected",
+              "rather than truncated."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "zk_attestor_evm",
+            "docs": [
+              "The single EVM address whose signature over a Primus attestation this",
+              "market accepts."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                20
+              ]
+            }
+          },
+          {
+            "name": "zk_rule_hash",
+            "docs": [
+              "Commitment to the attestation's request url and responseResolve",
+              "parsePath. It is what stops an attestation for a different endpoint,",
+              "or a different field of the same endpoint, from being substituted —",
+              "the signature alone only proves the attestor saw *something*.",
+              "Composition: `crate::zk::compute_rule_hash`."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "zk_threshold",
+            "docs": [
+              "Threshold in `10^zk_value_scale` units."
+            ],
+            "type": "i64"
+          },
+          {
             "name": "_reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
@@ -5447,12 +5812,14 @@
               "that loads it. (Unlike EVM, where appending a storage slot is free.)",
               "",
               "When you add a field, shrink this by exactly its serialized size and",
-              "leave `SPACE` unchanged."
+              "leave `SPACE` unchanged. The zk block above consumed 62 of the",
+              "original 64 bytes, so the next field larger than two bytes needs a",
+              "separate PDA rather than this region."
             ],
             "type": {
               "array": [
                 "u8",
-                64
+                2
               ]
             }
           }
@@ -7234,6 +7601,67 @@
       }
     },
     {
+      "name": "RegisterZkAdjudicatorArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Gates `dispute`. Not an attestation authority: nothing about",
+              "`attest_outcome_zk` is signer-gated."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "attestor_evm",
+            "docs": [
+              "The one EVM address whose attestations this market accepts."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                20
+              ]
+            }
+          },
+          {
+            "name": "rule_hash",
+            "docs": [
+              "`crate::zk::compute_rule_hash(url, parse_path)`, computed off-chain by",
+              "whoever picks the endpoint and re-derived on-chain from the submitted",
+              "attestation."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "comparator",
+            "docs": [
+              "`ZkComparator` discriminant. `None` (0) is rejected — registering a",
+              "zk entry that can never resolve is always a mistake."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "threshold",
+            "docs": [
+              "Threshold in `10^value_scale` units."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "value_scale",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "ResidualSwept",
       "type": {
         "kind": "struct",
@@ -7274,6 +7702,274 @@
           {
             "name": "seed_deposit_wad",
             "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ZkAdjudicatorRegistered",
+      "docs": [
+        "Emitted by `register_zk_adjudicator`. Carries the full zk configuration so",
+        "an indexer can reproduce the verification off-chain without re-reading the",
+        "account."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator_entry",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "attestor_evm",
+            "type": {
+              "array": [
+                "u8",
+                20
+              ]
+            }
+          },
+          {
+            "name": "rule_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "comparator",
+            "type": "u8"
+          },
+          {
+            "name": "threshold",
+            "type": "i64"
+          },
+          {
+            "name": "value_scale",
+            "type": "u8"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ZkAttestation",
+      "docs": [
+        "A Primus `Attestation`, carried as structured fields.",
+        "",
+        "`attestor_addr` and `attestor_url` mirror the Solidity `Attestor[]` entry,",
+        "but note that array is OUTSIDE the signed digest. `attestor_addr` is",
+        "therefore treated as an assertion the handler checks against the recovered",
+        "signer, never as a trust input; `attestor_url` is carried for fidelity and",
+        "is not interpreted at all."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "recipient",
+            "type": {
+              "array": [
+                "u8",
+                20
+              ]
+            }
+          },
+          {
+            "name": "request",
+            "type": {
+              "defined": {
+                "name": "ZkNetworkRequest"
+              }
+            }
+          },
+          {
+            "name": "response_resolve",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ZkResponseResolve"
+                }
+              }
+            }
+          },
+          {
+            "name": "data",
+            "type": "string"
+          },
+          {
+            "name": "att_conditions",
+            "type": "string"
+          },
+          {
+            "name": "timestamp",
+            "docs": [
+              "Solidity `uint64`, encoded big-endian by `abi.encodePacked`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "addition_params",
+            "type": "string"
+          },
+          {
+            "name": "attestor_addr",
+            "type": {
+              "array": [
+                "u8",
+                20
+              ]
+            }
+          },
+          {
+            "name": "attestor_url",
+            "type": "string"
+          },
+          {
+            "name": "signature",
+            "docs": [
+              "`r ‖ s ‖ v`, with EVM's `v ∈ {27, 28}`."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                65
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ZkNetworkRequest",
+      "docs": [
+        "`AttNetworkRequest` from `IPrimusZKTLS.sol`. Field order is load-bearing —",
+        "it is the packed-encoding order."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "url",
+            "type": "string"
+          },
+          {
+            "name": "header",
+            "type": "string"
+          },
+          {
+            "name": "method",
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ZkOutcomeAttested",
+      "docs": [
+        "Emitted by `attest_outcome_zk` alongside `OutcomeAttested`.",
+        "",
+        "`OutcomeAttested` is still emitted, so consumers that only track outcomes",
+        "need no change; this carries the evidence — the recovered signer and the",
+        "value that was compared — for anyone auditing why the outcome is what it",
+        "is during the veto window."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator_entry",
+            "type": "pubkey"
+          },
+          {
+            "name": "attestor_evm",
+            "docs": [
+              "The EVM address recovered from the signature, not the one supplied."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                20
+              ]
+            }
+          },
+          {
+            "name": "value",
+            "docs": [
+              "Attested value in `10^value_scale` units."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "threshold",
+            "type": "i64"
+          },
+          {
+            "name": "comparator",
+            "type": "u8"
+          },
+          {
+            "name": "winning_outcome",
+            "docs": [
+              "0=NO, 1=YES."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "attestation_ts",
+            "docs": [
+              "The attestation's own timestamp, normalized to unix seconds."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ZkResponseResolve",
+      "docs": [
+        "`AttNetworkResponseResolve` from `IPrimusZKTLS.sol`. Field order is the",
+        "packed-encoding order."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "key_name",
+            "type": "string"
+          },
+          {
+            "name": "parse_type",
+            "type": "string"
+          },
+          {
+            "name": "parse_path",
+            "type": "string"
           }
         ]
       }

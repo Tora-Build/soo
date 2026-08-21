@@ -9,6 +9,9 @@
 
 use anchor_lang::prelude::*;
 
+use crate::error::SoothCoreError;
+use crate::zk::{EvmAddress, ZkComparator, ZkRule};
+
 /// PDA seed for the per-market adjudicator record.
 pub const ADJUDICATOR_ENTRY_SEED: &[u8] = b"adjudicator";
 
@@ -41,6 +44,39 @@ pub struct AdjudicatorEntry {
     /// Bump for the `AdjudicatorEntry` PDA.
     pub bump: u8,
 
+    // ── zkTLS adjudication ───────────────────────────────────────────────
+    //
+    // Carved out of `_reserved`, so the account length is unchanged and no
+    // migration is needed. Every one of these reads as zero on an entry
+    // written by `register_adjudicator`, and zero means "manual" — see
+    // `zk_comparator`.
+
+    /// How the attested value is tested against `zk_threshold`, and — because
+    /// `ZkComparator::None` is discriminant zero — whether this entry is
+    /// zk-enabled at all. An entry from the manual `register_adjudicator`
+    /// path has a zeroed reserved region and therefore reads as `None`,
+    /// which is what keeps `attest_outcome_zk` off every existing market.
+    pub zk_comparator: u8,
+
+    /// Decimal places the attested value and `zk_threshold` share. An
+    /// attested value carrying more fractional digits than this is rejected
+    /// rather than truncated.
+    pub zk_value_scale: u8,
+
+    /// The single EVM address whose signature over a Primus attestation this
+    /// market accepts.
+    pub zk_attestor_evm: EvmAddress,
+
+    /// Commitment to the attestation's request url and responseResolve
+    /// parsePath. It is what stops an attestation for a different endpoint,
+    /// or a different field of the same endpoint, from being substituted —
+    /// the signature alone only proves the attestor saw *something*.
+    /// Composition: `crate::zk::compute_rule_hash`.
+    pub zk_rule_hash: [u8; 32],
+
+    /// Threshold in `10^zk_value_scale` units.
+    pub zk_threshold: i64,
+
     /// Forward-compat padding. Adding a field consumes bytes from here
     /// instead of changing the account's length, so no migration is needed:
     /// Solana accounts are fixed-length buffers, and an `#[account]` struct
@@ -48,8 +84,10 @@ pub struct AdjudicatorEntry {
     /// that loads it. (Unlike EVM, where appending a storage slot is free.)
     ///
     /// When you add a field, shrink this by exactly its serialized size and
-    /// leave `SPACE` unchanged.
-    pub _reserved: [u8; 64],
+    /// leave `SPACE` unchanged. The zk block above consumed 62 of the
+    /// original 64 bytes, so the next field larger than two bytes needs a
+    /// separate PDA rather than this region.
+    pub _reserved: [u8; 2],
 }
 
 impl AdjudicatorEntry {
@@ -63,7 +101,12 @@ impl AdjudicatorEntry {
         + 1                        // disputed: bool
         + (1 + 8)                  // disputed_at: Option<i64>
         + 1                        // bump
-        + 64; // _reserved
+        + 1                        // zk_comparator
+        + 1                        // zk_value_scale
+        + 20                       // zk_attestor_evm
+        + 32                       // zk_rule_hash
+        + 8                        // zk_threshold
+        + 2; // _reserved
 
     pub fn is_attested(&self) -> bool {
         self.attested_outcome.is_some()
@@ -71,6 +114,34 @@ impl AdjudicatorEntry {
 
     pub fn is_disputed(&self) -> bool {
         self.disputed
+    }
+
+    /// True iff `register_zk_adjudicator` configured this entry. Keyed on the
+    /// comparator because that is the field whose zero value is unusable:
+    /// a zero attestor address or rule hash could in principle be a real (if
+    /// absurd) configuration, whereas `ZkComparator::None` resolves nothing.
+    pub fn is_zk_enabled(&self) -> bool {
+        self.zk_comparator != ZkComparator::None as u8
+    }
+
+    /// The comparator as a typed value, erroring on a discriminant no
+    /// released version ever wrote.
+    pub fn comparator(&self) -> Result<ZkComparator> {
+        ZkComparator::from_u8(self.zk_comparator)
+    }
+
+    /// The zk fields as a `ZkRule`, or `ZkNotEnabled`. They come out together
+    /// because verifying against any subset of them is a bug: the signature
+    /// without the rule hash proves only that the attestor saw something.
+    pub fn require_zk_rule(&self) -> Result<ZkRule> {
+        require!(self.is_zk_enabled(), SoothCoreError::ZkNotEnabled);
+        Ok(ZkRule {
+            attestor_evm: self.zk_attestor_evm,
+            rule_hash: self.zk_rule_hash,
+            comparator: self.comparator()?,
+            threshold: self.zk_threshold as i128,
+            value_scale: self.zk_value_scale,
+        })
     }
 }
 
@@ -94,7 +165,12 @@ mod tests {
             disputed: false,
             disputed_at: None,
             bump: 254,
-            _reserved: [0; 64],
+            zk_comparator: ZkComparator::None as u8,
+            zk_value_scale: 0,
+            zk_attestor_evm: [0; 20],
+            zk_rule_hash: [0; 32],
+            zk_threshold: 0,
+            _reserved: [0; 2],
         }
     }
 
@@ -113,7 +189,12 @@ mod tests {
             + 1            // disputed: bool
             + 1 + 8        // disputed_at: Option<i64>
             + 1            // bump
-            + 64; // _reserved
+            + 1            // zk_comparator
+            + 1            // zk_value_scale
+            + 20           // zk_attestor_evm
+            + 32           // zk_rule_hash
+            + 8            // zk_threshold
+            + 2; // _reserved
         assert_eq!(AdjudicatorEntry::SPACE, expected);
         assert_eq!(AdjudicatorEntry::SPACE, 190);
     }
@@ -139,6 +220,42 @@ mod tests {
         );
         adj.attested_outcome = Some(1);
         assert!(adj.is_attested());
+    }
+
+    #[test]
+    fn a_manually_registered_entry_is_not_zk_enabled() {
+        // The zk block is carved from a reserved region that
+        // `register_adjudicator` leaves zeroed, so every entry that path ever
+        // wrote — including ones already on devnet — must read as manual.
+        let adj = fresh();
+        assert!(!adj.is_zk_enabled());
+        assert!(adj.require_zk_rule().is_err());
+    }
+
+    #[test]
+    fn any_nonzero_comparator_enables_zk() {
+        let mut adj = fresh();
+        for c in [
+            ZkComparator::Gt,
+            ZkComparator::Gte,
+            ZkComparator::Lt,
+            ZkComparator::Lte,
+            ZkComparator::Eq,
+        ] {
+            adj.zk_comparator = c as u8;
+            assert!(adj.is_zk_enabled());
+            assert_eq!(adj.comparator().unwrap(), c);
+        }
+    }
+
+    #[test]
+    fn an_unknown_comparator_discriminant_is_rejected_not_defaulted() {
+        // Defaulting an unknown discriminant to some comparator would let a
+        // future account shape silently resolve markets the wrong way.
+        let mut adj = fresh();
+        adj.zk_comparator = 9;
+        assert!(adj.comparator().is_err());
+        assert!(adj.require_zk_rule().is_err());
     }
 
     #[test]
