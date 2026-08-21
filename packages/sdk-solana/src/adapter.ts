@@ -707,6 +707,35 @@ export class SolanaChainAdapter implements ChainAdapter {
   }
 
   /**
+   * Who may call `register_zk_adjudicator`, straight from `ProtocolConfig`.
+   *
+   * The instruction is gated on `permissionless_adjudicators`: when it is
+   * false, only `ProtocolConfig.authority` may register a market's
+   * adjudicator. A UI that offers zkTLS resolution has to know this BEFORE
+   * the user fills a form, otherwise the only feedback is a failed
+   * transaction after two successful ones.
+   *
+   * Returns null on an uninitialised config — nothing can be registered on
+   * such a deployment, which is different from "anyone may".
+   */
+  async readAdjudicatorPolicy(): Promise<{
+    authority: string;
+    permissionless: boolean;
+  } | null> {
+    const [cfgPda] = deriveProtocolConfigPda(this.programIds);
+    const raw = await (
+      this.program.account as any
+    ).protocolConfig.fetchNullable(cfgPda);
+    if (!raw) return null;
+    return {
+      authority: (raw.authority as PublicKey).toBase58(),
+      permissionless: !!(
+        raw.permissionlessAdjudicators ?? raw.permissionless_adjudicators
+      ),
+    };
+  }
+
+  /**
    * Both venues' taker fee rates, in bps, as the program has them.
    *
    * Public because the UI needs to DISPLAY a rate and the only honest source

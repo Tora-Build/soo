@@ -2,7 +2,7 @@
   border: 1px solid #1f2329;
   border-bottom: 0;
   background:
-    linear-gradient(90deg, rgba(91, 255, 177, 0.08), transparent 48%),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 48%),
     #0a0c10 !important;
   color: #fff;
 }
@@ -67,16 +67,18 @@
 .megaeth-quick-trade-dialog
   .trading-context-bar--megaeth
   button[aria-label]:hover {
-  border-color: rgba(91, 255, 177, 0.62) !important;
-  color: #5bffb1 !important;
+  border-color: color-mix(in srgb, var(--accent) 62%, transparent) !important;
+  color: var(--accent) !important;
 }
 
 .megaeth-market-body,
 .amm-page-body--megaeth,
 .orderbook-page-body--megaeth {
-  --accent: #5bffb1;
-  --accent-muted: rgba(91, 255, 177, 0.1);
-  --accent-soft: rgba(91, 255, 177, 0.16);
+  /* --accent is deliberately NOT overridden here: the trade surface is
+     chrome like every other arena room, so its primary actions, focus
+     rings and active toggles track the player's colour loadout. */
+  --accent-muted: color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
   --bg: #050608;
   --bg-canvas: #050608;
   --bg-raised: #0a0c10;
@@ -86,10 +88,11 @@
   --text: #fff;
   --text-muted: #a8b0bb;
   --text-faint: #6c747f;
-  --pos: #5bffb1;
-  --pos-soft: rgba(91, 255, 177, 0.1);
-  --neg: #f5b443;
-  --neg-soft: rgba(245, 180, 67, 0.12);
+  /* Directional tokens stay directional: YES/profit green, NO/loss pink.
+     They inherit the arcade values; only the washes are re-derived so
+     they track whatever --pos/--neg resolve to. */
+  --pos-soft: color-mix(in srgb, var(--pos) 12%, transparent);
+  --neg-soft: color-mix(in srgb, var(--neg) 12%, transparent);
   background: #050608 !important;
   color: #fff;
 }
@@ -139,20 +142,20 @@
 
 .megaeth-market-body .text-accent,
 .amm-page-body--megaeth .text-accent {
-  color: #5bffb1 !important;
+  color: var(--accent) !important;
 }
 
 .megaeth-market-body .text-neg,
 .megaeth-market-body .text-error {
-  color: #f5b443 !important;
+  color: var(--neg) !important;
 }
 
 .megaeth-market-body .bg-accent,
 .megaeth-market-body .btn-primary,
 .amm-page-body--megaeth .bg-accent,
 .amm-page-body--megaeth .btn-primary {
-  background: #5bffb1 !important;
-  border-color: #5bffb1 !important;
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
   color: #050608 !important;
 }
 
@@ -160,7 +163,7 @@
 .megaeth-market-body .bg-accent\/30,
 .amm-page-body--megaeth .bg-accent-muted,
 .amm-page-body--megaeth .bg-accent\/30 {
-  background: rgba(91, 255, 177, 0.12) !important;
+  background: color-mix(in srgb, var(--accent) 12%, transparent) !important;
 }
 
 .megaeth-market-body .input-field {
@@ -170,7 +173,7 @@
 }
 
 .megaeth-market-body .input-field:focus {
-  border-color: rgba(91, 255, 177, 0.62) !important;
+  border-color: color-mix(in srgb, var(--accent) 62%, transparent) !important;
 }
 
 .soothbook-terminal--megaeth {
@@ -188,8 +191,8 @@
   .megaeth-outcome-tab--yes.is-active,
 .soothbook-terminal--megaeth
   .megaeth-outcome-tab--yes.is-active {
-  background: rgba(91, 255, 177, 0.12) !important;
-  border-bottom-color: rgba(91, 255, 177, 0.72) !important;
+  background: color-mix(in srgb, var(--pos) 12%, transparent) !important;
+  border-bottom-color: color-mix(in srgb, var(--pos) 72%, transparent) !important;
   color: #fff !important;
 }
 
@@ -197,8 +200,8 @@
   .megaeth-outcome-tab--no.is-active,
 .soothbook-terminal--megaeth
   .megaeth-outcome-tab--no.is-active {
-  background: rgba(245, 180, 67, 0.12) !important;
-  border-bottom-color: rgba(245, 180, 67, 0.68) !important;
+  background: color-mix(in srgb, var(--neg) 12%, transparent) !important;
+  border-bottom-color: color-mix(in srgb, var(--neg) 68%, transparent) !important;
   color: #fff !important;
 }
 
@@ -212,19 +215,17 @@
 }
 
 .megaeth-mode-control.is-active {
-  border-color: rgba(91, 255, 177, 0.62);
-  background: rgba(91, 255, 177, 0.14) !important;
-  color: #5bffb1 !important;
+  border-color: color-mix(in srgb, var(--accent) 62%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent) !important;
+  color: var(--accent) !important;
 }
 
 .megaeth-trading-panel {
-  --accent: #5bffb1;
-  --accent-muted: rgba(91, 255, 177, 0.1);
-  --accent-soft: rgba(91, 255, 177, 0.16);
-  --pos: #5bffb1;
-  --pos-soft: rgba(91, 255, 177, 0.1);
-  --neg: #f5b443;
-  --neg-soft: rgba(245, 180, 67, 0.12);
+  /* Chrome tracks the loadout accent; direction stays pos/neg. */
+  --accent-muted: color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --pos-soft: color-mix(in srgb, var(--pos) 12%, transparent);
+  --neg-soft: color-mix(in srgb, var(--neg) 12%, transparent);
 
   overflow: visible;
   border: 0;
@@ -331,16 +332,16 @@
 }
 
 .simple-trading-panel--megaeth .input-field:focus {
-  border-color: rgba(91, 255, 177, 0.62);
+  border-color: color-mix(in srgb, var(--accent) 62%, transparent);
   outline: none;
 }
 
 .simple-trading-panel--megaeth .skeleton {
   background: linear-gradient(
     90deg,
-    rgba(91, 255, 177, 0.08),
-    rgba(91, 255, 177, 0.18),
-    rgba(91, 255, 177, 0.08)
+    color-mix(in srgb, var(--accent) 8%, transparent),
+    color-mix(in srgb, var(--accent) 18%, transparent),
+    color-mix(in srgb, var(--accent) 8%, transparent)
   );
 }
 

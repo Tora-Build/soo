@@ -1,10 +1,19 @@
-// Market creation, Solana-shaped: one screen, two signatures.
+// Market creation, Solana-shaped: one screen, two signatures — three when the
+// market resolves itself.
 //
 // The form collects the four things the program actually takes — question,
 // category, close date, liquidity — and submits create_market followed by
 // seed_lp. The creator is registered as the market's adjudicator by the
-// chain-shim (`dispatchCreateMarket` passes the connected wallet), so there
-// is nothing to choose on that front.
+// chain-shim (`dispatchCreateMarket` passes the connected wallet).
+//
+// On top of that sits ONE choice: who closes the market. Manual keeps the
+// creator as the signing adjudicator. Automatic adds a third instruction,
+// `register_zk_adjudicator`, binding the market to Primus' attestor and a
+// hash of `(url, parsePath)` — after which anyone can close it by submitting
+// a signed reading of that endpoint, and the creator keeps only the dispute
+// veto. That instruction is PERMISSIONED, so the option is gated on a read of
+// `ProtocolConfig` rather than offered and then failed (see
+// `useZkAdjudicatorPolicy`).
 //
 // The category rides on-chain inside the question string as an SQF `§category`
 // section; `useOnChainMarkets` parses it back out and the Arena deck derives
@@ -44,6 +53,23 @@ import { cn } from "../lib/utils";
 import { tokenSymbols } from "../lib/config";
 import { useTranslation } from "react-i18next";
 import { LaunchpadHeader } from "../components/features/launchpad/LaunchpadHeader";
+import {
+  ResolutionPicker,
+  type ResolutionMode,
+} from "../components/features/launchpad/ResolutionPicker";
+import {
+  PRIMUS_ATTESTOR_EVM,
+  comparatorCode,
+  initialZkDraft,
+  toFixedPoint,
+  zkDraftError,
+  type ZkRuleDraft,
+} from "../components/features/launchpad/zk-rule";
+import {
+  keypairSigner,
+  useZkAdjudicatorPolicy,
+} from "../components/features/launchpad/useZkAdjudicatorPolicy";
+import { computeRuleHash } from "@sooth/sdk-solana";
 import { CATEGORY_IDS } from "../lib/categories";
 
 const NO_EXPIRY_DEADLINE = 7258118399;
@@ -94,6 +120,16 @@ export const Launchpad = () => {
   const [customExpiration, setCustomExpiration] = useState("");
   const [liquidityB, setLiquidityB] = useState<number>(1000);
   const [deployPending, setDeployPending] = useState(false);
+  const [resolutionMode, setResolutionMode] =
+    useState<ResolutionMode>("manual");
+  const [zkDraft, setZkDraft] = useState<ZkRuleDraft>(initialZkDraft);
+  const zkPolicy = useZkAdjudicatorPolicy();
+
+  // The zk option can go away under the user's feet — a disconnect, or a
+  // config read that lands after the first render. Never submit a zk market
+  // the deployment would reject.
+  const effectiveMode: ResolutionMode =
+    resolutionMode === "zk" && zkPolicy.reason === "ok" ? "zk" : "manual";
 
   const launchpadEngineAddress = deployments?.contracts[
     "LaunchpadEngine"
@@ -151,6 +187,13 @@ export const Launchpad = () => {
     if (deadline !== NO_EXPIRY_DEADLINE && deadline <= now + 30) {
       toast.error("Deadline must be later than the market start time");
       return false;
+    }
+    if (effectiveMode === "zk") {
+      const zkErr = zkDraftError(zkDraft);
+      if (zkErr) {
+        toast.error(t(`launchpad.zk.errors.${zkErr}`));
+        return false;
+      }
     }
     return true;
   };
@@ -215,12 +258,63 @@ export const Launchpad = () => {
         await demo.adapter.submit(seedReq, demo.signer as never);
       }
 
+      // Third signature, Automatic only: bind the market to Primus' attestor
+      // and the hash of (url, parsePath). Runs AFTER seed_lp, because a market
+      // that cannot trade is worse than one that cannot self-resolve — if this
+      // step fails the market is still a working manual market, and the toast
+      // says so rather than pretending the whole launch failed.
+      let zkRegistered = effectiveMode !== "zk";
+      if (effectiveMode === "zk" && demo?.adapter) {
+        toast.loading(t("launchpad.zk.registering"), { id: toastId });
+        const url = zkDraft.url.trim();
+        const parsePath = zkDraft.parsePath.trim();
+        const ruleHash = await computeRuleHash(url, parsePath);
+        const threshold = toFixedPoint(
+          zkDraft.threshold.trim(),
+          zkDraft.valueScale,
+        );
+        // The signer is whoever HOLDS the permission — the connected wallet on
+        // a permissionless deployment or an authority wallet, otherwise the
+        // dev authority keypair. `authority` is the creator either way: that
+        // field is the dispute veto, not the right to attest.
+        const signer = zkPolicy.devAuthority
+          ? keypairSigner(zkPolicy.devAuthority)
+          : (demo.signer as never);
+        const signerPk = zkPolicy.devAuthority
+          ? zkPolicy.devAuthority.publicKey.toBase58()
+          : String(demo.userRef ?? "").replace(/^sol:/, "");
+
+        const zkReq = await demo.adapter.buildRegisterZkAdjudicator(
+          `sol:${pda}`,
+          {
+            user: `sol:${signerPk}`,
+            authority: demo.userRef as string,
+            attestorEvm: PRIMUS_ATTESTOR_EVM,
+            ruleHash,
+            comparator: comparatorCode(zkDraft.comparator),
+            threshold,
+            valueScale: zkDraft.valueScale,
+          },
+        );
+        // Scoped catch, and deliberately non-fatal. By this point the market
+        // exists and trades; failing the whole launch here would report a
+        // market that is live as one that was never created, and leave the
+        // creator with no address to go to. The toast says which half worked.
+        try {
+          await demo.adapter.submit(zkReq, signer as never);
+          zkRegistered = true;
+        } catch (e) {
+          console.warn("[launchpad] register_zk_adjudicator failed", e);
+        }
+      }
+
       const marketMetaKey = `market_meta_${marketAddress.toLowerCase()}`;
       localStorage.setItem(
         marketMetaKey,
         JSON.stringify({
           name: question,
           category,
+          resolution: effectiveMode,
           created: Date.now(),
           type: "v10_launchpad_unified",
         }),
@@ -238,7 +332,12 @@ export const Launchpad = () => {
         },
       });
 
-      toast.success("Market launched!", { id: toastId });
+      toast.success(
+        zkRegistered
+          ? "Market launched!"
+          : t("launchpad.zk.registerFailed"),
+        { id: toastId },
+      );
       navigate(`/amm/${marketAddress}`);
     } catch (e: unknown) {
       const error = e as {
@@ -385,6 +484,16 @@ export const Launchpad = () => {
               </p>
             )}
           </div>
+
+          <div className="h-px bg-rule" />
+
+          <ResolutionPicker
+            mode={effectiveMode}
+            onModeChange={setResolutionMode}
+            draft={zkDraft}
+            onDraftChange={setZkDraft}
+            policy={zkPolicy}
+          />
 
           <div className="h-px bg-rule" />
 

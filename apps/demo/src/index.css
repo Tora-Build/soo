@@ -1324,12 +1324,16 @@
   }
 
   .reality-choice.is-yes {
-    background: var(--accent);
+    background: var(--pos);
     color: #0b0710;
   }
 
   .reality-choice.is-no {
-    background: linear-gradient(135deg, #2d1939, #51254d);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--neg) 26%, #2d1939),
+      color-mix(in srgb, var(--neg) 34%, #51254d)
+    );
     color: white;
   }
 
@@ -1539,8 +1543,8 @@
   }
 
   .play-leader-row.is-you {
-    border-color: rgba(223, 255, 79, 0.26);
-    background: rgba(223, 255, 79, 0.05);
+    border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
   }
 
   .play-leader-rank {
@@ -1611,7 +1615,7 @@
   .play-squad-reward {
     padding: 7px 9px;
     border-radius: 10px;
-    background: rgba(223, 255, 79, 0.1);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
     color: var(--accent);
     font-family: var(--font-mono);
     font-size: 8px;
@@ -2395,6 +2399,10 @@
     --pos: #72f6bd;
     --neg: #ff6f91;
     --warn: #ffe66d;
+    /* Washes tracked off the arcade directional values. Defined here (not
+       only on .app-shell) so portalled dialogs get them too. */
+    --pos-soft: color-mix(in srgb, var(--pos) 12%, transparent);
+    --neg-soft: color-mix(in srgb, var(--neg) 12%, transparent);
   }
 
   body {
@@ -3923,8 +3931,8 @@
   }
 
   .lobby-pick-yes {
-    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
-    background: var(--accent);
+    border-color: color-mix(in srgb, var(--pos) 40%, var(--border));
+    background: var(--pos);
     color: var(--bg);
   }
 
@@ -4024,12 +4032,12 @@
   }
 
   .lobby-mini-pick.is-yes {
-    background: var(--accent-muted);
-    color: var(--accent);
+    background: var(--pos-soft);
+    color: var(--pos);
   }
 
   .lobby-mini-pick.is-yes:hover {
-    border-color: var(--accent);
+    border-color: var(--pos);
   }
 
   .lobby-mini-pick.is-no {
@@ -4909,7 +4917,7 @@
   }
 
   .play-league-drawer .play-leader-row.is-you {
-    border-color: rgba(223, 255, 79, 0.26);
+    border-color: color-mix(in srgb, var(--accent) 26%, transparent);
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -289,6 +289,46 @@
     "periodLabels": {
       "7d": "7天",
       "30d": "30天"
+    },
+    "zk": {
+      "sectionLabel": "结算方式",
+      "manualTitle": "手动",
+      "manualDesc": "由你来结算。",
+      "autoTitle": "自动 (zkTLS)",
+      "autoDesc": "从数据源读取，由 Primus 出证，链上验证。",
+      "presets": {
+        "btc": "BTC/USD",
+        "eth": "ETH/USD",
+        "custom": "自定义"
+      },
+      "resolvesYesWhen": "当数值",
+      "thresholdPlaceholder": "阈值",
+      "previewLabel": "当前读数",
+      "previewLoading": "正在读取数据源...",
+      "previewIdle": "填写数据源 URL 与 JSON 路径以预览读数。",
+      "previewError": "无法读取数据源：{{error}}",
+      "previewVerdict": "按当前读数，该规则结算为 {{verdict}}。",
+      "yes": "YES",
+      "no": "NO",
+      "scaleLabel": "小数位",
+      "scaleHint": "只写入一次。读数小数位超过此值会被链上拒绝，请留出余量。",
+      "precisionWarning": "数据源刚返回了 {{decimals}} 位小数，超过已设置的 {{scale}} 位。请调高小数位，否则该市场无法结算。",
+      "registering": "正在注册 zk 裁决者...",
+      "registerFailed": "市场已创建，但 zk 裁决者注册失败——目前仍为手动结算。",
+      "gate": {
+        "loading": "正在检查该部署是否允许自动结算...",
+        "noConfig": "无法自动结算：该部署尚未初始化协议配置。",
+        "readFailed": "无法连接链上以检查该部署是否允许自动结算。请刷新重试。",
+        "noWallet": "请先连接钱包，以查看你是否可以创建自动结算的市场。",
+        "notAuthority": "该部署的自动结算为许可制。只有协议管理员 ({{authority}}) 可以注册 zk 裁决者，你的钱包不是。"
+      },
+      "errors": {
+        "url": "自动结算需要一个数据源 URL。",
+        "urlScheme": "数据源 URL 必须以 http:// 或 https:// 开头。",
+        "path": "JSON 路径必须以 $ 开头，例如 $.data.amount。",
+        "threshold": "自动结算需要一个用于比较的阈值。",
+        "thresholdPrecision": "阈值的小数位超过了已设置的精度。"
+      }
     }
   },
   "stats": {

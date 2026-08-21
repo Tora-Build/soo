@@ -289,6 +289,46 @@
     "periodLabels": {
       "7d": "7D",
       "30d": "30D"
+    },
+    "zk": {
+      "sectionLabel": "Resolution",
+      "manualTitle": "Manual",
+      "manualDesc": "You resolve it.",
+      "autoTitle": "Automatic (zkTLS)",
+      "autoDesc": "Resolved from a data source, proven by Primus, verified on-chain.",
+      "presets": {
+        "btc": "BTC/USD",
+        "eth": "ETH/USD",
+        "custom": "Custom"
+      },
+      "resolvesYesWhen": "YES when value is",
+      "thresholdPlaceholder": "threshold",
+      "previewLabel": "Reads right now",
+      "previewLoading": "Reading the source...",
+      "previewIdle": "Enter a source URL and a JSON path to preview the value.",
+      "previewError": "Could not read the source: {{error}}",
+      "previewVerdict": "With today's reading this rule resolves {{verdict}}.",
+      "yes": "YES",
+      "no": "NO",
+      "scaleLabel": "Decimals",
+      "scaleHint": "Registered once. Readings with more decimals than this are rejected on-chain, so leave headroom.",
+      "precisionWarning": "The source just returned {{decimals}} decimals, more than the {{scale}} registered. Raise the decimals or this market cannot resolve.",
+      "registering": "Registering zk adjudicator...",
+      "registerFailed": "Market launched, but registering the zk adjudicator failed — it resolves manually for now.",
+      "gate": {
+        "loading": "Checking whether this deployment allows automatic resolution...",
+        "noConfig": "Automatic resolution is unavailable: this deployment has no protocol config yet.",
+        "readFailed": "Could not reach the chain to check whether automatic resolution is allowed here. Reload to try again.",
+        "noWallet": "Connect a wallet to see whether you may create automatically-resolved markets.",
+        "notAuthority": "Automatic resolution is permissioned on this deployment. Only the protocol authority ({{authority}}) may register a zk adjudicator; your wallet is not it."
+      },
+      "errors": {
+        "url": "Automatic resolution needs a source URL.",
+        "urlScheme": "The source URL must start with http:// or https://.",
+        "path": "The JSON path must start with $ — for example $.data.amount.",
+        "threshold": "Automatic resolution needs a threshold to compare against.",
+        "thresholdPrecision": "The threshold carries more decimals than the registered scale."
+      }
     }
   },
   "stats": {

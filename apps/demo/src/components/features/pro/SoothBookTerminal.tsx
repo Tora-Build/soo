@@ -739,10 +739,11 @@ function SoothBookTerminalActive({
             </button>
           </div>
           <div className="p-5 space-y-4">
-            {/* Buy / Sell toggle — segmented control. Active colors use
-                bright emerald/rose (pre-palette-refactor values) rather
-                than the desaturated --pos/--neg tokens, matching the
-                deployed app aesthetic. */}
+            {/* Buy / Sell toggle — segmented control. Directional, so the
+                active fill is a directional colour, never the loadout
+                accent. The classic surface keeps its bright emerald/rose
+                literals to match the deployed app; the arcade variant reads
+                --pos/--neg. */}
             <div className="flex p-0.5 bg-inset border border-rule">
               <button
                 data-testid="ob-side-buy"
@@ -757,9 +758,11 @@ function SoothBookTerminalActive({
                   isBuying
                     ? isMegaEthVariant
                       ? {
-                          backgroundColor: "rgba(91, 255, 177, 0.14)",
-                          color: "#5bffb1",
-                          borderColor: "rgba(91, 255, 177, 0.58)",
+                          backgroundColor:
+                            "color-mix(in srgb, var(--pos) 14%, transparent)",
+                          color: "var(--pos)",
+                          borderColor:
+                            "color-mix(in srgb, var(--pos) 58%, transparent)",
                         }
                       : {
                           backgroundColor: "rgba(5, 150, 105, 0.2)",
@@ -784,9 +787,11 @@ function SoothBookTerminalActive({
                   !isBuying
                     ? isMegaEthVariant
                       ? {
-                          backgroundColor: "rgba(245, 180, 67, 0.14)",
-                          color: "#f5b443",
-                          borderColor: "rgba(245, 180, 67, 0.5)",
+                          backgroundColor:
+                            "color-mix(in srgb, var(--neg) 14%, transparent)",
+                          color: "var(--neg)",
+                          borderColor:
+                            "color-mix(in srgb, var(--neg) 50%, transparent)",
                         }
                       : {
                           backgroundColor: "rgba(225, 29, 72, 0.2)",
