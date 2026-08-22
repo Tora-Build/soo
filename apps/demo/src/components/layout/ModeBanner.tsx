@@ -17,7 +17,7 @@ import {
   Swords,
   WalletCards,
 } from "lucide-react";
-import { useArenaPlayer } from "../../features/arena/ArenaPlayerProvider";
+import { usePlayerStats } from "../../features/arena/usePlayerStats";
 
 const MODES = [
   {
@@ -95,9 +95,10 @@ export const ModeBanner = () => {
         location.pathname.startsWith(`${route}/`),
     ),
   );
-  const { profile } = useArenaPlayer();
-  const xp = profile?.xp ?? 0;
-  const tickets = profile?.tickets ?? 0;
+  // The same merged source the navbar pill and the deck render from: a room
+  // hero showing a different XP than the deck is the app disagreeing with
+  // itself about who the player is.
+  const { xp, tickets } = usePlayerStats();
 
   if (!mode) return null;
 
