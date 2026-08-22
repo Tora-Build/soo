@@ -10,6 +10,8 @@ export { marketIdForQuestion } from "./adapter.js";
 export {
   SolanaChainAdapter,
   type SolanaAdapterOptions,
+  type AdjudicatorView,
+  type MarketResolutionState,
 } from "./adapter.js";
 export { SoothError, notImplemented } from "./errors.js";
 export type { SoothErrorInit, SoothErrorKind } from "./errors.js";

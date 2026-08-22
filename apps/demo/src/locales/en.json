@@ -883,5 +883,41 @@
       "topRank": "Top rank reached",
       "prestige": "Ranks are season prestige — rewards land at season close."
     }
+  },
+  "veto": {
+    "attestedPrefix": "{{outcome}} ·",
+    "settleReady": "SETTLE READY",
+    "tipOpen": "{{outcome}} has been attested but not settled. This window is the chance to dispute a wrong outcome; when it ends anyone may settle the market.",
+    "tipElapsed": "The dispute window on {{outcome}} has closed. Settlement is unlocked — anyone can crank it, and holders redeem once it lands.",
+    "countdownLabel": "DISPUTE WINDOW"
+  },
+  "createdMarkets": {
+    "title": "Markets You Created",
+    "empty": "No markets from this wallet yet. Markets are discovered without an index, so only ones this build knows about can appear here.",
+    "loading": "Scanning known markets…",
+    "forgeCta": "Forge a market",
+    "lockIt": "Lock it",
+    "becomeAdjudicator": "Become the adjudicator",
+    "settle": "Settle",
+    "redeem": "Redeem",
+    "locked": "Market locked",
+    "registered": "You are now the adjudicator",
+    "settled": "Market settled",
+    "attested": "Outcome attested — the dispute window has started",
+    "openUntil": "Trading until {{date}} — nothing to do yet.",
+    "pastDeadline": "Deadline passed {{date}}. Locking is permissionless now and is the step before resolving.",
+    "mayRegister": "No adjudicator registered. As creator you may name yourself and then attest the outcome.",
+    "cannotRegister": "No adjudicator registered, and this wallet may not register one — permissionless registration is off on this deployment.",
+    "mayAttest": "Locked and awaiting an outcome. You hold the attesting key — pick YES, NO or INVALID.",
+    "notAdjudicator": "Locked and awaiting the registered adjudicator, which is not this wallet. Nothing to do here.",
+    "orphaned": "The adjudicator entry names no key, so nobody may attest. It resolves INVALID through the abandonment hatch.",
+    "inVeto": "{{outcome}} attested. Dispute window open — {{time}} until anyone may settle.",
+    "holdsDispute": "You hold the dispute veto for this market; disputing is a CLI-only call in this build.",
+    "disputed": "This outcome has been disputed.",
+    "settleable": "{{outcome}} attested and the dispute window has closed. Settlement is permissionless — anyone can crank it.",
+    "settledLine": "Settled {{outcome}} — holders can redeem.",
+    "dismissedLine": "Dismissed — deposits refund at cost.",
+    "initializing": "Not activated yet — no curve has been funded.",
+    "openNoAdjudicator": "Trading until {{date}}. No adjudicator is registered yet — naming one now is the only step you can take early."
   }
 }

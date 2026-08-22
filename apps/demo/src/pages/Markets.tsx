@@ -39,6 +39,7 @@ import {
   normalizeCategory,
 } from "../lib/categories";
 import { StageBadge } from "../components/ui/StageBadge";
+import { VetoWindowBadge } from "../components/features/market/VetoWindow";
 import { CategoryBadge } from "../components/ui/CategoryBadge";
 import { EntityIcon } from "../components/ui/EntityIcon";
 import { useQuickTrade } from "../components/features/market/QuickTradeProvider";
@@ -239,13 +240,14 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
       <div className="flex-1 flex flex-col p-3 gap-2">
         {/* Top row: stage (+ graduation %) + category */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
             <StageBadge stage={market.stage} />
             {market.stage === "bonding" && gradProgress !== undefined && (
               <span className="font-mono text-[10px] text-accent tabular-nums">
                 {Math.round(gradProgress)}%
               </span>
             )}
+            <VetoWindowBadge address={market.address} />
           </div>
           <CategoryBadge category={market.category} />
         </div>
@@ -352,6 +354,7 @@ const EventOutcomeRow = ({ market }: { market: MarketCardData }) => {
                 </span>
               )}
             </span>
+            <VetoWindowBadge address={market.address} />
             <span className="flex items-center gap-1">
               <Zap className="w-2.5 h-2.5" />${liquidity.toFixed(0)}
             </span>

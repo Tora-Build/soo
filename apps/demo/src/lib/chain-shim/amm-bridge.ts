@@ -802,6 +802,9 @@ export async function dispatchAmmWrite(
   if (call.functionName === "requestLock") {
     return dispatchRequestLock(call, ctx);
   }
+  if (call.functionName === "registerAdjudicator") {
+    return dispatchRegisterAdjudicator(call, ctx);
+  }
   if (call.functionName === "attestOutcome") {
     return dispatchAttestOutcome(call, ctx);
   }
@@ -1181,6 +1184,41 @@ async function dispatchAddAdjudicator(
   // market argument it does not currently receive.
   void adjudicatorPk;
   return synthHashFromSignature("1".repeat(64));
+}
+
+/**
+ * `registerAdjudicator(market, authority?)` — create the per-market
+ * `AdjudicatorEntry`, naming `authority` (default: the connected wallet) as
+ * the key that may attest and dispute.
+ *
+ * Not an EVM method: upstream has a global `AdjudicatorRegistry`, sooth_core
+ * registers per market. Two gates, both checked before this is ever offered:
+ * the entry is created with `init` so it must NOT already exist, and with
+ * `permissionless_adjudicators` set the signer must be `Market.creator`.
+ *
+ * Args:
+ *   args[0]: market reference — `0x<base58>` or `sol:<base58>`
+ *   args[1]: optional base58 authority; omitted means the connected wallet
+ */
+async function dispatchRegisterAdjudicator(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "registerAdjudicator");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) {
+    throw new Error("registerAdjudicator: invalid market reference");
+  }
+  const authority =
+    typeof args[1] === "string" && args[1]
+      ? String(args[1]).replace(/^0x/, "")
+      : userBase58;
+  const req = await ctx.adapter.buildRegisterAdjudicator(marketRef, {
+    user: `sol:${userBase58}`,
+    authority: `sol:${authority}`,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /**

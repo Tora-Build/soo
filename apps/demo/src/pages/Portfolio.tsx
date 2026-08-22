@@ -9,6 +9,7 @@ import { TradingAccountCard } from "../components/features/portfolio/TradingAcco
 import { ActiveOrdersCard } from "../components/features/portfolio/ActiveOrdersCard";
 import { ClaimUnlockedPanel } from "../components/features/portfolio/ClaimUnlockedPanel";
 import { OperatorActionsPanel } from "../components/features/portfolio/OperatorActionsPanel";
+import { CreatedMarketsPanel } from "../components/features/portfolio/CreatedMarketsPanel";
 import { DismissMarketPanel } from "../components/features/portfolio/DismissMarketPanel";
 import { ClaimRefundPanel } from "../components/features/portfolio/ClaimRefundPanel";
 import { RedeemLpPanel } from "../components/features/portfolio/RedeemLpPanel";
@@ -112,6 +113,7 @@ export const Portfolio = () => {
 
       <TradingAccountCard />
 
+      <CreatedMarketsPanel />
 
       <ClaimUnlockedPanel />
 

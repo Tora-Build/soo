@@ -3,6 +3,7 @@ import { ArrowLeft, Clock, Layers, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { CategoryBadge } from "../ui/CategoryBadge";
 import { EntityIcon } from "../ui/EntityIcon";
+import { VetoWindowBadge } from "./market/VetoWindow";
 
 interface TradingContextBarProps {
   question: string;
@@ -113,6 +114,12 @@ export const TradingContextBar = ({
             {timeRemaining}
           </span>
         )}
+
+        {/* Attested-but-unsettled markets: the dispute window and, once it
+            elapses, that anyone may crank settlement. */}
+        <span className="shrink-0">
+          <VetoWindowBadge address={address} variant="bar" />
+        </span>
       </div>
 
       <div className="flex items-center shrink-0">

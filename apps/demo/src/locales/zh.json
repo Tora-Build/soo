@@ -883,5 +883,41 @@
       "topRank": "已达最高段位",
       "prestige": "段位是赛季荣誉——奖励在赛季结束时发放。"
     }
+  },
+  "veto": {
+    "attestedPrefix": "{{outcome}} ·",
+    "settleReady": "可结算",
+    "tipOpen": "已裁定 {{outcome}}，但尚未结算。这个窗口是纠正错误结果的机会；窗口结束后任何人都可以结算该市场。",
+    "tipElapsed": "{{outcome}} 的争议窗口已关闭。结算已解锁——任何人都可以触发，落链后持有者即可赎回。",
+    "countdownLabel": "争议窗口"
+  },
+  "createdMarkets": {
+    "title": "你创建的市场",
+    "empty": "该钱包还没有市场。市场发现没有索引，因此只有本次构建已知的市场才会出现在这里。",
+    "loading": "正在扫描已知市场…",
+    "forgeCta": "创建一个市场",
+    "lockIt": "锁定",
+    "becomeAdjudicator": "成为裁定者",
+    "settle": "结算",
+    "redeem": "赎回",
+    "locked": "市场已锁定",
+    "registered": "你现在是裁定者",
+    "settled": "市场已结算",
+    "attested": "结果已裁定——争议窗口已开始",
+    "openUntil": "交易至 {{date}}——暂无操作。",
+    "pastDeadline": "截止时间已过（{{date}}）。锁定现在无需许可，是解决前的一步。",
+    "mayRegister": "尚未注册裁定者。作为创建者，你可以指定自己，然后裁定结果。",
+    "cannotRegister": "尚未注册裁定者，且该钱包无法注册——本部署未开启无许可注册。",
+    "mayAttest": "已锁定，等待结果。你持有裁定密钥——选择 YES、NO 或 INVALID。",
+    "notAdjudicator": "已锁定，等待已注册的裁定者，但不是这个钱包。此处无可操作项。",
+    "orphaned": "裁定条目未指定任何密钥，因此无人可裁定。它将通过弃置救援通道判为 INVALID。",
+    "inVeto": "已裁定 {{outcome}}。争议窗口开启——{{time}} 后任何人都可结算。",
+    "holdsDispute": "你持有该市场的争议否决权；本版本中提出争议仅能通过 CLI 调用。",
+    "disputed": "该结果已被提出争议。",
+    "settleable": "已裁定 {{outcome}}，争议窗口已关闭。结算无需许可——任何人都可以触发。",
+    "settledLine": "已结算 {{outcome}}——持有者可赎回。",
+    "dismissedLine": "已撤销——按成本退款。",
+    "initializing": "尚未激活——曲线尚未注资。",
+    "openNoAdjudicator": "交易至 {{date}}。尚未注册裁定者——现在指定裁定者是你唯一可以提前完成的步骤。"
   }
 }

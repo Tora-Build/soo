@@ -159,6 +159,64 @@ interface ResolvedMarket {
   winningOutcome: number;
 }
 
+/**
+ * The `AdjudicatorEntry` PDA as the UI needs it.
+ *
+ * `attestedAt` is the clock the veto window runs from: `settle` compares
+ * `now` against `attestedAt + ProtocolConfig.veto_period_secs`, so a
+ * countdown that is not derived from this pair is decoration, not a deadline.
+ */
+export interface AdjudicatorView {
+  market: string;
+  /** May attest. All-zeros when a forced INVALID created the entry. */
+  authority: string;
+  /** Holds the `dispute` veto during the window. */
+  disputeAuthority: string;
+  attestedOutcome: number | null;
+  /** Unix seconds the outcome was attested; null while unattested. */
+  attestedAt: bigint | null;
+  disputed: boolean;
+  disputedAt: bigint | null;
+  /** Written by `force_invalid_attestation`, not by an adjudicator. */
+  forcedInvalid: boolean;
+}
+
+/** One market's lifecycle + adjudication state, as `readResolutionStates`
+ *  returns it. */
+export interface MarketResolutionState {
+  market: string;
+  creator: string;
+  adjudicator: string;
+  deadline: bigint;
+  lifecycle: "Initializing" | "Open" | "Locked" | "Settled";
+  winningOutcome: number;
+  isDismissed: boolean;
+  /** Null when no adjudicator has ever been registered for this market. */
+  adjudicatorEntry: AdjudicatorView | null;
+}
+
+function optionalI64(v: unknown): bigint | null {
+  if (v === null || v === undefined) return null;
+  return BigInt((v as { toString(): string }).toString());
+}
+
+function decodeAdjudicatorEntry(raw: any): AdjudicatorView {
+  const attested = raw.attestedOutcome ?? raw.attested_outcome;
+  return {
+    market: (raw.market as PublicKey).toBase58(),
+    authority: (raw.authority as PublicKey).toBase58(),
+    disputeAuthority: (
+      (raw.disputeAuthority ?? raw.dispute_authority) as PublicKey
+    ).toBase58(),
+    attestedOutcome:
+      attested === null || attested === undefined ? null : Number(attested),
+    attestedAt: optionalI64(raw.attestedAt ?? raw.attested_at),
+    disputed: !!raw.disputed,
+    disputedAt: optionalI64(raw.disputedAt ?? raw.disputed_at),
+    forcedInvalid: !!(raw.forcedInvalid ?? raw.forced_invalid),
+  };
+}
+
 interface PriorityFeeCacheEntry {
   expiresAtMs: number;
   percentileMicroLamports: number;
@@ -600,26 +658,90 @@ export class SolanaChainAdapter implements ChainAdapter {
    * register_adjudicator ix runs as part of create_market, so this should
    * only be null for malformed deployments).
    */
-  async readAdjudicator(market: MarketRef): Promise<{
-    market: string;
-    authority: string;
-    attestedOutcome: number | null;
-    disputed: boolean;
-  } | null> {
+  async readAdjudicator(market: MarketRef): Promise<AdjudicatorView | null> {
     const marketPda = decodePubkeyRef(market);
     const [adjudicatorPda] = deriveAdjudicatorEntryPda(marketPda, this.programIds);
     const raw = await (
       this.program.account as any
     ).adjudicatorEntry.fetchNullable(adjudicatorPda);
     if (!raw) return null;
-    const attested = raw.attestedOutcome;
-    return {
-      market: (raw.market as PublicKey).toBase58(),
-      authority: (raw.authority as PublicKey).toBase58(),
-      attestedOutcome:
-        attested === null || attested === undefined ? null : Number(attested),
-      disputed: !!raw.disputed,
-    };
+    return decodeAdjudicatorEntry(raw);
+  }
+
+  /**
+   * The veto window's length, in seconds, from the live `ProtocolConfig`.
+   *
+   * `settle` rejects with `VetoWindowOpen` until
+   * `now >= AdjudicatorEntry.attested_at + veto_period_secs`, so a UI that
+   * wants to show when settlement unlocks has to read the same number the
+   * program compares against — it is config, not a constant, and it differs
+   * between deployments.
+   *
+   * Returns null on an uninitialised config; that is "unknown", which is not
+   * the same as "zero" (a zero would claim settlement is already unlocked).
+   */
+  async readVetoPeriodSecs(): Promise<number | null> {
+    const [cfgPda] = deriveProtocolConfigPda(this.programIds);
+    const raw = await (
+      this.program.account as any
+    ).protocolConfig.fetchNullable(cfgPda);
+    if (!raw) return null;
+    const v = raw.vetoPeriodSecs ?? raw.veto_period_secs;
+    if (v === null || v === undefined) return null;
+    return Number(v.toString());
+  }
+
+  /**
+   * Lifecycle + adjudication state for many markets in one round trip.
+   *
+   * There is no market index on chain, so every "which of these is mine /
+   * which of these is mid-veto" question in the UI starts from a candidate
+   * list the client already has. Asking per market costs two RPCs each;
+   * this batches both account types through `fetchMultiple`, which is one
+   * `getMultipleAccounts` per type per 100 markets.
+   *
+   * A market whose PDA does not decode comes back `null` in the same slot,
+   * so the caller can keep its own ordering.
+   */
+  async readResolutionStates(
+    markets: MarketRef[],
+  ): Promise<Array<MarketResolutionState | null>> {
+    if (markets.length === 0) return [];
+    const marketPdas = markets.map((m) => decodePubkeyRef(m));
+    const entryPdas = marketPdas.map(
+      (pda) => deriveAdjudicatorEntryPda(pda, this.programIds)[0],
+    );
+    const [marketRaws, entryRaws] = await Promise.all([
+      (this.program.account as any).market.fetchMultiple(marketPdas) as Promise<
+        Array<any | null>
+      >,
+      (this.program.account as any).adjudicatorEntry.fetchMultiple(
+        entryPdas,
+      ) as Promise<Array<any | null>>,
+    ]);
+
+    return marketPdas.map((pda, i) => {
+      const raw = marketRaws[i];
+      if (!raw) return null;
+      const entryRaw = entryRaws[i];
+      return {
+        market: pda.toBase58(),
+        creator: (raw.creator as PublicKey).toBase58(),
+        adjudicator: (raw.adjudicator as PublicKey).toBase58(),
+        deadline: BigInt(raw.deadline.toString()),
+        lifecycle: lifecycleName(raw.lifecycle),
+        winningOutcome: Number(raw.winningOutcome ?? 0),
+        isDismissed: !!(raw.isDismissed ?? raw.is_dismissed),
+        adjudicatorEntry: entryRaw ? decodeAdjudicatorEntry(entryRaw) : null,
+      };
+    });
+  }
+
+  /** Single-market convenience over `readResolutionStates`. */
+  async readResolutionState(
+    market: MarketRef,
+  ): Promise<MarketResolutionState | null> {
+    return (await this.readResolutionStates([market]))[0] ?? null;
   }
 
   /**

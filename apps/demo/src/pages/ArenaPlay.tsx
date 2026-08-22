@@ -34,6 +34,7 @@ import { cn } from "../lib/utils";
 import { Drawer } from "../components/ui/Drawer";
 import { EntityIcon } from "../components/ui/EntityIcon";
 import { StageBadge } from "../components/ui/StageBadge";
+import { VetoWindowBadge } from "../components/features/market/VetoWindow";
 import { useQuickTrade } from "../components/features/market/QuickTradeProvider";
 import { useArenaPlayer } from "../features/arena/ArenaPlayerProvider";
 import {
@@ -548,6 +549,7 @@ const RealityCard = ({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <StageBadge stage={market.stage} />
+              <VetoWindowBadge address={market.address} />
               <span className="reality-world-label">
                 {market.arenaCategory}
               </span>

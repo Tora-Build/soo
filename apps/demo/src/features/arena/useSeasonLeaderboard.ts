@@ -18,7 +18,7 @@ import { useContext, useEffect, useMemo } from "react";
 import { create } from "zustand";
 import type { SolanaChainAdapter } from "@sooth/sdk-solana";
 import { DemoContextObj } from "../../lib/DemoContext";
-import { demoConfig } from "../../lib/config";
+import { knownMarketRefs } from "./marketRegistry";
 import {
   buildLeaderboard,
   seasonTotals,
@@ -28,29 +28,12 @@ import {
 } from "./scoring";
 import { SEASON, isHouseWallet } from "./season";
 
-// ─── Persistent per-market cache ────────────────────────────────────────────
-
-/** Bump to discard tapes cached under an older play shape or scoring input. */
+// The snapshot is also the floor for the play tape below. It doubles as the
+// market registry, but `./marketRegistry` owns that half — importing it is
+// what performs the registration, so every surface starts from the same set.
 import seasonSnapshot from "./season-snapshot.json";
 
-// The snapshot doubles as the market registry: every market it names is
-// registered into the same created-PDA store the whole demo reads for
-// discovery, so a market created in one browser reaches every visitor at
-// the next build — no indexer, no registry account.
-(() => {
-  try {
-    const pdas = Object.keys(seasonSnapshot.markets).map((ref) =>
-      ref.replace(/^sol:/, ""),
-    );
-    const g = globalThis as unknown as { __soothCreatedMarketPdas?: string[] };
-    const merged = [...new Set([...(g.__soothCreatedMarketPdas ?? []), ...pdas])];
-    g.__soothCreatedMarketPdas = merged;
-    localStorage.setItem("__soothCreatedMarketPdas", JSON.stringify(merged));
-    sessionStorage.setItem("__soothCreatedMarketPdas", JSON.stringify(merged));
-  } catch {
-    // Storage may be unavailable; the in-memory global still serves this tab.
-  }
-})();
+// ─── Persistent per-market cache ────────────────────────────────────────────
 
 const CACHE_KEY = "sooth:arena:chain-plays:v1";
 const POLL_MS = 60_000;
@@ -118,30 +101,6 @@ function toChainPlays(market: string, plays: SerializedPlay[]): ChainPlay[] {
     ts: p.ts,
     signature: p.signature,
   }));
-}
-
-/** Every market the demo can see: the seeded ref, the env extras, and any
- *  PDA a create flow persisted (same stores the chain-shim's registry-less
- *  discovery reads — there is no on-chain registry to ask instead). */
-function knownMarketRefs(): string[] {
-  const refs = new Set<string>();
-  if (demoConfig.marketRef) refs.add(demoConfig.marketRef);
-  for (const ref of demoConfig.extraMarketRefs) refs.add(ref);
-  for (const store of [sessionStorage, localStorage]) {
-    try {
-      const raw = store.getItem("__soothCreatedMarketPdas");
-      if (!raw) continue;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        for (const pda of parsed) {
-          if (typeof pda === "string" && pda) refs.add(`sol:${pda}`);
-        }
-      }
-    } catch {
-      // Unreadable storage is not a reason to lose the env-configured refs.
-    }
-  }
-  return [...refs];
 }
 
 // ─── Store + fetch loop ─────────────────────────────────────────────────────
