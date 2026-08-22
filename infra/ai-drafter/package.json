@@ -1,0 +1,16 @@
+{
+  "name": "@sooth/ai-drafter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that drafts a machine-checkable resolution rule for a prediction-market question and validates it against the live endpoint before returning it.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "wrangler dev --compatibility-date 2026-05-07",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.js",
+    "test:unit": "node --test test/unit-*.test.js",
+    "test:integration": "node --test test/integration-*.test.js",
+    "lint": "node --check src/index.js && node --check src/draft.js && node --check src/validate.js && node --check src/jsonpath.js && node --check src/gemini.js && node --check src/ratelimit.js"
+  }
+}

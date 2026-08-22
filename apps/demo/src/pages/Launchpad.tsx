@@ -69,6 +69,11 @@ import {
   keypairSigner,
   useZkAdjudicatorPolicy,
 } from "../components/features/launchpad/useZkAdjudicatorPolicy";
+import { RuleAssistant } from "../components/features/launchpad/RuleAssistant";
+import {
+  proofCoversDraft,
+  type ProvenRule,
+} from "../components/features/launchpad/rule-services";
 import { computeRuleHash } from "@sooth/sdk-solana";
 import { CATEGORY_IDS } from "../lib/categories";
 
@@ -123,6 +128,10 @@ export const Launchpad = () => {
   const [resolutionMode, setResolutionMode] =
     useState<ResolutionMode>("manual");
   const [zkDraft, setZkDraft] = useState<ZkRuleDraft>(initialZkDraft);
+  // A real Primus attestation of the rule currently in the fields, or null.
+  // Advisory: it never blocks creation, it only decides whether the screen
+  // says this rule is known to work or known to be untested.
+  const [provenRule, setProvenRule] = useState<ProvenRule | null>(null);
   const zkPolicy = useZkAdjudicatorPolicy();
 
   // The zk option can go away under the user's feet — a disconnect, or a
@@ -172,6 +181,15 @@ export const Launchpad = () => {
     }
     return now + 7 * 86400;
   };
+
+  // `rule_hash` is immutable, so an unproven rule is a permanent bet that
+  // Primus can read an endpoint nobody has asked it to read. Creation still
+  // goes through — the founder may know better than the tool — but the screen
+  // says which of the two it is, right next to the button that commits it.
+  const ruleProven =
+    effectiveMode === "zk" &&
+    proofCoversDraft(provenRule, zkDraft.url, zkDraft.parsePath);
+  const showUnprovenNotice = effectiveMode === "zk" && !ruleProven;
 
   const validateForm = () => {
     if (!userAddress) {
@@ -315,6 +333,7 @@ export const Launchpad = () => {
           name: question,
           category,
           resolution: effectiveMode,
+          ruleProven,
           created: Date.now(),
           type: "v10_launchpad_unified",
         }),
@@ -495,6 +514,16 @@ export const Launchpad = () => {
             policy={zkPolicy}
           />
 
+          {effectiveMode === "zk" && (
+            <RuleAssistant
+              question={question}
+              draft={zkDraft}
+              onDraftChange={setZkDraft}
+              proven={provenRule}
+              onProven={setProvenRule}
+            />
+          )}
+
           <div className="h-px bg-rule" />
 
           <div className="space-y-3">
@@ -568,6 +597,15 @@ export const Launchpad = () => {
                   </>
                 )}
               </button>
+            )}
+
+            {showUnprovenNotice && (
+              <p
+                data-testid="launchpad-unproven-notice"
+                className="text-xs text-warn text-center leading-relaxed"
+              >
+                {t("launchpad.zk.assist.unprovenAtLaunch")}
+              </p>
             )}
 
             <div className="flex items-center justify-between px-1">

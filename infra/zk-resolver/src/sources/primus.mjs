@@ -58,11 +58,125 @@ export function primusPreflight({ market }) {
 /**
  * An attestation source backed by the Primus zkTLS network.
  *
- * The SDK is imported lazily, inside `init`, for two reasons: fixture mode
- * must not require it to be installed at all, and its module top-level has
- * side effects (it overwrites `global.WebSocket`) that should not happen in a
- * process that will never use it.
+ * The SDK is loaded lazily, on first use, by `createPrimusClient`.
  */
+/**
+ * Loads the SDK and returns an initialised client.
+ *
+ * Lazy for two reasons that both still hold: fixture mode must not require the
+ * package to be installed at all, and its module top-level has side effects
+ * (it overwrites `global.WebSocket`) that should not happen in a process that
+ * will never use it.
+ */
+async function createPrimusClient({ appId, appSecret }) {
+  let PrimusCoreTLS;
+  try {
+    ({ PrimusCoreTLS } = await import("@primuslabs/zktls-core-sdk"));
+  } catch (err) {
+    throw new Error(
+      `cannot load @primuslabs/zktls-core-sdk: ${err.message}\n` +
+        `Install it with \`npm install\` in infra/zk-resolver/. It builds a native addon ` +
+        `on macOS arm64 and Ubuntu, and falls back to a WASM backend elsewhere; either way ` +
+        `it needs a real Node runtime.`,
+    );
+  }
+  const client = new PrimusCoreTLS();
+  // Returns a string/boolean status rather than throwing on a bad appId, so
+  // the result is checked rather than assumed.
+  const status = await client.init(appId, appSecret);
+  if (status === false) {
+    throw new Error("PrimusCoreTLS.init returned false — check PRIMUS_APP_ID/PRIMUS_APP_SECRET");
+  }
+  return client;
+}
+
+/**
+ * A market-free attestation of one `(url, parsePath)` pair.
+ *
+ * The resolution loop always attests a rule the chain already committed to.
+ * `/attest-preview` asks the opposite question — CAN this rule be attested,
+ * before any market exists to commit it — so it needs the same
+ * `startAttestation` + `verifyAttestation` round trip with no market to read a
+ * value scale or a registered attestor from. Everything that decides whether
+ * Primus can sign a reading (auth, response size, cipher, proxy behaviour) is
+ * exercised here exactly as it is on the resolution path; only the on-chain
+ * bookkeeping is absent.
+ *
+ * One call is one unit of Primus quota. Callers rate-limit; this does not.
+ */
+export function primusPreviewer({ appId, appSecret, timeoutMs = 120_000 }) {
+  if (!appId || !appSecret) {
+    throw new Error(
+      "PRIMUS_APP_ID and PRIMUS_APP_SECRET must both be set to request a Primus attestation",
+    );
+  }
+
+  let client = null;
+
+  return {
+    attestorEvm: PADO_ATTESTOR,
+
+    async attest({ url, parsePath, keyName, method = "GET", header = {}, body = "" }) {
+      if (!client) client = await createPrimusClient({ appId, appSecret });
+
+      const params = client.generateRequestParams({ url, method, header, body }, [
+        { keyName, parseType: "", parsePath },
+      ]);
+      const startedAt = Date.now();
+      const attestation = await client.startAttestation(params, timeoutMs);
+      const elapsedMs = Date.now() - startedAt;
+
+      // Primus' own verification recovers the signature against PADOADDRESS.
+      if (!client.verifyAttestation(attestation)) {
+        throw Object.assign(new Error("Primus verifyAttestation returned false"), {
+          previewReason: "attestor",
+        });
+      }
+      // And independently, with the same encoder the PROGRAM uses. The two
+      // agreeing is what makes `ok: true` mean the market would verify.
+      const attestorAddress = `0x${hex(recoverAttestor(attestation))}`;
+      if (attestorAddress.toLowerCase() !== PADO_ATTESTOR.toLowerCase()) {
+        throw Object.assign(
+          new Error(
+            `attestation recovered to ${attestorAddress}, not Primus' attestor ${PADO_ATTESTOR}`,
+          ),
+          { previewReason: "attestor" },
+        );
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(attestation.data);
+      } catch {
+        throw Object.assign(
+          new Error(`attested data is not JSON: ${JSON.stringify(attestation.data)}`),
+          { previewReason: "response" },
+        );
+      }
+      const raw = parsed?.[keyName];
+      if (raw === undefined || raw === null || typeof raw === "object") {
+        throw Object.assign(
+          new Error(
+            `attested data ${JSON.stringify(attestation.data)} carries no scalar "${keyName}"`,
+          ),
+          { previewReason: "response" },
+        );
+      }
+
+      return {
+        attestation,
+        // Verified equal above, re-spelled in the checksummed form the market
+        // registers and the README quotes, so a human can compare it by eye.
+        attestorAddress: PADO_ATTESTOR,
+        attestedValue: String(raw),
+        elapsedMs,
+        digest: `0x${hex(encodeAttestation(attestation))}`,
+        attestedAt: Number(attestation.timestamp),
+      };
+    },
+  };
+}
+
 export function primusSource({ appId, appSecret, timeoutMs = 120_000 }) {
   if (!appId || !appSecret) {
     throw new Error(
@@ -74,24 +188,7 @@ export function primusSource({ appId, appSecret, timeoutMs = 120_000 }) {
 
   async function init() {
     if (client) return client;
-    let PrimusCoreTLS;
-    try {
-      ({ PrimusCoreTLS } = await import("@primuslabs/zktls-core-sdk"));
-    } catch (err) {
-      throw new Error(
-        `cannot load @primuslabs/zktls-core-sdk: ${err.message}\n` +
-          `Install it with \`npm install\` in infra/zk-resolver/. It builds a native addon ` +
-          `on macOS arm64 and Ubuntu, and falls back to a WASM backend elsewhere; either way ` +
-          `it needs a real Node runtime.`,
-      );
-    }
-    client = new PrimusCoreTLS();
-    // Returns a string/boolean status rather than throwing on a bad appId, so
-    // the result is checked rather than assumed.
-    const status = await client.init(appId, appSecret);
-    if (status === false) {
-      throw new Error("PrimusCoreTLS.init returned false — check PRIMUS_APP_ID/PRIMUS_APP_SECRET");
-    }
+    client = await createPrimusClient({ appId, appSecret });
     return client;
   }
 

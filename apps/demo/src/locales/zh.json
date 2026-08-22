@@ -328,6 +328,34 @@
         "path": "JSON 路径必须以 $ 开头，例如 $.data.amount。",
         "threshold": "自动结算需要一个用于比较的阈值。",
         "thresholdPrecision": "阈值的小数位超过了已设置的精度。"
+      },
+      "assist": {
+        "draftButton": "AI 起草",
+        "proveButton": "用 Primus 验证",
+        "proving": "出证中...",
+        "needQuestion": "请先写好问题——草稿由问题推导而来。",
+        "noDrafter": "AI 起草不可用：未设置 VITE_AI_DRAFTER_URL。请在下方手动填写数据源。",
+        "noResolver": "验证不可用：未设置 VITE_RESOLVER_URL，因此在写入链上之前无法用 Primus 测试该规则。",
+        "draftFailed": "起草服务无响应（{{error}}）。请在下方手动填写数据源。",
+        "candidatesHint": "选择一条以填入表单。在你点击创建之前不会写入任何内容。",
+        "reads": "当前读数 {{reading}}",
+        "provenLabel": "已验证 —— Primus 为该数据源出证",
+        "attestor": "由 {{address}} 签名 —— Primus 全局出证者，也是该市场将注册的地址",
+        "provenDetail": "{{decimals}} 位小数，用时 {{seconds}} 秒。该 URL 与路径可以自动结算。",
+        "proveFailed": "无法连接验证服务（{{error}}）。该规则仍未经验证。",
+        "reasons": {
+          "fetch": "未通过验证：该接口没有返回可用的 JSON，因此并未请求 Primus。",
+          "response": "未通过验证：接口有响应，但该路径未能指向其中唯一的一个数值。",
+          "proxy": "未通过验证：Primus 无法与该接口完成受证的 TLS 会话——可能是鉴权、响应体积、加密套件或代理行为。",
+          "quota": "未通过验证：Primus 拒绝了该请求——凭据有误，或出证额度已用尽。",
+          "attestor": "未通过验证：签名并非来自 Primus 全局出证者，链上会拒绝它。",
+          "rate_limited": "暂未验证：每次验证都会消耗 Primus 额度，因此有频率限制。请稍后再试。",
+          "bad_request": "未通过验证：验证服务拒绝了该 URL 或路径。",
+          "unauthorized": "未通过验证：验证服务需要一个本应用未持有的令牌。",
+          "unknown": "未通过验证：出证失败。"
+        },
+        "unprovenWarning": "该规则尚未验证。市场会永久保存这个 URL 与路径的哈希，而目前没有任何证据表明 Primus 真的能为它出证——接口在这里能正常读取，仍可能无法出证。若果真如此，该市场将永远无法自动结算，只能通过争议流程关闭。",
+        "unprovenAtLaunch": "正在以未验证的规则创建——该市场可能永远无法自动结算。"
       }
     }
   },

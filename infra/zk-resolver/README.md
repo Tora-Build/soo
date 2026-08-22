@@ -186,6 +186,124 @@ the SDK built.**
 
 ---
 
+## Proving a rule BEFORE the market commits it (`--serve`)
+
+A market writes `rule_hash = H(url, parsePath)` at creation and can never
+change it. So the expensive mistake is not a rule that reads the wrong field —
+the Forge's live preview catches that — it is a rule that **fetches perfectly
+and cannot be attested**. Primus runs the request inside an MPC-TLS /
+proxy-TLS session, and that session can fail where a browser succeeds: an
+endpoint that wants a bearer token, a response too large for the algorithm
+service, a TLS cipher outside what the session negotiates, an origin that
+treats the proxy differently from a browser. None of it shows up in a fetch.
+It shows up the first time the resolver tries to close the market, months after
+the rule became immutable.
+
+`--serve` answers that question the only way it can be honestly answered: by
+running a **real** `startAttestation` and verifying the signature locally.
+
+```sh
+node src/index.mjs --serve --port 8787
+```
+
+### `POST /attest-preview`
+
+Request:
+
+```json
+{ "url": "https://api.coinbase.com/v2/prices/BTC-USD/spot",
+  "parsePath": "$.data.amount" }
+```
+
+`200` — Primus signed a reading of that exact URL, and this repo's encoder (the
+mirror of `zk/primus.rs`) recovered Primus' global attestor from it:
+
+```json
+{ "ok": true,
+  "attestedValue": "77218.215",
+  "decimals": 3,
+  "attestorAddress": "0xDB736B13E2f522dBE18B2015d0291E4b193D8eF6",
+  "elapsedMs": 12242,
+  "attestedAt": 1787391155321,
+  "digest": "0xc9abd4f9...",
+  "quotaRemaining": 19 }
+```
+
+`attestorAddress` is reported so the caller can confirm it is the address the
+market must be registered to. `decimals` is what the reading actually carried,
+which is what decides whether the chosen `value_scale` has headroom.
+
+`200` with `ok: false` — the rule cannot be attested. A **reason**, not a stack
+trace; it names the stage that failed:
+
+| `reason` | What failed | Quota |
+| --- | --- | --- |
+| `fetch` | the endpoint did not answer with usable JSON — dead host, non-2xx, auth it does not have | 0 |
+| `response` | the response arrived but that path does not name one value in it | 0 |
+| `proxy` | the attested TLS session itself failed: handshake, cipher, response size, the algorithm websocket, the two-minute timeout | 1 |
+| `quota` | Primus refused the request: credentials, or the balance is spent | 1 |
+| `attestor` | the signature does not recover to Primus' global attestor, so a market would reject it with `ZkAttestorMismatch` | 1 |
+
+Other statuses: `400 bad_request` (missing `url`/`parsePath`, a non-https URL,
+a path that is not the single-value subset, a URL over the program's 512-byte
+digest cap), `401 unauthorized`, `429 rate_limited` with `retryAfterMs`.
+
+`GET /health` reports the attestor, the remaining window budget, and whether a
+token is required. It costs nothing.
+
+### What a preview costs
+
+**One unit of Primus quota per attestation attempt** — the same unit a real
+resolution spends, because it is the same call. Success and a `proxy`/`quota`/
+`attestor` failure all cost that one unit; there is no half-price attempt.
+
+Nothing else costs anything. A free plain fetch runs **first**, and a rule that
+fails it (`fetch` or `response`) never reaches Primus — which is most bad
+rules. `400` and `429` cost nothing either.
+
+### Guards
+
+Every preview spends real balance, so the endpoint is defended rather than
+merely documented:
+
+- **Loopback by default.** Binds `127.0.0.1` unless `RESOLVER_BIND` says
+  otherwise. Binding a routable address **without** `RESOLVER_API_TOKEN` is
+  refused at startup, not warned about.
+- **A shared token.** With `RESOLVER_API_TOKEN` set, every request needs
+  `Authorization: Bearer <token>` (or `X-Resolver-Token`), compared in constant
+  time, checked *before* the body is read.
+- **A budget**, global to the process rather than per client, because the quota
+  is global too: at most one attestation in flight, one per
+  `RESOLVER_PREVIEW_MIN_INTERVAL_MS` (default 15 s), and at most
+  `RESOLVER_PREVIEW_WINDOW_MAX` (default 20) per
+  `RESOLVER_PREVIEW_WINDOW_MS` (default 24 h). The window is persisted to
+  `.state/preview-quota.json`, so restarting the service does not hand a caller
+  a fresh allowance.
+
+```sh
+RESOLVER_API_TOKEN=... RESOLVER_PREVIEW_WINDOW_MAX=10 \
+  node src/index.mjs --serve --port 8787
+```
+
+The demo's Forge calls this at `VITE_RESOLVER_URL`. It is an accelerator: with
+the URL unset the manual path is untouched, and a rule that was never proven
+can still be committed — loudly labelled as unproven.
+
+### Proving the endpoint itself
+
+`npm test` covers the route with a **stubbed** attestation source, deliberately:
+a suite that attested for real would drain the balance on every run. The real
+proof is one manual call.
+
+```sh
+node src/index.mjs --serve --port 8787 &
+curl -s -X POST http://127.0.0.1:8787/attest-preview \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://api.coinbase.com/v2/prices/BTC-USD/spot","parsePath":"$.data.amount"}'
+```
+
+---
+
 ## T\* voiding
 
 `--void` is the second thing this service does, and it is a different job from
@@ -307,7 +425,7 @@ somebody their redemption.
 ### Proving it
 
 ```sh
-npm test                              # 69 tests, of which 40 are the void path
+npm test                              # 84 tests, of which 40 are the void path
 node scripts/void-dry-run-devnet.mjs  # devnet, own throwaway market, no publish
 ```
 
@@ -510,6 +628,11 @@ Primus call itself.
 --source <name>    "primus" (default) or "fixture"
 --only <market>    restrict to one market pubkey
 --env-file <path>  load secrets from a dotenv file
+
+--serve            HTTP mode: POST /attest-preview proves a rule with a real
+                   Primus attestation before a market commits its hash
+--port <n>         --serve port (default 8787, or RESOLVER_PORT)
+--host <addr>      --serve bind address (default 127.0.0.1, or RESOLVER_BIND)
 
 --void             compute the T* entitlement tree and print it (see below)
 --t-star <v>       T*: unix seconds, or "auto"

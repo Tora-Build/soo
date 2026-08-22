@@ -29,6 +29,7 @@ import {
 import { hex, selfTestEncoding } from "./evm.mjs";
 import { loadRegistry, verifyRule } from "./registry.mjs";
 import { ACTION, decideAction, outcomeName } from "./resolve.mjs";
+import { startPreviewServer } from "./serve.mjs";
 import { fixtureSource } from "./sources/fixture.mjs";
 import { PADO_ATTESTOR, primusPreflight, primusSource } from "./sources/primus.mjs";
 import { Journal } from "./state.mjs";
@@ -48,6 +49,11 @@ export function parseArgs(argv) {
     watch: false,
     plan: false,
     review: false,
+    // The proof endpoint (`src/serve.mjs`): an HTTP surface that answers
+    // whether Primus can attest a rule, BEFORE a market commits its hash.
+    serve: false,
+    port: null,
+    host: null,
     source: "primus",
     envFile: null,
     only: null,
@@ -67,6 +73,11 @@ export function parseArgs(argv) {
     else if (a === "--watch") args.watch = true;
     else if (a === "--plan" || a === "--dry-run") args.plan = true;
     else if (a === "--review") args.review = true;
+    else if (a === "--serve") args.serve = true;
+    else if (a === "--port") args.port = Number(argv[++i]);
+    else if (a.startsWith("--port=")) args.port = Number(a.slice(7));
+    else if (a === "--host") args.host = argv[++i];
+    else if (a.startsWith("--host=")) args.host = a.slice(7);
     else if (a === "--source") args.source = argv[++i];
     else if (a.startsWith("--source=")) args.source = a.slice(9);
     else if (a === "--env-file") args.envFile = argv[++i];
@@ -84,7 +95,7 @@ export function parseArgs(argv) {
     else if (a === "--help" || a === "-h") args.help = true;
     else throw new Error(`unknown argument ${a}`);
   }
-  if (!args.once && !args.watch && !args.review && !args.void) args.once = true;
+  if (!args.once && !args.watch && !args.review && !args.void && !args.serve) args.once = true;
   return args;
 }
 
@@ -95,6 +106,10 @@ zk-resolver — submits attest_outcome_zk for zkTLS-adjudicated sooth_core marke
   --watch            loop forever, RESOLVER_INTERVAL_MS between passes
   --plan             read chain state and report what would happen; submits nothing
   --review           ask Gemini to review each registry rule (advisory, never resolves)
+  --serve            HTTP mode: POST /attest-preview proves a rule with a real
+                     Primus attestation before a market commits its hash
+  --port <n>         --serve port (default 8787, or RESOLVER_PORT)
+  --host <addr>      --serve bind address (default 127.0.0.1, or RESOLVER_BIND)
   --source <name>    "primus" (default) or "fixture"
   --only <market>    restrict to one market pubkey
   --env-file <path>  load secrets from a dotenv file
@@ -113,6 +128,9 @@ Environment:
   PRIMUS_APP_ID          required for --source primus
   PRIMUS_APP_SECRET      required for --source primus
   GEMINI_API_KEY         optional, --review only
+  RESOLVER_API_TOKEN     --serve: shared bearer token; required off loopback
+  RESOLVER_PREVIEW_MIN_INTERVAL_MS  --serve: gap between previews (default 15000)
+  RESOLVER_PREVIEW_WINDOW_MAX       --serve: previews per window (default 20)
   RESOLVER_INTERVAL_MS   watch-mode interval (default 300000)
   RESOLVER_REGISTRY      path to markets.json
   RESOLVER_STATE_PATH    path to the journal
@@ -315,6 +333,15 @@ async function main() {
 
   if (args.review) {
     return runReview({ config, registry });
+  }
+
+  // The proof endpoint needs Primus and nothing else — no key, no RPC, no
+  // registry — because the rule it proves does not have a market yet. It runs
+  // before the chain connection for exactly that reason.
+  if (args.serve) {
+    await startPreviewServer({ config, env, args, log, warn });
+    // Resolves only when the process is signalled; `listen` holds it open.
+    return await new Promise(() => {});
   }
 
   // `--plan` reads chain state with no key, so an operator can inspect what

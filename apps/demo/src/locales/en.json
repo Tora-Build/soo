@@ -328,6 +328,34 @@
         "path": "The JSON path must start with $ — for example $.data.amount.",
         "threshold": "Automatic resolution needs a threshold to compare against.",
         "thresholdPrecision": "The threshold carries more decimals than the registered scale."
+      },
+      "assist": {
+        "draftButton": "Draft with AI",
+        "proveButton": "Prove with Primus",
+        "proving": "Attesting...",
+        "needQuestion": "Write the question first — the draft is derived from it.",
+        "noDrafter": "Drafting is unavailable: VITE_AI_DRAFTER_URL is not set. Fill the source in by hand below.",
+        "noResolver": "Proving is unavailable: VITE_RESOLVER_URL is not set, so this rule cannot be tested against Primus before it is committed.",
+        "draftFailed": "The drafting service did not answer ({{error}}). Fill the source in by hand below.",
+        "candidatesHint": "Pick one to fill the fields in. Nothing is committed until you launch.",
+        "reads": "reads {{reading}} now",
+        "provenLabel": "Proven — Primus attested this source",
+        "attestor": "signed by {{address}} — Primus' global attestor, the one this market registers",
+        "provenDetail": "{{decimals}} decimals, attested in {{seconds}}s. This exact URL and path can be resolved automatically.",
+        "proveFailed": "Could not reach the proving service ({{error}}). The rule stays unproven.",
+        "reasons": {
+          "fetch": "Not proven: the endpoint did not answer with usable JSON, so Primus was never asked.",
+          "response": "Not proven: the endpoint answered, but that path does not name a single value in it.",
+          "proxy": "Not proven: Primus could not complete an attested TLS session with this endpoint — auth, response size, cipher or proxy behaviour.",
+          "quota": "Not proven: Primus refused the request — credentials, or the attestation quota is spent.",
+          "attestor": "Not proven: the signature did not come from Primus' global attestor, so the chain would reject it.",
+          "rate_limited": "Not proven yet: proving is rate-limited because each attempt spends Primus quota. Try again shortly.",
+          "bad_request": "Not proven: the proving service rejected this URL or path.",
+          "unauthorized": "Not proven: the proving service needs a token this app was not given.",
+          "unknown": "Not proven: the attestation failed."
+        },
+        "unprovenWarning": "This rule is UNPROVEN. The market stores a hash of this exact URL and path forever, and nothing has confirmed that Primus can actually attest it — an endpoint can fetch perfectly here and still be unattestable. If it is, the market will never resolve automatically and only a dispute can close it.",
+        "unprovenAtLaunch": "Launching with an UNPROVEN rule — this market may never auto-resolve."
       }
     }
   },

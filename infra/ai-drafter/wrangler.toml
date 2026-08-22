@@ -1,0 +1,14 @@
+name = "soo-ai-drafter"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+# GEMINI_API_KEY is a SECRET and lives nowhere in this file or in the bundle:
+#   wrangler secret put GEMINI_API_KEY
+#
+# Everything below is non-sensitive tuning, safe to read from the deployed code.
+[vars]
+GEMINI_MODEL = "gemini-2.5-flash"
+# Per-IP budget for POST /draft. Each draft costs one Gemini call per attempt,
+# so this is the ceiling on what a stranger can spend of the key.
+RATE_LIMIT_MAX = "12"
+RATE_LIMIT_WINDOW_SECONDS = "600"
