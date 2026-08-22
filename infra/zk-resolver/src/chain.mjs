@@ -16,7 +16,7 @@ const {
   TransactionInstruction,
 } = web3;
 const anchor = await loadAnchor();
-const { AnchorProvider, Program } = anchor;
+const { AnchorProvider, BN, Program, utils: anchorUtils } = anchor;
 
 export const sdk = await loadSdk();
 
@@ -188,6 +188,156 @@ export class Chain {
     };
   }
 
+  /**
+   * The raw `Market` account, plus the PDAs the T\* voiding path derives from
+   * it. `market_id` is the seed every sibling account hangs off, so it is read
+   * once here rather than re-derived at each call site.
+   */
+  async readMarketAccount(marketPk) {
+    const market = await this.#program.account.market.fetch(marketPk);
+    const programs = { soothCore: this.programId };
+    const marketId = Uint8Array.from(market.marketId ?? market.market_id);
+    return {
+      market,
+      marketId,
+      ammState: sdk.pdas.deriveAmmStatePda(marketId, programs)[0],
+      protocolConfig: sdk.pdas.deriveProtocolConfigPda(programs)[0],
+      resolutionCommitment: sdk.pdas.deriveResolutionCommitmentPda(marketPk, programs)[0],
+      book: sdk.bookPda(marketId, programs)[0],
+      vaultAmm: new PublicKey(market.vaultAmm ?? market.vault_amm),
+      vaultBook: new PublicKey(market.vaultBook ?? market.vault_book),
+      startTime: Number((market.startTime ?? market.start_time).toString()),
+      deadline: Number(market.deadline.toString()),
+      lifecycle: lifecycleName(market.lifecycle),
+    };
+  }
+
+  /**
+   * Every `Position` on this market.
+   *
+   * This is the authoritative set of wallets that must be able to redeem: once
+   * a commitment exists, `redeem_amm_position` REFUSES a `None` claim, so a
+   * position with no leaf in the tree cannot redeem at all. The tape says what
+   * a wallet is owed; this says who must appear.
+   *
+   * Filtered on `Position.market`, which sits at offset 8 (discriminator) + 32
+   * (user) = 40.
+   */
+  async readPositions(marketPk, { marketId, wallets = [] } = {}) {
+    try {
+      const all = await this.#program.account.position.all([
+        { memcmp: { offset: 40, bytes: marketPk.toBase58() } },
+      ]);
+      return { positions: all, source: "getProgramAccounts" };
+    } catch (err) {
+      // `getProgramAccounts` is gated on plenty of hosted endpoints, and a
+      // resolver that only works on an unmetered RPC is not a resolver. The
+      // fallback derives one PDA per wallet the tape mentions and fetches
+      // those directly — which is the same set on an honest, complete tape,
+      // and a STRICT SUBSET when the tape is short. That difference matters,
+      // so the caller is told which source it got.
+      if (!marketId) throw err;
+      const programs = { soothCore: this.programId };
+      const keys = wallets.map(
+        (w) => sdk.pdas.derivePositionPda(marketId, new PublicKey(w), programs)[0],
+      );
+      const positions = [];
+      for (let i = 0; i < keys.length; i += 100) {
+        const chunk = keys.slice(i, i + 100);
+        const infos = await this.connection.getMultipleAccountsInfo(chunk, "confirmed");
+        infos.forEach((info, j) => {
+          if (!info || info.data.length === 0) return;
+          positions.push({
+            publicKey: chunk[j],
+            account: this.#program.coder.accounts.decode("position", info.data),
+          });
+        });
+      }
+      return { positions, source: "tape-derived", reason: String(err?.message ?? err) };
+    }
+  }
+
+  /**
+   * The book's seats, or `null` when the market never graduated.
+   *
+   * Decoded with the SDK's own `decodeBook` so the resolver and the demo read
+   * the same arena the same way.
+   */
+  async readBookSeats(bookPk) {
+    const info = await this.connection.getAccountInfo(bookPk, "confirmed");
+    if (!info || info.data.length === 0) return null;
+    return sdk.decodeBook(info.data).seats;
+  }
+
+  /**
+   * How much of the veto window is left, from the state that decides it.
+   *
+   * `publish_resolution_commitment` is accepted only while
+   * `now < attested_at + veto_period_secs`, measured from the ATTESTATION so a
+   * late publisher gets the scrutiny that is left rather than a fresh window.
+   * Read before building a transaction, so a closed window is reported as what
+   * it is instead of arriving as a rejected signature.
+   */
+  async readVetoWindow(marketPk, protocolConfigPk) {
+    const [entry, config] = await Promise.all([
+      this.#program.account.adjudicatorEntry.fetch(this.adjudicatorPda(marketPk)),
+      this.#program.account.protocolConfig.fetch(protocolConfigPk),
+    ]);
+    const attestedAt = entry.attestedAt ?? entry.attested_at;
+    const vetoPeriodSecs = Number(
+      (config.vetoPeriodSecs ?? config.veto_period_secs).toString(),
+    );
+    if (attestedAt == null) {
+      return { attested: false, vetoPeriodSecs, closesAt: null, secondsLeft: null };
+    }
+    const closesAt = Number(attestedAt.toString()) + vetoPeriodSecs;
+    return {
+      attested: true,
+      attestedAt: Number(attestedAt.toString()),
+      vetoPeriodSecs,
+      closesAt,
+      secondsLeft: closesAt - (await this.now()),
+    };
+  }
+
+  /** The published commitment, or `null` — absence is the honest default. */
+  async readResolutionCommitment(pda) {
+    return this.#program.account.resolutionCommitment.fetch(pda).catch(() => null);
+  }
+
+  /**
+   * `publish_resolution_commitment`, signed by the adjudicator authority.
+   *
+   * Callable only while the market is `Locked`, attested, and inside the veto
+   * window — the program checks all three, and so does `--void` before it gets
+   * here, so a refusal at this point is a race rather than a mistake.
+   */
+  async publishResolutionCommitment(marketPk, accounts, args, { extraPreIxs = [] } = {}) {
+    const tx = await this.#program.methods
+      .publishResolutionCommitment({
+        merkleRoot: Array.from(args.merkleRoot),
+        tStar: new BN(args.tStar.toString()),
+        leafCount: args.leafCount,
+        totalVoidRefundUsdc: new BN(args.totalVoidRefundUsdc.toString()),
+        totalBookVoidRefundUsdc: new BN(args.totalBookVoidRefundUsdc.toString()),
+      })
+      .accounts({
+        resolutionCommitment: accounts.resolutionCommitment,
+        market: marketPk,
+        adjudicatorEntry: accounts.adjudicatorEntry,
+        protocolConfig: accounts.protocolConfig,
+        ammState: accounts.ammState,
+        vaultAmm: accounts.vaultAmm,
+        book: accounts.book,
+        vaultBook: accounts.vaultBook,
+        authority: this.payer.publicKey,
+        systemProgram: web3.SystemProgram.programId,
+      })
+      .preInstructions([heapFrameIx(), ...extraPreIxs])
+      .transaction();
+    return this.sendAndConfirm(tx, [this.payer]);
+  }
+
   /** Chain time, which is what every deadline is compared against. */
   async now() {
     const slot = await this.connection.getSlot("confirmed");
@@ -325,11 +475,45 @@ export function anchorErrorCode(err) {
   return null;
 }
 
+/**
+ * `ResolutionError` (`error_resolution.rs`), by code.
+ *
+ * A second `#[error_code(offset = 1000)]` enum that the generated IDL does not
+ * carry, so `PROGRAM_ERRORS` above has no entry for any of it and a T\* voiding
+ * failure would otherwise print as "1017 (unrecognised)" — which is exactly the
+ * moment an operator most needs the name. Append-only, like the enum.
+ */
+export const RESOLUTION_ERRORS = Object.fromEntries(
+  [
+    "InvalidTStar",
+    "EmptyCommitment",
+    "ZeroMerkleRoot",
+    "CommitmentAlreadyPublished",
+    "VoidedClaimRequired",
+    "UnexpectedVoidedClaim",
+    "CommitmentMarketMismatch",
+    "InvalidMerkleProof",
+    "MerkleProofTooLong",
+    "EntitlementExceedsPosition",
+    "VoidRefundExceedsCost",
+    "VoidRefundExceedsPublishedTotal",
+    "CommitmentOwnerMismatch",
+    "AbandonmentTimeoutNotElapsed",
+    "EntitlementExceedsSeat",
+    "BookVoidRefundExceedsVoidedValue",
+    "BookVoidRefundExceedsPublishedTotal",
+    "CommitmentExceedsVault",
+  ].map((name, i) => [1000 + i, name]),
+);
+
 export function describeError(err) {
   const code = anchorErrorCode(err);
   if (code == null) return String(err?.message ?? err);
-  return `${code} (${PROGRAM_ERRORS[code] ?? "unrecognised"})`;
+  return `${code} (${PROGRAM_ERRORS[code] ?? RESOLUTION_ERRORS[code] ?? "unrecognised"})`;
 }
+
+/** base58 -> bytes, the encoding web3.js hands inner-instruction data back in. */
+export const bs58Decode = (s) => Buffer.from(anchorUtils.bytes.bs58.decode(s));
 
 export function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));

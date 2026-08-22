@@ -18,7 +18,7 @@
 //
 // No emojis in output (project rule).
 
-import { Chain, describeError, sdk, sleep } from "./chain.mjs";
+import { Chain, bs58Decode, describeError, sdk, sleep } from "./chain.mjs";
 import { loadEnv, parseKeypair, resolveConfig } from "./config.mjs";
 import {
   COMPARATOR_NAMES,
@@ -32,6 +32,7 @@ import { ACTION, decideAction, outcomeName } from "./resolve.mjs";
 import { fixtureSource } from "./sources/fixture.mjs";
 import { PADO_ATTESTOR, primusPreflight, primusSource } from "./sources/primus.mjs";
 import { Journal } from "./state.mjs";
+import { runVoid } from "./void/run.mjs";
 
 // ── Output ─────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,15 @@ export function parseArgs(argv) {
     source: "primus",
     envFile: null,
     only: null,
+    // T* voiding (docs/design/t-star-voiding.md). `--void` computes the
+    // entitlement tree; it PRINTS unless `--publish` is also given, because a
+    // commitment is only disputable while the veto window is open and a human
+    // should have seen the table before it lands.
+    void: false,
+    tStar: null,
+    publish: false,
+    out: null,
+    maxSignatures: 20_000,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -61,12 +71,20 @@ export function parseArgs(argv) {
     else if (a.startsWith("--source=")) args.source = a.slice(9);
     else if (a === "--env-file") args.envFile = argv[++i];
     else if (a.startsWith("--env-file=")) args.envFile = a.slice(11);
+    else if (a === "--void") args.void = true;
+    else if (a === "--publish") args.publish = true;
+    else if (a === "--t-star") args.tStar = argv[++i];
+    else if (a.startsWith("--t-star=")) args.tStar = a.slice(9);
+    else if (a === "--out") args.out = argv[++i];
+    else if (a.startsWith("--out=")) args.out = a.slice(6);
+    else if (a === "--max-signatures") args.maxSignatures = Number(argv[++i]);
+    else if (a.startsWith("--max-signatures=")) args.maxSignatures = Number(a.slice(17));
     else if (a === "--only") args.only = argv[++i];
     else if (a.startsWith("--only=")) args.only = a.slice(7);
     else if (a === "--help" || a === "-h") args.help = true;
     else throw new Error(`unknown argument ${a}`);
   }
-  if (!args.once && !args.watch && !args.review) args.once = true;
+  if (!args.once && !args.watch && !args.review && !args.void) args.once = true;
   return args;
 }
 
@@ -80,6 +98,14 @@ zk-resolver — submits attest_outcome_zk for zkTLS-adjudicated sooth_core marke
   --source <name>    "primus" (default) or "fixture"
   --only <market>    restrict to one market pubkey
   --env-file <path>  load secrets from a dotenv file
+
+T* voiding (docs/design/t-star-voiding.md):
+  --void             compute the per-wallet entitlement tree and print it
+  --t-star <v>       T*: unix seconds, or "auto" (the zkTLS attestation's own
+                     signed timestamp, read from ZkOutcomeAttested)
+  --publish          also submit publish_resolution_commitment (default: print only)
+  --out <dir>        where the proof JSON is written (default .state/resolutions)
+  --max-signatures   ceiling on the tape walk (default 20000)
 
 Environment:
   SOLANA_RPC_URL         defaults to https://api.devnet.solana.com
@@ -293,7 +319,10 @@ async function main() {
 
   // `--plan` reads chain state with no key, so an operator can inspect what
   // the resolver would do before funding anything.
-  const payer = args.plan && !config.keypairRaw ? null : parseKeypair(config.keypairRaw);
+  // `--plan`, and `--void` without `--publish`, are read-only: an operator
+  // inspects what the resolver would do before funding or authorising anything.
+  const readOnly = (args.plan || (args.void && !args.publish)) && !config.keypairRaw;
+  const payer = readOnly ? null : parseKeypair(config.keypairRaw);
   const chain = await Chain.connect({
     rpcUrl: config.rpcUrl,
     payer,
@@ -309,6 +338,10 @@ async function main() {
     }
   } else {
     log("fee payer: none (--plan, read-only)");
+  }
+
+  if (args.void) {
+    return runVoid({ chain, registry, args, log, warn, errorOut, bs58Decode, sdk });
   }
 
   const source = buildSource({ args, config });

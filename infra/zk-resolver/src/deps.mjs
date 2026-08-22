@@ -114,11 +114,13 @@ export async function loadSdk() {
     );
   }
   const at = (rel) => import(fileUrl(resolve(SDK_DIST, rel)));
-  const [zk, adapter, pdas, idl] = await Promise.all([
+  const [zk, adapter, pdas, idl, bookEvents, book] = await Promise.all([
     at("zk.js"),
     at("adapter.js"),
     at("pdas.js"),
     at("anchor/index.js"),
+    at("book/events.js"),
+    at("book/index.js"),
   ]);
   return {
     computeRuleHash: zk.computeRuleHash,
@@ -129,5 +131,12 @@ export async function loadSdk() {
     SolanaChainAdapter: adapter.SolanaChainAdapter,
     pdas,
     soothCoreIdl: idl.soothCoreIdl,
+    // T* voiding reads the book too: fills ride `emit_cpi!` inner
+    // instructions rather than logs, and the seat ledger the entitlement is
+    // clamped against lives in the zero-copy arena. Both decoders are the
+    // SDK's, so the resolver cannot drift from what the demo reads.
+    decodeBookEventsFromInner: bookEvents.decodeBookEventsFromInner,
+    decodeBook: book.decodeBook,
+    bookPda: book.bookPda,
   };
 }

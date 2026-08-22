@@ -1,9 +1,12 @@
 # zk-resolver
 
-Resolution service for zkTLS-adjudicated `sooth_core` markets. It watches
-markets whose deadline has passed, obtains a Primus zkTLS attestation of the
-committed data source, and submits `attest_outcome_zk` to the deployed program
-on devnet (`EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw`).
+Resolution service for `sooth_core` markets on devnet
+(`EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw`). Two jobs:
+
+1. **Attest.** Watch markets whose deadline has passed, obtain a Primus zkTLS
+   attestation of the committed data source, and submit `attest_outcome_zk`.
+2. **Void.** Compute the per-wallet T\* entitlement tree from the market's own
+   event tape and publish a commitment to it (`--void`, see below).
 
 It does **not** settle. `attest_outcome_zk` records an outcome and opens the
 veto window; `settle` finalizes afterwards. That separation is the safety net
@@ -160,16 +163,160 @@ infra/zk-resolver/
     sources/
       primus.mjs            real Primus attestations
       fixture.mjs           locally-signed attestations, for the dry run
+    void/
+      merkle.mjs            leaf encoding + tree, written against the program
+      entitlements.mjs      the FIFO accounting — pure, unit-tested
+      tape.mjs              event replay: AMM logs + book emit_cpi inner ixs
+      commitment.mjs        tape -> clamps -> tree -> ceilings -> artifact
+      run.mjs               the `--void` pass
   scripts/
     dry-run-devnet.mjs      full loop against devnet, no Primus needed
+    void-dry-run-devnet.mjs T* voiding end to end on devnet, on its own market
   test/
     rule.test.mjs           rule-hash verification, parsePath, fixed point
     idempotency.test.mjs    the decision procedure and the journal
+    void-merkle.test.mjs    leaf preimages and tree shape, pinned byte for byte
+    void-entitlements.test.mjs  the accounting convention
+    void-commitment.test.mjs    clamps, leaf-per-account, per-venue ceilings
 ```
 
 `@sooth/sdk-solana` is not published, so the resolver reads it from the
 monorepo's built `dist/`. **Run this service from a checkout of the repo with
 the SDK built.**
+
+---
+
+## T\* voiding
+
+`--void` is the second thing this service does, and it is a different job from
+attestation: it computes the per-wallet **entitlement tree** for a market whose
+event became public at some T\* strictly before the lock, and publishes a
+32-byte commitment to it. The mechanism, the trust model and the on-chain half
+are in `docs/design/t-star-voiding.md`; this is the operator's half.
+
+```sh
+# Print the table and the root. Submits nothing, needs no key.
+node src/index.mjs --void --only <market> --t-star auto
+
+# The same computation, then publish_resolution_commitment.
+node src/index.mjs --void --only <market> --t-star auto --publish
+```
+
+### Where T\* comes from
+
+- **zkTLS markets** — `--t-star auto` reads the Primus attestation's own signed
+  timestamp out of the `ZkOutcomeAttested` log (`attestation_ts`, normalized to
+  unix seconds). `attest_outcome_zk` does not PERSIST it — `AdjudicatorEntry`
+  has one reserved byte left — but it emits it, so the value is public and a
+  disputer checks it the same way this reads it. It is when the attestor
+  LOOKED, not when the event happened, so it is an upper bound on the true T\*
+  and errs toward voiding less.
+- **Manual markets** — `--t-star <unix seconds>`, the operator's stated
+  judgement, evidenced off-chain and disputable like everything else. The
+  program only enforces `start_time < t_star <= min(attested_at, deadline)`.
+
+### The accounting convention
+
+Stamped into every artifact as `sooth-tstar/fifo-v1`, because a tree is only
+checkable if the function that produced it is stated:
+
+- Every acquisition is a **lot** carrying `{shares, cost, ts}`.
+- **Sells retire the earliest lots first (FIFO)**, in acquisition order,
+  regardless of when the sell happened. A post-T\* sale does **not** return
+  shares to the pre-T\* pool: a wallet that bought pre-T\*, bought again
+  post-T\*, then sold, is left holding its POST-T\* lots. The alternative
+  hands the informed trader a free unwind — buy after T\*, sell after T\*,
+  keep the pre-T\* settlement and the proceeds.
+- Of the lots still held: `ts <= T*` settles normally; `ts > T*` is voided, pays
+  nothing, and its **cost** comes back instead.
+- Partial sells shrink a lot's shares and cost pro rata, floored.
+- The book is the same rule on its single signed axis: a fill closes existing
+  opposite exposure before it opens anything, and only the opening part carries
+  basis (`split_delta`, mirrored).
+
+Every entitlement is then **clamped** against the account the program will check
+it against — `valid_* <= held`, `refund <= locked_cost_usdc`, and on the book
+same-side-and-no-larger with the refund capped at the voided shares' face value.
+A leaf that violates any of those verifies against the root and then fails to
+pay, so the clamp happens here; where it bites, the run says so, because the
+only honest reason is a tape that did not reach far enough.
+
+### The proof artifact
+
+One JSON per market, at `.state/resolutions/<market>.json` (override with
+`--out`). This is the proof distribution: a wallet **cannot redeem a voided
+position without it**, because a live commitment makes the claim argument
+mandatory.
+
+```json
+{
+  "version": 1,
+  "market": "...", "programId": "...", "convention": "sooth-tstar/fifo-v1",
+  "tStar": 1787385553, "tStarSource": "operator",
+  "merkleRoot": "0x5512...", "leafCount": 1,
+  "totalVoidRefundUsdc": "3174765", "totalBookVoidRefundUsdc": "0",
+  "anomalies": [],
+  "leaves": [ { "index": 0, "venue": "amm", "wallet": "...",
+                "validYesWad": "...", "validNoWad": "...",
+                "voidRefundUsdc": "...", "leaf": "0x...", "proof": ["0x..."] } ],
+  "byWallet": { "<wallet>": { "amm": { ... }, "book": { ... } } }
+}
+```
+
+`byWallet` is the index a UI uses: one lookup by address yields exactly the
+argument `redeem_amm_position` / `redeem_book_seat` take. `leaves` keeps the
+ORDERED list beside it, because the tree's shape depends on that order — AMM
+leaves first, then book leaves, each sorted by raw pubkey bytes ascending — and
+a third party reproducing the root needs it.
+
+A run whose tree does not match the root already on chain writes
+`<market>.mismatch.json` and leaves the live file alone. Overwriting would
+replace every live proof with proofs against a root nobody published.
+
+### Publishing, and the veto window
+
+`publish_resolution_commitment` is accepted only while
+`now < attested_at + veto_period_secs`, and it is **one-shot**: the PDA is
+created with `init`, so a second call fails and only the dispute authority's
+`revoke_resolution_commitment` clears the way. That is why `--void` prints by
+default and publishes only when asked.
+
+**On this devnet deployment `veto_period_secs` is 2.** A window that short is
+shorter than a confirmation round trip, so a resolver that attests and then
+starts replaying the tape has already missed it. Two consequences:
+
+- compute the tree **before** the lock — trading stops there, so the tape is
+  final and nothing is lost by being early;
+- attest and publish in **one transaction**. `publish_resolution_commitment`
+  reads `attested_at` from an account the instruction before it just wrote, and
+  the window it checks is genuinely open at that instant.
+  `scripts/void-dry-run-devnet.mjs --publish` does exactly this.
+
+`--void --publish` checks the window before building anything and reports the
+remaining seconds, so a closed window is a message rather than a rejected
+signature.
+
+The other refusal worth knowing: publication is gated on the vaults covering
+what it promises, **per venue**, and the bound is deliberately conservative — a
+voided share is counted twice, once at face in the outstanding ledger and again
+inside the refund ceiling. A thin market can therefore be refused
+(`1017 CommitmentExceedsVault`) for a tree it could in fact afford. Refusing an
+honest-but-large commitment costs the voiding; accepting an insolvent one costs
+somebody their redemption.
+
+### Proving it
+
+```sh
+npm test                              # 69 tests, of which 40 are the void path
+node scripts/void-dry-run-devnet.mjs  # devnet, own throwaway market, no publish
+```
+
+The tree this service builds is checked against the Rust verifier by
+`packages/sdk-solana/tests/t-star-voiding-resolver.test.ts`, which imports
+`src/void/merkle.mjs` and `src/void/entitlements.mjs` and hands their output to
+the real `publish_resolution_commitment` / `redeem_amm_position` on LiteSVM. An
+encoding mismatch is the single most likely way to build a worthless tree, and
+that round trip is what rules it out.
 
 ---
 
@@ -340,6 +487,10 @@ node src/index.mjs --once --plan
 # Full loop against devnet with a locally-signed attestation instead of
 # Primus. Creates its own throwaway markets; touches none of yours.
 SOLANA_RPC_URL='<devnet rpc>' node scripts/dry-run-devnet.mjs
+
+# T* voiding end to end on devnet: its own market, traded on both sides of a
+# T* it chooses, replayed off the cluster. Publishes nothing without --publish.
+node scripts/void-dry-run-devnet.mjs
 ```
 
 The dry run is the end-to-end proof: it exercises deadline detection,
@@ -359,6 +510,12 @@ Primus call itself.
 --source <name>    "primus" (default) or "fixture"
 --only <market>    restrict to one market pubkey
 --env-file <path>  load secrets from a dotenv file
+
+--void             compute the T* entitlement tree and print it (see below)
+--t-star <v>       T*: unix seconds, or "auto"
+--publish          also submit publish_resolution_commitment
+--out <dir>        where the proof JSON lands (default .state/resolutions)
+--max-signatures   ceiling on the tape walk (default 20000)
 ```
 
 Exit code is non-zero when any market was **refused** (a configuration error

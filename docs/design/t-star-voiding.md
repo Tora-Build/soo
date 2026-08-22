@@ -1,7 +1,8 @@
 # T\* voiding — refunding trades made after the event already happened
 
-Status: implemented on the `sooth_core` program side for BOTH venues (AMM
-positions and book seats); SDK resolver outstanding.
+Status: implemented end to end — the `sooth_core` program side for BOTH venues
+(AMM positions and book seats), and the resolver that computes the tree
+(`infra/zk-resolver`, `--void`).
 
 ## The problem
 
@@ -33,11 +34,21 @@ each trade would have to append to a growing per-wallet list.
 The chain does not need to store the per-trade record, because **it already
 emits one**. Every AMM buy and sell emits `PositionTraded` / `PositionSold` with
 `user`, `outcome`, signed `delta_shares`, `cost_wad` and `ts`; every book match
-emits `OrdersFilled` with `taker`, and per fill the `maker`, `yes_tick`,
-`amount` and `ts`. The SDK already replays exactly this tape —
-`readMarketTrades` / `readMarketPlays` in `packages/sdk-solana/src/adapter.ts`
-walk `getSignaturesForAddress` for the market and decode the events — so the
-"who traded what, when" table is public, reproducible, and needs no indexer.
+emits `BookFilled` with `taker` and `taker_side`, and per fill the `maker`,
+`price_tick` and `amount`. Walking `getSignaturesForAddress` for the market and
+decoding those events is the whole of it — the "who traded what, when" table is
+public, reproducible, and needs no indexer. `readMarketTrades` /
+`readMarketPlays` in `packages/sdk-solana/src/adapter.ts` already do that walk
+for the price chart and the leaderboard.
+
+The resolver runs its OWN walk rather than reusing `readMarketPlays`, and the
+reason is small but decisive: that reader normalizes a play down to a wallet, a
+size and a cost, dropping the `outcome` and the SIGN of `delta_shares` because
+a leaderboard does not care which side of a market a wallet was on or whether
+it was opening or closing. An entitlement is exactly those two facts. The
+resolver also recovers a sell's moment from `PositionSold.unlock_at -
+LOCK_DURATION_SECS` — the event carries no `ts` of its own, and that derivation
+is the same one `LockEntry::sold_at()` performs, written at one site.
 
 So the split is: **the resolver computes, the chain verifies a commitment to the
 computation, and the existing veto window is the enforcement.** Any observer can
@@ -222,10 +233,51 @@ terminates; the voided shares' backing simply stays in the vault as residual.
 **What an honest resolver publishes**: T\*, the root, the leaf count, the total
 void refund — on-chain — plus, off-chain, the full leaf table (wallet →
 `valid_yes`, `valid_no`, `void_refund`) and the proofs. The leaf table is a pure
-function of public data: the event tape from `readMarketPlays`, T\*, and a
-stated accounting convention (FIFO over acquisitions, sells retiring the
-earliest lots first). Publish the convention with the tree and the whole thing
-is reproducible byte-for-byte.
+function of public data: the event tape, T\*, and the accounting convention
+below. Publish the convention with the tree and the whole thing is reproducible
+byte-for-byte — and the resolver does, stamping `sooth-tstar/fifo-v1` into
+every artifact.
+
+### The convention, stated exactly
+
+Implemented in `infra/zk-resolver/src/void/entitlements.mjs` and pinned by its
+tests. The first draft of this document said "FIFO over acquisitions, sells
+retiring the earliest lots first" and left one thing open — whether a sale
+after T\* returns shares to the pre-T\* pool. It does not. The rule in full:
+
+- Every acquisition is a **lot** carrying `{shares, cost, ts}`. `ts` is fixed at
+  acquisition and nothing later reclassifies it.
+- A sell **retires the earliest lots first**, in acquisition order, regardless of
+  when the sell happened. So a wallet that bought pre-T\*, bought again
+  post-T\*, and then sold, is left holding its POST-T\* lots — which is the
+  case the ambiguity was about.
+- Of the lots still held: `ts <= T*` settles normally; `ts > T*` is voided, pays
+  nothing, and its **cost** is refunded instead. The boundary is inclusive: a
+  trade stamped exactly at T\* is honest.
+- A partial sell shrinks a lot's shares and cost pro rata, floored, so the
+  surviving basis is never overstated.
+- The book is the same rule on its single signed axis: a fill closes existing
+  opposite exposure before it opens anything (`split_delta`, mirrored) and only
+  the opening part carries basis, priced at the party's own leg cost.
+
+**Why FIFO and not the kinder alternative.** Retiring post-T\* lots first would
+leave the honest pre-T\* holding intact through a post-T\* round trip. It also
+hands the informed trader a free unwind: buy after T\*, sell after T\*, keep
+the pre-T\* settlement AND the proceeds. FIFO cannot be gamed by adding trades,
+which matters more here than being kind to the wallet that traded on both sides
+of the line. It is admittedly harsh on the honest holder who trims a position
+after T\* — they are refunded at cost for shares they had held since before it
+— and that is the price of a rule with no exploitable direction.
+
+**One more clamp, above the convention.** Every computed entitlement is capped
+at the account the program will check it against: `valid_* <= held`,
+`refund <= locked_cost_usdc`, and on the book same-side-and-no-larger with the
+refund capped at the voided shares' face value. This is not defensive
+decoration — `locked_cost_usdc` shrinks on a sell by the PROCEEDS, not the cost
+basis, so a wallet that sold at a profit can carry a basis the field no longer
+covers, and a leaf claiming it would verify against the root and then fail to
+pay. Where a clamp bites, the resolver reports it, because the other reason for
+it to bite is a tape that did not reach far enough.
 
 **What a dishonest resolver cannot do**, because the chain checks it at
 redemption:
@@ -349,10 +401,28 @@ that gives markets a per-market voiding policy flag.
    `has_resolution_commitment` bit there would let both redeem instructions
    skip the `find_program_address` on the ~all markets that never void.
 
-5. **The SDK resolver.** Nothing off-chain builds these trees yet. The leaf
-   tables are a pure function of the event tape (`readMarketPlays`), T\* and a
-   stated accounting convention, and both leaf shapes are pinned byte-for-byte
-   by unit tests against the preimages documented above.
+5. **A veto window shorter than a confirmation.** The devnet deployment's
+   `ProtocolConfig.veto_period_secs` is **2**. Publication is only accepted
+   while `now < attested_at + veto_period_secs`, so a resolver that attests and
+   then starts replaying the tape has already missed the window — and no amount
+   of speed fixes a bound that is shorter than a round trip.
+
+   Two things follow, and neither is a workaround. The tree must be computed
+   BEFORE the lock: trading stops there, so the tape is final from that moment
+   and T\* is known before it. And attestation and publication must ride ONE
+   transaction — `publish_resolution_commitment` reads `attested_at` from an
+   account the instruction before it just wrote, and the window it checks is
+   genuinely open at that instant.
+   `infra/zk-resolver/scripts/void-dry-run-devnet.mjs --publish` does this, and
+   it is how the commitment on devnet market
+   `68MftdwT3drfS1bvHWQGdkTahPcKzj8Cxxi1p6vecGiE` was published.
+
+   The deeper point is that a two-second veto window is not a veto window. It
+   forecloses the scrutiny the whole trust model rests on — nobody replays a
+   tape in two seconds — so on this deployment a published commitment is
+   effectively final on arrival. Raising `veto_period_secs` toward the 24h the
+   design assumes is a configuration change, not a code one, and it is the one
+   thing that makes the accountability real rather than nominal.
 
 ### Closed since the first draft
 
@@ -361,3 +431,26 @@ that gives markets a per-market voiding policy flag.
   leaf section above and `Book::take_settlement_voided`.
 - **An unbounded published total.** Publication is now gated on the vaults
   covering it, per venue, as described in (2).
+
+- **The resolver.** `infra/zk-resolver --void` replays the tape (AMM
+  `PositionTraded` / `PositionSold` from the logs, `BookFilled` from
+  `emit_cpi!` inner instructions), computes the convention above, builds the
+  tree, and publishes. `--plan` behaviour is the default: it prints the table
+  and the root and submits nothing. Proofs are written to
+  `.state/resolutions/<market>.json`, indexed `byWallet`, in exactly the
+  argument shape `redeem_amm_position` and `redeem_book_seat` take.
+
+  Two things about it are worth recording here. A leaf is emitted for every
+  POSITION and every SEAT, not for every wallet in the tape — once a commitment
+  exists the claim argument is mandatory, so a position with no leaf could never
+  redeem, and an all-zero leaf is the floor. And a run whose tree disagrees with
+  the root already on chain refuses to overwrite the live proof file, because
+  that would replace every live proof with proofs against a root nobody
+  published.
+
+  The encoding is proved against the verifier rather than asserted:
+  `packages/sdk-solana/tests/t-star-voiding-resolver.test.ts` imports the
+  resolver's own merkle and entitlement modules and hands their output to the
+  real instructions on LiteSVM. A mismatch between the two leaf composers is the
+  single most likely way to build a worthless tree, and nothing but running them
+  against each other catches it.

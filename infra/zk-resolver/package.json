@@ -15,8 +15,10 @@
     "once": "node src/index.mjs --once",
     "plan": "node src/index.mjs --once --plan",
     "dry-run": "node scripts/dry-run-devnet.mjs",
+    "void": "node src/index.mjs --void",
+    "void-dry-run": "node scripts/void-dry-run-devnet.mjs",
     "test": "node --test test/*.test.mjs",
-    "lint": "node --check src/index.mjs && node --check src/resolve.mjs && node --check src/chain.mjs"
+    "lint": "node --check src/index.mjs && node --check src/resolve.mjs && node --check src/chain.mjs && node --check src/void/merkle.mjs && node --check src/void/entitlements.mjs && node --check src/void/tape.mjs && node --check src/void/commitment.mjs && node --check src/void/run.mjs"
   },
   "dependencies": {
     "@coral-xyz/anchor": "0.30.1",
