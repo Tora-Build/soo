@@ -73,6 +73,9 @@ pub fn handler(ctx: Context<AttestOutcome>, winning_outcome: u8) -> Result<()> {
         SoothCoreError::InvalidOutcome
     );
 
+    // An entry created by the orphaned-market rescue names no authority, and
+    // nobody may attest over the INVALID it wrote.
+    ctx.accounts.adjudicator_entry.require_named_authority()?;
     require_keys_eq!(
         ctx.accounts.authority.key(),
         ctx.accounts.adjudicator_entry.authority,
@@ -155,5 +158,30 @@ mod tests {
         entry.attested_at = Some(2_000);
         entry.forced_invalid = false;
         assert!(assert_attestable(&entry).is_err());
+    }
+
+    #[test]
+    fn an_entry_the_orphan_rescue_created_is_unattestable_by_anyone() {
+        // `assert_attestable` says yes — a forced INVALID is overwritable by
+        // construction — and the AUTHORITY check is what stops it. An orphan
+        // entry names the default pubkey, which no signer can present, and
+        // `require_named_authority` refuses it before any comparison.
+        let mut entry = crate::instructions::settle::orphan_entry(Pubkey::new_unique(), 254);
+        entry.attested_outcome = Some(OUTCOME_INVALID);
+        entry.attested_at = Some(1_000);
+        entry.forced_invalid = true;
+
+        assert!(assert_attestable(&entry).is_ok());
+        assert!(
+            entry.require_named_authority().is_err(),
+            "a hatch-created entry must not admit an arbitrary outcome"
+        );
+    }
+
+    #[test]
+    fn a_registered_entry_is_still_attestable_by_its_authority() {
+        // The other direction: the guard must not have shut the ordinary path.
+        let entry = silent_entry(Pubkey::new_unique());
+        assert!(entry.require_named_authority().is_ok());
     }
 }

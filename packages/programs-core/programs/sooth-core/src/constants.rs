@@ -136,7 +136,8 @@ pub const PROTOCOL_CONFIG_TOTAL_LEN: usize = 8 // discriminator
     + 1                                         // paused
     + 1                                         // permissionless_adjudicators
     + 8                                         // veto_period_secs
-    + 60; // _reserved
+    + 32                                        // pending_authority
+    + 28; // _reserved
 
 const _: () = assert!(POSITION_TOTAL_LEN == 153);
 const _: () = assert!(LOCK_ENTRY_TOTAL_LEN == 129);

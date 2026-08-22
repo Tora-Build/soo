@@ -315,6 +315,7 @@ pub fn publish_handler(
     ctx: Context<PublishResolutionCommitment>,
     args: PublishResolutionCommitmentArgs,
 ) -> Result<()> {
+    ctx.accounts.adjudicator_entry.require_named_authority()?;
     require_keys_eq!(
         ctx.accounts.authority.key(),
         ctx.accounts.adjudicator_entry.authority,
@@ -425,6 +426,9 @@ pub(crate) fn assert_revocable(
 }
 
 pub fn revoke_handler(ctx: Context<RevokeResolutionCommitment>) -> Result<()> {
+    ctx.accounts
+        .adjudicator_entry
+        .require_named_dispute_authority()?;
     require_keys_eq!(
         ctx.accounts.dispute_authority.key(),
         ctx.accounts.adjudicator_entry.dispute_authority,

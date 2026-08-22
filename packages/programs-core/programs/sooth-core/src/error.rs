@@ -318,6 +318,19 @@ pub enum SoothCoreError {
     // the treasury once no LP token exists to claim it.
     #[msg("LP supply is nonzero: holders can still redeem this yield themselves")]
     LpSupplyNotZero,
+
+    // Appended, never reordered. `accept_authority` was called on a config
+    // with no nomination in flight. Distinct from `Unauthorized` so a caller
+    // who accepted before the outgoing authority nominated them can tell the
+    // two apart.
+    #[msg("No authority transfer is pending on this protocol config")]
+    NoPendingAuthority,
+
+    // Appended, never reordered. An `AdjudicatorEntry` account was supplied
+    // that this program does not own, so its contents are whatever somebody
+    // else wrote there.
+    #[msg("Adjudicator entry account is not owned by sooth_core")]
+    AdjudicatorEntryOwnerMismatch,
 }
 
 #[cfg(test)]
@@ -355,6 +368,14 @@ mod tests {
         assert_eq!(
             SoothCoreError::LpSupplyNotZero as u32,
             SoothCoreError::PdaAlreadyInitialized as u32 + 1
+        );
+        assert_eq!(
+            SoothCoreError::NoPendingAuthority as u32,
+            SoothCoreError::LpSupplyNotZero as u32 + 1
+        );
+        assert_eq!(
+            SoothCoreError::AdjudicatorEntryOwnerMismatch as u32,
+            SoothCoreError::NoPendingAuthority as u32 + 1
         );
     }
 

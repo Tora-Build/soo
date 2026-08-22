@@ -42,6 +42,7 @@ pub mod sweep_lp_yield;
 pub mod sweep_residual;
 pub mod trade_positions;
 pub mod unpause;
+pub mod update_protocol_config;
 
 pub use attest_outcome::*;
 pub use attest_outcome_zk::*;
@@ -75,3 +76,4 @@ pub use sweep_lp_yield::*;
 pub use sweep_residual::*;
 pub use trade_positions::*;
 pub use unpause::*;
+pub use update_protocol_config::*;

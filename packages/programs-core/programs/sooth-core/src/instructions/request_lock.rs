@@ -29,9 +29,11 @@
 //! post-deadline transition permissionless removes one key from that critical
 //! path.
 //!
-//! It does not remove the other: `settle` still needs an attested outcome, so
-//! an adjudicator who vanishes before attesting still strands the market. This
-//! instruction narrows the failure, it does not eliminate it.
+//! It does not remove the other on its own: `settle` still needs an attested
+//! outcome. `force_invalid_attestation` supplies one after
+//! `ABANDONED_MARKET_TIMEOUT_SECS`, and requires `Locked` to do it — so this
+//! instruction is the first step of that rescue, and deliberately does not
+//! require the market to have an `AdjudicatorEntry` at all.
 //!
 //! ## What a post-deadline lock can and cannot do to someone
 //!
@@ -56,16 +58,26 @@ use crate::state::{AdjudicatorEntry, Market, MarketLifecycle, ADJUDICATOR_ENTRY_
 
 #[derive(Accounts)]
 pub struct RequestLock<'info> {
-    /// Read-only, and required even though no signature is checked against
-    /// it: a market with no registered adjudicator can never be attested and
-    /// so can never settle, and locking it would only freeze it sooner.
+    /// CHECK: address pinned by the seeds, and read by nothing here. Kept in
+    /// the account list so callers built against the old IDL still work.
+    ///
+    /// It may be ABSENT. It used to be a typed `Account`, on the reasoning
+    /// that a market with no registered adjudicator can never be attested, so
+    /// locking it would only freeze it sooner. That reasoning inverted when
+    /// `force_invalid_attestation` learned to create the entry itself: the
+    /// hatch requires `Locked`, so refusing to lock an entry-less market was
+    /// the last thing keeping an orphaned market's funds immobile. Locking is
+    /// now the FIRST step of the rescue, not a way to deepen the hole.
+    ///
+    /// Nothing is loosened by the change: this instruction checks no
+    /// signature, reads no field of the entry, and its own guard — an `Open`
+    /// market past its advertised deadline — is untouched. When the entry
+    /// does exist the handler still pins it to this market.
     #[account(
         seeds = [ADJUDICATOR_ENTRY_SEED, market.key().as_ref()],
-        bump = adjudicator_entry.bump,
-        constraint = adjudicator_entry.market == market.key()
-            @ SoothCoreError::AdjudicatorMarketMismatch,
+        bump,
     )]
-    pub adjudicator_entry: Account<'info, AdjudicatorEntry>,
+    pub adjudicator_entry: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -98,6 +110,27 @@ fn assert_lockable_after_deadline(market: &Market, now: i64) -> Result<()> {
 
 pub fn handler(ctx: Context<RequestLock>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
+
+    // An entry that exists must be this market's. An entry that does not
+    // exist is the orphaned case the lock now has to admit — see the account
+    // doc.
+    let entry_ai = ctx.accounts.adjudicator_entry.to_account_info();
+    if !entry_ai.data_is_empty() {
+        require_keys_eq!(
+            *entry_ai.owner,
+            crate::ID,
+            SoothCoreError::AdjudicatorEntryOwnerMismatch
+        );
+        let data = entry_ai.try_borrow_data()?;
+        let mut cursor: &[u8] = &data;
+        let entry = AdjudicatorEntry::try_deserialize(&mut cursor)?;
+        require_keys_eq!(
+            entry.market,
+            ctx.accounts.market.key(),
+            SoothCoreError::AdjudicatorMarketMismatch
+        );
+    }
+
     let market = &mut ctx.accounts.market;
 
     assert_lockable_after_deadline(market, now)?;

@@ -96,6 +96,10 @@ pub fn handler(ctx: Context<InitializeProtocol>, args: InitializeProtocolArgs) -
     cfg.paused = false;
     cfg.permissionless_adjudicators = args.permissionless_adjudicators;
     cfg.veto_period_secs = args.veto_period_secs;
+    // No transfer is in flight on a protocol that has just been created.
+    // `init` zeroes the buffer, so this restates the value rather than
+    // changing it — stated because the field gates `accept_authority`.
+    cfg.pending_authority = Pubkey::default();
     cfg.bump = ctx.bumps.config;
 
     require!(

@@ -7,6 +7,62 @@
   },
   "instructions": [
     {
+      "name": "accept_authority",
+      "docs": [
+        "Take the protocol authority seat this config nominated you for."
+      ],
+      "discriminator": [
+        107,
+        86,
+        198,
+        91,
+        33,
+        12,
+        107,
+        160
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "new_authority",
+          "docs": [
+            "The nominee. Its signature is the whole point of the second step: it",
+            "proves the key that is about to own the protocol exists and is",
+            "controlled, which a one-step setter cannot establish."
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "attest_outcome",
       "discriminator": [
         115,
@@ -2321,6 +2377,11 @@
         },
         {
           "name": "adjudicator_entry",
+          "docs": [
+            "account, in which case the handler creates it. When it does exist the",
+            "handler verifies the owner, the discriminator, the stored `market` and",
+            "the stored bump before writing."
+          ],
           "writable": true,
           "pda": {
             "seeds": [
@@ -2351,9 +2412,16 @@
           "name": "cranker",
           "docs": [
             "Whoever cranks it. Unconstrained by design: the whole point is that no",
-            "key is required, because the key that was supposed to act is gone."
+            "key is required, because the key that was supposed to act is gone.",
+            "",
+            "`mut` because it pays the entry's rent on the orphaned-market path."
           ],
+          "writable": true,
           "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
@@ -4028,9 +4096,20 @@
         {
           "name": "adjudicator_entry",
           "docs": [
-            "Read-only, and required even though no signature is checked against",
-            "it: a market with no registered adjudicator can never be attested and",
-            "so can never settle, and locking it would only freeze it sooner."
+            "the account list so callers built against the old IDL still work.",
+            "",
+            "It may be ABSENT. It used to be a typed `Account`, on the reasoning",
+            "that a market with no registered adjudicator can never be attested, so",
+            "locking it would only freeze it sooner. That reasoning inverted when",
+            "`force_invalid_attestation` learned to create the entry itself: the",
+            "hatch requires `Locked`, so refusing to lock an entry-less market was",
+            "the last thing keeping an orphaned market's funds immobile. Locking is",
+            "now the FIRST step of the rescue, not a way to deepen the hole.",
+            "",
+            "Nothing is loosened by the change: this instruction checks no",
+            "signature, reads no field of the entry, and its own guard — an `Open`",
+            "market past its advertised deadline — is untouched. When the entry",
+            "does exist the handler still pins it to this market."
           ],
           "pda": {
             "seeds": [
@@ -5559,6 +5638,64 @@
       ]
     },
     {
+      "name": "transfer_authority",
+      "docs": [
+        "Nominate a new protocol authority. Nothing moves until the nominee",
+        "signs `accept_authority`; passing the default pubkey withdraws a",
+        "pending nomination."
+      ],
+      "discriminator": [
+        48,
+        169,
+        76,
+        72,
+        229,
+        180,
+        55,
+        161
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "unpause",
       "discriminator": [
         169,
@@ -5605,6 +5742,68 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "update_protocol_config",
+      "docs": [
+        "Update the live `ProtocolConfig`. Authority-gated, sparse — `None`",
+        "leaves a field alone. `authority`, `pending_authority` and `paused`",
+        "are deliberately out of reach; see `update_protocol_config`."
+      ],
+      "discriminator": [
+        197,
+        97,
+        123,
+        54,
+        221,
+        168,
+        11,
+        135
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "UpdateProtocolConfigArgs"
+            }
+          }
+        }
+      ]
     }
   ],
   "accounts": [
@@ -5715,6 +5914,19 @@
   ],
   "events": [
     {
+      "name": "AdjudicatorEntryForceCreated",
+      "discriminator": [
+        255,
+        150,
+        163,
+        123,
+        80,
+        219,
+        24,
+        213
+      ]
+    },
+    {
       "name": "AdjudicatorRegistered",
       "discriminator": [
         55,
@@ -5725,6 +5937,32 @@
         17,
         20,
         25
+      ]
+    },
+    {
+      "name": "AuthorityTransferAccepted",
+      "discriminator": [
+        149,
+        165,
+        140,
+        221,
+        104,
+        203,
+        239,
+        121
+      ]
+    },
+    {
+      "name": "AuthorityTransferStarted",
+      "discriminator": [
+        226,
+        104,
+        201,
+        223,
+        128,
+        33,
+        164,
+        193
       ]
     },
     {
@@ -5972,6 +6210,19 @@
         85,
         215,
         178
+      ]
+    },
+    {
+      "name": "ProtocolConfigUpdated",
+      "discriminator": [
+        20,
+        99,
+        32,
+        237,
+        111,
+        86,
+        195,
+        199
       ]
     },
     {
@@ -6593,6 +6844,16 @@
       "code": 6094,
       "name": "LpSupplyNotZero",
       "msg": "LP supply is nonzero: holders can still redeem this yield themselves"
+    },
+    {
+      "code": 6095,
+      "name": "NoPendingAuthority",
+      "msg": "No authority transfer is pending on this protocol config"
+    },
+    {
+      "code": 6096,
+      "name": "AdjudicatorEntryOwnerMismatch",
+      "msg": "Adjudicator entry account is not owned by sooth_core"
     }
   ],
   "types": [
@@ -6611,7 +6872,16 @@
           {
             "name": "authority",
             "docs": [
-              "Authority gating `attest_outcome`. MUST be non-default."
+              "Authority gating `attest_outcome`.",
+              "",
+              "Both registration paths reject `Pubkey::default()` as an argument, so",
+              "on an entry that a registration wrote this is always a real key. The",
+              "default pubkey is a deliberate SENTINEL, written by exactly one place:",
+              "`force_invalid_attestation` creating an entry for a market that never",
+              "had an adjudicator at all. It means \"no adjudicator exists\", and",
+              "`require_named_authority` turns it into a refusal at every site that",
+              "checks a signature against this field — so the hatch's entry hands",
+              "nobody the right to resolve the market it rescued."
             ],
             "type": "pubkey"
           },
@@ -6619,7 +6889,9 @@
             "name": "dispute_authority",
             "docs": [
               "Authority gating the `dispute` veto path. Defaults to `authority` at",
-              "register time; can be rotated to a guardian multisig via a future ix."
+              "register time; can be rotated to a guardian multisig via a future ix.",
+              "Carries the same default-pubkey sentinel as `authority`, and",
+              "`require_named_dispute_authority` refuses it the same way."
             ],
             "type": "pubkey"
           },
@@ -6759,6 +7031,44 @@
                 1
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "AdjudicatorEntryForceCreated",
+      "docs": [
+        "Emitted by `force_invalid_attestation` when the market had NO",
+        "`AdjudicatorEntry` at all and the hatch created one to write into.",
+        "",
+        "Separate from `InvalidAttestationForced`, which still fires alongside it:",
+        "the forced outcome means the same thing either way, and this says only",
+        "that the market was orphaned rather than merely abandoned. The created",
+        "entry's `authority` and `dispute_authority` are both the default pubkey —",
+        "nobody gains a resolution right from it."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "adjudicator_entry",
+            "type": "pubkey"
+          },
+          {
+            "name": "cranker",
+            "docs": [
+              "Whoever cranked it, and paid the entry's rent. Unprivileged by",
+              "construction — the entry it created names no authority."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
           }
         ]
       }
@@ -6924,6 +7234,57 @@
                 54
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "AuthorityTransferAccepted",
+      "docs": [
+        "Emitted by `accept_authority`: the nominee signed and the seat has moved."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "previous_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AuthorityTransferStarted",
+      "docs": [
+        "Emitted by `transfer_authority`: a handover has been NOMINATED and nothing",
+        "has moved yet. `pending_authority` is the default pubkey when the call",
+        "withdrew a nomination instead of making one."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "The outgoing authority, which still holds the seat at this point."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "pending_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
           }
         ]
       }
@@ -8297,6 +8658,26 @@
             "type": "i64"
           },
           {
+            "name": "pending_authority",
+            "docs": [
+              "Nominee for `authority`, or `Pubkey::default()` when no transfer is",
+              "in flight. Written by `transfer_authority`, consumed by",
+              "`accept_authority`.",
+              "",
+              "Authority transfer is two-step precisely because this program has",
+              "already been bitten once by an unreachable admin path: a one-step",
+              "`set_authority` to a mistyped or non-signing key hands the protocol to",
+              "nobody, permanently, and there is no recovery instruction that a lost",
+              "authority can call. Requiring the nominee to sign an `accept` proves",
+              "the key exists and is controlled before it takes over.",
+              "",
+              "Carved from `_reserved`, so every `ProtocolConfig` already on chain",
+              "reads it as the default pubkey — which is exactly \"no transfer",
+              "pending\"."
+            ],
+            "type": "pubkey"
+          },
+          {
             "name": "_reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
@@ -8313,9 +8694,75 @@
             "type": {
               "array": [
                 "u8",
-                60
+                28
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolConfigUpdated",
+      "docs": [
+        "Emitted by `update_protocol_config`. Carries the WHOLE resulting config",
+        "rather than the fields that moved: the instruction is sparse, so a log of",
+        "only the deltas cannot be read without also knowing what was there before,",
+        "and an audit trail that needs a second source is not one."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "amm_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "book_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "graduation_bps",
+            "type": "u16"
+          },
+          {
+            "name": "b_base_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "lp_yield_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "adjudicator_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "protocol_share_bps",
+            "type": "u16"
+          },
+          {
+            "name": "default_trial_period",
+            "type": "i64"
+          },
+          {
+            "name": "veto_period_secs",
+            "type": "i64"
+          },
+          {
+            "name": "permissionless_adjudicators",
+            "type": "bool"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
           }
         ]
       }
@@ -8835,6 +9282,83 @@
           {
             "name": "seed_deposit_wad",
             "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UpdateProtocolConfigArgs",
+      "docs": [
+        "Sparse update. `None` leaves a field exactly as it is."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "permissionless_adjudicators",
+            "type": {
+              "option": "bool"
+            }
+          },
+          {
+            "name": "treasury",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "amm_fee_bps",
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "book_fee_bps",
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "graduation_bps",
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "b_base_share_bps",
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "lp_yield_share_bps",
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "adjudicator_share_bps",
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "protocol_share_bps",
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "default_trial_period",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "veto_period_secs",
+            "type": {
+              "option": "i64"
+            }
           }
         ]
       }

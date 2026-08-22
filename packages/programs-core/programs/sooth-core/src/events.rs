@@ -460,3 +460,61 @@ pub struct LpYieldSwept {
     pub book_amount: u64,
     pub ts: i64,
 }
+
+/// Emitted by `update_protocol_config`. Carries the WHOLE resulting config
+/// rather than the fields that moved: the instruction is sparse, so a log of
+/// only the deltas cannot be read without also knowing what was there before,
+/// and an audit trail that needs a second source is not one.
+#[event]
+pub struct ProtocolConfigUpdated {
+    pub authority: Pubkey,
+    pub treasury: Pubkey,
+    pub amm_fee_bps: u16,
+    pub book_fee_bps: u16,
+    pub graduation_bps: u16,
+    pub b_base_share_bps: u16,
+    pub lp_yield_share_bps: u16,
+    pub adjudicator_share_bps: u16,
+    pub protocol_share_bps: u16,
+    pub default_trial_period: i64,
+    pub veto_period_secs: i64,
+    pub permissionless_adjudicators: bool,
+    pub ts: i64,
+}
+
+/// Emitted by `transfer_authority`: a handover has been NOMINATED and nothing
+/// has moved yet. `pending_authority` is the default pubkey when the call
+/// withdrew a nomination instead of making one.
+#[event]
+pub struct AuthorityTransferStarted {
+    /// The outgoing authority, which still holds the seat at this point.
+    pub authority: Pubkey,
+    pub pending_authority: Pubkey,
+    pub ts: i64,
+}
+
+/// Emitted by `accept_authority`: the nominee signed and the seat has moved.
+#[event]
+pub struct AuthorityTransferAccepted {
+    pub previous_authority: Pubkey,
+    pub authority: Pubkey,
+    pub ts: i64,
+}
+
+/// Emitted by `force_invalid_attestation` when the market had NO
+/// `AdjudicatorEntry` at all and the hatch created one to write into.
+///
+/// Separate from `InvalidAttestationForced`, which still fires alongside it:
+/// the forced outcome means the same thing either way, and this says only
+/// that the market was orphaned rather than merely abandoned. The created
+/// entry's `authority` and `dispute_authority` are both the default pubkey —
+/// nobody gains a resolution right from it.
+#[event]
+pub struct AdjudicatorEntryForceCreated {
+    pub market: Pubkey,
+    pub adjudicator_entry: Pubkey,
+    /// Whoever cranked it, and paid the entry's rent. Unprivileged by
+    /// construction — the entry it created names no authority.
+    pub cranker: Pubkey,
+    pub ts: i64,
+}

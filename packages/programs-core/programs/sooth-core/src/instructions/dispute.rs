@@ -65,6 +65,9 @@ pub fn handler(ctx: Context<Dispute>, new_outcome: u8) -> Result<()> {
         SoothCoreError::AlreadyDisputed
     );
 
+    ctx.accounts
+        .adjudicator_entry
+        .require_named_dispute_authority()?;
     require_keys_eq!(
         ctx.accounts.disputer.key(),
         ctx.accounts.adjudicator_entry.dispute_authority,

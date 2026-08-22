@@ -161,6 +161,7 @@ pub mod sooth_core {
     use crate::instructions::settle;
     use crate::instructions::trade_positions;
     use crate::instructions::unpause;
+    use crate::instructions::update_protocol_config;
 
     // ── Protocol lifecycle ────────────────────────────────────────────────────
 
@@ -177,6 +178,31 @@ pub mod sooth_core {
 
     pub fn unpause(ctx: Context<Unpause>) -> Result<()> {
         unpause::handler(ctx)
+    }
+
+    /// Update the live `ProtocolConfig`. Authority-gated, sparse — `None`
+    /// leaves a field alone. `authority`, `pending_authority` and `paused`
+    /// are deliberately out of reach; see `update_protocol_config`.
+    pub fn update_protocol_config(
+        ctx: Context<UpdateProtocolConfig>,
+        args: UpdateProtocolConfigArgs,
+    ) -> Result<()> {
+        update_protocol_config::handler(ctx, args)
+    }
+
+    /// Nominate a new protocol authority. Nothing moves until the nominee
+    /// signs `accept_authority`; passing the default pubkey withdraws a
+    /// pending nomination.
+    pub fn transfer_authority(
+        ctx: Context<TransferAuthority>,
+        new_authority: Pubkey,
+    ) -> Result<()> {
+        update_protocol_config::transfer_handler(ctx, new_authority)
+    }
+
+    /// Take the protocol authority seat this config nominated you for.
+    pub fn accept_authority(ctx: Context<AcceptAuthority>) -> Result<()> {
+        update_protocol_config::accept_handler(ctx)
     }
 
     // ── Market creation ───────────────────────────────────────────────────────

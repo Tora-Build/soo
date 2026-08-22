@@ -29,7 +29,7 @@ use anchor_lang::prelude::*;
 
 use crate::error::SoothCoreError;
 use crate::error_resolution::ResolutionError;
-use crate::events::{InvalidAttestationForced, MarketSettled};
+use crate::events::{AdjudicatorEntryForceCreated, InvalidAttestationForced, MarketSettled};
 use crate::state::market::{OUTCOME_INVALID, OUTCOME_NO, OUTCOME_YES};
 use crate::state::{
     AdjudicatorEntry, Market, MarketLifecycle, ProtocolConfig, ADJUDICATOR_ENTRY_SEED,
@@ -173,6 +173,15 @@ pub fn handler(ctx: Context<Settle>) -> Result<()> {
 /// Same shape as [`Settle`] minus the protocol config, except that the entry
 /// is WRITABLE here: this is the one instruction that writes an outcome
 /// without an authority signing for it.
+///
+/// The entry arrives as an `UncheckedAccount` rather than an
+/// `Account<AdjudicatorEntry>` because it MAY NOT EXIST. A market whose
+/// creation flow never called `register_adjudicator` has no entry at all, and
+/// a typed account would fail to deserialize before the handler ran — which
+/// is precisely the shape of the bug that locked funds on devnet: the escape
+/// hatch could not open on the markets that most needed it. The address is
+/// still pinned by the seed derivation, and the handler checks ownership and
+/// the discriminator on any account that does exist.
 #[derive(Accounts)]
 pub struct ForceInvalidAttestation<'info> {
     /// Read-only. Forcing an attestation changes no lifecycle — `settle`
@@ -184,18 +193,25 @@ pub struct ForceInvalidAttestation<'info> {
     )]
     pub market: Account<'info, Market>,
 
+    /// CHECK: address pinned by the seeds; may be an uninitialized system
+    /// account, in which case the handler creates it. When it does exist the
+    /// handler verifies the owner, the discriminator, the stored `market` and
+    /// the stored bump before writing.
     #[account(
         mut,
         seeds = [ADJUDICATOR_ENTRY_SEED, market.key().as_ref()],
-        bump = adjudicator_entry.bump,
-        constraint = adjudicator_entry.market == market.key()
-            @ SoothCoreError::AdjudicatorMarketMismatch,
+        bump,
     )]
-    pub adjudicator_entry: Account<'info, AdjudicatorEntry>,
+    pub adjudicator_entry: UncheckedAccount<'info>,
 
     /// Whoever cranks it. Unconstrained by design: the whole point is that no
     /// key is required, because the key that was supposed to act is gone.
+    ///
+    /// `mut` because it pays the entry's rent on the orphaned-market path.
+    #[account(mut)]
     pub cranker: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
 }
 
 /// Everything the escape hatch requires of chain state, in one place so it is
@@ -257,20 +273,72 @@ fn assert_forceable(market: &Market, entry: &AdjudicatorEntry, now: i64) -> Resu
 /// is for.
 pub fn force_invalid_handler(ctx: Context<ForceInvalidAttestation>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
-    assert_forceable(&ctx.accounts.market, &ctx.accounts.adjudicator_entry, now)?;
-
     let market_key = ctx.accounts.market.key();
-    let adjudicator_entry_key = ctx.accounts.adjudicator_entry.key();
+    let bump = ctx.bumps.adjudicator_entry;
+    let entry_ai = ctx.accounts.adjudicator_entry.to_account_info();
+    let adjudicator_entry_key = entry_ai.key();
     let cranker = ctx.accounts.cranker.key();
 
+    // Two shapes of the same failure, and the hatch has to open on both. An
+    // ABANDONED market has an entry whose adjudicator went quiet; an ORPHANED
+    // market never got an entry at all, because the creation flow did not
+    // register one. The second case is not rarer — it is what every market
+    // created through a UI that skips `register_adjudicator` looks like.
+    let created = entry_ai.data_is_empty();
+
+    let mut entry: AdjudicatorEntry = if created {
+        create_orphan_entry(&ctx, market_key, bump)?
+    } else {
+        // An account with data must be one of ours, holding this market's
+        // entry, at the bump the seeds derive. Checked here rather than by
+        // `Account<…>` because the account type had to be loosened to admit
+        // the absent case.
+        require_keys_eq!(
+            *entry_ai.owner,
+            crate::ID,
+            SoothCoreError::AdjudicatorEntryOwnerMismatch
+        );
+        let data = entry_ai.try_borrow_data()?;
+        let mut cursor: &[u8] = &data;
+        let entry = AdjudicatorEntry::try_deserialize(&mut cursor)?;
+        require_keys_eq!(
+            entry.market,
+            market_key,
+            SoothCoreError::AdjudicatorMarketMismatch
+        );
+        require!(
+            entry.bump == bump,
+            SoothCoreError::AdjudicatorMarketMismatch
+        );
+        entry
+    };
+
+    // The gate is identical on both paths, and it runs AFTER the creation
+    // only because a failing `require` reverts the whole transaction — the
+    // account the branch above may have created goes with it. Nothing here
+    // is reachable one timeout earlier than it was before.
+    assert_forceable(&ctx.accounts.market, &entry, now)?;
+
+    entry.attested_outcome = Some(OUTCOME_INVALID);
+    entry.attested_at = Some(now);
+    // The marker that keeps this from stealing a market from an
+    // adjudicator who is merely late: `attest_outcome` reads it as
+    // permission to overwrite.
+    entry.forced_invalid = true;
+
     {
-        let entry = &mut ctx.accounts.adjudicator_entry;
-        entry.attested_outcome = Some(OUTCOME_INVALID);
-        entry.attested_at = Some(now);
-        // The marker that keeps this from stealing a market from an
-        // adjudicator who is merely late: `attest_outcome` reads it as
-        // permission to overwrite.
-        entry.forced_invalid = true;
+        let mut data = entry_ai.try_borrow_mut_data()?;
+        let mut cursor: &mut [u8] = &mut data;
+        entry.try_serialize(&mut cursor)?;
+    }
+
+    if created {
+        emit!(AdjudicatorEntryForceCreated {
+            market: market_key,
+            adjudicator_entry: adjudicator_entry_key,
+            cranker,
+            ts: now,
+        });
     }
 
     emit!(InvalidAttestationForced {
@@ -282,6 +350,88 @@ pub fn force_invalid_handler(ctx: Context<ForceInvalidAttestation>) -> Result<()
     });
 
     Ok(())
+}
+
+/// Bring an orphaned market's `AdjudicatorEntry` into existence, naming
+/// nobody.
+///
+/// ## Why the authorities are the default pubkey
+///
+/// The entry this writes grants ZERO resolution rights, and that is the whole
+/// safety argument. The alternative — pointing `authority` at
+/// `market.creator` — reads as generous and is a theft primitive: the creator
+/// would gain, retroactively and fourteen days after the deadline, the power
+/// to attest any outcome on a market they may hold a position in, on a
+/// deployment where `register_adjudicator` never granted them that power. A
+/// creator wanting it need only decline to register an adjudicator, wait out
+/// the timeout, crank the hatch themselves and then attest YES over the
+/// forced INVALID. That is strictly worse than the INVALID it replaced, which
+/// pays every holder the 0.50 split.
+///
+/// So `authority` and `dispute_authority` are both `Pubkey::default()`, the
+/// sentinel `AdjudicatorEntry::require_named_authority` refuses. No signature
+/// can be checked against them, so:
+///
+///   - `attest_outcome` cannot write over the forced INVALID,
+///   - `dispute` cannot change it,
+///   - `lock_for_resolution` and `publish_resolution_commitment` are shut,
+///
+/// and the market resolves INVALID, which is the honest answer for a market
+/// nobody was ever appointed to answer. Note this is the one entry in the
+/// program that carries the default pubkey; both registration paths reject it
+/// as an argument, so the sentinel is unambiguous.
+///
+/// The zk fields stay zeroed, so `attest_outcome_zk` reads the entry as
+/// manual and refuses with `ZkNotEnabled` — the created entry cannot be used
+/// to submit an attestation either.
+///
+/// `create_pda_account` rather than Anchor's `init` because the entry's
+/// address is derivable off chain from the market id, so anyone can park a
+/// lamport on it; `init` would then fail forever and the hatch would be
+/// censorable by exactly the griefer `crate::pda` already exists to defeat.
+fn create_orphan_entry(
+    ctx: &Context<ForceInvalidAttestation>,
+    market_key: Pubkey,
+    bump: u8,
+) -> Result<AdjudicatorEntry> {
+    crate::pda::create_pda_account(
+        &ctx.accounts.cranker.to_account_info(),
+        &ctx.accounts.adjudicator_entry.to_account_info(),
+        &ctx.accounts.system_program.to_account_info(),
+        &Rent::get()?,
+        AdjudicatorEntry::SPACE,
+        &crate::ID,
+        &[ADJUDICATOR_ENTRY_SEED, market_key.as_ref(), &[bump]],
+    )?;
+
+    Ok(orphan_entry(market_key, bump))
+}
+
+/// The contents the hatch writes into a freshly created entry, as a pure
+/// value so the "grants nobody anything" property is testable without a
+/// runtime. See [`create_orphan_entry`] for why both authorities are the
+/// default pubkey.
+pub(crate) fn orphan_entry(market: Pubkey, bump: u8) -> AdjudicatorEntry {
+    AdjudicatorEntry {
+        market,
+        authority: Pubkey::default(),
+        dispute_authority: Pubkey::default(),
+        attested_outcome: None,
+        attested_at: None,
+        disputed: false,
+        disputed_at: None,
+        bump,
+        // Left zeroed so `is_zk_enabled()` reads false and
+        // `attest_outcome_zk` refuses with `ZkNotEnabled`: the created entry
+        // is not a door into the zk path either.
+        zk_comparator: 0,
+        zk_value_scale: 0,
+        zk_attestor_evm: [0; 20],
+        zk_rule_hash: [0; 32],
+        zk_threshold: 0,
+        forced_invalid: false,
+        _reserved: [0; 1],
+    }
 }
 
 #[cfg(test)]
@@ -499,5 +649,95 @@ mod abandonment_tests {
         honest.attested_outcome = Some(OUTCOME_YES);
         honest.attested_at = Some(1_000);
         assert!(!honest.is_forced_invalid());
+    }
+}
+
+#[cfg(test)]
+mod orphan_rescue_tests {
+    use super::*;
+    use crate::state::market::market_fixture;
+
+    fn orphan() -> AdjudicatorEntry {
+        orphan_entry(Pubkey::new_unique(), 254)
+    }
+
+    #[test]
+    fn an_orphaned_market_opens_the_hatch_on_the_same_timeout_as_an_abandoned_one() {
+        // The rescue must not be reachable one second earlier than the hatch
+        // already was. A market that never had an adjudicator gets exactly
+        // the same fourteen days as one whose adjudicator went quiet.
+        let market = market_fixture(MarketLifecycle::Locked);
+        let entry = orphan();
+        let opens_at = market.deadline + ABANDONED_MARKET_TIMEOUT_SECS;
+        assert!(assert_forceable(&market, &entry, opens_at - 1).is_err());
+        assert!(assert_forceable(&market, &entry, opens_at).is_ok());
+    }
+
+    #[test]
+    fn an_orphaned_market_still_has_to_be_locked_first() {
+        // `request_lock` is what gets it there, and is permissionless after
+        // the deadline. Writing an outcome onto a market still trading would
+        // be the same fault whether or not it has an entry.
+        let market = market_fixture(MarketLifecycle::Open);
+        let entry = orphan();
+        let opens_at = market.deadline + ABANDONED_MARKET_TIMEOUT_SECS;
+        assert!(assert_forceable(&market, &entry, opens_at).is_err());
+    }
+
+    #[test]
+    fn a_created_entry_hands_nobody_the_right_to_attest() {
+        // The abuse question the rescue turns on. Both seats are the default
+        // pubkey, which every authority check refuses outright — so the
+        // forced INVALID cannot be overwritten with an arbitrary outcome by
+        // the cranker, the creator, or anyone else.
+        let entry = orphan();
+        assert_eq!(entry.authority, Pubkey::default());
+        assert_eq!(entry.dispute_authority, Pubkey::default());
+        assert!(entry.require_named_authority().is_err());
+        assert!(entry.require_named_dispute_authority().is_err());
+    }
+
+    #[test]
+    fn a_created_entry_is_not_a_door_into_the_zk_path_either() {
+        let entry = orphan();
+        assert!(!entry.is_zk_enabled());
+        assert!(entry.require_zk_rule().is_err());
+    }
+
+    #[test]
+    fn the_hatch_cannot_fire_twice_on_a_market_it_already_rescued() {
+        // The created entry is written with the outcome in the same
+        // instruction, so the second call sees an attested entry and is
+        // refused — no way to keep restarting the veto window.
+        let market = market_fixture(MarketLifecycle::Locked);
+        let now = market.deadline + ABANDONED_MARKET_TIMEOUT_SECS;
+        let mut entry = orphan();
+        assert!(assert_forceable(&market, &entry, now).is_ok());
+
+        entry.attested_outcome = Some(OUTCOME_INVALID);
+        entry.attested_at = Some(now);
+        entry.forced_invalid = true;
+        assert!(assert_forceable(&market, &entry, now + 1).is_err());
+    }
+
+    #[test]
+    fn a_created_entry_settles_to_invalid_after_the_ordinary_veto_window() {
+        // What the rescue buys: the market is settleable, and INVALID is the
+        // split every holder can redeem under.
+        let market = market_fixture(MarketLifecycle::Locked);
+        assert!(assert_settleable(&market).is_ok());
+        let mut entry = orphan();
+        entry.attested_outcome = Some(OUTCOME_INVALID);
+        assert_eq!(entry.attested_outcome, Some(OUTCOME_INVALID));
+    }
+
+    #[test]
+    fn the_created_entry_is_bound_to_the_market_that_created_it() {
+        let market_key = Pubkey::new_unique();
+        let entry = orphan_entry(market_key, 251);
+        assert_eq!(entry.market, market_key);
+        assert_eq!(entry.bump, 251);
+        assert!(!entry.is_attested());
+        assert!(!entry.is_forced_invalid());
     }
 }

@@ -20,11 +20,22 @@ pub struct AdjudicatorEntry {
     /// `sooth_core::Market` account this adjudicator resolves.
     pub market: Pubkey,
 
-    /// Authority gating `attest_outcome`. MUST be non-default.
+    /// Authority gating `attest_outcome`.
+    ///
+    /// Both registration paths reject `Pubkey::default()` as an argument, so
+    /// on an entry that a registration wrote this is always a real key. The
+    /// default pubkey is a deliberate SENTINEL, written by exactly one place:
+    /// `force_invalid_attestation` creating an entry for a market that never
+    /// had an adjudicator at all. It means "no adjudicator exists", and
+    /// `require_named_authority` turns it into a refusal at every site that
+    /// checks a signature against this field — so the hatch's entry hands
+    /// nobody the right to resolve the market it rescued.
     pub authority: Pubkey,
 
     /// Authority gating the `dispute` veto path. Defaults to `authority` at
     /// register time; can be rotated to a guardian multisig via a future ix.
+    /// Carries the same default-pubkey sentinel as `authority`, and
+    /// `require_named_dispute_authority` refuses it the same way.
     pub dispute_authority: Pubkey,
 
     /// Recorded outcome iff the authority has called `attest_outcome` (or
@@ -120,6 +131,35 @@ impl AdjudicatorEntry {
         + 8                        // zk_threshold
         + 1                        // forced_invalid
         + 1; // _reserved
+
+    /// Refuse an entry that names no attestation authority.
+    ///
+    /// Call it BEFORE comparing a signer against `authority`, at every site
+    /// that gates on that field. Nothing off chain can produce a signature
+    /// for the all-zero pubkey, so this is belt to that braces — but the
+    /// safety of the orphaned-market rescue rests on "an entry the hatch
+    /// created grants no resolution rights", and an invariant that important
+    /// is stated where it is enforced rather than inferred from a curve
+    /// property.
+    pub fn require_named_authority(&self) -> Result<()> {
+        require_keys_neq!(
+            self.authority,
+            Pubkey::default(),
+            SoothCoreError::AdjudicatorIsDefault
+        );
+        Ok(())
+    }
+
+    /// The same refusal for the veto seat. An entry with no dispute authority
+    /// cannot be disputed, and its resolution commitment cannot be revoked.
+    pub fn require_named_dispute_authority(&self) -> Result<()> {
+        require_keys_neq!(
+            self.dispute_authority,
+            Pubkey::default(),
+            SoothCoreError::AdjudicatorIsDefault
+        );
+        Ok(())
+    }
 
     pub fn is_attested(&self) -> bool {
         self.attested_outcome.is_some()

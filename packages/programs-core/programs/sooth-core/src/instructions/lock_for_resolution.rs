@@ -69,6 +69,7 @@ fn assert_lockable(market: &Market) -> Result<()> {
 }
 
 pub fn handler(ctx: Context<LockForResolution>) -> Result<()> {
+    ctx.accounts.adjudicator_entry.require_named_authority()?;
     require_keys_eq!(
         ctx.accounts.authority.key(),
         ctx.accounts.adjudicator_entry.authority,

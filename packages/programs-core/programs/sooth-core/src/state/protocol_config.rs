@@ -19,6 +19,23 @@ pub const PROTOCOL_CONFIG_SEED: &[u8] = b"protocol_config";
 /// Sentinel — fee bps must not exceed 100% (10_000 bps).
 pub const MAX_FEE_BPS: u16 = 10_000;
 
+/// Ceiling on a taker fee written by `update_protocol_config`, as opposed to
+/// by `initialize_protocol`.
+///
+/// The two calls sit at different points in the trust story, so they carry
+/// different bounds. `initialize_protocol` runs once, before a single market
+/// exists, and whoever calls it IS the deployment — a bad number there is a
+/// bad deployment nobody has yet trusted. The setter runs against a live
+/// protocol holding other people's collateral, and a fee is charged out of
+/// that collateral on every trade. `MAX_FEE_BPS` would let the authority
+/// raise the taker fee to 100% and take the next trade in full, which is a
+/// rug wearing a config setter's clothes.
+///
+/// 10% is far above any rate this protocol intends to charge (devnet runs
+/// under 1%) and far below a rate at which raising it is a way to take
+/// somebody's money.
+pub const MAX_UPDATABLE_FEE_BPS: u16 = 1_000;
+
 #[account]
 pub struct ProtocolConfig {
     /// Authority that may call setters (pause/unpause, future update ixs).
@@ -79,6 +96,22 @@ pub struct ProtocolConfig {
     /// why (an omitted Anchor arg encodes as 0).
     pub veto_period_secs: i64,
 
+    /// Nominee for `authority`, or `Pubkey::default()` when no transfer is
+    /// in flight. Written by `transfer_authority`, consumed by
+    /// `accept_authority`.
+    ///
+    /// Authority transfer is two-step precisely because this program has
+    /// already been bitten once by an unreachable admin path: a one-step
+    /// `set_authority` to a mistyped or non-signing key hands the protocol to
+    /// nobody, permanently, and there is no recovery instruction that a lost
+    /// authority can call. Requiring the nominee to sign an `accept` proves
+    /// the key exists and is controlled before it takes over.
+    ///
+    /// Carved from `_reserved`, so every `ProtocolConfig` already on chain
+    /// reads it as the default pubkey — which is exactly "no transfer
+    /// pending".
+    pub pending_authority: Pubkey,
+
     /// Forward-compat padding. Adding a field consumes bytes from here
     /// instead of changing the account's length, so no migration is needed:
     /// Solana accounts are fixed-length buffers, and an `#[account]` struct
@@ -89,7 +122,7 @@ pub struct ProtocolConfig {
     ///
     /// When you add a field, shrink this by exactly its serialized size and
     /// leave `SPACE` unchanged.
-    pub _reserved: [u8; 60],
+    pub _reserved: [u8; 28],
 }
 
 /// Reject the call if the protocol circuit-breaker is engaged.
@@ -128,7 +161,8 @@ impl ProtocolConfig {
         + 1                        // paused
         + 1                        // permissionless_adjudicators
         + 8                        // veto_period_secs
-        + 60; // _reserved
+        + 32                       // pending_authority
+        + 28; // _reserved
 
     pub fn split_total(&self) -> u32 {
         self.b_base_share_bps as u32

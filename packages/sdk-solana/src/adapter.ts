@@ -1672,6 +1672,239 @@ export class SolanaChainAdapter implements ChainAdapter {
   /// other than what was attested (or vetoed).
   ///
   /// Fails with `VetoWindowOpen` (0x17ca) until the veto window closes.
+  /**
+   * Update the live `ProtocolConfig`. Authority-gated on chain; every field
+   * is optional and an omitted one is left exactly as it is.
+   *
+   * The one this exists for is `permissionlessAdjudicators`. A deployment
+   * that initialized with it false and never registered adjudicators from the
+   * create flow produces markets with no `AdjudicatorEntry`, and before this
+   * instruction there was no way to change that.
+   *
+   * Two fields are deliberately NOT here: `paused` belongs to pause/unpause,
+   * and `authority` moves through `buildTransferAuthority` +
+   * `buildAcceptAuthority`. The four share bps must still sum to 10 000 in
+   * the RESULT, so change them as a set.
+   */
+  async buildUpdateProtocolConfig(args: {
+    authority: AddressRef;
+    permissionlessAdjudicators?: boolean;
+    treasury?: AddressRef;
+    ammFeeBps?: number;
+    bookFeeBps?: number;
+    graduationBps?: number;
+    bBaseShareBps?: number;
+    lpYieldShareBps?: number;
+    adjudicatorShareBps?: number;
+    protocolShareBps?: number;
+    defaultTrialPeriod?: number | bigint;
+    vetoPeriodSecs?: number | bigint;
+  }): Promise<TradeRequest> {
+    const authorityPk = decodePubkeyRef(args.authority);
+    const [protocolConfigPda] = deriveProtocolConfigPda(this.programIds);
+
+    // Anchor encodes a `null` as the Option's `None` byte, so every field has
+    // to be present in the object even when it is being left alone.
+    const ixArgs = {
+      permissionlessAdjudicators: args.permissionlessAdjudicators ?? null,
+      treasury:
+        args.treasury === undefined ? null : decodePubkeyRef(args.treasury),
+      ammFeeBps: args.ammFeeBps ?? null,
+      bookFeeBps: args.bookFeeBps ?? null,
+      graduationBps: args.graduationBps ?? null,
+      bBaseShareBps: args.bBaseShareBps ?? null,
+      lpYieldShareBps: args.lpYieldShareBps ?? null,
+      adjudicatorShareBps: args.adjudicatorShareBps ?? null,
+      protocolShareBps: args.protocolShareBps ?? null,
+      defaultTrialPeriod:
+        args.defaultTrialPeriod === undefined
+          ? null
+          : new BN(args.defaultTrialPeriod.toString()),
+      vetoPeriodSecs:
+        args.vetoPeriodSecs === undefined
+          ? null
+          : new BN(args.vetoPeriodSecs.toString()),
+    };
+
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .updateProtocolConfig(ixArgs)
+      .accounts({
+        config: protocolConfigPda,
+        authority: authorityPk,
+      })
+      .instruction();
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        ...buildIxMeta(ix, authorityPk),
+        operation: "updateProtocolConfig",
+      },
+    };
+  }
+
+  /**
+   * Nominate a new protocol authority. Nothing moves until the nominee signs
+   * `buildAcceptAuthority` — the two-step shape is what stops a mistyped key
+   * from handing the protocol to nobody, permanently.
+   *
+   * Pass the system program's all-zero address as `newAuthority` to withdraw
+   * a nomination that has not been accepted.
+   */
+  async buildTransferAuthority(args: {
+    authority: AddressRef;
+    newAuthority: AddressRef;
+  }): Promise<TradeRequest> {
+    const authorityPk = decodePubkeyRef(args.authority);
+    const newAuthorityPk = decodePubkeyRef(args.newAuthority);
+    const [protocolConfigPda] = deriveProtocolConfigPda(this.programIds);
+
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .transferAuthority(newAuthorityPk)
+      .accounts({
+        config: protocolConfigPda,
+        authority: authorityPk,
+      })
+      .instruction();
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        ...buildIxMeta(ix, authorityPk),
+        operation: "transferAuthority",
+      },
+    };
+  }
+
+  /** Take the authority seat this config nominated you for. */
+  async buildAcceptAuthority(args: {
+    newAuthority: AddressRef;
+  }): Promise<TradeRequest> {
+    const newAuthorityPk = decodePubkeyRef(args.newAuthority);
+    const [protocolConfigPda] = deriveProtocolConfigPda(this.programIds);
+
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .acceptAuthority()
+      .accounts({
+        config: protocolConfigPda,
+        newAuthority: newAuthorityPk,
+      })
+      .instruction();
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        ...buildIxMeta(ix, newAuthorityPk),
+        operation: "acceptAuthority",
+      },
+    };
+  }
+
+  /**
+   * Register the per-market manual adjudicator.
+   *
+   * There is no lifecycle gate on chain, which is what makes this the
+   * RETROACTIVE rescue for a market that was created without one: it works on
+   * an `Open` market that is already trading and on a `Locked` one waiting to
+   * resolve, any time before an entry exists. Once an entry exists — including
+   * one `force_invalid_attestation` created — the account is already
+   * initialized and this fails.
+   *
+   * Who may call it depends on `ProtocolConfig.permissionlessAdjudicators`:
+   * the market's creator when true, the protocol authority when false. Read
+   * it with `readAdjudicatorPolicy()` before offering the action.
+   */
+  async buildRegisterAdjudicator(
+    market: MarketRef,
+    args: { user: AddressRef; authority: AddressRef },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const authorityPk = decodePubkeyRef(args.authority);
+    const marketPda = decodePubkeyRef(market);
+    const [adjudicatorEntryPda] = deriveAdjudicatorEntryPda(
+      marketPda,
+      this.programIds,
+    );
+    const [protocolConfigPda] = deriveProtocolConfigPda(this.programIds);
+
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .registerAdjudicator(authorityPk)
+      .accounts({
+        adjudicatorEntry: adjudicatorEntryPda,
+        market: marketPda,
+        protocolConfig: protocolConfigPda,
+        signer: userPk,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "registerAdjudicator",
+      },
+    };
+  }
+
+  /**
+   * The abandonment escape hatch: write INVALID onto a market whose
+   * adjudicator never attested, once 14 days have passed since its deadline.
+   *
+   * Permissionless, and it does not settle — the ordinary veto window and the
+   * ordinary `buildSettle` still stand between it and a final outcome.
+   *
+   * The `AdjudicatorEntry` may be ABSENT: a market created without one is
+   * rescued by this call, which creates the entry (the caller pays its rent)
+   * naming no authority at all, so the forced INVALID cannot then be
+   * overwritten by anyone. `systemProgram` is in the account list for that
+   * path, and the cranker is writable because it funds it.
+   *
+   * Requires `Locked`. `buildRequestLock` gets a market there permissionlessly
+   * once its deadline has passed, and no longer needs the entry to exist.
+   */
+  async buildForceInvalidAttestation(
+    market: MarketRef,
+    args: { user: AddressRef },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const [adjudicatorEntryPda] = deriveAdjudicatorEntryPda(
+      marketPda,
+      this.programIds,
+    );
+
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .forceInvalidAttestation()
+      .accounts({
+        market: marketPda,
+        adjudicatorEntry: adjudicatorEntryPda,
+        cranker: userPk,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "forceInvalidAttestation",
+      },
+    };
+  }
+
   async buildSettle(
     market: MarketRef,
     args: { user: AddressRef },
