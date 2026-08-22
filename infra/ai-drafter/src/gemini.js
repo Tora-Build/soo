@@ -94,7 +94,7 @@ const RESPONSE_SCHEMA = {
  * is a recall-and-format task, and sampling variety here buys nothing but
  * hallucinated hostnames.
  */
-export function createGeminiModel({ apiKey, model = "gemini-2.5-flash", fetchImpl = fetch }) {
+export function createGeminiModel({ apiKey, model = "gemini-3.6-flash", fetchImpl = fetch }) {
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
 
   return {

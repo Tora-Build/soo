@@ -7,7 +7,7 @@ compatibility_date = "2026-08-01"
 #
 # Everything below is non-sensitive tuning, safe to read from the deployed code.
 [vars]
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.6-flash"
 # Per-IP budget for POST /draft. Each draft costs one Gemini call per attempt,
 # so this is the ceiling on what a stranger can spend of the key.
 RATE_LIMIT_MAX = "12"
