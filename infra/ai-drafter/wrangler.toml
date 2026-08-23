@@ -7,7 +7,11 @@ compatibility_date = "2026-08-01"
 #
 # Everything below is non-sensitive tuning, safe to read from the deployed code.
 [vars]
-GEMINI_MODEL = "gemini-3.6-flash"
+# A non-reasoning model on purpose. Drafting is recall and formatting, and the
+# answers are judged by fetching them, so deliberation the validator overrules
+# is pure cost: on this prompt a reasoning Flash spent 7,865 thought tokens and
+# still overran its output ceiling, the lite model answered in 388 with none.
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 # Per-IP budget for POST /draft. Each draft costs one Gemini call per attempt,
 # so this is the ceiling on what a stranger can spend of the key.
 RATE_LIMIT_MAX = "12"
