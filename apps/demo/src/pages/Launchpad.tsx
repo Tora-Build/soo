@@ -73,6 +73,7 @@ import {
   RuleDrafter,
   RuleProver,
 } from "../components/features/launchpad/RuleAssistant";
+import { AdvancedSection } from "../components/features/launchpad/AdvancedSection";
 import {
   proofCoversDraft,
   type ProvenRule,
@@ -128,8 +129,7 @@ export const Launchpad = () => {
   const [customExpiration, setCustomExpiration] = useState("");
   const [liquidityB, setLiquidityB] = useState<number>(1000);
   const [deployPending, setDeployPending] = useState(false);
-  const [resolutionMode, setResolutionMode] =
-    useState<ResolutionMode>("manual");
+  const [resolutionMode, setResolutionMode] = useState<ResolutionMode>("zk");
   const [zkDraft, setZkDraft] = useState<ZkRuleDraft>(initialZkDraft);
   // A real Primus attestation of the rule currently in the fields, or null.
   // Advisory: it never blocks creation, it only decides whether the screen
@@ -407,37 +407,19 @@ export const Launchpad = () => {
               placeholder="Will Bitcoin exceed $100k by 2026?"
               className="input-field px-4 py-3"
             />
-            <p className="text-xs text-faint leading-relaxed">
+            <p className="text-sm text-faint leading-relaxed">
               {t("launchpad.questionHint")}
             </p>
-          </div>
 
-          <div className="space-y-3">
-            <label className="font-mono text-xs uppercase tracking-[0.12em] text-muted">
-              {t("launchpad.categoryLabel")}
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {MARKET_CATEGORIES.map((cat) => {
-                const IconComponent = cat.icon;
-                return (
-                  <button
-                    key={cat.id}
-                    data-testid={`launchpad-category-${cat.id}`}
-                    onClick={() => setCategory(cat.id)}
-                    className={cn(
-                      "p-3 font-semibold border border-transparent transition-all flex items-center gap-2",
-                      category === cat.id
-                        ? "bg-accent-muted text-accent"
-                        : "bg-inset text-muted hover:bg-raised",
-                    )}
-                  >
-                    <IconComponent className="w-5 h-5" />
-                    <span className="text-sm">{t(cat.nameKey)}</span>
-                    {category === cat.id && <Check className="w-4 h-4 ml-auto" />}
-                  </button>
-                );
-              })}
-            </div>
+            {effectiveMode === "zk" && (
+              <RuleDrafter
+                question={question}
+                onQuestionChange={setQuestion}
+                draft={zkDraft}
+                onDraftChange={setZkDraft}
+                onCategoryChange={setCategory}
+              />
+            )}
           </div>
 
           <div className="space-y-3">
@@ -503,30 +485,17 @@ export const Launchpad = () => {
               </div>
             )}
             {expirationMode === "open" && (
-              <p className="text-xs text-accent flex items-center gap-1">
+              <p className="text-sm text-accent flex items-center gap-1">
                 <Activity className="w-3 h-3" />
                 {t("launchpad.openUntilResolved")}
               </p>
             )}
+            {effectiveMode === "zk" && expirationMode !== "open" && (
+              <p className="text-sm text-faint leading-relaxed">
+                {t("launchpad.resolvesEarly")}
+              </p>
+            )}
           </div>
-
-          <div className="h-px bg-rule" />
-
-          <ResolutionPicker
-            mode={effectiveMode}
-            onModeChange={setResolutionMode}
-            draft={zkDraft}
-            onDraftChange={setZkDraft}
-            policy={zkPolicy}
-            drafter={
-              <RuleDrafter
-                question={question}
-                onQuestionChange={setQuestion}
-                draft={zkDraft}
-                onDraftChange={setZkDraft}
-              />
-            }
-          />
 
           {effectiveMode === "zk" && (
             <RuleProver
@@ -566,10 +535,55 @@ export const Launchpad = () => {
                 </button>
               ))}
             </div>
-            <p className="text-xs text-faint leading-relaxed">
+            <p className="text-sm text-faint leading-relaxed">
               {t("launchpad.lmsrDesc")}
             </p>
           </div>
+
+          <AdvancedSection
+            label={t("launchpad.advancedLabel")}
+            summary={t("launchpad.advancedSummary", {
+              category: t(`launchpad.categories.${category}`, {
+                defaultValue: category,
+              }),
+            })}
+          >
+              <div className="space-y-3">
+                <label className="font-mono text-xs uppercase tracking-[0.12em] text-muted">
+                  {t("launchpad.categoryLabel")}
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {MARKET_CATEGORIES.map((cat) => {
+                    const IconComponent = cat.icon;
+                    return (
+                      <button
+                        key={cat.id}
+                        data-testid={`launchpad-category-${cat.id}`}
+                        onClick={() => setCategory(cat.id)}
+                        className={cn(
+                          "p-3 font-semibold border border-transparent transition-all flex items-center gap-2",
+                          category === cat.id
+                            ? "bg-accent-muted text-accent"
+                            : "bg-inset text-muted hover:bg-raised",
+                        )}
+                      >
+                        <IconComponent className="w-5 h-5" />
+                        <span className="text-sm">{t(cat.nameKey)}</span>
+                        {category === cat.id && <Check className="w-4 h-4 ml-auto" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+            <ResolutionPicker
+              mode={effectiveMode}
+              onModeChange={setResolutionMode}
+              draft={zkDraft}
+              onDraftChange={setZkDraft}
+              policy={zkPolicy}
+            />
+          </AdvancedSection>
 
           <div className="pt-4 space-y-3">
             {!isFormValid ? (

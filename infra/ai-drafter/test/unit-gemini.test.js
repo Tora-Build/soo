@@ -45,3 +45,83 @@ test("the polish prompt forbids inventing a threshold", () => {
   assert.match(prompt, /NOT invent a threshold/);
   assert.match(prompt, new RegExp(ORIGINAL));
 });
+
+// Key rotation. The free tier is capped per project per day and one demo
+// session can reach it, so several keys is the only way up without billing.
+
+import { createGeminiModel, splitKeys } from "../src/gemini.js";
+
+const reply = (obj) =>
+  new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+const quotaSpent = () => new Response("quota", { status: 429 });
+
+/** Records which key each call carried. */
+function spyFetch(handler) {
+  const keys = [];
+  return {
+    keys,
+    fetchImpl: async (url) => {
+      const key = new URL(url).searchParams.get("key");
+      keys.push(key);
+      return handler(key);
+    },
+  };
+}
+
+test("splitKeys accepts commas and whitespace", () => {
+  assert.deepEqual(splitKeys("a, b  c ,, d "), ["a", "b", "c", "d"]);
+  assert.deepEqual(splitKeys(""), []);
+  assert.deepEqual(splitKeys(undefined), []);
+});
+
+test("a key that is out of quota falls through to the next", async () => {
+  const spy = spyFetch((key) => (key === "k1" ? quotaSpent() : reply({ candidates: [] })));
+  const model = createGeminiModel({ apiKey: "k1,k2", fetchImpl: spy.fetchImpl });
+  await model.propose({ question: "Will BTC be above 90000?" });
+  assert.deepEqual(spy.keys, ["k1", "k2"], "tried the spent key, then the next");
+});
+
+test("the working key is reused rather than sprayed across the ring", async () => {
+  // Round-robin would burn every daily allowance at the same rate instead of
+  // spending them one at a time.
+  const spy = spyFetch((key) => (key === "k1" ? quotaSpent() : reply({ candidates: [] })));
+  const model = createGeminiModel({ apiKey: "k1,k2,k3", fetchImpl: spy.fetchImpl });
+  await model.propose({ question: "Will BTC be above 90000?" });
+  await model.propose({ question: "Will BTC be above 90000?" });
+  assert.deepEqual(spy.keys, ["k1", "k2", "k2"], "second call starts at the key that worked");
+});
+
+test("a bad request is not retried across every key", async () => {
+  // A 400 is a property of the request, so retrying it on each key would
+  // multiply one mistake by the size of the keyring.
+  const spy = spyFetch(() => new Response("bad", { status: 400 }));
+  const model = createGeminiModel({ apiKey: "k1,k2,k3", fetchImpl: spy.fetchImpl });
+  await assert.rejects(model.propose({ question: "Will BTC be above 90000?" }), /400/);
+  assert.deepEqual(spy.keys, ["k1"]);
+});
+
+test("every key spent surfaces as the quota error", async () => {
+  const spy = spyFetch(() => quotaSpent());
+  const model = createGeminiModel({ apiKey: "k1,k2", fetchImpl: spy.fetchImpl });
+  await assert.rejects(model.propose({ question: "Will BTC be above 90000?" }), /429/);
+  assert.deepEqual(spy.keys, ["k1", "k2"]);
+});
+
+test("the question's category comes back with the polish", () => {
+  const r = parsePolish(
+    JSON.stringify({ polished: "Will BTC be above $90,000?", changed: true, category: "crypto" }),
+    "will btc hit 90k",
+  );
+  assert.equal(r.category, "crypto");
+});
+
+test("a category outside the app's own set reads as none", () => {
+  const r = parsePolish(
+    JSON.stringify({ polished: "Will BTC be above $90,000?", changed: true, category: "finance" }),
+    "will btc hit 90k",
+  );
+  assert.equal(r.category, null);
+});

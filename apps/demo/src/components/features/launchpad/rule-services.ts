@@ -45,6 +45,8 @@ export interface PolishSuggestion {
   changed: boolean;
   /** One sentence: what it tightened, or what the creator still has to decide. */
   notes: string;
+  /** The category it filed the question under, or null if it named one this app has no shelf for. */
+  category: string | null;
 }
 
 /** What one drafting run produced: rules to pick from, and optionally better wording. */
@@ -145,6 +147,7 @@ function parsePolish(raw: unknown, question: string): PolishSuggestion | null {
     // creator their own sentence back as an improvement under any circumstance.
     changed: polished !== question.trim(),
     notes: typeof p.notes === "string" ? p.notes.trim() : "",
+    category: typeof p.category === "string" && p.category.trim() ? p.category.trim() : null,
   };
 }
 

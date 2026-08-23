@@ -336,8 +336,8 @@
         "needQuestion": "请先写好问题——草稿由问题推导而来。",
         "noDrafter": "AI 起草不可用：未设置 VITE_AI_DRAFTER_URL。请在下方手动填写数据源。",
         "noResolver": "验证不可用：未设置 VITE_RESOLVER_URL，因此在写入链上之前无法用 Primus 测试该规则。",
-        "draftFailed": "起草服务无响应（{{error}}）。请在下方手动填写数据源。",
-        "candidatesHint": "选择一条以填入表单。在你点击创建之前不会写入任何内容。",
+        "draftFailed": "起草失败（{{error}}）。请在「高级」中设置数据源。",
+        "candidatesHint": "选择一条。在你点击创建之前不会写入任何内容。",
         "reads": "当前读数 {{reading}}",
         "provenLabel": "已验证 —— Primus 为该数据源出证",
         "attestor": "由 {{address}} 签名 —— Primus 全局出证者，也是该市场将注册的地址",
@@ -354,21 +354,23 @@
           "unauthorized": "未通过验证：验证服务需要一个本应用未持有的令牌。",
           "unknown": "未通过验证：出证失败。"
         },
-        "unprovenWarning": "该规则尚未验证。市场会永久保存这个 URL 与路径的哈希，而目前没有任何证据表明 Primus 真的能为它出证——接口在这里能正常读取，仍可能无法出证。若果真如此，该市场将永远无法自动结算，只能通过争议流程关闭。",
+        "unprovenWarning": "尚未验证。规则一经提交即永久生效，若 Primus 无法出证，该市场只能人工结算。",
         "unprovenAtLaunch": "正在以未验证的规则创建——该市场可能永远无法自动结算。",
         "drafting": "起草中… {{seconds}} 秒",
-        "sequence": "先由问题起草数据源，再验证 Primus 确实能为其出证。两步都可跳过——你也可以手动填写。",
-        "draftingDetail": "正在向模型索取数据源，并逐个抓取以确认该数值真实存在。通常需要 20–60 秒。",
+        "draftingDetail": "正在寻找数据源并逐个核对数值。",
         "cancel": "取消",
         "timedOut": "起草在 {{seconds}} 秒后放弃。请重试，或在下方手动填写数据源。",
-        "noneValidated": "没有任何候选数据源通过抓取验证。请尝试改写问题，或在下方手动填写。",
+        "noneValidated": "没有数据源通过核对。请改写问题，或在「高级」中手动设置。",
         "polishLabel": "建议的表述",
         "polishApply": "采用",
         "polishKeep": "保留原文",
-        "needRule": "请先填写数据源 URL 与路径——验证针对的是表单中的那条规则。"
+        "needRule": "尚无规则——请在上方起草，或在「高级」中设置。"
       }
     },
-    "questionHint": "当答案是一个公开数值（价格、汇率、指数、高度或计数）且问题中写明阈值时，可自动结算。任何无需 API 密钥即可从公开 JSON 接口获取的数据都能自行结算；其余情况需要人工裁定。"
+    "questionHint": "请提问一个带阈值的公开数值——价格、汇率、指数或计数。",
+    "advancedLabel": "高级",
+    "advancedSummary": "分类：{{category}} · 数据源、阈值、结算方式",
+    "resolvesEarly": "规则一旦满足即可结算。截止时间只是最迟结算时点，并非等待期。"
   },
   "stats": {
     "title": "市场统计",

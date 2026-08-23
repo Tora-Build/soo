@@ -63,14 +63,24 @@ interface DrafterProps {
   onQuestionChange: (question: string) => void;
   draft: ZkRuleDraft;
   onDraftChange: (draft: ZkRuleDraft) => void;
+  /**
+   * Applies the category the drafter inferred.
+   *
+   * Applied without asking, unlike the wording: the category is a shelf the
+   * market is filed on, not words anyone is held to, and creators pick it
+   * wrongly often enough that a grid of icons was costing a screenful to get
+   * a worse answer. It stays overridable under Advanced.
+   */
+  onCategoryChange: (category: string) => void;
 }
 
-/** Step 1 — question in, candidate rules out. Sits above the fields it fills. */
+/** Step 1 — question in, candidate rules out. Sits directly under the question. */
 export const RuleDrafter = ({
   question,
   onQuestionChange,
   draft,
   onDraftChange,
+  onCategoryChange,
 }: DrafterProps) => {
   const { t } = useTranslation();
 
@@ -122,6 +132,7 @@ export const RuleDrafter = ({
       // Only a suggestion that actually differs is worth the creator's
       // attention; an echo of their own sentence is noise dressed as help.
       setPolish(result.polish?.changed ? result.polish : null);
+      if (result.polish?.category) onCategoryChange(result.polish.category);
       if (result.candidates.length === 0) {
         setDraftError(t("launchpad.zk.assist.noneValidated"));
       }
@@ -175,7 +186,7 @@ export const RuleDrafter = ({
         onClick={handleDraft}
         disabled={!canDraft || drafting}
         className={cn(
-          "w-full py-2 px-3 text-xs font-bold border border-rule transition-all",
+          "w-full py-2.5 px-3 text-sm font-bold border border-rule transition-all",
           "flex items-center justify-center gap-1.5",
           "bg-raised text-muted hover:bg-inset hover:text-ink",
           "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-raised",
@@ -198,7 +209,7 @@ export const RuleDrafter = ({
           data-testid="launchpad-zk-drafting"
           className="flex items-start justify-between gap-2"
         >
-          <p className="text-xs text-faint leading-relaxed">
+          <p className="text-sm text-faint leading-relaxed">
             {t("launchpad.zk.assist.draftingDetail")}
           </p>
           <button
@@ -215,14 +226,14 @@ export const RuleDrafter = ({
       {!DRAFTER_URL && (
         <p
           data-testid="launchpad-zk-assist-unconfigured"
-          className="text-xs text-faint leading-relaxed"
+          className="text-sm text-faint leading-relaxed"
         >
           {t("launchpad.zk.assist.noDrafter")}
         </p>
       )}
 
       {DRAFTER_URL && !drafting && question.trim().length < 10 && (
-        <p className="text-xs text-faint">
+        <p className="text-sm text-faint">
           {t("launchpad.zk.assist.needQuestion")}
         </p>
       )}
@@ -230,7 +241,7 @@ export const RuleDrafter = ({
       {draftError && (
         <p
           data-testid="launchpad-zk-draft-error"
-          className="text-xs text-warn flex items-start gap-1.5"
+          className="text-sm text-warn flex items-start gap-1.5"
         >
           <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
           {t("launchpad.zk.assist.draftFailed", { error: draftError })}
@@ -244,13 +255,13 @@ export const RuleDrafter = ({
           data-testid="launchpad-zk-polish"
           className="border border-rule bg-canvas px-3 py-2 space-y-1.5"
         >
-          <p className="text-xs text-muted flex items-center gap-1.5">
+          <p className="text-sm text-muted flex items-center gap-1.5">
             <Wand2 className="w-3 h-3 shrink-0" />
             {t("launchpad.zk.assist.polishLabel")}
           </p>
-          <p className="text-xs text-ink leading-snug">{polish.polished}</p>
+          <p className="text-sm text-ink leading-snug">{polish.polished}</p>
           {polish.notes && (
-            <p className="text-xs text-faint leading-snug">{polish.notes}</p>
+            <p className="text-sm text-faint leading-snug">{polish.notes}</p>
           )}
           <div className="flex items-center gap-2 pt-0.5">
             <button
@@ -310,7 +321,7 @@ export const RuleDrafter = ({
               )}
             </button>
           ))}
-          <p className="text-xs text-faint">
+          <p className="text-sm text-faint">
             {t("launchpad.zk.assist.candidatesHint")}
           </p>
         </div>
@@ -386,7 +397,7 @@ export const RuleProver = ({ draft, proven, onProven }: ProverProps) => {
         onClick={handleProve}
         disabled={!canProve || proving}
         className={cn(
-          "w-full py-2 px-3 text-xs font-bold border transition-all",
+          "w-full py-2.5 px-3 text-sm font-bold border transition-all",
           "flex items-center justify-center gap-1.5",
           isProven
             ? "border-transparent bg-accent-muted text-accent"
@@ -407,13 +418,13 @@ export const RuleProver = ({ draft, proven, onProven }: ProverProps) => {
       {/* Why the button is unavailable, in the words of the thing that is
           missing. An accelerator that is simply greyed out reads as broken. */}
       {!RESOLVER_URL && (
-        <p className="text-xs text-faint leading-relaxed">
+        <p className="text-sm text-faint leading-relaxed">
           {t("launchpad.zk.assist.noResolver")}
         </p>
       )}
 
       {RESOLVER_URL && !ruleReady && (
-        <p className="text-xs text-faint">{t("launchpad.zk.assist.needRule")}</p>
+        <p className="text-sm text-faint">{t("launchpad.zk.assist.needRule")}</p>
       )}
 
       {isProven && proven && (
@@ -438,7 +449,7 @@ export const RuleProver = ({ draft, proven, onProven }: ProverProps) => {
               address: shortAddress(proven.result.attestorAddress),
             })}
           </p>
-          <p className="text-xs text-faint">
+          <p className="text-sm text-faint">
             {t("launchpad.zk.assist.provenDetail", {
               decimals: proven.result.decimals,
               seconds: (proven.result.elapsedMs / 1000).toFixed(1),
@@ -454,7 +465,7 @@ export const RuleProver = ({ draft, proven, onProven }: ProverProps) => {
           data-testid="launchpad-zk-proof-failed"
           className="border border-rule bg-canvas px-3 py-2 space-y-1"
         >
-          <p className="text-xs text-warn flex items-start gap-1.5">
+          <p className="text-sm text-warn flex items-start gap-1.5">
             <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
             {t(`launchpad.zk.assist.reasons.${failure.reason}`, {
               defaultValue: t("launchpad.zk.assist.reasons.unknown"),
@@ -469,7 +480,7 @@ export const RuleProver = ({ draft, proven, onProven }: ProverProps) => {
       {proveError && (
         <p
           data-testid="launchpad-zk-prove-error"
-          className="text-xs text-warn flex items-start gap-1.5"
+          className="text-sm text-warn flex items-start gap-1.5"
         >
           <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
           {t("launchpad.zk.assist.proveFailed", { error: proveError })}
@@ -481,7 +492,7 @@ export const RuleProver = ({ draft, proven, onProven }: ProverProps) => {
       {ruleReady && !isProven && (
         <p
           data-testid="launchpad-zk-unproven"
-          className="text-xs text-warn leading-relaxed flex items-start gap-1.5"
+          className="text-sm text-warn leading-relaxed flex items-start gap-1.5"
         >
           <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
           <span>{t("launchpad.zk.assist.unprovenWarning")}</span>

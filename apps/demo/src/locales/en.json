@@ -336,8 +336,8 @@
         "needQuestion": "Write the question first — the draft is derived from it.",
         "noDrafter": "Drafting is unavailable: VITE_AI_DRAFTER_URL is not set. Fill the source in by hand below.",
         "noResolver": "Proving is unavailable: VITE_RESOLVER_URL is not set, so this rule cannot be tested against Primus before it is committed.",
-        "draftFailed": "The drafting service did not answer ({{error}}). Fill the source in by hand below.",
-        "candidatesHint": "Pick one to fill the fields in. Nothing is committed until you launch.",
+        "draftFailed": "Drafting failed ({{error}}). Set a source under Advanced.",
+        "candidatesHint": "Pick one. Nothing is committed until you launch.",
         "reads": "reads {{reading}} now",
         "provenLabel": "Proven — Primus attested this source",
         "attestor": "signed by {{address}} — Primus' global attestor, the one this market registers",
@@ -354,21 +354,23 @@
           "unauthorized": "Not proven: the proving service needs a token this app was not given.",
           "unknown": "Not proven: the attestation failed."
         },
-        "unprovenWarning": "This rule is UNPROVEN. The market stores a hash of this exact URL and path forever, and nothing has confirmed that Primus can actually attest it — an endpoint can fetch perfectly here and still be unattestable. If it is, the market will never resolve automatically and only a dispute can close it.",
+        "unprovenWarning": "Not proven yet. The rule is committed permanently, so if Primus cannot attest it the market can only be settled by hand.",
         "unprovenAtLaunch": "Launching with an UNPROVEN rule — this market may never auto-resolve.",
         "drafting": "Drafting… {{seconds}}s",
-        "sequence": "First draft a source from your question, then prove Primus can actually attest it. Both are optional — you can fill the fields in by hand.",
-        "draftingDetail": "Asking the model for sources, then fetching each one to check the value is really there. This usually takes 20–60 seconds.",
+        "draftingDetail": "Finding sources and checking each one returns the value.",
         "cancel": "Cancel",
         "timedOut": "Drafting gave up after {{seconds}}s. Try again, or fill the source in by hand below.",
-        "noneValidated": "No proposed source survived being fetched. Try rewording the question, or fill the source in by hand below.",
+        "noneValidated": "No source survived checking. Try rewording, or set one under Advanced.",
         "polishLabel": "Suggested wording",
         "polishApply": "Use this",
         "polishKeep": "Keep mine",
-        "needRule": "Fill the source URL and path first — proving tests the exact rule in the fields."
+        "needRule": "No rule yet — draft one above, or set one under Advanced."
       }
     },
-    "questionHint": "Automatic resolution works when the answer is a public number — a price, rate, index, altitude or count — with a threshold stated in the question. Anything a public JSON API returns without an API key can settle itself; anything else needs a human adjudicator."
+    "questionHint": "Ask about a public number with a threshold — a price, rate, index, or count.",
+    "advancedLabel": "Advanced",
+    "advancedSummary": "Category: {{category}} · source, threshold, resolver",
+    "resolvesEarly": "Resolves as soon as the rule is met. The deadline is the latest it can settle, not the wait."
   },
   "stats": {
     "title": "Market Stats",
