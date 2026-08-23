@@ -21,7 +21,11 @@
 //
 // Usage is manual:  node src/index.mjs --review
 
-const MODEL = "gemini-2.0-flash";
+// Pinned model names are retired out from under callers — this one had become a
+// 404, which surfaced only when someone ran --review. Overridable so the next
+// retirement is an env change rather than a patch, and a lite default because
+// this call reads one rule and writes a paragraph.
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 const ENDPOINT = (model, key) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
