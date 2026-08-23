@@ -204,10 +204,22 @@ export interface ZkRuleDraft {
   valueScale: number;
 }
 
+/**
+ * An empty rule. The form must not open holding one nobody chose.
+ *
+ * It used to open with the Coinbase BTC preset already in the fields, and
+ * "Prove with Primus" attests whatever is IN THE FIELDS — so a creator who
+ * asked about basketball, drafted, and pressed Prove without picking a
+ * candidate got a real, valid, correctly-signed attestation of the price of
+ * Bitcoin. Every part of that worked; it answered a question nobody asked.
+ *
+ * Empty also makes the rest honest: Prove stays disabled until a rule exists,
+ * and the unproven warning has something real to be about.
+ */
 export const initialZkDraft = (): ZkRuleDraft => ({
-  presetId: "btc",
-  url: ZK_PRESETS[0]!.url,
-  parsePath: ZK_PRESETS[0]!.parsePath,
+  presetId: "custom",
+  url: "",
+  parsePath: "",
   comparator: "Gt",
   threshold: "",
   valueScale: DEFAULT_VALUE_SCALE,
