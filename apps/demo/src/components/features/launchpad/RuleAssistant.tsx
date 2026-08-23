@@ -487,17 +487,11 @@ export const RuleProver = ({ draft, proven, onProven }: ProverProps) => {
         </p>
       )}
 
-      {/* The gate that matters. Never blocks; never stays quiet either — but
-          it needs a rule to be about, so it waits for one. */}
-      {ruleReady && !isProven && (
-        <p
-          data-testid="launchpad-zk-unproven"
-          className="text-sm text-warn leading-relaxed flex items-start gap-1.5"
-        >
-          <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
-          <span>{t("launchpad.zk.assist.unprovenWarning")}</span>
-        </p>
-      )}
+      {/* No unproven warning here. The form opens with a preset rule already in
+          the fields, so a warning gated on "a rule exists" fired before the
+          creator had done anything — and it repeated the one beside the launch
+          button, which is where the decision is actually made. One warning, at
+          the moment it can still change what happens. */}
     </div>
   );
 };

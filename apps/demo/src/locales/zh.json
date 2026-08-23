@@ -333,7 +333,7 @@
         "draftButton": "1 · AI 起草",
         "proveButton": "2 · 用 Primus 验证",
         "proving": "出证中...",
-        "needQuestion": "请先写好问题——草稿由问题推导而来。",
+        "needQuestion": "请先写下问题。",
         "noDrafter": "AI 起草不可用：未设置 VITE_AI_DRAFTER_URL。请在下方手动填写数据源。",
         "noResolver": "验证不可用：未设置 VITE_RESOLVER_URL，因此在写入链上之前无法用 Primus 测试该规则。",
         "draftFailed": "起草失败（{{error}}）。请在「高级」中设置数据源。",
@@ -369,7 +369,7 @@
     },
     "questionHint": "请提问一个带阈值的公开数值——价格、汇率、指数或计数。",
     "advancedLabel": "高级",
-    "advancedSummary": "分类：{{category}} · 数据源、阈值、结算方式",
+    "advancedSummary": "分类：{{category}}",
     "resolvesEarly": "规则一旦满足即可结算。截止时间只是最迟结算时点，并非等待期。"
   },
   "stats": {

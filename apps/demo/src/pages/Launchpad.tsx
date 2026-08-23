@@ -30,7 +30,6 @@ import { parseUnits, formatUnits, Address } from "@/lib/chain-shim";
 import {
   Rocket,
   Check,
-  Coins,
   DollarSign,
   Loader2,
   Activity,
@@ -380,20 +379,10 @@ export const Launchpad = () => {
   const isFormValid = question.length >= 10;
 
   return (
-    <div className="relative max-w-2xl mx-auto px-4">
+    <div className="relative max-w-2xl mx-auto px-4 pb-32">
       <LaunchpadHeader />
 
       <div className="mt-6 p-6 border border-rule bg-raised">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-accent flex items-center justify-center">
-            <Coins className="w-5 h-5 text-ink" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-ink">{t("create.title")}</h2>
-            <p className="text-xs text-muted">{t("create.subtitle")}</p>
-          </div>
-        </div>
-
         <div className="space-y-4">
           <div className="space-y-3">
             <label className="font-mono text-xs uppercase tracking-[0.12em] text-muted">

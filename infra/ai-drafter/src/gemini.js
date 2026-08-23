@@ -6,6 +6,8 @@
 // entire validation and retry path be exercised with no API key, which matters
 // because the validator — not the model — is the part that must be right.
 
+import { catalogLines } from "./catalog.js";
+
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 /**
@@ -54,9 +56,14 @@ export function buildPrompt({ question, feedback, count }) {
     "  - the value MUST be a bare number, or a string holding only a number (\"119042.35\")",
     "Anything needing a key, a POST, pagination, or a value that is not a bare number is unusable.",
     "",
-    "Prefer well-known, stable, long-lived public endpoints that you are confident about — the",
-    "kind whose response shape you have actually seen. A famous endpoint you can recall exactly",
-    "beats an obscure one you are guessing at. Do not invent hostnames or paths.",
+    "These endpoints have been fetched and parsed successfully by this service. Prefer them when",
+    "one genuinely answers the question — including with different parameters, ids or symbols in",
+    "the same shape. They are a starting point, NOT a restriction: if none fits, propose your own.",
+    ...catalogLines(),
+    "",
+    "Otherwise prefer well-known, stable, long-lived public endpoints that you are confident about",
+    "— the kind whose response shape you have actually seen. A famous endpoint you can recall",
+    "exactly beats an obscure one you are guessing at. Do not invent hostnames or paths.",
     "",
     "Write parsePath as JSONPath naming exactly one leaf field, exactly as it appears in the real",
     "response, e.g. $.data.amount or $.market_data.current_price.usd. No wildcards, no filters,",

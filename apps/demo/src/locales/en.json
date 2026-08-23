@@ -333,7 +333,7 @@
         "draftButton": "1 · Draft with AI",
         "proveButton": "2 · Prove with Primus",
         "proving": "Attesting...",
-        "needQuestion": "Write the question first — the draft is derived from it.",
+        "needQuestion": "Write the question first.",
         "noDrafter": "Drafting is unavailable: VITE_AI_DRAFTER_URL is not set. Fill the source in by hand below.",
         "noResolver": "Proving is unavailable: VITE_RESOLVER_URL is not set, so this rule cannot be tested against Primus before it is committed.",
         "draftFailed": "Drafting failed ({{error}}). Set a source under Advanced.",
@@ -369,7 +369,7 @@
     },
     "questionHint": "Ask about a public number with a threshold — a price, rate, index, or count.",
     "advancedLabel": "Advanced",
-    "advancedSummary": "Category: {{category}} · source, threshold, resolver",
+    "advancedSummary": "Category: {{category}}",
     "resolvesEarly": "Resolves as soon as the rule is met. The deadline is the latest it can settle, not the wait."
   },
   "stats": {
