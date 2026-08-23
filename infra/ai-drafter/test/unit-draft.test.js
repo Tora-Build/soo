@@ -9,13 +9,57 @@ import { goodProposal, stubFetch, stubModel } from "./helpers.js";
 const GOOD_URL = goodProposal.url;
 const routes = { [GOOD_URL]: { body: { data: { amount: "119042.35" } } } };
 
+const OTHER_URL = "https://other.example/v1/spot";
+const otherProposal = { ...goodProposal, url: OTHER_URL, confidence: 0.4 };
+const bothRoutes = { ...routes, [OTHER_URL]: routes[GOOD_URL] };
+
 test("a first attempt that validates returns candidates and stops", async () => {
-  const model = stubModel([[goodProposal, { ...goodProposal, url: GOOD_URL + "?x=1", confidence: 0.4 }]]);
-  const r = await draft("Will BTC be above 90000?", { model, fetchImpl: stubFetch({ ...routes, [GOOD_URL + "?x=1"]: routes[GOOD_URL] }) });
+  const model = stubModel([[goodProposal, otherProposal]]);
+  const r = await draft("Will BTC be above 90000?", { model, fetchImpl: stubFetch(bothRoutes) });
   assert.equal(r.attempts, 1);
   assert.equal(r.candidates.length, 2);
   assert.equal(r.candidates[0].confidence, 0.9, "best first");
   assert.equal(r.candidates[0].reading, "119042.35");
+});
+
+test("the same endpoint under a cosmetic query parameter is one candidate", async () => {
+  // The failure this guards: asked for distinct sources, a model appends
+  // `?ref=...` and returns one feed three times. Keyed on the full URL those
+  // look distinct, so the creator is offered a choice that is not one.
+  const disguised = { ...goodProposal, url: GOOD_URL + "?ref=oracle", confidence: 0.5 };
+  const model = stubModel([[goodProposal, disguised, otherProposal]]);
+  const r = await draft("Will BTC be above 90000?", {
+    model,
+    fetchImpl: stubFetch({ ...bothRoutes, [GOOD_URL + "?ref=oracle"]: routes[GOOD_URL] }),
+  });
+
+  const urls = r.candidates.map((c) => c.url);
+  assert.equal(urls.filter((u) => u.startsWith(GOOD_URL)).length, 1, "the clone is dropped");
+  assert.ok(urls.includes(OTHER_URL), "the genuinely different host survives");
+});
+
+test("candidates are spread across hosts before confidence backfills", async () => {
+  // A second reading of the best host must not outrank the only other host:
+  // three candidates that share an outage are one candidate for the purpose
+  // the list exists to serve.
+  const sameHostOtherField = {
+    ...goodProposal,
+    url: "https://feed.example/v2/prices/BTC-USD/buy",
+    parsePath: "$.data.amount",
+    confidence: 0.8,
+  };
+  const model = stubModel([[goodProposal, sameHostOtherField, otherProposal]]);
+  const r = await draft("Will BTC be above 90000?", {
+    model,
+    fetchImpl: stubFetch({ ...bothRoutes, [sameHostOtherField.url]: routes[GOOD_URL] }),
+  });
+
+  assert.equal(r.candidates.length, 3);
+  assert.deepEqual(
+    r.candidates.map((c) => new URL(c.url).host),
+    ["feed.example", "other.example", "feed.example"],
+    "one per host first, in confidence order, then the remainder",
+  );
 });
 
 test("a rejected first attempt is retried WITH the failure as feedback", async () => {
@@ -68,4 +112,25 @@ test("a model that throws AFTER a candidate validated keeps the candidate", asyn
     maxAttempts: 2,
   });
   assert.equal(r.candidates.length, 1);
+});
+
+test("a mangled model answer is retried; a refused request is not", async () => {
+  // The distinction matters because the free tier is small: retrying a 429
+  // three times spends the remaining daily quota learning the same thing.
+  const truncated = Object.assign(new Error("model did not return JSON"), { retryable: true });
+  const retried = stubModel([truncated, [goodProposal]]);
+  const r = await draft("Will BTC be above 90000?", {
+    model: retried,
+    fetchImpl: stubFetch(routes),
+    maxAttempts: 2,
+  });
+  assert.equal(retried.calls.length, 2, "asked again after a mangled answer");
+  assert.equal(r.candidates.length, 1);
+
+  const refused = stubModel([new Error("Gemini returned HTTP 429")]);
+  await assert.rejects(
+    draft("Will BTC be above 90000?", { model: refused, fetchImpl: stubFetch(routes) }),
+    /429/,
+  );
+  assert.equal(refused.calls.length, 1, "a refusal is not retried");
 });

@@ -30,6 +30,29 @@ export const RESOLVER_URL = trimmedEnv(import.meta.env.VITE_RESOLVER_URL);
 /** Optional shared token, matching the resolver's `RESOLVER_API_TOKEN`. */
 const RESOLVER_TOKEN = trimmedEnv(import.meta.env.VITE_RESOLVER_TOKEN);
 
+/**
+ * A drafting run holds the browser open while a model is called and every
+ * proposal it makes is fetched, so it is slow by construction — but never
+ * unbounded. Without this a hung upstream leaves a spinner turning forever,
+ * which reads as a broken page rather than a slow one.
+ */
+export const DRAFT_TIMEOUT_MS = 90_000;
+
+/** The drafter's tightened wording of the question. Absent when it had nothing to add. */
+export interface PolishSuggestion {
+  polished: string;
+  /** False when the model handed the question back unchanged. */
+  changed: boolean;
+  /** One sentence: what it tightened, or what the creator still has to decide. */
+  notes: string;
+}
+
+/** What one drafting run produced: rules to pick from, and optionally better wording. */
+export interface DraftResult {
+  candidates: DraftCandidate[];
+  polish: PolishSuggestion | null;
+}
+
 /** A rule the drafter suggests, already shaped like the form's fields. */
 export interface DraftCandidate {
   url: string;
@@ -96,17 +119,34 @@ function parseCandidate(raw: unknown): DraftCandidate | null {
   };
 }
 
+/** Narrows the wording suggestion; anything not usable reads as "no suggestion". */
+function parsePolish(raw: unknown, question: string): PolishSuggestion | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const p = raw as Record<string, unknown>;
+  const polished = typeof p.polished === "string" ? p.polished.trim() : "";
+  if (polished.length === 0 || polished.length > 300) return null;
+  return {
+    polished,
+    // The service already decides this, but the form must not offer the
+    // creator their own sentence back as an improvement under any circumstance.
+    changed: polished !== question.trim(),
+    notes: typeof p.notes === "string" ? p.notes.trim() : "",
+  };
+}
+
 /**
- * Asks the drafter for rule candidates.
+ * Asks the drafter for rule candidates and a tightened question.
  *
- * Throws on every failure — unreachable, non-2xx, malformed — because the
- * caller's only correct response is the same one either way: say so, and leave
- * the fields alone.
+ * A 422 means the run completed and nothing survived validation — the wording
+ * suggestion still comes back with it, because a question no endpoint could
+ * answer is most often a question that needs rewriting. Every other failure
+ * throws, because the caller's correct response is the same either way: say
+ * so, and leave the fields alone.
  */
 export async function draftRules(
   question: string,
   signal?: AbortSignal,
-): Promise<DraftCandidate[]> {
+): Promise<DraftResult> {
   if (!DRAFTER_URL) throw new Error("VITE_AI_DRAFTER_URL is not set");
   const res = await fetch(`${DRAFTER_URL}/draft`, {
     method: "POST",
@@ -114,15 +154,23 @@ export async function draftRules(
     body: JSON.stringify({ question }),
     signal,
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const body: unknown = await res.json();
-  const raw = (body as { candidates?: unknown })?.candidates;
+  const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+
+  if (!res.ok) {
+    const polish = parsePolish(body?.polish, question);
+    if (res.status === 422 && polish?.changed) return { candidates: [], polish };
+    throw new Error(
+      typeof body?.error === "string" ? body.error : `HTTP ${res.status}`,
+    );
+  }
+
+  const raw = body?.candidates;
   if (!Array.isArray(raw)) throw new Error("no candidates in the response");
   const candidates = raw
     .map(parseCandidate)
     .filter((c): c is DraftCandidate => c !== null);
   if (candidates.length === 0) throw new Error("no usable candidate");
-  return candidates;
+  return { candidates, polish: parsePolish(body?.polish, question) };
 }
 
 /** A rule Primus signed a reading of. */

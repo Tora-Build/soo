@@ -330,8 +330,8 @@
         "thresholdPrecision": "阈值的小数位超过了已设置的精度。"
       },
       "assist": {
-        "draftButton": "AI 起草",
-        "proveButton": "用 Primus 验证",
+        "draftButton": "1 · AI 起草",
+        "proveButton": "2 · 用 Primus 验证",
         "proving": "出证中...",
         "needQuestion": "请先写好问题——草稿由问题推导而来。",
         "noDrafter": "AI 起草不可用：未设置 VITE_AI_DRAFTER_URL。请在下方手动填写数据源。",
@@ -355,7 +355,16 @@
           "unknown": "未通过验证：出证失败。"
         },
         "unprovenWarning": "该规则尚未验证。市场会永久保存这个 URL 与路径的哈希，而目前没有任何证据表明 Primus 真的能为它出证——接口在这里能正常读取，仍可能无法出证。若果真如此，该市场将永远无法自动结算，只能通过争议流程关闭。",
-        "unprovenAtLaunch": "正在以未验证的规则创建——该市场可能永远无法自动结算。"
+        "unprovenAtLaunch": "正在以未验证的规则创建——该市场可能永远无法自动结算。",
+        "drafting": "起草中… {{seconds}} 秒",
+        "sequence": "先由问题起草数据源，再验证 Primus 确实能为其出证。两步都可跳过——你也可以手动填写。",
+        "draftingDetail": "正在向模型索取数据源，并逐个抓取以确认该数值真实存在。通常需要 20–60 秒。",
+        "cancel": "取消",
+        "timedOut": "起草在 {{seconds}} 秒后放弃。请重试，或在下方手动填写数据源。",
+        "noneValidated": "没有任何候选数据源通过抓取验证。请尝试改写问题，或在下方手动填写。",
+        "polishLabel": "建议的表述",
+        "polishApply": "采用",
+        "polishKeep": "保留原文"
       }
     }
   },

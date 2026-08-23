@@ -16,6 +16,68 @@ export const MIN_CANDIDATES = 2;
 const MAX_PROPOSALS_PER_ATTEMPT = 4;
 
 /**
+ * Identity of a proposal, for deduplication.
+ *
+ * Deliberately IGNORES the query string. A model asked for distinct sources
+ * will otherwise satisfy the letter of the instruction by appending a cosmetic
+ * parameter — `?ref=oracle`, `&fmt=json` — producing three candidates that are
+ * one endpoint wearing three hats. Keyed on the full URL those look distinct;
+ * keyed on host+path+field they collapse, which is what they are.
+ *
+ * The cost is that two rules differing only in a MEANINGFUL parameter (say
+ * `units=km` vs `units=miles`) also collapse. That is the right trade: they
+ * read the same feed, so they fail together, and offering both as "different
+ * sources" is exactly the false choice this is meant to remove.
+ */
+function sourceKey(proposal) {
+  const path = proposal?.parsePath ?? "";
+  try {
+    const u = new URL(proposal?.url);
+    return `${u.host}${u.pathname.replace(/\/+$/, "")}|${path}`.toLowerCase();
+  } catch {
+    return `${proposal?.url}|${path}`.toLowerCase();
+  }
+}
+
+/** The host a candidate reads from; candidates sharing one share an outage. */
+function hostOf(candidate) {
+  try {
+    return new URL(candidate.url).host.toLowerCase();
+  } catch {
+    return candidate.url;
+  }
+}
+
+/**
+ * Ranks best-first while spreading across hosts.
+ *
+ * Confidence alone tends to return three readings of one feed, because the
+ * model is most confident about the source it recalls best. A source outage
+ * then kills every option at once, which is the failure the candidate list
+ * exists to protect against. So: one candidate per host first, in confidence
+ * order, then backfill with the remainder if there were not enough hosts.
+ */
+function rankByConfidenceAcrossHosts(accepted, limit) {
+  const byConfidence = accepted
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => b.c.confidence - a.c.confidence || a.i - b.i)
+    .map(({ c }) => c);
+
+  const seenHosts = new Set();
+  const firstPerHost = [];
+  const rest = [];
+  for (const c of byConfidence) {
+    const host = hostOf(c);
+    if (seenHosts.has(host)) rest.push(c);
+    else {
+      seenHosts.add(host);
+      firstPerHost.push(c);
+    }
+  }
+  return [...firstPerHost, ...rest].slice(0, limit);
+}
+
+/**
  * Runs the draft loop against an injected `model`.
  *
  * `model.propose({ question, feedback, count })` returns raw proposals; every
@@ -52,12 +114,15 @@ export async function draft(question, options = {}) {
       });
     } catch (e) {
       modelError = e;
+      // A mangled answer is worth asking again for; a refused request is not,
+      // and retrying it would spend the remaining daily quota learning nothing.
+      if (e?.retryable) continue;
       break;
     }
 
     const fresh = [];
     for (const p of Array.isArray(proposals) ? proposals : []) {
-      const key = `${p?.url}|${p?.parsePath}`;
+      const key = sourceKey(p);
       if (seen.has(key)) continue;
       seen.add(key);
       fresh.push(p);
@@ -78,13 +143,7 @@ export async function draft(question, options = {}) {
 
   if (accepted.length === 0 && modelError) throw modelError;
 
-  // Best first. The model already orders its output, so a stable sort on
-  // confidence keeps that order among equals.
-  const candidates = accepted
-    .map((c, i) => ({ c, i }))
-    .sort((a, b) => b.c.confidence - a.c.confidence || a.i - b.i)
-    .slice(0, TARGET_CANDIDATES)
-    .map(({ c }) => c);
+  const candidates = rankByConfidenceAcrossHosts(accepted, TARGET_CANDIDATES);
 
   return { candidates, attempts, rejections };
 }

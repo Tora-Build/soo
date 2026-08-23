@@ -1,12 +1,23 @@
-// Two affordances beside the Automatic rule, and one sentence that matters
+// Two STEPS beside the Automatic rule, in order, and one sentence that matters
 // more than either.
 //
-// Draft with AI turns the question into candidate endpoints. Prove with Primus
-// runs a REAL attestation of the endpoint that is actually in the fields. The
-// sentence is the third thing: a rule that has not been proven can still be
+// Step 1 turns the question into candidate endpoints — and, in the same call,
+// offers tighter wording for the question itself, because question and rule are
+// committed together and a precise rule under a vague question is still a
+// broken market. Step 2 runs a REAL attestation of the endpoint now in the
+// fields.
+//
+// They are numbered because they are sequential and were previously not read
+// that way: two equal-looking buttons side by side invite pressing the second
+// first, which can only ever fail, since there is nothing yet to prove.
+//
+// The sentence is the third thing: a rule that has not been proven can still be
 // launched — the founder may know something the tool does not — but never
 // while the screen implies it is fine. `rule_hash` is written once and forever,
 // and an unattestable rule is a market that can only ever be settled by hand.
+// It appears once a rule exists to be judged, and not before: shown against
+// empty fields it is not a warning about anything, and a warning that is always
+// on is one nobody reads when it starts being true.
 //
 // Both services are optional. With `VITE_AI_DRAFTER_URL` or
 // `VITE_RESOLVER_URL` unset the button is disabled and says which variable is
@@ -21,16 +32,20 @@ import {
   Loader2,
   ShieldCheck,
   Sparkles,
+  Wand2,
+  X,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { COMPARATORS, type ZkRuleDraft } from "./zk-rule";
 import {
   DRAFTER_URL,
+  DRAFT_TIMEOUT_MS,
   RESOLVER_URL,
   draftRules,
   proofCoversDraft,
   proveRule,
   type DraftCandidate,
+  type PolishSuggestion,
   type ProofFailure,
   type ProvenRule,
 } from "./rule-services";
@@ -38,6 +53,8 @@ import {
 interface Props {
   /** The market question, which is the whole input to the drafter. */
   question: string;
+  /** Applies the drafter's tightened wording. The creator's choice, never automatic. */
+  onQuestionChange: (question: string) => void;
   draft: ZkRuleDraft;
   onDraftChange: (draft: ZkRuleDraft) => void;
   proven: ProvenRule | null;
@@ -53,6 +70,7 @@ const shortAddress = (address: string) =>
 
 export const RuleAssistant = ({
   question,
+  onQuestionChange,
   draft,
   onDraftChange,
   proven,
@@ -61,8 +79,14 @@ export const RuleAssistant = ({
   const { t } = useTranslation();
 
   const [candidates, setCandidates] = useState<DraftCandidate[] | null>(null);
+  const [polish, setPolish] = useState<PolishSuggestion | null>(null);
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const draftAbortRef = useRef<AbortController | null>(null);
+  // Distinguishes the creator pressing Cancel from the timeout firing. Both
+  // abort the same controller, but only one of them is an error worth showing.
+  const cancelledRef = useRef(false);
 
   const [proving, setProving] = useState(false);
   const [failure, setFailure] = useState<ProofFailure | null>(null);
@@ -85,19 +109,77 @@ export const RuleAssistant = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, parsePath]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      draftAbortRef.current?.abort();
+    },
+    [],
+  );
+
+  // A drafting run calls a model and then fetches every endpoint it proposed,
+  // so tens of seconds is normal. A bare spinner over that long reads as a
+  // hung page, so the seconds are on screen and the run can be abandoned.
+  useEffect(() => {
+    if (!drafting) return;
+    setElapsed(0);
+    const started = Date.now();
+    const id = window.setInterval(
+      () => setElapsed(Math.round((Date.now() - started) / 1000)),
+      1000,
+    );
+    return () => window.clearInterval(id);
+  }, [drafting]);
+
+  const cancelDraft = () => {
+    cancelledRef.current = true;
+    draftAbortRef.current?.abort();
+  };
 
   const handleDraft = async () => {
+    draftAbortRef.current?.abort();
+    const controller = new AbortController();
+    draftAbortRef.current = controller;
+    cancelledRef.current = false;
+    const timeout = window.setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS);
+
     setDrafting(true);
     setDraftError(null);
+    setCandidates(null);
+    setPolish(null);
     try {
-      setCandidates(await draftRules(question.trim()));
+      const result = await draftRules(question.trim(), controller.signal);
+      setCandidates(result.candidates.length > 0 ? result.candidates : null);
+      // Only a suggestion that actually differs is worth the creator's
+      // attention; an echo of their own sentence is noise dressed as help.
+      setPolish(result.polish?.changed ? result.polish : null);
+      if (result.candidates.length === 0) {
+        setDraftError(t("launchpad.zk.assist.noneValidated"));
+      }
     } catch (e) {
       setCandidates(null);
-      setDraftError((e as Error).message || "unreachable");
+      if (controller.signal.aborted) {
+        // A cancelled run is a decision, not a failure, and says nothing.
+        if (!cancelledRef.current) {
+          setDraftError(
+            t("launchpad.zk.assist.timedOut", {
+              seconds: Math.round(DRAFT_TIMEOUT_MS / 1000),
+            }),
+          );
+        }
+      } else {
+        setDraftError((e as Error).message || "unreachable");
+      }
     } finally {
+      window.clearTimeout(timeout);
       setDrafting(false);
     }
+  };
+
+  /** Takes the tightened wording. The rule fields are untouched — only the question moves. */
+  const applyPolish = () => {
+    if (polish) onQuestionChange(polish.polished);
+    setPolish(null);
   };
 
   const applyCandidate = (candidate: DraftCandidate) => {
@@ -145,6 +227,14 @@ export const RuleAssistant = ({
 
   return (
     <div className="space-y-2" data-testid="launchpad-rule-assistant">
+      {/* The order is not obvious from two adjacent buttons, and pressing the
+          second one first can only fail. One line states it. */}
+      {(DRAFTER_URL || RESOLVER_URL) && (
+        <p className="text-xs text-faint leading-relaxed">
+          {t("launchpad.zk.assist.sequence")}
+        </p>
+      )}
+
       <div className="grid grid-cols-2 gap-2">
         <button
           data-testid="launchpad-zk-draft"
@@ -162,7 +252,9 @@ export const RuleAssistant = ({
           ) : (
             <Sparkles className="w-3.5 h-3.5" />
           )}
-          {t("launchpad.zk.assist.draftButton")}
+          {drafting
+            ? t("launchpad.zk.assist.drafting", { seconds: elapsed })
+            : t("launchpad.zk.assist.draftButton")}
         </button>
 
         <button
@@ -188,6 +280,27 @@ export const RuleAssistant = ({
             : t("launchpad.zk.assist.proveButton")}
         </button>
       </div>
+
+      {/* A long wait needs to say what it is waiting ON, or it reads as a
+          hang. It also needs an exit that is not reloading the page. */}
+      {drafting && (
+        <div
+          data-testid="launchpad-zk-drafting"
+          className="flex items-start justify-between gap-2"
+        >
+          <p className="text-xs text-faint leading-relaxed">
+            {t("launchpad.zk.assist.draftingDetail")}
+          </p>
+          <button
+            data-testid="launchpad-zk-draft-cancel"
+            onClick={cancelDraft}
+            className="shrink-0 flex items-center gap-1 text-xs text-muted hover:text-ink transition-colors"
+          >
+            <X className="w-3 h-3" />
+            {t("launchpad.zk.assist.cancel")}
+          </button>
+        </div>
+      )}
 
       {/* Why a button is unavailable, in the words of the thing that is
           missing. An accelerator that is simply greyed out reads as broken. */}
@@ -216,6 +329,40 @@ export const RuleAssistant = ({
           <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
           {t("launchpad.zk.assist.draftFailed", { error: draftError })}
         </p>
+      )}
+
+      {/* The question is committed too, and a dispute is settled by reading it.
+          Offered, never applied on its own: the creator's wording is theirs. */}
+      {polish && (
+        <div
+          data-testid="launchpad-zk-polish"
+          className="border border-rule bg-canvas px-3 py-2 space-y-1.5"
+        >
+          <p className="text-xs text-muted flex items-center gap-1.5">
+            <Wand2 className="w-3 h-3 shrink-0" />
+            {t("launchpad.zk.assist.polishLabel")}
+          </p>
+          <p className="text-xs text-ink leading-snug">{polish.polished}</p>
+          {polish.notes && (
+            <p className="text-xs text-faint leading-snug">{polish.notes}</p>
+          )}
+          <div className="flex items-center gap-2 pt-0.5">
+            <button
+              data-testid="launchpad-zk-polish-apply"
+              onClick={applyPolish}
+              className="px-2 py-1 text-xs font-bold border border-rule bg-raised text-ink hover:border-accent transition-all"
+            >
+              {t("launchpad.zk.assist.polishApply")}
+            </button>
+            <button
+              data-testid="launchpad-zk-polish-dismiss"
+              onClick={() => setPolish(null)}
+              className="px-2 py-1 text-xs text-muted hover:text-ink transition-colors"
+            >
+              {t("launchpad.zk.assist.polishKeep")}
+            </button>
+          </div>
+        </div>
       )}
 
       {candidates && (
@@ -323,8 +470,9 @@ export const RuleAssistant = ({
         </p>
       )}
 
-      {/* The gate that matters. Never blocks; never stays quiet either. */}
-      {!isProven && (
+      {/* The gate that matters. Never blocks; never stays quiet either — but
+          it needs a rule to be about, so it waits for one. */}
+      {ruleReady && !isProven && (
         <p
           data-testid="launchpad-zk-unproven"
           className="text-xs text-warn leading-relaxed flex items-start gap-1.5"

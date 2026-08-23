@@ -79,3 +79,68 @@ test("OPTIONS preflight and unknown paths", async () => {
   const missing = await handle(new Request("https://drafter.example/nope"), {}, null, {});
   assert.equal(missing.status, 404);
 });
+
+const withPolish = (turns, polish) => ({
+  ...stubModel(turns),
+  polish: typeof polish === "function" ? polish : async () => polish,
+});
+
+test("POST /draft carries the wording suggestion alongside the candidates", async () => {
+  reset();
+  const res = await handle(post("will btc hit 90k"), {}, null, {
+    model: withPolish([[goodProposal]], {
+      polished: "Will Bitcoin be above $90,000 by the deadline?",
+      changed: true,
+      notes: "named the asset",
+    }),
+    fetchImpl: stubFetch(routes),
+  });
+  const body = await res.json();
+  assert.equal(body.candidates.length, 1);
+  assert.equal(body.polish.changed, true);
+  assert.match(body.polish.polished, /Bitcoin/);
+});
+
+test("a failed polish costs nothing — the candidates still ship", async () => {
+  // The suggestion is a second opinion, not a step the rules depend on. If it
+  // could fail the request, adding it would have made the form less reliable.
+  reset();
+  const res = await handle(post("Will BTC be above 90000 on Dec 31?"), {}, null, {
+    model: withPolish([[goodProposal]], async () => {
+      throw new Error("gemini exploded");
+    }),
+    fetchImpl: stubFetch(routes),
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.candidates.length, 1);
+  assert.equal(body.polish, undefined);
+});
+
+test("a question no endpoint could answer still gets the wording suggestion", async () => {
+  // 422 is exactly when rewording is most likely to be the fix, so withholding
+  // the suggestion here would drop it in the one case it is worth most.
+  reset();
+  const res = await handle(post("will the vibes be good"), {}, null, {
+    model: withPolish([[{ ...goodProposal, url: "https://dead.example/x" }]], {
+      polished: "Will the S&P 500 close above 6,000 by the deadline?",
+      changed: true,
+      notes: "the question named no measurable quantity",
+    }),
+    fetchImpl: stubFetch(routes),
+  });
+  assert.equal(res.status, 422);
+  const body = await res.json();
+  assert.equal(body.candidates, undefined);
+  assert.match(body.polish.notes, /measurable/);
+});
+
+test("a model with no polish method is still a valid model", async () => {
+  reset();
+  const res = await handle(post("Will BTC be above 90000 on Dec 31?"), {}, null, {
+    model: stubModel([[goodProposal]]),
+    fetchImpl: stubFetch(routes),
+  });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).polish, undefined);
+});

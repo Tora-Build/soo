@@ -182,11 +182,47 @@ test("a bad comparator, threshold or scale is rejected", async () => {
   }
 });
 
-test("a scale with no headroom over the live reading is rejected", async () => {
+test("a scale with no headroom is corrected, not rejected", async () => {
+  // The right scale is a function of the reading, which the validator has just
+  // measured. Refusing a sound endpoint over a guess it can fix itself threw
+  // away the answer to punish the guess.
   const r = await validateProposal(
     { ...goodProposal, valueScale: 2 },
     { fetchImpl: stubFetch({ [URL_]: { body: live } }) },
   );
+  assert.equal(r.ok, true, r.reason);
+  assert.equal(r.candidate.valueScale, 8, "raised to the floor for prices");
+});
+
+test("a high-precision feed raises the scale above the proposed one", async () => {
+  // The live regression: a correct ISS altitude feed reading 418.22639781403
+  // was rejected because the model proposed the 8 that suits prices.
+  const precise = { data: { amount: "418.22639781403" } };
+  const r = await validateProposal(
+    { ...goodProposal, valueScale: 8 },
+    { fetchImpl: stubFetch({ [URL_]: { body: precise } }) },
+  );
+  assert.equal(r.ok, true, r.reason);
+  assert.equal(r.candidate.reading, "418.22639781403");
+  assert.equal(r.candidate.valueScale, 13, "11 decimals seen, plus headroom");
+});
+
+test("a proposed scale larger than needed is left alone", async () => {
+  // Correction only ever raises: the chain rejects too much precision, never
+  // too little, so lowering a creator's scale could only break a settlement.
+  const r = await validateProposal(
+    { ...goodProposal, valueScale: 14 },
+    { fetchImpl: stubFetch({ [URL_]: { body: live } }) },
+  );
+  assert.equal(r.ok, true, r.reason);
+  assert.equal(r.candidate.valueScale, 14);
+});
+
+test("a reading too precise for the fixed point is still rejected", async () => {
+  const absurd = { data: { amount: "1.12345678901234567890" } };
+  const r = await validateProposal(goodProposal, {
+    fetchImpl: stubFetch({ [URL_]: { body: absurd } }),
+  });
   assert.equal(r.ok, false);
-  assert.match(r.reason, /headroom/);
+  assert.match(r.reason, /decimals/);
 });

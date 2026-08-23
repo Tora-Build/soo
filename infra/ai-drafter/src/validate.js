@@ -226,17 +226,30 @@ export async function validateProposal(proposal, options = {}) {
     // than the one reading we happened to see. Excess precision is rejected on
     // chain, not truncated — a scale sized exactly to today's reading is a
     // market that fails to settle the day the feed prints one more digit.
+    //
+    // This is CORRECTED rather than rejected. The right scale is a function of
+    // the reading, which only this Worker has just measured, so refusing a
+    // sound endpoint over a number we are holding was throwing away the answer
+    // to punish a guess: a correct feed read at 11 decimals died here because
+    // the model proposed the 8 that suits prices. Raising it is safe in the
+    // direction that matters — the chain rejects too MUCH precision, never too
+    // little — and the corrected value is shown in the form before anything is
+    // committed.
     const seen = fractionDigits(reading);
-    if (p.valueScale < seen) {
+    if (seen > MAX_VALUE_SCALE) {
       reject(
-        `valueScale ${p.valueScale} is below the ${seen} decimals the live reading ${reading} ` +
-          `already carries; the program rejects excess precision rather than truncating`,
+        `the live reading ${reading} carries ${seen} decimals, more than the ` +
+          `${MAX_VALUE_SCALE} the on-chain fixed point can represent`,
       );
     }
-    if (p.valueScale < seen + 2 && p.valueScale < 8) {
+    const valueScale = Math.min(
+      MAX_VALUE_SCALE,
+      Math.max(p.valueScale, seen + 2, 8),
+    );
+    if (!fitsScale(p.threshold, valueScale)) {
       reject(
-        `valueScale ${p.valueScale} leaves no headroom over the live reading ${reading}; ` +
-          `attested precision varies between readings — use 8 for prices`,
+        `threshold ${p.threshold} carries ${fractionDigits(p.threshold)} decimals, more than ` +
+          `the valueScale ${valueScale} this reading requires`,
       );
     }
 
@@ -247,7 +260,7 @@ export async function validateProposal(proposal, options = {}) {
         parsePath: p.parsePath,
         comparator: p.comparator,
         threshold: p.threshold,
-        valueScale: p.valueScale,
+        valueScale,
         reading,
         rationale: p.rationale.trim(),
         confidence: clampConfidence(p.confidence),

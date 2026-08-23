@@ -2,7 +2,8 @@
 //
 //   POST /draft   { question }  -> { candidates: [ { url, parsePath, comparator,
 //                                    threshold, valueScale, reading, rationale,
-//                                    confidence } ] }
+//                                    confidence } ],
+//                                    polish?: { polished, changed, notes } }
 //   GET  /health               -> { ok, geminiConfigured }
 //
 // The contract this Worker keeps: every candidate it returns was fetched and
@@ -84,26 +85,48 @@ export async function handle(request, env, _ctx, deps = {}) {
     model = createGeminiModel({ apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL });
   }
 
+  // Both calls go out together: the polish is a second opinion on the wording,
+  // not a step the rules wait on, and serialising them would add its whole
+  // latency to a request a browser is already holding open.
+  //
+  // `polish` is optional on the model seam so existing stubs keep working, and
+  // a rejection is swallowed: a failed suggestion must never cost the creator
+  // the candidates that came back in the same request.
+  const polishPromise =
+    typeof model.polish === "function"
+      ? model.polish({ question }).catch(() => null)
+      : Promise.resolve(null);
+
   let result;
   try {
     result = await draft(question, { model, fetchImpl: deps.fetchImpl ?? fetch });
   } catch (e) {
+    void polishPromise;
     // The model failed outright. Say so plainly rather than returning an empty
     // list, which a caller could read as "no rule exists for this question".
     return json({ error: `drafting failed: ${e?.message ?? e}` }, 502);
   }
 
+  const polish = await polishPromise;
+
   if (result.candidates.length === 0) {
-    // Nothing was fetched successfully, so there is nothing honest to return.
+    // Nothing was fetched successfully, so there is nothing honest to return —
+    // but the wording suggestion still ships, because a question no endpoint
+    // could answer is very often a question that needs rewriting.
     return json(
       {
         error: "no candidate validated against a live endpoint",
         attempts: result.attempts,
         rejections: result.rejections,
+        ...(polish ? { polish } : {}),
       },
       422,
     );
   }
 
-  return json({ candidates: result.candidates, attempts: result.attempts });
+  return json({
+    candidates: result.candidates,
+    attempts: result.attempts,
+    ...(polish ? { polish } : {}),
+  });
 }

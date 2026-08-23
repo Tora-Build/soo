@@ -517,6 +517,7 @@ export const Launchpad = () => {
           {effectiveMode === "zk" && (
             <RuleAssistant
               question={question}
+              onQuestionChange={setQuestion}
               draft={zkDraft}
               onDraftChange={setZkDraft}
               proven={provenRule}

@@ -330,8 +330,8 @@
         "thresholdPrecision": "The threshold carries more decimals than the registered scale."
       },
       "assist": {
-        "draftButton": "Draft with AI",
-        "proveButton": "Prove with Primus",
+        "draftButton": "1 · Draft with AI",
+        "proveButton": "2 · Prove with Primus",
         "proving": "Attesting...",
         "needQuestion": "Write the question first — the draft is derived from it.",
         "noDrafter": "Drafting is unavailable: VITE_AI_DRAFTER_URL is not set. Fill the source in by hand below.",
@@ -355,7 +355,16 @@
           "unknown": "Not proven: the attestation failed."
         },
         "unprovenWarning": "This rule is UNPROVEN. The market stores a hash of this exact URL and path forever, and nothing has confirmed that Primus can actually attest it — an endpoint can fetch perfectly here and still be unattestable. If it is, the market will never resolve automatically and only a dispute can close it.",
-        "unprovenAtLaunch": "Launching with an UNPROVEN rule — this market may never auto-resolve."
+        "unprovenAtLaunch": "Launching with an UNPROVEN rule — this market may never auto-resolve.",
+        "drafting": "Drafting… {{seconds}}s",
+        "sequence": "First draft a source from your question, then prove Primus can actually attest it. Both are optional — you can fill the fields in by hand.",
+        "draftingDetail": "Asking the model for sources, then fetching each one to check the value is really there. This usually takes 20–60 seconds.",
+        "cancel": "Cancel",
+        "timedOut": "Drafting gave up after {{seconds}}s. Try again, or fill the source in by hand below.",
+        "noneValidated": "No proposed source survived being fetched. Try rewording the question, or fill the source in by hand below.",
+        "polishLabel": "Suggested wording",
+        "polishApply": "Use this",
+        "polishKeep": "Keep mine"
       }
     }
   },
