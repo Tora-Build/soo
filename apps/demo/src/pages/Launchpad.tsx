@@ -407,6 +407,13 @@ export const Launchpad = () => {
                 draft={zkDraft}
                 onDraftChange={setZkDraft}
                 onCategoryChange={setCategory}
+                onDeadlineChange={(isoDate) => {
+                  // A date the creator wrote in the question is a date they
+                  // meant; the expiration picker switches to it rather than
+                  // leaving the default 7d quietly contradicting the wording.
+                  setExpirationMode("custom");
+                  setCustomExpiration(`${isoDate}T23:59`);
+                }}
               />
             )}
           </div>
@@ -498,7 +505,7 @@ export const Launchpad = () => {
 
           <div className="space-y-3">
             <label className="font-mono text-xs uppercase tracking-[0.12em] text-muted">
-              {t("launchpad.liquidityB")}
+              {t("launchpad.liquidityLabel")}
             </label>
             <div className="grid grid-cols-3 gap-2">
               {LIQUIDITY_PRESETS.map((preset) => (
@@ -514,12 +521,11 @@ export const Launchpad = () => {
                   )}
                 >
                   <span className="text-sm font-bold">{preset.label}</span>
-                  <span className="font-mono text-xs tabular-nums">
-                    b = {preset.b.toLocaleString()}
+                  <span className="font-mono text-base font-bold tabular-nums">
+                    ${Math.round(preset.b * LN2).toLocaleString()}
                   </span>
-                  <span className="font-mono text-xs tabular-nums">
-                    ${Math.round(preset.b * LN2).toLocaleString()}{" "}
-                    {tokenSymbols.amm}
+                  <span className="text-xs">
+                    {t("launchpad.youDeposit", { symbol: tokenSymbols.amm })}
                   </span>
                 </button>
               ))}

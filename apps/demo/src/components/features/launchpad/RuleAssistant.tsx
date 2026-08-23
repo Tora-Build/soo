@@ -52,6 +52,15 @@ import {
 const symbolOf = (id: string) =>
   COMPARATORS.find((c) => c.id === id)?.symbol ?? id;
 
+/** The source a candidate reads from — the part a creator actually compares. */
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+};
+
 /** Shortens an EVM address to something a human compares by eye. */
 const shortAddress = (address: string) =>
   address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
@@ -72,6 +81,13 @@ interface DrafterProps {
    * a worse answer. It stays overridable under Advanced.
    */
   onCategoryChange: (category: string) => void;
+  /**
+   * Sets the market deadline when the question named a date.
+   *
+   * Only ever called with a date the creator wrote themselves — the service
+   * returns nothing here when the question gave none, rather than choosing one.
+   */
+  onDeadlineChange: (isoDate: string) => void;
 }
 
 /** Step 1 — question in, candidate rules out. Sits directly under the question. */
@@ -81,13 +97,18 @@ export const RuleDrafter = ({
   draft,
   onDraftChange,
   onCategoryChange,
+  onDeadlineChange,
 }: DrafterProps) => {
   const { t } = useTranslation();
 
   const [candidates, setCandidates] = useState<DraftCandidate[] | null>(null);
+  // Which candidate is in the fields. The list used to be discarded on pick,
+  // so the one thing the screen never showed was the choice that had been made.
+  const [chosen, setChosen] = useState<number | null>(null);
   const [polish, setPolish] = useState<PolishSuggestion | null>(null);
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [needsAdjudicator, setNeedsAdjudicator] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   // Distinguishes the creator pressing Cancel from the timeout firing. Both
@@ -126,6 +147,7 @@ export const RuleDrafter = ({
     setDraftError(null);
     setCandidates(null);
     setPolish(null);
+    setNeedsAdjudicator(false);
     try {
       const result = await draftRules(question.trim(), controller.signal);
       setCandidates(result.candidates.length > 0 ? result.candidates : null);
@@ -133,7 +155,10 @@ export const RuleDrafter = ({
       // attention; an echo of their own sentence is noise dressed as help.
       setPolish(result.polish?.changed ? result.polish : null);
       if (result.polish?.category) onCategoryChange(result.polish.category);
-      if (result.candidates.length === 0) {
+      if (result.polish?.deadline) onDeadlineChange(result.polish.deadline);
+      setChosen(null);
+      setNeedsAdjudicator(result.needsAdjudicator);
+      if (result.candidates.length === 0 && !result.needsAdjudicator) {
         setDraftError(t("launchpad.zk.assist.noneValidated"));
       }
     } catch (e) {
@@ -156,7 +181,7 @@ export const RuleDrafter = ({
     }
   };
 
-  const applyCandidate = (candidate: DraftCandidate) => {
+  const applyCandidate = (candidate: DraftCandidate, index: number) => {
     onDraftChange({
       ...draft,
       // A drafted endpoint is by definition not one of the presets, so the
@@ -168,7 +193,7 @@ export const RuleDrafter = ({
       threshold: candidate.threshold,
       valueScale: candidate.valueScale,
     });
-    setCandidates(null);
+    setChosen(index);
   };
 
   /** Takes the tightened wording. The rule fields are untouched — only the question moves. */
@@ -248,6 +273,23 @@ export const RuleDrafter = ({
         </p>
       )}
 
+      {/* Not an error: the question is fine, it just is not one a machine can
+          settle. Said plainly, because the model's own alternative is a real
+          endpoint about something else. */}
+      {needsAdjudicator && (
+        <div
+          data-testid="launchpad-zk-needs-adjudicator"
+          className="border border-rule bg-canvas px-3 py-2 space-y-1"
+        >
+          <p className="text-sm text-ink leading-relaxed">
+            {t("launchpad.zk.assist.needsAdjudicator")}
+          </p>
+          <p className="text-sm text-faint leading-relaxed">
+            {t("launchpad.zk.assist.needsAdjudicatorDetail")}
+          </p>
+        </div>
+      )}
+
       {/* The question is committed too, and a dispute is settled by reading it.
           Offered, never applied on its own: the creator's wording is theirs. */}
       {polish && (
@@ -283,49 +325,79 @@ export const RuleDrafter = ({
       )}
 
       {candidates && (
-        <div className="space-y-1.5" data-testid="launchpad-zk-candidates">
-          {candidates.map((candidate, i) => (
-            <button
-              key={`${candidate.url}${candidate.parsePath}`}
-              data-testid={`launchpad-zk-candidate-${i}`}
-              onClick={() => applyCandidate(candidate)}
-              className="w-full border border-rule bg-canvas px-3 py-2 text-left transition-all hover:border-accent"
-            >
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="font-mono text-xs text-ink break-all">
-                  {candidate.url}
-                  <span className="text-muted"> · {candidate.parsePath}</span>
-                </span>
-                {candidate.confidence !== null && (
-                  <span className="font-mono text-xs text-faint tabular-nums shrink-0">
-                    {Math.round(candidate.confidence * 100)}%
-                  </span>
+        <div className="space-y-2" data-testid="launchpad-zk-candidates">
+          <p className="text-sm text-muted">
+            {chosen === null
+              ? t("launchpad.zk.assist.pickOne", { count: candidates.length })
+              : t("launchpad.zk.assist.picked")}
+          </p>
+
+          {candidates.map((candidate, i) => {
+            const selected = chosen === i;
+            return (
+              <button
+                key={`${candidate.url}${candidate.parsePath}`}
+                data-testid={`launchpad-zk-candidate-${i}`}
+                aria-pressed={selected}
+                onClick={() => applyCandidate(candidate, i)}
+                className={cn(
+                  "w-full border px-3 py-2.5 text-left transition-all",
+                  selected
+                    ? "border-accent bg-accent-muted"
+                    : "border-rule bg-canvas hover:border-accent",
                 )}
-              </div>
-              <div className="mt-1 flex items-baseline gap-2 text-xs">
-                <span className="font-mono text-accent tabular-nums">
-                  {symbolOf(candidate.comparator)} {candidate.threshold}
-                </span>
-                {candidate.reading !== null && (
-                  <span className="text-muted">
-                    {t("launchpad.zk.assist.reads", {
-                      reading: candidate.reading,
-                    })}
+              >
+                <div className="flex items-start gap-2">
+                  {/* A filled mark is the whole affordance: which one is in the
+                      fields has to be legible without reading the fields. */}
+                  <span
+                    className={cn(
+                      "mt-0.5 w-4 h-4 shrink-0 border flex items-center justify-center",
+                      selected ? "border-accent bg-accent" : "border-rule",
+                    )}
+                  >
+                    {selected && <Check className="w-3 h-3 text-canvas" />}
                   </span>
-                )}
-              </div>
-              {candidate.rationale && (
-                <p className="mt-1 text-xs text-faint leading-snug">
-                  {candidate.rationale}
-                </p>
-              )}
-            </button>
-          ))}
-          <p className="text-sm text-faint">
-            {t("launchpad.zk.assist.candidatesHint")}
+
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span
+                        className={cn(
+                          "text-sm font-semibold truncate",
+                          selected ? "text-accent" : "text-ink",
+                        )}
+                      >
+                        {hostOf(candidate.url)}
+                      </span>
+                      <span className="font-mono text-sm tabular-nums shrink-0 text-ink">
+                        {symbolOf(candidate.comparator)} {candidate.threshold}
+                      </span>
+                    </div>
+
+                    {candidate.reading !== null && (
+                      <p className="text-sm text-muted">
+                        {t("launchpad.zk.assist.reads", {
+                          reading: candidate.reading,
+                        })}
+                      </p>
+                    )}
+
+                    <p className="font-mono text-xs text-faint break-all">
+                      {candidate.url}
+                      <span className="text-muted"> · {candidate.parsePath}</span>
+                    </p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+
+          <p className="text-sm text-faint leading-relaxed">
+            {t("launchpad.zk.assist.orOwn")}
           </p>
         </div>
       )}
+
     </div>
   );
 };

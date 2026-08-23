@@ -364,13 +364,20 @@
         "polishLabel": "Suggested wording",
         "polishApply": "Use this",
         "polishKeep": "Keep mine",
-        "needRule": "No rule yet — draft one above, or set one under Advanced."
+        "needRule": "No rule yet — draft one above, or set one under Advanced.",
+        "pickOne": "{{count}} sources found. Pick one.",
+        "picked": "Using this source. Pick another to swap.",
+        "orOwn": "Want a different source? Set it under Advanced.",
+        "needsAdjudicator": "No public data feed can settle this question.",
+        "needsAdjudicatorDetail": "You can still launch it — it will be settled by a human adjudicator instead of automatically. Switch the resolver under Advanced."
       }
     },
     "questionHint": "Ask about a public number with a threshold — a price, rate, index, or count.",
     "advancedLabel": "Advanced",
     "advancedSummary": "Category: {{category}}",
-    "resolvesEarly": "Resolves as soon as the rule is met. The deadline is the latest it can settle, not the wait."
+    "resolvesEarly": "Resolves as soon as the rule is met. The deadline is the latest it can settle, not the wait.",
+    "liquidityLabel": "Starting liquidity",
+    "youDeposit": "you deposit {{symbol}}"
   },
   "stats": {
     "title": "Market Stats",

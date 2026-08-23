@@ -364,13 +364,20 @@
         "polishLabel": "建议的表述",
         "polishApply": "采用",
         "polishKeep": "保留原文",
-        "needRule": "尚无规则——请在上方起草，或在「高级」中设置。"
+        "needRule": "尚无规则——请在上方起草，或在「高级」中设置。",
+        "pickOne": "找到 {{count}} 个数据源，请选择其一。",
+        "picked": "已采用该数据源。点击其他可切换。",
+        "orOwn": "想用其他数据源？请在「高级」中设置。",
+        "needsAdjudicator": "没有公开数据源可以结算这个问题。",
+        "needsAdjudicatorDetail": "你仍然可以创建——它将由人工裁定而非自动结算。请在「高级」中切换结算方式。"
       }
     },
     "questionHint": "请提问一个带阈值的公开数值——价格、汇率、指数或计数。",
     "advancedLabel": "高级",
     "advancedSummary": "分类：{{category}}",
-    "resolvesEarly": "规则一旦满足即可结算。截止时间只是最迟结算时点，并非等待期。"
+    "resolvesEarly": "规则一旦满足即可结算。截止时间只是最迟结算时点，并非等待期。",
+    "liquidityLabel": "初始流动性",
+    "youDeposit": "你需存入 {{symbol}}"
   },
   "stats": {
     "title": "市场统计",

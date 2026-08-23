@@ -109,6 +109,24 @@ export async function handle(request, env, _ctx, deps = {}) {
 
   const polish = await polishPromise;
 
+  // A question no public feed can settle is not a drafting failure — it is a
+  // market for a human adjudicator, which this app supports. Said plainly here,
+  // because the alternative the model reaches for is a real endpoint about
+  // something else: it passes every check, settles the market, and settles it
+  // on nothing. Only withheld when the drafter ALSO found nothing, since a
+  // fetched, parsed candidate is the stronger evidence of the two.
+  if (polish && polish.resolvable === false && result.candidates.length === 0) {
+    return json(
+      {
+        error: "no public feed can settle this question",
+        needsAdjudicator: true,
+        attempts: result.attempts,
+        polish,
+      },
+      422,
+    );
+  }
+
   if (result.candidates.length === 0) {
     // Nothing was fetched successfully, so there is nothing honest to return —
     // but the wording suggestion still ships, because a question no endpoint

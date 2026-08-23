@@ -144,3 +144,41 @@ test("a model with no polish method is still a valid model", async () => {
   assert.equal(res.status, 200);
   assert.equal((await res.json()).polish, undefined);
 });
+
+test("a question no feed can settle says so, instead of returning junk", async () => {
+  // The failure this prevents: asked "will the Lakers win by 2026", the model
+  // reached into the endpoint catalog and offered ISS altitude, air
+  // temperature and a USD exchange rate. Every one fetches, parses and
+  // validates — and would settle a basketball market on nothing.
+  reset();
+  const res = await handle(post("will lakers win by 2026?"), {}, null, {
+    model: withPolish([[{ ...goodProposal, url: "https://dead.example/x" }]], {
+      polished: "Will the Lakers win the NBA championship by 31 December 2026?",
+      changed: true,
+      category: "sports",
+      deadline: "2026-12-31",
+      resolvable: false,
+    }),
+    fetchImpl: stubFetch(routes),
+  });
+  assert.equal(res.status, 422);
+  const body = await res.json();
+  assert.equal(body.needsAdjudicator, true);
+  assert.equal(body.polish.deadline, "2026-12-31");
+});
+
+test("a validated candidate outranks the model calling it unresolvable", async () => {
+  // A fetched, parsed candidate is the stronger evidence of the two, so an
+  // over-cautious judgement must never hide a rule that demonstrably works.
+  reset();
+  const res = await handle(post("Will BTC be above 90000 on Dec 31?"), {}, null, {
+    model: withPolish([[goodProposal]], {
+      polished: "Will BTC be above $90,000?",
+      changed: true,
+      resolvable: false,
+    }),
+    fetchImpl: stubFetch(routes),
+  });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).candidates.length, 1);
+});

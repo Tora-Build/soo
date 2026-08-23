@@ -47,12 +47,23 @@ export interface PolishSuggestion {
   notes: string;
   /** The category it filed the question under, or null if it named one this app has no shelf for. */
   category: string | null;
+  /** YYYY-MM-DD the question itself named, or null when it named no date. */
+  deadline: string | null;
 }
 
 /** What one drafting run produced: rules to pick from, and optionally better wording. */
 export interface DraftResult {
   candidates: DraftCandidate[];
   polish: PolishSuggestion | null;
+  /**
+   * No public feed can settle this question, so it needs a human adjudicator.
+   *
+   * A distinct outcome from "drafting failed": nothing is wrong, and the
+   * market is still creatable. Reported because the alternative the model
+   * reaches for is a real endpoint about something else, which passes every
+   * check and would settle the market on nothing.
+   */
+  needsAdjudicator: boolean;
 }
 
 /** A rule the drafter suggests, already shaped like the form's fields. */
@@ -148,6 +159,10 @@ function parsePolish(raw: unknown, question: string): PolishSuggestion | null {
     changed: polished !== question.trim(),
     notes: typeof p.notes === "string" ? p.notes.trim() : "",
     category: typeof p.category === "string" && p.category.trim() ? p.category.trim() : null,
+    deadline:
+      typeof p.deadline === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.deadline.trim())
+        ? p.deadline.trim()
+        : null,
   };
 }
 
@@ -175,7 +190,12 @@ export async function draftRules(
 
   if (!res.ok) {
     const polish = parsePolish(body?.polish, question);
-    if (res.status === 422 && polish?.changed) return { candidates: [], polish };
+    if (res.status === 422 && body?.needsAdjudicator === true) {
+      return { candidates: [], polish, needsAdjudicator: true };
+    }
+    if (res.status === 422 && polish?.changed) {
+      return { candidates: [], polish, needsAdjudicator: false };
+    }
     throw new Error(
       typeof body?.error === "string" ? body.error : `HTTP ${res.status}`,
     );
@@ -187,7 +207,11 @@ export async function draftRules(
     .map(parseCandidate)
     .filter((c): c is DraftCandidate => c !== null);
   if (candidates.length === 0) throw new Error("no usable candidate");
-  return { candidates, polish: parsePolish(body?.polish, question) };
+  return {
+    candidates,
+    polish: parsePolish(body?.polish, question),
+    needsAdjudicator: false,
+  };
 }
 
 /** A rule Primus signed a reading of. */

@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildPolishPrompt, parsePolish } from "../src/gemini.js";
+import { buildPolishPrompt, parseDeadline, parsePolish } from "../src/gemini.js";
 
 const ORIGINAL = "will btc hit 90k";
 
@@ -124,4 +124,46 @@ test("a category outside the app's own set reads as none", () => {
     "will btc hit 90k",
   );
   assert.equal(r.category, null);
+});
+
+// Dates. The prompt used to say "refer to it as 'by the deadline' rather than
+// inventing a date" unconditionally, so a date the creator DID write was
+// deleted — "will lakers win by 2026?" came back as "by the deadline".
+
+test("the prompt keeps a date the creator wrote", () => {
+  const prompt = buildPolishPrompt({ question: "will lakers win by 2026?" });
+  assert.match(prompt, /KEEP IT/);
+  assert.match(prompt, /Never delete a date the creator wrote/);
+  assert.match(prompt, /never invent one they did not/);
+});
+
+test("a named date comes back as the market's deadline", () => {
+  const r = parsePolish(
+    JSON.stringify({
+      polished: "Will the Lakers win the NBA championship by 31 December 2026?",
+      changed: true,
+      category: "sports",
+      deadline: "2026-12-31",
+    }),
+    "will lakers win by 2026?",
+  );
+  assert.equal(r.deadline, "2026-12-31");
+});
+
+test("a question with no date carries no deadline", () => {
+  const r = parsePolish(
+    JSON.stringify({ polished: "Will BTC be above $90,000 by the deadline?", changed: true }),
+    "will btc hit 90k",
+  );
+  assert.equal(r.deadline, null);
+});
+
+test("only a real calendar date survives", () => {
+  // The form sets the market's deadline from this, and a deadline is the one
+  // field a market cannot be talked out of once it is on chain.
+  for (const bad of ["2026-02-31", "31/12/2026", "2026-13-01", "next year", "2026", "", null, 20261231]) {
+    assert.equal(parseDeadline(bad), null, `accepted ${JSON.stringify(bad)}`);
+  }
+  assert.equal(parseDeadline(" 2026-06-05 "), "2026-06-05");
+  assert.equal(parseDeadline("2028-02-29"), "2028-02-29", "leap day is a day");
 });

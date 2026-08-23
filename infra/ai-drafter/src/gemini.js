@@ -59,6 +59,9 @@ export function buildPrompt({ question, feedback, count }) {
     "These endpoints have been fetched and parsed successfully by this service. Prefer them when",
     "one genuinely answers the question — including with different parameters, ids or symbols in",
     "the same shape. They are a starting point, NOT a restriction: if none fits, propose your own.",
+    "They are also NOT a menu. An endpoint whose SUBJECT differs from the question's subject is",
+    "not a candidate at any confidence: ISS altitude does not answer a basketball question and",
+    "an exchange rate does not answer a weather one.",
     ...catalogLines(),
     "",
     "Otherwise prefer well-known, stable, long-lived public endpoints that you are confident about",
@@ -68,6 +71,11 @@ export function buildPrompt({ question, feedback, count }) {
     "Write parsePath as JSONPath naming exactly one leaf field, exactly as it appears in the real",
     "response, e.g. $.data.amount or $.market_data.current_price.usd. No wildcards, no filters,",
     "no recursive descent, no array slices.",
+    "",
+    "If no public endpoint can answer the question — the outcome is a human judgement, or the",
+    "only sources need an API key — return {\"candidates\": []}. An empty list is a CORRECT and",
+    "expected answer. A rule that reads a real number unrelated to the question is the worst",
+    "possible outcome: it passes every check, settles the market, and settles it on nothing.",
     "",
     "Take the threshold from the question's own wording; do not round it or invent your own.",
     "Set comparator so that the rule resolves YES exactly when the question is true.",
@@ -276,8 +284,10 @@ export function buildPolishPrompt({ question }) {
     "  - a yes/no question with exactly one claim, answerable YES or NO and nothing else",
     "  - explicit about the subject, the numeric threshold, and the units",
     "  - explicit about direction: 'above'/'at or above' rather than 'hits' or 'reaches'",
-    "  - free of vague time words ('soon', 'this year'); the deadline is a separate field, so",
-    "    refer to it as 'by the deadline' rather than inventing a date",
+    "  - precise about time. If the question NAMES a date or deadline, KEEP IT — it is the",
+    "    creator's choice and the market's deadline will be set to match. Only when the question",
+    "    gives no date at all, replace vague time words ('soon', 'this year') with 'by the",
+    "    deadline'. Never delete a date the creator wrote, and never invent one they did not.",
     "",
     "PRESERVE THE MEANING. You may make an implicit threshold explicit and fix grammar, spelling",
     "and phrasing. You must NOT invent a threshold the question never implied, change a number,",
@@ -286,11 +296,22 @@ export function buildPolishPrompt({ question }) {
     "",
     `Question: ${question}`,
     "",
+    "Also judge whether ANY public, key-free JSON endpoint could mechanically settle this. Set",
+    "`resolvable` false when the outcome is a human judgement (who wins, who is elected, whether",
+    "something is 'good'), or when the only sources are key-gated — sports results and election",
+    "outcomes are usually both. `resolvable` false is not a rejection: it means the market needs",
+    "a human adjudicator, which this app supports.",
+    "",
+    "If the question names a date or a period, also return `deadline` as a plain YYYY-MM-DD date:",
+    "the LAST day the claim could still come true. 'by 2026' is 2026-12-31, 'in March 2027' is",
+    "2027-03-31, 'by June 5th 2026' is 2026-06-05. Omit `deadline` entirely when no date is given.",
+    "",
     "Also classify the question into exactly one category:",
     `  ${CATEGORIES.join(", ")}`,
     "Use `others` only when none of the rest genuinely fits.",
     "",
-    'Return JSON: {"polished": string, "changed": boolean, "notes": string, "category": string}.',
+    'Return JSON: {"polished": string, "changed": boolean, "notes": string, "category": string,',
+    '  "deadline": string｜omitted}.',
     "`changed` is false when you return the question as-is. `notes` is ONE short sentence: what",
     "you tightened, or what the creator still needs to decide. Keep `polished` under 200 characters.",
   ].join("\n");
@@ -314,12 +335,39 @@ const POLISH_SCHEMA = {
     changed: { type: "BOOLEAN" },
     notes: { type: "STRING" },
     category: { type: "STRING", enum: CATEGORIES },
+    deadline: { type: "STRING" },
+    resolvable: { type: "BOOLEAN" },
   },
   required: ["polished", "changed"],
 };
 
 /** Longer than this is not a market question, and the form would not accept it back. */
 const MAX_POLISHED = 300;
+
+/**
+ * The date the question itself named, or null.
+ *
+ * Only a real calendar date survives: the form is going to set the market's
+ * deadline from this, and a deadline is the one field a market cannot be
+ * talked out of once it is on chain. Anything the model returns that is not a
+ * date it could have read off the question is dropped rather than guessed at.
+ */
+export function parseDeadline(value) {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const [y, m, d] = text.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  // Rejects 2026-02-31 and friends, which match the pattern and are not days.
+  if (
+    date.getUTCFullYear() !== y ||
+    date.getUTCMonth() !== m - 1 ||
+    date.getUTCDate() !== d
+  ) {
+    return null;
+  }
+  return text;
+}
 
 /**
  * Narrows the polish response.
@@ -349,5 +397,14 @@ export function parsePolish(text, original) {
   // naming it `others` keeps the market in a bucket that exists.
   const raw = typeof parsed?.category === "string" ? parsed.category.trim().toLowerCase() : "";
   const category = CATEGORIES.includes(raw) ? raw : null;
-  return { polished, changed, notes, category };
+  return {
+    polished,
+    changed,
+    notes,
+    category,
+    deadline: parseDeadline(parsed?.deadline),
+    // Absent reads as resolvable: the drafter's own results are the stronger
+    // evidence, and this must never be the reason a workable rule is hidden.
+    resolvable: parsed?.resolvable === false ? false : true,
+  };
 }
