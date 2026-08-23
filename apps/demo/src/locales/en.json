@@ -364,9 +364,11 @@
         "noneValidated": "No proposed source survived being fetched. Try rewording the question, or fill the source in by hand below.",
         "polishLabel": "Suggested wording",
         "polishApply": "Use this",
-        "polishKeep": "Keep mine"
+        "polishKeep": "Keep mine",
+        "needRule": "Fill the source URL and path first — proving tests the exact rule in the fields."
       }
-    }
+    },
+    "questionHint": "Automatic resolution works when the answer is a public number — a price, rate, index, altitude or count — with a threshold stated in the question. Anything a public JSON API returns without an API key can settle itself; anything else needs a human adjudicator."
   },
   "stats": {
     "title": "Market Stats",

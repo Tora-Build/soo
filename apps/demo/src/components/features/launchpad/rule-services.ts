@@ -68,10 +68,23 @@ export interface DraftCandidate {
   confidence: number | null;
 }
 
-const COMPARATOR_IDS = COMPARATORS.map((c) => c.id);
+/**
+ * Wire comparator -> the form's id, case-insensitively.
+ *
+ * The drafting service speaks the JSON convention ("gte") and this app speaks
+ * the on-chain enum's ("Gte"). Compared exactly, every candidate the service
+ * ever returned was dropped by the narrower below and the form reported "no
+ * usable candidate" — a total failure of drafting that looked like the model
+ * having nothing to say, because a discarded candidate leaves no trace.
+ */
+const COMPARATOR_BY_LOWER = new Map(
+  COMPARATORS.map((c) => [c.id.toLowerCase(), c.id]),
+);
 
-const isComparator = (value: unknown): value is ComparatorId =>
-  typeof value === "string" && (COMPARATOR_IDS as string[]).includes(value);
+const toComparator = (value: unknown): ComparatorId | null =>
+  (typeof value === "string"
+    ? (COMPARATOR_BY_LOWER.get(value.trim().toLowerCase()) ?? null)
+    : null);
 
 /**
  * Narrows one candidate off the wire, discarding anything unusable.
@@ -81,13 +94,14 @@ const isComparator = (value: unknown): value is ComparatorId =>
  * candidate that cannot fill the form is dropped rather than rendered, because
  * a suggestion that half-populates the fields is worse than one fewer option.
  */
-function parseCandidate(raw: unknown): DraftCandidate | null {
+export function parseCandidate(raw: unknown): DraftCandidate | null {
   if (raw === null || typeof raw !== "object") return null;
   const c = raw as Record<string, unknown>;
   const url = typeof c.url === "string" ? c.url.trim() : "";
   const parsePath = typeof c.parsePath === "string" ? c.parsePath.trim() : "";
   if (!/^https:\/\//i.test(url) || !parsePath.startsWith("$")) return null;
-  if (!isComparator(c.comparator)) return null;
+  const comparator = toComparator(c.comparator);
+  if (comparator === null) return null;
 
   const threshold =
     typeof c.threshold === "string"
@@ -104,7 +118,7 @@ function parseCandidate(raw: unknown): DraftCandidate | null {
   return {
     url,
     parsePath,
-    comparator: c.comparator,
+    comparator,
     threshold,
     valueScale,
     reading:

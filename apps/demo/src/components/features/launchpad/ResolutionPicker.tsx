@@ -10,7 +10,7 @@
 // room is the live preview, because the rule is written once and forever and a
 // path pointing at the wrong field is the failure that costs a market.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Check, Loader2, PenLine, Radio } from "lucide-react";
 import { cn } from "../../../lib/utils";
@@ -35,6 +35,14 @@ interface Props {
   onDraftChange: (draft: ZkRuleDraft) => void;
   policy: ZkPolicy;
   onPreviewChange?: (preview: PreviewResult | null) => void;
+  /**
+   * Step 1 of the Automatic rule, rendered at the top of this panel.
+   *
+   * Injected rather than imported so this component keeps knowing nothing
+   * about the drafting service: it owns the fields, and the accelerator that
+   * fills them belongs directly above them without owning them back.
+   */
+  drafter?: ReactNode;
 }
 
 const PREVIEW_DEBOUNCE_MS = 450;
@@ -46,6 +54,7 @@ export const ResolutionPicker = ({
   onDraftChange,
   policy,
   onPreviewChange,
+  drafter,
 }: Props) => {
   const { t } = useTranslation();
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -203,6 +212,8 @@ export const ResolutionPicker = ({
           className="space-y-3 border border-rule bg-inset p-3"
           data-testid="launchpad-zk-panel"
         >
+          {drafter}
+
           <div className="grid grid-cols-3 gap-2">
             {ZK_PRESETS.map((preset) => (
               <button

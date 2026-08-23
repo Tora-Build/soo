@@ -69,7 +69,10 @@ import {
   keypairSigner,
   useZkAdjudicatorPolicy,
 } from "../components/features/launchpad/useZkAdjudicatorPolicy";
-import { RuleAssistant } from "../components/features/launchpad/RuleAssistant";
+import {
+  RuleDrafter,
+  RuleProver,
+} from "../components/features/launchpad/RuleAssistant";
 import {
   proofCoversDraft,
   type ProvenRule,
@@ -404,6 +407,9 @@ export const Launchpad = () => {
               placeholder="Will Bitcoin exceed $100k by 2026?"
               className="input-field px-4 py-3"
             />
+            <p className="text-xs text-faint leading-relaxed">
+              {t("launchpad.questionHint")}
+            </p>
           </div>
 
           <div className="space-y-3">
@@ -512,14 +518,19 @@ export const Launchpad = () => {
             draft={zkDraft}
             onDraftChange={setZkDraft}
             policy={zkPolicy}
+            drafter={
+              <RuleDrafter
+                question={question}
+                onQuestionChange={setQuestion}
+                draft={zkDraft}
+                onDraftChange={setZkDraft}
+              />
+            }
           />
 
           {effectiveMode === "zk" && (
-            <RuleAssistant
-              question={question}
-              onQuestionChange={setQuestion}
+            <RuleProver
               draft={zkDraft}
-              onDraftChange={setZkDraft}
               proven={provenRule}
               onProven={setProvenRule}
             />

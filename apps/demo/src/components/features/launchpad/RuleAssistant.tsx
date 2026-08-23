@@ -1,17 +1,16 @@
-// Two STEPS beside the Automatic rule, in order, and one sentence that matters
-// more than either.
+// The two steps of the Automatic rule, placed where each one acts.
 //
 // Step 1 turns the question into candidate endpoints — and, in the same call,
 // offers tighter wording for the question itself, because question and rule are
 // committed together and a precise rule under a vague question is still a
-// broken market. Step 2 runs a REAL attestation of the endpoint now in the
-// fields.
+// broken market. It sits at the TOP of the panel, above the fields it fills.
 //
-// They are numbered because they are sequential and were previously not read
-// that way: two equal-looking buttons side by side invite pressing the second
-// first, which can only ever fail, since there is nothing yet to prove.
+// Step 2 runs a REAL attestation of the endpoint now in the fields, and sits
+// below them, under the thing it judges. They were previously one pair of
+// equal-looking buttons after everything, which invited pressing the second
+// first — an action that can only fail, since there is nothing yet to prove.
 //
-// The sentence is the third thing: a rule that has not been proven can still be
+// The warning is the third thing: a rule that has not been proven can still be
 // launched — the founder may know something the tool does not — but never
 // while the screen implies it is fine. `rule_hash` is written once and forever,
 // and an unattestable rule is a market that can only ever be settled by hand.
@@ -19,10 +18,10 @@
 // empty fields it is not a warning about anything, and a warning that is always
 // on is one nobody reads when it starts being true.
 //
-// Both services are optional. With `VITE_AI_DRAFTER_URL` or
-// `VITE_RESOLVER_URL` unset the button is disabled and says which variable is
-// missing; the manual fields, the live preview and creation itself are
-// untouched. This panel can never be the reason a market is not created.
+// Both services are optional. With `VITE_AI_DRAFTER_URL` or `VITE_RESOLVER_URL`
+// unset the button is disabled and says which variable is missing; the manual
+// fields, the live preview and creation itself are untouched. Neither of these
+// can ever be the reason a market is not created.
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -50,17 +49,6 @@ import {
   type ProvenRule,
 } from "./rule-services";
 
-interface Props {
-  /** The market question, which is the whole input to the drafter. */
-  question: string;
-  /** Applies the drafter's tightened wording. The creator's choice, never automatic. */
-  onQuestionChange: (question: string) => void;
-  draft: ZkRuleDraft;
-  onDraftChange: (draft: ZkRuleDraft) => void;
-  proven: ProvenRule | null;
-  onProven: (proven: ProvenRule | null) => void;
-}
-
 const symbolOf = (id: string) =>
   COMPARATORS.find((c) => c.id === id)?.symbol ?? id;
 
@@ -68,14 +56,22 @@ const symbolOf = (id: string) =>
 const shortAddress = (address: string) =>
   address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
 
-export const RuleAssistant = ({
+interface DrafterProps {
+  /** The market question, which is the whole input to the drafter. */
+  question: string;
+  /** Applies the drafter's tightened wording. The creator's choice, never automatic. */
+  onQuestionChange: (question: string) => void;
+  draft: ZkRuleDraft;
+  onDraftChange: (draft: ZkRuleDraft) => void;
+}
+
+/** Step 1 — question in, candidate rules out. Sits above the fields it fills. */
+export const RuleDrafter = ({
   question,
   onQuestionChange,
   draft,
   onDraftChange,
-  proven,
-  onProven,
-}: Props) => {
+}: DrafterProps) => {
   const { t } = useTranslation();
 
   const [candidates, setCandidates] = useState<DraftCandidate[] | null>(null);
@@ -83,39 +79,12 @@ export const RuleAssistant = ({
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const draftAbortRef = useRef<AbortController | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   // Distinguishes the creator pressing Cancel from the timeout firing. Both
   // abort the same controller, but only one of them is an error worth showing.
   const cancelledRef = useRef(false);
 
-  const [proving, setProving] = useState(false);
-  const [failure, setFailure] = useState<ProofFailure | null>(null);
-  const [proveError, setProveError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-
-  const url = draft.url.trim();
-  const parsePath = draft.parsePath.trim();
-  const ruleReady = /^https:\/\//i.test(url) && parsePath.startsWith("$");
-  const isProven = proofCoversDraft(proven, url, parsePath);
-
-  // A proof belongs to one exact (url, parsePath). The moment either moves,
-  // every verdict on screen is about a rule that is no longer in the form.
-  useEffect(() => {
-    setFailure(null);
-    setProveError(null);
-    if (!proofCoversDraft(proven, url, parsePath)) onProven(null);
-    // `proven`/`onProven` are the parent's state and setter; depending on them
-    // would clear a proof on the render that just recorded it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, parsePath]);
-
-  useEffect(
-    () => () => {
-      abortRef.current?.abort();
-      draftAbortRef.current?.abort();
-    },
-    [],
-  );
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   // A drafting run calls a model and then fetches every endpoint it proposed,
   // so tens of seconds is normal. A bare spinner over that long reads as a
@@ -131,15 +100,15 @@ export const RuleAssistant = ({
     return () => window.clearInterval(id);
   }, [drafting]);
 
-  const cancelDraft = () => {
+  const cancel = () => {
     cancelledRef.current = true;
-    draftAbortRef.current?.abort();
+    abortRef.current?.abort();
   };
 
   const handleDraft = async () => {
-    draftAbortRef.current?.abort();
+    abortRef.current?.abort();
     const controller = new AbortController();
-    draftAbortRef.current = controller;
+    abortRef.current = controller;
     cancelledRef.current = false;
     const timeout = window.setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS);
 
@@ -176,12 +145,6 @@ export const RuleAssistant = ({
     }
   };
 
-  /** Takes the tightened wording. The rule fields are untouched — only the question moves. */
-  const applyPolish = () => {
-    if (polish) onQuestionChange(polish.polished);
-    setPolish(null);
-  };
-
   const applyCandidate = (candidate: DraftCandidate) => {
     onDraftChange({
       ...draft,
@@ -197,89 +160,36 @@ export const RuleAssistant = ({
     setCandidates(null);
   };
 
-  const handleProve = async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setProving(true);
-    setFailure(null);
-    setProveError(null);
-    try {
-      const result = await proveRule(url, parsePath, controller.signal);
-      if (controller.signal.aborted) return;
-      if (result.ok) {
-        onProven({ url, parsePath, result });
-      } else {
-        onProven(null);
-        setFailure(result);
-      }
-    } catch (e) {
-      if (controller.signal.aborted) return;
-      onProven(null);
-      setProveError((e as Error).message || "unreachable");
-    } finally {
-      if (!controller.signal.aborted) setProving(false);
-    }
+  /** Takes the tightened wording. The rule fields are untouched — only the question moves. */
+  const applyPolish = () => {
+    if (polish) onQuestionChange(polish.polished);
+    setPolish(null);
   };
 
   const canDraft = Boolean(DRAFTER_URL) && question.trim().length >= 10;
-  const canProve = Boolean(RESOLVER_URL) && ruleReady;
 
   return (
-    <div className="space-y-2" data-testid="launchpad-rule-assistant">
-      {/* The order is not obvious from two adjacent buttons, and pressing the
-          second one first can only fail. One line states it. */}
-      {(DRAFTER_URL || RESOLVER_URL) && (
-        <p className="text-xs text-faint leading-relaxed">
-          {t("launchpad.zk.assist.sequence")}
-        </p>
-      )}
-
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          data-testid="launchpad-zk-draft"
-          onClick={handleDraft}
-          disabled={!canDraft || drafting}
-          className={cn(
-            "py-2 px-3 text-xs font-bold border border-rule transition-all",
-            "flex items-center justify-center gap-1.5",
-            "bg-raised text-muted hover:bg-inset hover:text-ink",
-            "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-raised",
-          )}
-        >
-          {drafting ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="w-3.5 h-3.5" />
-          )}
-          {drafting
-            ? t("launchpad.zk.assist.drafting", { seconds: elapsed })
-            : t("launchpad.zk.assist.draftButton")}
-        </button>
-
-        <button
-          data-testid="launchpad-zk-prove"
-          onClick={handleProve}
-          disabled={!canProve || proving}
-          className={cn(
-            "py-2 px-3 text-xs font-bold border transition-all",
-            "flex items-center justify-center gap-1.5",
-            isProven
-              ? "border-transparent bg-accent-muted text-accent"
-              : "border-rule bg-raised text-muted hover:bg-inset hover:text-ink",
-            "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-raised",
-          )}
-        >
-          {proving ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <ShieldCheck className="w-3.5 h-3.5" />
-          )}
-          {proving
-            ? t("launchpad.zk.assist.proving")
-            : t("launchpad.zk.assist.proveButton")}
-        </button>
-      </div>
+    <div className="space-y-2" data-testid="launchpad-rule-drafter">
+      <button
+        data-testid="launchpad-zk-draft"
+        onClick={handleDraft}
+        disabled={!canDraft || drafting}
+        className={cn(
+          "w-full py-2 px-3 text-xs font-bold border border-rule transition-all",
+          "flex items-center justify-center gap-1.5",
+          "bg-raised text-muted hover:bg-inset hover:text-ink",
+          "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-raised",
+        )}
+      >
+        {drafting ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          <Sparkles className="w-3.5 h-3.5" />
+        )}
+        {drafting
+          ? t("launchpad.zk.assist.drafting", { seconds: elapsed })
+          : t("launchpad.zk.assist.draftButton")}
+      </button>
 
       {/* A long wait needs to say what it is waiting ON, or it reads as a
           hang. It also needs an exit that is not reloading the page. */}
@@ -293,7 +203,7 @@ export const RuleAssistant = ({
           </p>
           <button
             data-testid="launchpad-zk-draft-cancel"
-            onClick={cancelDraft}
+            onClick={cancel}
             className="shrink-0 flex items-center gap-1 text-xs text-muted hover:text-ink transition-colors"
           >
             <X className="w-3 h-3" />
@@ -302,20 +212,16 @@ export const RuleAssistant = ({
         </div>
       )}
 
-      {/* Why a button is unavailable, in the words of the thing that is
-          missing. An accelerator that is simply greyed out reads as broken. */}
-      {(!DRAFTER_URL || !RESOLVER_URL) && (
+      {!DRAFTER_URL && (
         <p
           data-testid="launchpad-zk-assist-unconfigured"
           className="text-xs text-faint leading-relaxed"
         >
-          {!DRAFTER_URL && t("launchpad.zk.assist.noDrafter")}
-          {!DRAFTER_URL && !RESOLVER_URL && " "}
-          {!RESOLVER_URL && t("launchpad.zk.assist.noResolver")}
+          {t("launchpad.zk.assist.noDrafter")}
         </p>
       )}
 
-      {DRAFTER_URL && question.trim().length < 10 && (
+      {DRAFTER_URL && !drafting && question.trim().length < 10 && (
         <p className="text-xs text-faint">
           {t("launchpad.zk.assist.needQuestion")}
         </p>
@@ -408,6 +314,106 @@ export const RuleAssistant = ({
             {t("launchpad.zk.assist.candidatesHint")}
           </p>
         </div>
+      )}
+    </div>
+  );
+};
+
+interface ProverProps {
+  draft: ZkRuleDraft;
+  proven: ProvenRule | null;
+  onProven: (proven: ProvenRule | null) => void;
+}
+
+/** Step 2 — one real attestation of the rule now in the fields, and the verdict. */
+export const RuleProver = ({ draft, proven, onProven }: ProverProps) => {
+  const { t } = useTranslation();
+
+  const [proving, setProving] = useState(false);
+  const [failure, setFailure] = useState<ProofFailure | null>(null);
+  const [proveError, setProveError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const url = draft.url.trim();
+  const parsePath = draft.parsePath.trim();
+  const ruleReady = /^https:\/\//i.test(url) && parsePath.startsWith("$");
+  const isProven = proofCoversDraft(proven, url, parsePath);
+
+  // A proof belongs to one exact (url, parsePath). The moment either moves,
+  // every verdict on screen is about a rule that is no longer in the form.
+  useEffect(() => {
+    setFailure(null);
+    setProveError(null);
+    if (!proofCoversDraft(proven, url, parsePath)) onProven(null);
+    // `proven`/`onProven` are the parent's state and setter; depending on them
+    // would clear a proof on the render that just recorded it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, parsePath]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const handleProve = async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setProving(true);
+    setFailure(null);
+    setProveError(null);
+    try {
+      const result = await proveRule(url, parsePath, controller.signal);
+      if (controller.signal.aborted) return;
+      if (result.ok) {
+        onProven({ url, parsePath, result });
+      } else {
+        onProven(null);
+        setFailure(result);
+      }
+    } catch (e) {
+      if (controller.signal.aborted) return;
+      onProven(null);
+      setProveError((e as Error).message || "unreachable");
+    } finally {
+      if (!controller.signal.aborted) setProving(false);
+    }
+  };
+
+  const canProve = Boolean(RESOLVER_URL) && ruleReady;
+
+  return (
+    <div className="space-y-2" data-testid="launchpad-rule-prover">
+      <button
+        data-testid="launchpad-zk-prove"
+        onClick={handleProve}
+        disabled={!canProve || proving}
+        className={cn(
+          "w-full py-2 px-3 text-xs font-bold border transition-all",
+          "flex items-center justify-center gap-1.5",
+          isProven
+            ? "border-transparent bg-accent-muted text-accent"
+            : "border-rule bg-raised text-muted hover:bg-inset hover:text-ink",
+          "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-raised",
+        )}
+      >
+        {proving ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          <ShieldCheck className="w-3.5 h-3.5" />
+        )}
+        {proving
+          ? t("launchpad.zk.assist.proving")
+          : t("launchpad.zk.assist.proveButton")}
+      </button>
+
+      {/* Why the button is unavailable, in the words of the thing that is
+          missing. An accelerator that is simply greyed out reads as broken. */}
+      {!RESOLVER_URL && (
+        <p className="text-xs text-faint leading-relaxed">
+          {t("launchpad.zk.assist.noResolver")}
+        </p>
+      )}
+
+      {RESOLVER_URL && !ruleReady && (
+        <p className="text-xs text-faint">{t("launchpad.zk.assist.needRule")}</p>
       )}
 
       {isProven && proven && (
