@@ -10,6 +10,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { PortfolioCard } from './PortfolioCard';
 import { useDemo } from '../../../lib/DemoContext';
 import { fetchUserOpenOrders } from '../../../lib/chain-shim/orderbook-reads';
+import { knownMarketRefs } from '../../../features/arena/marketRegistry';
 
 const OrderItem: React.FC<{ order: ActiveOrder }> = ({ order }) => {
     const { cancelOrder, isPending } = useOrderbookTrade(order.marketAddress);
@@ -103,17 +104,33 @@ export const ActiveOrdersCard: React.FC<{ marketRef?: string | null }> = ({ mark
     const chainOrders = useQuery({
         queryKey: ['portfolio-chain-orders', marketRef, userBase58],
         queryFn: async () => {
-            if (!marketRef || !userBase58) return [];
-            const orders = await fetchUserOpenOrders(
-                connection as never,
-                demo.adapter,
-                marketRef,
-                userBase58,
+            if (!userBase58) return [];
+            // With a ?market= param this card is scoped to that market; on the
+            // plain Locker it sweeps every discovered market, because resting
+            // orders live wherever the user traded. It used to read only the
+            // param — null on /locker — so a wallet with live on-chain orders
+            // saw "no active orders" on the very page meant to list them.
+            const refs = marketRef ? [marketRef] : knownMarketRefs();
+            const perMarket = await Promise.all(
+                refs.map(async (ref) => {
+                    try {
+                        const orders = await fetchUserOpenOrders(
+                            connection as never,
+                            demo.adapter,
+                            ref,
+                            userBase58,
+                        );
+                        return orders.map((order) => orderToActiveOrder(ref, order));
+                    } catch {
+                        // No book on this market — pre-graduation is the norm.
+                        return [];
+                    }
+                }),
             );
-            return orders.map((order) => orderToActiveOrder(marketRef, order));
+            return perMarket.flat();
         },
-        enabled: !!marketRef && !!userBase58,
-        refetchInterval: 15_000,
+        enabled: !!userBase58,
+        refetchInterval: 30_000,
     });
     const orders = useMemo(() => {
         const byId = new Map<string, ActiveOrder>();

@@ -14,12 +14,16 @@ import toast from "react-hot-toast";
 import { useDemo } from "../../../lib/DemoContext";
 import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
-import { demoConfig, tokenSymbols } from "../../../lib/config";
+import { tokenSymbols } from "../../../lib/config";
+import { knownMarketRefs } from "../../../features/arena/marketRegistry";
+import { lookupMarketQuestion } from "../../../lib/market-questions";
 
 interface PendingUnlock {
   lockEntry: string;
   amountUsdc: bigint;
   unlockAt: bigint;
+  /** The market this lock belongs to — the claim write needs it back. */
+  marketRef: string;
   nonce: bigint;
 }
 
@@ -35,7 +39,6 @@ export function ClaimUnlockedPanel() {
   const [pendingNonce, setPendingNonce] = useState<bigint | null>(null);
   const [now, setNow] = useState(() => BigInt(Math.floor(Date.now() / 1000)));
 
-  const marketRef = demoConfig.marketRef;
   const userRef = useMemo(
     // chain-shim's `useAccount().address` is `0x<base58>` (EVM-shaped slot);
     // strip the prefix and prepend `sol:` for the SDK.
@@ -44,22 +47,36 @@ export function ClaimUnlockedPanel() {
   );
 
   const refresh = useCallback(async () => {
-    if (!adapter || !marketRef || !userRef) {
+    if (!adapter || !userRef) {
       setEntries([]);
       return;
     }
     setLoading(true);
     try {
-      const list = await adapter.readPendingUnlocks(marketRef, userRef);
-      setEntries(list);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("[ClaimUnlockedPanel] readPendingUnlocks failed", e);
-      setEntries([]);
+      // Sell locks live per (market, user); the user sells wherever they
+      // trade, so every discovered market is scanned. This used to read ONE
+      // env-seeded market — on the deployed site that ref did not even exist,
+      // so a person with matured proceeds saw an empty panel and no way to
+      // learn the money was theirs to claim.
+      const refs = knownMarketRefs();
+      const perMarket = await Promise.all(
+        refs.map(async (ref) => {
+          try {
+            const list = await adapter.readPendingUnlocks(ref, userRef);
+            return list.map((e) => ({ ...e, marketRef: ref }));
+          } catch {
+            // No position on this market — nothing to scan.
+            return [];
+          }
+        }),
+      );
+      setEntries(
+        perMarket.flat().sort((a, b) => Number(a.unlockAt - b.unlockAt)),
+      );
     } finally {
       setLoading(false);
     }
-  }, [adapter, marketRef, userRef]);
+  }, [adapter, userRef]);
 
   // Track on-chain Clock.unix_timestamp instead of wall-clock — these
   // diverge under Surfpool's surfnet_timeTravel cheatcode (advances the
@@ -101,7 +118,6 @@ export function ClaimUnlockedPanel() {
 
   const claim = useCallback(
     async (entry: PendingUnlock) => {
-      if (!marketRef) return;
       const tid = toast.loading(
         `Claiming ${(Number(entry.amountUsdc) / 1_000_000).toFixed(2)} ${tokenSymbols.amm}…`,
       );
@@ -109,7 +125,7 @@ export function ClaimUnlockedPanel() {
       try {
         await writeContractAsync({
           functionName: "claimUnlocked",
-          args: [{ market: marketRef, lockEntry: entry.lockEntry }],
+          args: [{ market: entry.marketRef, lockEntry: entry.lockEntry }],
         });
         toast.success("Proceeds claimed", { id: tid });
         void refresh();
@@ -121,7 +137,7 @@ export function ClaimUnlockedPanel() {
         setPendingNonce(null);
       }
     },
-    [marketRef, writeContractAsync, refresh],
+    [writeContractAsync, refresh],
   );
 
   if (!isConnected) return null;
@@ -151,18 +167,21 @@ export function ClaimUnlockedPanel() {
           const amount = (Number(e.amountUsdc) / 1_000_000).toFixed(2);
           return (
             <div
-              key={String(e.nonce)}
+              key={`${e.marketRef}:${String(e.nonce)}`}
               className="flex items-center justify-between border border-rule bg-inset p-3"
               data-testid={`pending-unlocks-row-${String(e.nonce)}`}
             >
-              <div className="font-mono text-sm">
+              <div className="min-w-0 font-mono text-sm">
                 <span className="text-ink">
                   {amount} {tokenSymbols.amm}
                 </span>{" "}
                 <span className="text-muted text-xs">
-                  · nonce {String(e.nonce)} ·{" "}
                   {ready ? "READY" : `unlocks in ${hh}h ${mm}m ${ss}s`}
                 </span>
+                <p className="mt-0.5 truncate text-xs text-muted">
+                  {lookupMarketQuestion(e.marketRef) ??
+                    `${e.marketRef.replace(/^sol:/, "").slice(0, 12)}…`}
+                </p>
               </div>
               <Button
                 className="btn btn-primary"
