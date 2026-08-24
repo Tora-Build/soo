@@ -77,6 +77,10 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   expect((await run("buyno 4")).result.success).toBe(true);
   const sell = await run("sell 3 yes");
   expect(sell.result.success, sell.text).toBe(true);
+  expect(sell.text, sell.text).toMatch(/proceeds \d+\.\d+ USDC \(fee /);
+
+  const buyWithCost = await run("buyyes 2");
+  expect(buyWithCost.text).toMatch(/cost \d+\.\d+ USDC \(fee /);
 
   // Seeded flow: deterministic, and every step lands or is reported.
   const sim = await run("simulate 6 2 42");
@@ -90,6 +94,7 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   const grad = await run("graduate 25 40");
   expect(grad.result.success, grad.text).toBe(true);
   expect(grad.text).toContain("Graduated after");
+  expect(grad.text, grad.text).toMatch(/spent ~\d+\.\d+ USDC/);
 
   // First order on a fresh book: the account does not exist until now.
   const place = await run("place bid 450 25");

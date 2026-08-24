@@ -200,7 +200,7 @@ export class SoothSDK {
     if (!demo || !userBase58) {
       return fail(
         "No connected wallet",
-        "No connected wallet — connect via navbar or `lw enable`.",
+        "No connected wallet — connect Phantom/Solflare from the navbar (network: Devnet).",
       );
     }
     const userPk = new PublicKey(userBase58);
@@ -536,20 +536,50 @@ export class SoothSDK {
     }
     const market = this.marketRef();
     if (!market) return fail("No active market", "No active market.");
+    const quoteLine = await this.quoteLine(market, outcome, isSell ? -sharesWad : sharesWad);
+    let r: Out;
     if (isSell) {
       // Negative delta routes the bridge to `buildSell`; slippage floor 0
       // matches the EVM terminal's behaviour of "take what the curve gives".
-      return this.writeViaShim("tradePositions", [market, outcome, -sharesWad, 0n]);
+      r = await this.writeViaShim("tradePositions", [market, outcome, -sharesWad, 0n]);
+    } else {
+      const maxCostWad =
+        toWadShares(typeof arg1 === "string" ? arg1 : undefined) ??
+        sharesWad * 2n; // sane default ceiling — 2x face value
+      r = await this.writeViaShim("tradePositions", [
+        market,
+        outcome,
+        sharesWad,
+        maxCostWad,
+      ]);
     }
-    const maxCostWad =
-      toWadShares(typeof arg1 === "string" ? arg1 : undefined) ??
-      sharesWad * 2n; // sane default ceiling — 2x face value
-    return this.writeViaShim("tradePositions", [
-      market,
-      outcome,
-      sharesWad,
-      maxCostWad,
-    ]);
+    if (quoteLine && r.result.success) r.output.splice(1, 0, quoteLine);
+    return r;
+  }
+
+  /**
+   * "cost 2.53 USDC (fee 0.05)" for a prospective trade, or null.
+   *
+   * Advisory only: the chain re-prices inside the slippage bound, and a
+   * market whose AmmState cannot be read still trades — it just trades
+   * without a preview.
+   */
+  private async quoteLine(
+    market: string,
+    outcome: 0 | 1,
+    deltaShares: bigint,
+  ): Promise<OutputLine | null> {
+    try {
+      const q = await this.demo!.adapter.readQuote(market, outcome, deltaShares);
+      const abs = q.netCost < 0n ? -q.netCost : q.netCost;
+      const word = q.netCost < 0n ? "proceeds" : "cost";
+      return line(
+        "dim",
+        `${word} ${fmtWadShares(abs, 2)} USDC (fee ${fmtWadShares(q.fee, 2)})`,
+      );
+    } catch {
+      return null;
+    }
   }
 
   /** `place <bid|ask> <tick 1-999> <usdc>` — resting order on the book. */
@@ -741,8 +771,15 @@ export class SoothSDK {
     }
     emit(line("info", `Graduating with ${fmtWadShares(step, 0)}-share rounds (max ${maxRounds})…`));
 
+    let spentWad = 0n;
     for (let round = 0; round < maxRounds; round++) {
       for (const outcome of [1, 0] as const) {
+        try {
+          const q = await demo.adapter.readQuote(ref, outcome, step);
+          spentWad += q.netCost;
+        } catch {
+          // No preview — the on-chain trade is still exact.
+        }
         const r = await this.writeViaShim("tradePositions", [
           ref,
           outcome,
@@ -758,12 +795,12 @@ export class SoothSDK {
       emit(
         line(
           "plain",
-          `round ${round}: fees ${fmtWadShares(g.feesAccumulatedWad, 2)} / ${fmtWadShares(g.thresholdWad, 2)} (${(g.progressBps / 100).toFixed(1)}%)`,
+          `round ${round}: spent ~${fmtWadShares(spentWad, 2)} USDC · fees ${fmtWadShares(g.feesAccumulatedWad, 2)} / ${fmtWadShares(g.thresholdWad, 2)} (${(g.progressBps / 100).toFixed(1)}%)`,
         ),
       );
       if (g.isGraduated) {
         snap = await demo.adapter.readSnapshot(ref);
-        emit(line("success", `Graduated after ${round + 1} round(s). Book venue is live.`));
+        emit(line("success", `Graduated after ${round + 1} round(s), ~${fmtWadShares(spentWad, 2)} USDC through the curve. Book venue is live.`));
         return { result: { success: true, message: "" }, output };
       }
     }
@@ -836,7 +873,8 @@ export class SoothSDK {
       if (r.result.success) {
         ok++;
         streak = 0;
-        emit(line("plain", `  ${String(i + 1).padStart(3)}/${n}  ${desc}  ✓`));
+        const cost = r.output.find((l) => /^(cost|proceeds)/.test(l.text))?.text;
+        emit(line("plain", `  ${String(i + 1).padStart(3)}/${n}  ${desc}  ✓${cost ? `  (${cost})` : ""}`));
       } else {
         failures++;
         streak++;
@@ -912,11 +950,20 @@ export class SoothSDK {
         return {
           result: { success: true, message: "" },
           output: [
+            line("bold", "Getting started"),
+            line("plain", "  1. Connect Phantom or Solflare from the navbar, network set to Devnet."),
+            line("plain", "     Your keys stay in your wallet — this app has no server and stores nothing."),
+            line("plain", "  2. `mint 1000` gives you test USDC. Devnet SOL for fees: https://faucet.solana.com"),
+            line("plain", "  3. `markets`, `setmarket 0`, then trade."),
+            line("dim", "  Every write is a real on-chain transaction your wallet signs — graduate and"),
+            line("dim", "  simulate submit one per step, so expect one approval each unless your wallet"),
+            line("dim", "  offers auto-approve. More wallets = more accounts in your wallet extension."),
+            line("plain", ""),
             line("bold", "Discovery"),
             line("plain", "  markets | m            list markets     setmarket <n|pubkey>"),
             line("plain", "  marketstatus | status  active-market snapshot + price"),
             line("bold", "Wallet"),
-            line("plain", "  balance   whoami   mint <usdc> (localnet)"),
+            line("plain", "  balance   whoami   mint <usdc>  — test-USDC faucet"),
             line("bold", "AMM"),
             line("plain", "  buyyes <shares>   buyno <shares>   sell <shares> [yes|no]"),
             line("plain", "  createmarket <question…> [b]      graduate [step] [rounds]"),
