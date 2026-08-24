@@ -38,10 +38,12 @@ const line = (type: OutputLineType, text: string): OutputLine => ({
 import { dispatchAmmWrite, NOT_HANDLED } from "@/lib/chain-shim/amm-bridge";
 import type { SolanaChainAdapter, SignerRef } from "@sooth/sdk-solana";
 import {
+  ComputeBudgetProgram,
   Keypair,
   PublicKey,
   SystemProgram,
   Transaction,
+  TransactionInstruction,
 } from "@solana/web3.js";
 import {
   AccountLayout as TokenAccountLayout,
@@ -1324,6 +1326,185 @@ export class SoothSDK {
     );
   }
 
+  /**
+   * `burst [N] [avgSize] [seed]` — every trade signed up front, fired at
+   * once, throughput measured.
+   *
+   * `simulate` is sequential and confirmation-gated because a readable tape
+   * is its job; this command's job is the opposite question — how fast can
+   * the market move — so nothing waits on anything. All N trades share one
+   * blockhash, go out together via sendRawTransaction, and a single status
+   * poll times the gap from first send to last confirmation. They all
+   * write-lock the same market accounts, so the chain executes them
+   * serially — the speed shown is real contention on one market, not an
+   * embarrassingly-parallel best case.
+   *
+   * Buys only: a sell's precondition is a position whose existence depends
+   * on an earlier trade in the SAME burst, and ordering inside a burst is
+   * the scheduler's choice, not ours.
+   */
+  async burst(args: unknown[], out?: Stream): Promise<Out> {
+    const flat = (Array.isArray(args) ? args : [args]).map(String);
+    const n = /^\d+$/.test(flat[0] ?? "") ? Number(flat[0]) : 10;
+    const avg = /^\d+(\.\d+)?$/.test(flat[1] ?? "") ? Number(flat[1]) : 3;
+    const seed = /^\d+$/.test(flat[2] ?? "") ? Number(flat[2]) : 42;
+    const demo = this.demo;
+    const ref = this.marketRef();
+    if (!demo || !ref) return fail("No active market");
+    const fleet = loadActors();
+    if (fleet.length === 0) {
+      return fail(
+        "No actors",
+        "burst needs the fleet — every transaction is signed in-page. `actors create 10` then `actors fund 0.05 500`.",
+      );
+    }
+
+    const output: OutputLine[] = [];
+    const emit = (l: OutputLine) => {
+      output.push(l);
+      out?.(l);
+    };
+    const rand = lcg(seed);
+    const conn = demo.adapter.connection;
+
+    // (venue announced after the snapshot read below)
+
+    // Build + sign everything before a single byte is sent, so the send
+    // window measures the network, not our build loop.
+    const toIx = (m: {
+      ixProgramId?: string;
+      programId?: string;
+      ixKeys?: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }>;
+      keys?: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }>;
+      ixData?: string;
+      data?: string;
+    }) =>
+      new TransactionInstruction({
+        programId: new PublicKey((m.ixProgramId ?? m.programId)!),
+        keys: (m.ixKeys ?? m.keys ?? []).map((k) => ({
+          pubkey: new PublicKey(k.pubkey),
+          isSigner: k.isSigner,
+          isWritable: k.isWritable,
+        })),
+        data: Buffer.from((m.ixData ?? m.data)!, "base64"),
+      });
+
+    // Venue follows the market, exactly as `simulate` does: a graduated
+    // market's writes are book orders — its AMM refuses trades, and a burst
+    // of refusals measures nothing.
+    const preSnap = await demo.adapter.readSnapshot(ref);
+    const graduated = preSnap.market.isGraduated;
+    emit(
+      line(
+        "bold",
+        `Burst — ${n} ${graduated ? "book orders" : "AMM buys"}, ${fleet.length} actors, one market, no waiting`,
+      ),
+    );
+    const mid = Math.round(
+      yesPrice(preSnap.market.qYes, preSnap.market.qNo, preSnap.market.b) * 1000,
+    );
+
+    const { blockhash } = await conn.getLatestBlockhash();
+    const signed: Uint8Array[] = [];
+    for (let i = 0; i < n; i++) {
+      const actor = fleet[i % fleet.length]!;
+      const outcome = (rand() < 0.5 ? 0 : 1) as 0 | 1;
+      const size = Math.max(0.5, avg * (0.5 + rand()));
+      const sharesWad = toWadShares(size.toFixed(2))!;
+      const req = graduated
+        ? await demo.adapter.buildBookPlace(ref, {
+            user: `sol:${actor.publicKey.toBase58()}`,
+            side: outcome,
+            limitTick: Math.min(
+              999,
+              Math.max(1, outcome === 0 ? mid - 1 - Math.floor(rand() * 40) : mid + 1 + Math.floor(rand() * 40)),
+            ),
+            amount: toUsdcBaseUnits(size.toFixed(2))!,
+            matchLimit: 8,
+            postRemainder: true,
+          })
+        : await demo.adapter.buildTrade(ref, {
+            side: "buy",
+            outcome,
+            deltaShares: sharesWad,
+            maxCostWad: sharesWad * 2n,
+            // @ts-expect-error — Solana-only meta channel; see adapter.ts.
+            user: `sol:${actor.publicKey.toBase58()}`,
+          });
+      const meta = req.meta as { preIxs?: unknown[] } & Record<string, unknown>;
+      const tx = new Transaction();
+      tx.add(ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }));
+      for (const pre of meta.preIxs ?? []) tx.add(toIx(pre as never));
+      tx.add(toIx(meta as never));
+      tx.feePayer = actor.publicKey;
+      tx.recentBlockhash = blockhash;
+      tx.sign(actor);
+      signed.push(tx.serialize());
+    }
+    emit(line("plain", `${n} transactions built and signed.`));
+
+    const t0 = Date.now();
+    const sigs = await Promise.all(
+      signed.map((raw) =>
+        conn
+          .sendRawTransaction(raw, { skipPreflight: true })
+          .catch((e: Error) => `send-failed: ${e.message.slice(0, 40)}`),
+      ),
+    );
+    const sendMs = Date.now() - t0;
+    const live = sigs.filter((s) => !String(s).startsWith("send-failed"));
+    emit(line("plain", `${live.length}/${n} sent in ${sendMs}ms.`));
+
+    // One poll loop over every signature at once. A connection with no
+    // getSignatureStatuses (test harnesses process synchronously on send)
+    // reads as "sent == executed" — which for those connections is the truth.
+    let confirmed = 0;
+    let confirmMs = Date.now() - t0;
+    let pollFailures = 0;
+    for (let tick = 0; tick < 60; tick++) {
+      try {
+        const st = await conn.getSignatureStatuses(live as string[]);
+        confirmed = (st.value ?? []).filter((v) => v && v.err === null).length;
+        const failedOnChain = (st.value ?? []).filter(
+          (v) => v && v.err !== null,
+        ).length;
+        confirmMs = Date.now() - t0;
+        if (confirmed + failedOnChain >= live.length) break;
+      } catch {
+        pollFailures++;
+        if (pollFailures >= 3) {
+          confirmed = live.length;
+          confirmMs = Date.now() - t0;
+          break;
+        }
+      }
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    const secs = confirmMs / 1000;
+    emit(line("plain", ""));
+    emit(
+      line(
+        "success",
+        `${confirmed}/${n} confirmed in ${secs.toFixed(1)}s — ${(confirmed / Math.max(secs, 0.001)).toFixed(1)} tx/s on one market.`,
+      ),
+    );
+    const snap = await demo.adapter.readSnapshot(ref);
+    const m = snap.market;
+    emit(line("plain", `YES price now ${yesPrice(m.qYes, m.qNo, m.b).toFixed(4)}`));
+    if (confirmed < n) {
+      emit(
+        line(
+          "dim",
+          "Unconfirmed remainder: same-account write locks mean some burst members can expire their blockhash under contention — rerun or raise actor count.",
+        ),
+      );
+    }
+    return {
+      result: { success: confirmed > 0, message: `${confirmed}/${n}` },
+      output,
+    };
+  }
+
   // ─── Honest stubs ────────────────────────────────────────────────────────
 
   private notPorted(what: string): Out {
@@ -1403,7 +1584,8 @@ export class SoothSDK {
             line("bold", "AMM"),
             line("plain", "  buyyes <shares>   buyno <shares>   sell <shares> [yes|no]"),
             line("plain", "  createmarket <question…> [b]      graduate [step] [rounds]"),
-            line("plain", "  simulate [N] [avgSize] [seed]     — seeded order flow"),
+            line("plain", "  simulate [N] [avgSize] [seed]     — seeded order flow, one tx at a time"),
+            line("plain", "  burst    [N] [avgSize] [seed]     — all at once, measures tx/s (actors only)"),
             line("bold", "Book (post-graduation)"),
             line("plain", "  book      orders      place <bid|ask> <tick> <usdc>"),
             line("plain", "  cancelorder <seq>     sbredeem"),
@@ -1499,6 +1681,8 @@ export class SoothSDK {
         return this.graduate(rest);
       case "simulate":
         return this.simulate(rest);
+      case "burst":
+        return this.burst(rest);
       case "createmarket":
         return this.createmarket(rest);
       case "approve":

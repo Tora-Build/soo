@@ -118,6 +118,11 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   const cancel = await run(`cancelorder ${seq}`);
   expect(cancel.result.success, cancel.text).toBe(true);
 
+  // Burst refuses without a fleet — every tx must sign in-page.
+  const noFleet = await run("burst 4");
+  expect(noFleet.result.success).toBe(false);
+  expect(noFleet.text).toContain("actors");
+
   // Post-graduation simulate rests book orders around the price.
   const bookSim = await run("simulate 4 2 7");
   expect(bookSim.result.success, bookSim.text).toBe(true);
@@ -150,6 +155,13 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   for (const label of ["a0:", "a1:", "a2:"]) {
     expect(fleetSim.text, fleetSim.text).toContain(label);
   }
+
+  // Burst: all four trades signed up front, sent together, all confirmed.
+  const burst = await run("burst 4 1 11");
+  expect(burst.result.success, burst.text).toBe(true);
+  expect(burst.text).toContain("4 transactions built and signed.");
+  expect(burst.text).toMatch(/4\/4 sent/);
+  expect(burst.text).toMatch(/4\/4 confirmed .* tx\/s/);
 
   // Export prints a base58 secret a wallet can import; clear forgets it.
   const exported = await run("actors export 1");
