@@ -1590,7 +1590,10 @@ async function dispatchRedeemAmmPosition(
   const marketPda = new PublicKey(marketRef.replace(/^sol:/, ""));
   const marketInfo = await ctx.connection.getAccountInfo(marketPda);
   if (!marketInfo) throw new Error("redeemAmmPosition: no such market");
-  const marketId = marketInfo.data.subarray(8, 8 + 32); // after the discriminator
+  // `Market.market_id` is [u8; 16] — the first field after the 8-byte
+  // discriminator. Slicing 32 here made derivePositionPda throw on every
+  // call, so this dispatcher had never once completed.
+  const marketId = marketInfo.data.subarray(8, 8 + 16);
   const [positionPda] = derivePositionPda(
     marketId,
     userPk,

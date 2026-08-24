@@ -14,7 +14,7 @@ describe("Geek terminal command parsing", () => {
   it("help lists the working set, including simulate and graduate", async () => {
     const { output } = await bare().executeCommand("help");
     const text = output.map((l) => l.text).join("\n");
-    for (const cmd of ["simulate", "graduate", "createmarket", "setmarket", "sell", "place", "cancelorder", "settle"]) {
+    for (const cmd of ["simulate", "graduate", "createmarket", "setmarket", "sell", "place", "cancelorder", "settle", "resolution", "lock", "attest", "register", "actors"]) {
       expect(text).toContain(cmd);
     }
   });
@@ -30,7 +30,8 @@ describe("Geek terminal command parsing", () => {
       "balance", "marketstatus", "markets", "buyyes 5", "sell 5",
       "book", "orders", "place bid 450 25", "cancelorder 3",
       "settle", "redeem", "claimrefund", "dismiss", "redeemlp", "lpbalance",
-      "simulate 5", "graduate",
+      "simulate 5", "graduate", "resolution", "lock", "attest yes", "register",
+      "actors fund 0.05 100",
     ]) {
       const r = await bare().executeCommand(cmd);
       expect(r.result.success, cmd).toBe(false);
@@ -67,6 +68,13 @@ describe("Geek terminal command parsing", () => {
   it("createmarket refuses a question shorter than the form would accept", async () => {
     const r = await bare().executeCommand("createmarket too short");
     expect(r.result.success).toBe(false);
+    expect(r.output[0]!.text).toContain("Usage");
+  });
+
+  it("attest validates the outcome word before any dispatch", async () => {
+    const sdk = bare();
+    await sdk.executeCommand("setmarket 2LSY2xGyd8ibsxyJioyVmBFgiF5FtJHqKnDNswvqSsZF");
+    const r = await sdk.executeCommand("attest maybe");
     expect(r.output[0]!.text).toContain("Usage");
   });
 

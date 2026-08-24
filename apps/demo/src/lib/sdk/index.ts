@@ -153,6 +153,11 @@ function lcg(seed: number): () => number {
 
 type Out = { result: CommandResult; output: OutputLine[] };
 
+/** 0 NO · 1 YES · 2 INVALID, as the program's enum reads. */
+function outcomeWord(outcome: number): string {
+  return outcome === 1 ? "YES" : outcome === 0 ? "NO" : outcome === 2 ? "INVALID" : `?${outcome}`;
+}
+
 /** A SignerRef over a local Keypair — signs in-page, no wallet popup. */
 function keypairSigner(kp: Keypair): SignerRef {
   return {
@@ -576,12 +581,16 @@ export class SoothSDK {
     }
     const market = this.marketRef();
     if (!market) return fail("No active market", "No active market.");
-    const quoteLine = await this.quoteLine(market, outcome, isSell ? -sharesWad : sharesWad);
+    const quote = await this.tryQuote(market, outcome, isSell ? -sharesWad : sharesWad);
+    const quoteLine = quote ? this.formatQuote(quote) : null;
     let r: Out;
     if (isSell) {
-      // Negative delta routes the bridge to `buildSell`; slippage floor 0
-      // matches the EVM terminal's behaviour of "take what the curve gives".
-      r = await this.writeViaShim("tradePositions", [market, outcome, -sharesWad, 0n]);
+      // Slippage floor at 95% of quoted proceeds — the EVM terminal's anchor.
+      // Floor 0 only when the quote itself was unreadable: "take what the
+      // curve gives" beats refusing to sell on a read failure.
+      const proceeds = quote && quote.netCost < 0n ? -quote.netCost : 0n;
+      const minProceeds = (proceeds * 95n) / 100n;
+      r = await this.writeViaShim("tradePositions", [market, outcome, -sharesWad, minProceeds]);
     } else {
       const maxCostWad =
         toWadShares(typeof arg1 === "string" ? arg1 : undefined) ??
@@ -598,28 +607,30 @@ export class SoothSDK {
   }
 
   /**
-   * "cost 2.53 USDC (fee 0.05)" for a prospective trade, or null.
+   * A trade preview, or null when the AmmState cannot be read.
    *
    * Advisory only: the chain re-prices inside the slippage bound, and a
-   * market whose AmmState cannot be read still trades — it just trades
-   * without a preview.
+   * market with no preview still trades.
    */
-  private async quoteLine(
+  private async tryQuote(
     market: string,
     outcome: 0 | 1,
     deltaShares: bigint,
-  ): Promise<OutputLine | null> {
+  ): Promise<{ netCost: bigint; fee: bigint } | null> {
     try {
-      const q = await this.demo!.adapter.readQuote(market, outcome, deltaShares);
-      const abs = q.netCost < 0n ? -q.netCost : q.netCost;
-      const word = q.netCost < 0n ? "proceeds" : "cost";
-      return line(
-        "dim",
-        `${word} ${fmtWadShares(abs, 2)} USDC (fee ${fmtWadShares(q.fee, 2)})`,
-      );
+      return await this.demo!.adapter.readQuote(market, outcome, deltaShares);
     } catch {
       return null;
     }
+  }
+
+  private formatQuote(q: { netCost: bigint; fee: bigint }): OutputLine {
+    const abs = q.netCost < 0n ? -q.netCost : q.netCost;
+    const word = q.netCost < 0n ? "proceeds" : "cost";
+    return line(
+      "dim",
+      `${word} ${fmtWadShares(abs, 2)} USDC (fee ${fmtWadShares(q.fee, 2)})`,
+    );
   }
 
   /** `place <bid|ask> <tick 1-999> <usdc>` — resting order on the book. */
@@ -1102,8 +1113,12 @@ export class SoothSDK {
         tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
       );
       const sig = await conn.sendRawTransaction(signed, { skipPreflight: false });
+      // The mints below are FEE-PAID BY THE ACTORS, so this transfer must have
+      // landed before any of them is submitted — on devnet, "sent" precedes
+      // "spendable" by a slot or two, and racing it fails every mint at once.
+      await this.waitForFunds(fleet[0]!.publicKey, lamportsEach);
       output.push(
-        line("success", `SOL: ${solEach} × ${fleet.length} sent (${String(sig).slice(0, 12)}…).`),
+        line("success", `SOL: ${solEach} × ${fleet.length} confirmed (${String(sig).slice(0, 12)}…).`),
       );
     } catch (e) {
       return fail((e as Error).message, `SOL funding failed: ${(e as Error).message}`);
@@ -1170,6 +1185,107 @@ export class SoothSDK {
     return { result: { success: minted === fleet.length, message: "" }, output };
   }
 
+  /**
+   * Blocks until `who` holds at least `lamports`, or ~20s pass.
+   *
+   * Confirmation by OUTCOME, not by signature status: the question the
+   * caller needs answered is "can this account pay a fee yet", and reading
+   * the account answers it on every connection — including test harnesses
+   * that process transactions synchronously and never index signatures.
+   */
+  private async waitForFunds(who: PublicKey, lamports: number): Promise<void> {
+    const conn = this.demo!.adapter.connection;
+    for (let i = 0; i < 40; i++) {
+      try {
+        const info = await conn.getAccountInfo(who);
+        if ((info?.lamports ?? 0) >= lamports) return;
+      } catch {
+        // Fall through to the wait.
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    throw new Error("SOL transfer not visible after 20s — check the wallet approved it");
+  }
+
+  // ─── Resolution lifecycle ────────────────────────────────────────────────
+
+  /**
+   * `resolution` — where the active market stands on the road to settlement.
+   *
+   * The lifecycle the program enforces:
+   *   lock (permissionless, past deadline) → attest (entry authority only)
+   *   → veto window → settle (permissionless) → redeem.
+   * Each line below states a fact from the chain; the hint at the end is the
+   * one step that is actually available next.
+   */
+  private async resolutionCmd(): Promise<Out> {
+    const demo = this.demo;
+    const ref = this.marketRef();
+    if (!demo || !ref) return fail("No active market");
+    const state = await demo.adapter.readResolutionState(ref);
+    if (!state) return fail("Market unreadable");
+    const output: OutputLine[] = [
+      line("bold", `Resolution — ${ref.replace(/^sol:/, "").slice(0, 12)}…`),
+      line("plain", `Lifecycle:   ${state.lifecycle}${state.isDismissed ? " (dismissed)" : ""}`),
+      line("plain", `Deadline:    ${new Date(Number(state.deadline) * 1000).toISOString()}`),
+      line("plain", `Adjudicator: ${state.adjudicator}`),
+    ];
+    const entry = state.adjudicatorEntry;
+    let hint = "";
+    if (state.lifecycle === "Settled") {
+      output.push(line("success", `Settled — winning outcome ${outcomeWord(state.winningOutcome)}.`));
+      hint = "redeem pays this wallet's winning shares.";
+    } else if (!entry) {
+      output.push(line("warn", "No adjudicator entry — nobody can attest yet."));
+      hint = "register [authority] creates the entry (creator only, or protocol authority).";
+    } else if (entry.attestedOutcome === null) {
+      output.push(line("plain", `Entry:       authority ${entry.authority.slice(0, 8)}… — not attested`));
+      hint =
+        state.lifecycle === "Locked"
+          ? "attest <yes|no|invalid> — signer must be the entry authority."
+          : "lock — permissionless once the deadline has passed.";
+    } else {
+      const vetoSecs = (await demo.adapter.readVetoPeriodSecs()) ?? 0;
+      const vetoEndsAt = Number(entry.attestedAt ?? 0n) + vetoSecs;
+      output.push(
+        line("plain", `Attested:    ${outcomeWord(entry.attestedOutcome)} at ${new Date(Number(entry.attestedAt) * 1000).toISOString()}`),
+        line("plain", `Veto ends:   ${new Date(vetoEndsAt * 1000).toISOString()} (${vetoSecs}s window)`),
+      );
+      if (entry.disputed) output.push(line("warn", "DISPUTED — the veto was used."));
+      hint = "settle — permissionless once the veto window has run out.";
+    }
+    if (hint) output.push(line("dim", `Next: ${hint}`));
+    return { result: { success: true, message: state.lifecycle }, output };
+  }
+
+  async lock(): Promise<Out> {
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("requestLock", [market]);
+  }
+
+  async attest(...args: unknown[]): Promise<Out> {
+    const flat = (Array.isArray(args[0]) ? (args[0] as unknown[]) : args).map(String);
+    const word = (flat[0] ?? "").toLowerCase();
+    const outcome = word === "yes" ? 1 : word === "no" ? 0 : word === "invalid" ? 2 : -1;
+    if (outcome === -1) {
+      return fail("Bad outcome", "Usage: attest <yes|no|invalid>  — signer must be the entry authority");
+    }
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("attestOutcome", [market, outcome]);
+  }
+
+  async register(...args: unknown[]): Promise<Out> {
+    const flat = (Array.isArray(args[0]) ? (args[0] as unknown[]) : args).map(String);
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim(
+      "registerAdjudicator",
+      flat[0] ? [market, flat[0]] : [market],
+    );
+  }
+
   // ─── Honest stubs ────────────────────────────────────────────────────────
 
   private notPorted(what: string): Out {
@@ -1186,6 +1302,12 @@ export class SoothSDK {
   }
   async trialstatus(..._args: unknown[]): Promise<Out> {
     return this.notPorted("trialstatus");
+  }
+  async dispute(..._args: unknown[]): Promise<Out> {
+    return fail(
+      "Not wired",
+      "The guardian veto (sooth_core::dispute) exists on-chain but has no client path yet; it is the dispute authority's tool, not a terminal flow.",
+    );
   }
   async transferlp(..._args: unknown[]): Promise<Out> {
     return this.notPorted("transferlp");
@@ -1247,9 +1369,11 @@ export class SoothSDK {
             line("bold", "Book (post-graduation)"),
             line("plain", "  book      orders      place <bid|ask> <tick> <usdc>"),
             line("plain", "  cancelorder <seq>     sbredeem"),
+            line("bold", "Resolution"),
+            line("plain", "  resolution  — lifecycle, attested outcome, veto countdown, next step"),
+            line("plain", "  lock   attest <yes|no|invalid>   register [authority]   settle"),
             line("bold", "Settlement"),
-            line("plain", "  settle   redeem   claim   claimrefund   dismiss"),
-            line("plain", "  redeemlp [shares]     lpbalance"),
+            line("plain", "  redeem   claim   claimrefund   dismiss   redeemlp [shares]   lpbalance"),
           ],
         };
       case "whoami": {
@@ -1306,6 +1430,17 @@ export class SoothSDK {
         return this.sbcancel(rest);
       case "sbredeem":
         return this.sbredeem();
+      case "resolution":
+      case "phase":
+        return this.resolutionCmd();
+      case "lock":
+        return this.lock();
+      case "attest":
+        return this.attest(rest);
+      case "register":
+        return this.register(rest);
+      case "dispute":
+        return this.dispute();
       case "settle":
       case "finalize":
         return this.settle();

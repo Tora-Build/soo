@@ -14,7 +14,10 @@ import {
   type SignerRef,
 } from "@sooth/sdk-solana";
 import { bootSmoke } from "../../../packages/sdk-solana/tests/fixtures/setup";
-import { LiteSvmConnection } from "../../../packages/sdk-solana/tests/fixtures/svm";
+import {
+  Clock,
+  LiteSvmConnection,
+} from "../../../packages/sdk-solana/tests/fixtures/svm";
 import { SoothSDK } from "../src/lib/sdk";
 
 const WAD = 1_000_000_000_000_000_000n;
@@ -24,6 +27,7 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   const smoke = await bootSmoke({
     bWad: 50n * WAD,
     userUsdcBaseUnits: 5_000_000_000n, // 5,000 USDC
+    vetoPeriodSecs: 120,
   });
   const conn = new LiteSvmConnection(smoke.ctx);
   const adapter = new SolanaChainAdapter({
@@ -158,4 +162,73 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   const bal = await run("balance");
   expect(bal.result.success).toBe(true);
   expect(bal.text).toContain("USDC");
+
+  // ── Resolution: deadline → lock → attest → veto → settle → redeem ──
+  // The adjudicator runs their own terminal; the fixture names the creator.
+  const creatorSdk = new SoothSDK(0, null, null, smoke.creator.publicKey.toBase58(), {
+    adapter,
+    userRef: encodePubkeyRef(smoke.creator.publicKey),
+    signer: {
+      publicKey: smoke.creator.publicKey.toBase58(),
+      signTransaction: async (raw: Uint8Array): Promise<Uint8Array> => {
+        const tx = Transaction.from(raw);
+        tx.partialSign(smoke.creator);
+        return tx.serialize({ verifySignatures: false, requireAllSignatures: false });
+      },
+    },
+    marketRef: null,
+    connected: true,
+  });
+  await creatorSdk.executeCommand(`setmarket ${smoke.marketPda.toBase58()}`);
+  const runAsCreator = async (cmd: string) => {
+    const r = await creatorSdk.executeCommand(cmd);
+    return { ...r, text: r.output.map((l) => l.text).join("\n") };
+  };
+
+  const warpTo = async (unixSec: bigint) => {
+    const pre = await smoke.ctx.banksClient.getClock();
+    smoke.ctx.warpToSlot(pre.slot + 1n);
+    const post = await smoke.ctx.banksClient.getClock();
+    smoke.ctx.setClock(
+      new Clock(post.slot, post.epochStartTimestamp, post.epoch, post.leaderScheduleEpoch, unixSec),
+    );
+  };
+
+  // Before the deadline, the resolution readout says so and points at lock.
+  const early = await run("resolution");
+  expect(early.text).toContain("Lifecycle:   Open");
+  expect(early.text).toContain("lock — permissionless once the deadline");
+
+  const soothRef = encodePubkeyRef(smoke.marketPda);
+  const deadline = (await adapter.readResolutionState(soothRef))!.deadline;
+  await warpTo(deadline + 1n);
+
+  // lock is permissionless — the trader's terminal can do it.
+  const locked = await run("lock");
+  expect(locked.result.success, locked.text).toBe(true);
+  expect((await run("resolution")).text).toContain("Lifecycle:   Locked");
+
+  // attest is not: the trader is refused, the adjudicator is not.
+  const wrongSigner = await run("attest yes");
+  expect(wrongSigner.result.success).toBe(false);
+  const attested = await runAsCreator("attest yes");
+  expect(attested.result.success, attested.text).toBe(true);
+
+  const inVeto = await run("resolution");
+  expect(inVeto.text).toContain("Attested:    YES");
+  expect(inVeto.text).toContain("120s window");
+  expect(inVeto.text).toContain("Next: settle");
+
+  // settle inside the window must fail; past it, anyone settles.
+  const tooEarly = await run("settle");
+  expect(tooEarly.result.success, tooEarly.text).toBe(false);
+  const state = await adapter.readResolutionState(soothRef);
+  await warpTo((state!.adjudicatorEntry!.attestedAt ?? 0n) + 121n);
+  const settled = await run("settle");
+  expect(settled.result.success, settled.text).toBe(true);
+  expect((await run("resolution")).text).toContain("winning outcome YES");
+
+  // redeem pays the trader's YES shares.
+  const redeemed = await run("redeem");
+  expect(redeemed.result.success, redeemed.text).toBe(true);
 }, 120_000);
