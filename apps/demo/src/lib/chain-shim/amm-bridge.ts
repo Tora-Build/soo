@@ -826,6 +826,9 @@ export async function dispatchAmmWrite(
   if (call.functionName === "bookPlace") {
     return dispatchBookPlace(call, ctx);
   }
+  if (call.functionName === "bookInit") {
+    return dispatchBookInit(call, ctx);
+  }
   if (call.functionName === "bookCancel") {
     return dispatchBookCancel(call, ctx);
   }
@@ -1364,6 +1367,31 @@ async function readBookCached(
   const inflight = ctx.adapter.readBook(marketRef).catch(() => null);
   bookCache.set(marketRef, { at: Date.now(), inflight });
   return inflight;
+}
+
+/**
+ * `bookInit(market, capacity?)` — create the market's orderbook account.
+ *
+ * Graduation flips the venue but creates nothing; until someone pays this
+ * account's rent every book write fails with "book account not found".
+ * Permissionless: the payer buys rent for a shared venue, not authority.
+ */
+async function dispatchBookInit(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "bookInit");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) {
+    throw new Error("bookInit: invalid market reference");
+  }
+  const capacity = Number(args[1] ?? 64);
+  const req = await ctx.adapter.buildBookInit(marketRef, {
+    user: `sol:${userBase58}`,
+    capacity: Number.isInteger(capacity) && capacity > 0 ? capacity : 64,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 async function dispatchBookPlace(

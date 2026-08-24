@@ -1,16 +1,19 @@
 // Solana fork of the Geek-page SDK class.
 //
 // Upstream's Geek terminal mounts a class instance with EVM-shaped methods
-// (`balance`, `buyyes`, `buyno`, `mint`, `marketstatus`, `executeCommand`,
-// etc.) and feeds user input through `executeCommand`. The Solana fork
-// keeps the class shape so Geek.tsx compiles unchanged, but the methods
-// route through the @sooth/sdk-solana adapter + chain-shim dispatchers
-// instead of wagmi.
+// (`balance`, `buyyes`, `createmarket`, `simulate`, `executeCommand`, etc.)
+// and feeds user input through `executeCommand`. The Solana fork keeps the
+// class shape so Geek.tsx compiles unchanged, but every method routes through
+// the @sooth/sdk-solana adapter + chain-shim dispatchers instead of wagmi.
 //
-// Wired today: balance / buyyes / buyno / mint / marketstatus / claim /
-// redeem / mint-complete-set / merge-complete-set. The rest still stub
-// with a "not implemented in Solana fork" line — the AMM / Portfolio /
-// Faucet / Launchpad pages cover the same writes through real UX.
+// The command surface is the working set of the EVM terminal: discovery
+// (`markets`, `setmarket`), lifecycle (`createmarket`, `graduate`, `settle`,
+// `dismiss`), trading on both venues (`buyyes`/`buyno`/`sell`, `place`/
+// `cancelorder`), the claims (`redeem`, `claim`, `claimrefund`, `redeemlp`),
+// and the seeded order-flow generator (`simulate`). Upstream's recording
+// harness (`scenario` / `record` / `playback` / `invariants`) is NOT ported —
+// it replays EVM traces and has no Solana equivalent yet; those commands say
+// so instead of pretending.
 
 export type {
   OutputLine,
@@ -36,18 +39,7 @@ import { dispatchAmmWrite, NOT_HANDLED } from "@/lib/chain-shim/amm-bridge";
 import type { SolanaChainAdapter, SignerRef } from "@sooth/sdk-solana";
 import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
-
-const NOT_WIRED_LINE: OutputLine = {
-  type: "warn",
-  text: "Solana fork: command not yet wired. Use the AMM / Portfolio / Faucet / Launchpad pages.",
-};
-
-function notWired(): { result: CommandResult; output: OutputLine[] } {
-  return {
-    result: { success: false, message: "Not wired in Solana fork" },
-    output: [NOT_WIRED_LINE],
-  };
-}
+import { knownMarketRefs } from "../../features/arena/marketRegistry";
 
 interface DemoLike {
   adapter: SolanaChainAdapter;
@@ -83,6 +75,8 @@ function userBase58FromDemo(demo: DemoLike | null): string | null {
   return demo.userRef.replace(/^sol:/, "");
 }
 
+const WAD = 1_000_000_000_000_000_000n;
+
 function fmtUsdc(baseUnits: bigint): string {
   // USDC is 6 decimals.
   const whole = baseUnits / 1_000_000n;
@@ -91,9 +85,8 @@ function fmtUsdc(baseUnits: bigint): string {
 }
 
 function fmtWadShares(wad: bigint, places = 4): string {
-  const ONE = 1_000_000_000_000_000_000n;
-  const whole = wad / ONE;
-  const frac = wad % ONE;
+  const whole = wad / WAD;
+  const frac = wad % WAD;
   return `${whole}.${frac
     .toString()
     .padStart(18, "0")
@@ -115,7 +108,41 @@ function toWadShares(s: string | undefined): bigint | null {
   if (!/^\d+(\.\d+)?$/.test(t)) return null;
   const [whole = "0", frac = ""] = t.split(".");
   const fracPadded = (frac + "000000000000000000").slice(0, 18);
-  return BigInt(whole) * 1_000_000_000_000_000_000n + BigInt(fracPadded || "0");
+  return BigInt(whole) * WAD + BigInt(fracPadded || "0");
+}
+
+/** LMSR YES price from the market snapshot, as a float in (0, 1). */
+function yesPrice(qYes: bigint, qNo: bigint, b: bigint): number {
+  if (b === 0n) return 0.5;
+  // exp((qN - qY) / b) in float space; snapshot magnitudes are far below
+  // the ~1e308 double ceiling for any market this UI can create.
+  const x = Number(qNo - qYes) / Number(b);
+  return 1 / (1 + Math.exp(x));
+}
+
+/**
+ * Deterministic PRNG for `simulate`.
+ *
+ * A seeded LCG rather than Math.random because a failing simulation must be
+ * REPRODUCIBLE: "simulate 20 5 42 broke the book" is a bug report, "it broke
+ * once" is an anecdote. Same constants as glibc.
+ */
+function lcg(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(s, 1103515245) + 12345) >>> 0;
+    return s / 0x1_0000_0000;
+  };
+}
+
+type Out = { result: CommandResult; output: OutputLine[] };
+type Stream = (l: OutputLine) => void;
+
+function fail(message: string, text?: string): Out {
+  return {
+    result: { success: false, message },
+    output: [line("error", text ?? message)],
+  };
 }
 
 // ─── SDK class ──────────────────────────────────────────────────────────────
@@ -123,6 +150,15 @@ function toWadShares(s: string | undefined): bigint | null {
 export class SoothSDK {
   private demo: DemoLike | null;
   private connectedAddress: string | null = null;
+  /**
+   * `setmarket`'s choice, overriding the env-configured default.
+   *
+   * Held here rather than in the demo context: the terminal switching
+   * markets must not re-point every other page mid-session.
+   */
+  private activeMarket: string | null = null;
+  /** Last `markets` listing, so `setmarket <n>` can resolve an index. */
+  private lastListing: string[] = [];
 
   constructor(...args: unknown[]) {
     this.demo = extractDemo(args);
@@ -138,8 +174,13 @@ export class SoothSDK {
   }
   setWalletClient(_wc: unknown): void {}
 
+  /** The market every command acts on: `setmarket`'s pick, else the env default. */
+  private marketRef(): string | null {
+    return this.activeMarket ?? this.demo?.marketRef ?? null;
+  }
+
   getMarketInfo(): { marketKey?: string; marketAddress?: string } {
-    const ref = this.demo?.marketRef;
+    const ref = this.marketRef();
     if (!ref) return {};
     const pda = ref.replace(/^sol:/, "");
     return { marketKey: pda, marketAddress: pda };
@@ -151,25 +192,28 @@ export class SoothSDK {
     return {};
   }
 
-  // ─── Wired reads ──────────────────────────────────────────────────────────
+  // ─── Reads ────────────────────────────────────────────────────────────────
 
-  async balance(): Promise<{ result: CommandResult; output: OutputLine[] }> {
+  async balance(): Promise<Out> {
     const demo = this.demo;
     const userBase58 = userBase58FromDemo(demo);
     if (!demo || !userBase58) {
-      return {
-        result: { success: false, message: "No connected wallet" },
-        output: [
-          {
-            type: "error",
-            text: "No connected wallet — connect via navbar or `lw enable`.",
-          },
-        ],
-      };
+      return fail(
+        "No connected wallet",
+        "No connected wallet — connect via navbar or `lw enable`.",
+      );
     }
     const userPk = new PublicKey(userBase58);
     const conn = demo.adapter.connection;
-    const sol = await conn.getBalance(userPk);
+    // Each read degrades independently: a connection that cannot answer one
+    // of them (test harnesses, flaky RPC) must not take down the whole
+    // balance line.
+    let solText = "?";
+    try {
+      solText = ((await conn.getBalance(userPk)) / 1e9).toFixed(4);
+    } catch {
+      // leave "?"
+    }
     const usdcMint = demo.adapter.bookMint;
     const usdcAta = getAssociatedTokenAddressSync(usdcMint, userPk);
     let usdcBaseUnits = 0n;
@@ -180,22 +224,20 @@ export class SoothSDK {
       // ATA may not exist yet — show 0.
     }
     const output: OutputLine[] = [
-      { type: "plain", text: `Wallet:  ${userBase58}` },
-      { type: "plain", text: `SOL:     ${(sol / 1e9).toFixed(4)}` },
-      { type: "plain", text: `USDC:    ${fmtUsdc(usdcBaseUnits)}` },
+      line("plain", `Wallet:  ${userBase58}`),
+      line("plain", `SOL:     ${solText}`),
+      line("plain", `USDC:    ${fmtUsdc(usdcBaseUnits)}`),
     ];
-    if (demo.marketRef) {
+    const ref = this.marketRef();
+    if (ref) {
       try {
-        const pos = await demo.adapter.readPosition(
-          demo.marketRef,
-          demo.userRef!,
-        );
+        const pos = await demo.adapter.readPosition(ref, demo.userRef!);
         output.push(
-          {
-            type: "plain",
-            text: `YES:     ${fmtWadShares(pos.yesShares)} (market ${demo.marketRef.replace(/^sol:/, "").slice(0, 8)}…)`,
-          },
-          { type: "plain", text: `NO:      ${fmtWadShares(pos.noShares)}` },
+          line(
+            "plain",
+            `YES:     ${fmtWadShares(pos.yesShares)} (market ${ref.replace(/^sol:/, "").slice(0, 8)}…)`,
+          ),
+          line("plain", `NO:      ${fmtWadShares(pos.noShares)}`),
         );
       } catch {
         // Position PDA may not exist yet for this user/market.
@@ -204,68 +246,220 @@ export class SoothSDK {
     return { result: { success: true, message: "" }, output };
   }
 
-  async marketstatus(): Promise<{
-    result: CommandResult;
-    output: OutputLine[];
-  }> {
+  async marketstatus(): Promise<Out> {
     const demo = this.demo;
-    if (!demo?.marketRef) {
-      return {
-        result: { success: false, message: "No active market" },
-        output: [
-          {
-            type: "error",
-            text: "No active market — set VITE_DEMO_MARKET_REF or run dev:localnet.",
-          },
-        ],
-      };
+    const ref = this.marketRef();
+    if (!demo || !ref) {
+      return fail(
+        "No active market",
+        "No active market — `markets` then `setmarket <n>`.",
+      );
     }
     try {
-      const snap = await demo.adapter.readSnapshot(demo.marketRef);
+      const snap = await demo.adapter.readSnapshot(ref);
       const m = snap.market;
       const lifecycle = m.isSettled
         ? `Settled (winning=${m.outcome ?? "?"})`
         : m.isLive
           ? "Live"
           : "Initializing";
+      const p = yesPrice(m.qYes, m.qNo, m.b);
       const lines: OutputLine[] = [
-        line("plain", `Market:    ${demo.marketRef.replace(/^sol:/, "")}`),
+        line("plain", `Market:    ${ref.replace(/^sol:/, "")}`),
         line("plain", `Lifecycle: ${lifecycle}`),
+        line("plain", `YES price: ${p.toFixed(4)}`),
         line("plain", `qYes:      ${fmtWadShares(m.qYes)}`),
         line("plain", `qNo:       ${fmtWadShares(m.qNo)}`),
         line("plain", `b:         ${fmtWadShares(m.b)}`),
         line("plain", `Graduated: ${m.isGraduated}`),
       ];
+      if (!m.isGraduated) {
+        try {
+          const g = await demo.adapter.readGraduationProgress(ref);
+          lines.push(
+            line(
+              "plain",
+              `Fees:      ${fmtWadShares(g.feesAccumulatedWad)} / ${fmtWadShares(g.thresholdWad)} (${(g.progressBps / 100).toFixed(1)}%)`,
+            ),
+          );
+        } catch {
+          // AmmState may not exist on a foreign market; the core lines stand.
+        }
+      }
       if (m.deadline !== undefined && m.deadline > 0n) {
         const d = new Date(Number(m.deadline) * 1000);
         lines.push(line("plain", `Deadline:  ${d.toISOString()}`));
       }
       return { result: { success: true, message: "" }, output: lines };
     } catch (e) {
-      return {
-        result: { success: false, message: (e as Error).message },
-        output: [line("error", `marketstatus failed: ${(e as Error).message}`)],
-      };
+      return fail(
+        (e as Error).message,
+        `marketstatus failed: ${(e as Error).message}`,
+      );
     }
   }
 
-  // ─── Wired writes (route through chain-shim dispatchers) ─────────────────
+  /** `markets` — every market this browser can see, numbered for `setmarket`. */
+  async markets(): Promise<Out> {
+    const demo = this.demo;
+    if (!demo) return fail("No demo context");
+    const refs = knownMarketRefs();
+    if (refs.length === 0) {
+      return fail("No markets", "No markets discovered yet.");
+    }
+    const active = this.marketRef();
+    const output: OutputLine[] = [
+      line("bold", `Markets (${refs.length})`),
+    ];
+    const listing: string[] = [];
+    // One snapshot batch, not N round trips.
+    let snaps: Awaited<ReturnType<SolanaChainAdapter["readSnapshots"]>>;
+    try {
+      snaps = await demo.adapter.readSnapshots(refs);
+    } catch {
+      snaps = [];
+    }
+    refs.forEach((ref, i) => {
+      listing.push(ref);
+      const snap = Array.isArray(snaps) ? snaps[i] : undefined;
+      const pda = ref.replace(/^sol:/, "");
+      const mark = ref === active ? "→" : " ";
+      if (snap?.market) {
+        const m = snap.market;
+        const state = m.isSettled ? "settled" : m.isGraduated ? "book" : "amm";
+        const p = yesPrice(m.qYes, m.qNo, m.b);
+        output.push(
+          line(
+            "plain",
+            `${mark} ${String(i).padStart(2)}  ${pda.slice(0, 8)}…  ${state.padEnd(7)} YES ${p.toFixed(2)}`,
+          ),
+        );
+      } else {
+        output.push(
+          line("dim", `${mark} ${String(i).padStart(2)}  ${pda.slice(0, 8)}…  (unreadable)`),
+        );
+      }
+    });
+    this.lastListing = listing;
+    output.push(line("dim", "setmarket <n|pubkey> to switch."));
+    return { result: { success: true, message: "" }, output };
+  }
+
+  /** `setmarket <index|base58>` — point every subsequent command at one market. */
+  async setMarket(keyOrIndex: string): Promise<Out> {
+    const t = (keyOrIndex ?? "").trim();
+    if (!t) return fail("Usage: setmarket <n|pubkey>");
+    let pda: string | null = null;
+    if (/^\d+$/.test(t)) {
+      const idx = Number(t);
+      const fromListing = this.lastListing[idx] ?? knownMarketRefs()[idx];
+      if (!fromListing) return fail(`No market at index ${idx} — run \`markets\`.`);
+      pda = fromListing.replace(/^sol:/, "");
+    } else {
+      try {
+        pda = new PublicKey(t.replace(/^sol:/, "")).toBase58();
+      } catch {
+        return fail(`Not an index or a base58 pubkey: ${t}`);
+      }
+    }
+    this.activeMarket = `sol:${pda}`;
+    return {
+      result: { success: true, message: pda },
+      output: [line("success", `Active market: ${pda}`)],
+    };
+  }
+
+  /** `book` — top of both sides of the on-chain orderbook. */
+  async sbbook(): Promise<Out> {
+    const demo = this.demo;
+    const ref = this.marketRef();
+    if (!demo || !ref) return fail("No active market");
+    try {
+      const book = await demo.adapter.readBook(ref);
+      const output: OutputLine[] = [
+        line("bold", `Book — ${book.orderCount} orders`),
+        line("dim", "  side  tick   size(USDC)  seq"),
+      ];
+      const row = (o: { priceTick: number; amount: bigint; seq: bigint }, side: string) =>
+        line(
+          "plain",
+          `  ${side}   ${String(o.priceTick).padStart(4)}   ${fmtUsdc(o.amount).padStart(10)}  ${o.seq}`,
+        );
+      for (const o of book.asks.slice(0, 5).reverse()) output.push(row(o, "ask"));
+      output.push(line("dim", "  ────"));
+      for (const o of book.bids.slice(0, 5)) output.push(row(o, "bid"));
+      if (book.orderCount === 0) output.push(line("dim", "  (empty)"));
+      return { result: { success: true, message: "" }, output };
+    } catch (e) {
+      return fail(
+        (e as Error).message,
+        `book failed (market may not be graduated): ${(e as Error).message}`,
+      );
+    }
+  }
+
+  /** `orders` — the connected wallet's resting orders, seq first so `cancelorder <seq>` works. */
+  async sbstate(): Promise<Out> {
+    const demo = this.demo;
+    const ref = this.marketRef();
+    const user = userBase58FromDemo(demo);
+    if (!demo || !ref || !user) return fail("No active market / wallet");
+    try {
+      const book = await demo.adapter.readBook(ref);
+      const mine = [...book.bids, ...book.asks].filter((o) => o.trader === user);
+      if (mine.length === 0) {
+        return {
+          result: { success: true, message: "" },
+          output: [line("dim", "No open orders.")],
+        };
+      }
+      const output: OutputLine[] = [
+        line("bold", `Open orders (${mine.length})`),
+        line("dim", "  seq   side  tick   size(USDC)"),
+        ...mine.map((o) =>
+          line(
+            "plain",
+            `  ${String(o.seq).padEnd(5)} ${o.side === 0 ? "bid" : "ask"}   ${String(o.priceTick).padStart(4)}   ${fmtUsdc(o.amount)}`,
+          ),
+        ),
+      ];
+      return { result: { success: true, message: "" }, output };
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  }
+
+  async lpbalance(): Promise<Out> {
+    const demo = this.demo;
+    const ref = this.marketRef();
+    if (!demo || !ref || !demo.userRef) return fail("No active market / wallet");
+    try {
+      const r = await demo.adapter.readLpRedemption(ref, demo.userRef);
+      const info = r as unknown as Record<string, bigint | undefined>;
+      const output: OutputLine[] = [line("bold", "LP position")];
+      for (const [k, v] of Object.entries(info)) {
+        if (typeof v === "bigint") {
+          output.push(line("plain", `  ${k}: ${fmtWadShares(v)}`));
+        }
+      }
+      return { result: { success: true, message: "" }, output };
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  }
+
+  // ─── Writes (route through chain-shim dispatchers) ───────────────────────
 
   private async writeViaShim(
     functionName: string,
     args: unknown[],
-  ): Promise<{ result: CommandResult; output: OutputLine[] }> {
+  ): Promise<Out> {
     const demo = this.demo;
     if (!demo) {
-      return {
-        result: { success: false, message: "No demo context" },
-        output: [
-          {
-            type: "error",
-            text: "SDK not initialized — open the page from inside the app.",
-          },
-        ],
-      };
+      return fail(
+        "No demo context",
+        "SDK not initialized — open the page from inside the app.",
+      );
     }
     try {
       const out = await dispatchAmmWrite(
@@ -278,85 +472,78 @@ export class SoothSDK {
         },
       );
       if (out === NOT_HANDLED) {
-        return notWired();
+        return fail(
+          "Not wired in Solana fork",
+          "Solana fork: command not yet wired.",
+        );
       }
       const sig = String(out).replace(/^0x/, "").slice(0, 16);
       return {
         result: { success: true, message: sig },
         output: [
-          { type: "success", text: `${functionName} OK` },
-          { type: "dim", text: `tx (synth hash): 0x${sig}…` },
+          line("success", `${functionName} OK`),
+          line("dim", `tx (synth hash): 0x${sig}…`),
         ],
       };
     } catch (e) {
-      return {
-        result: { success: false, message: (e as Error).message },
-        output: [
-          {
-            type: "error",
-            text: `${functionName} failed: ${(e as Error).message}`,
-          },
-        ],
-      };
+      return fail(
+        (e as Error).message,
+        `${functionName} failed: ${(e as Error).message}`,
+      );
     }
   }
 
-  async mint(
-    ...args: unknown[]
-  ): Promise<{ result: CommandResult; output: OutputLine[] }> {
+  async mint(...args: unknown[]): Promise<Out> {
     // Faucet mint. Geek upstream calls `mint <amount>` (USDC, decimal).
     const arg0 = Array.isArray(args[0]) ? args[0][0] : args[0];
     const amount = toUsdcBaseUnits(typeof arg0 === "string" ? arg0 : "100");
     if (amount === null) {
-      return {
-        result: { success: false, message: "Bad amount" },
-        output: [line("error", "Usage: mint <amount-usdc>  e.g. `mint 100`")],
-      };
+      return fail("Bad amount", "Usage: mint <amount-usdc>  e.g. `mint 100`");
     }
     return this.writeViaShim("mint", [this.connectedAddress, amount]);
   }
 
-  async buyyes(
-    ...args: unknown[]
-  ): Promise<{ result: CommandResult; output: OutputLine[] }> {
-    return this.tradeBuy(1, args);
+  async buyyes(...args: unknown[]): Promise<Out> {
+    return this.trade(1, false, args);
   }
 
-  async buyno(
-    ...args: unknown[]
-  ): Promise<{ result: CommandResult; output: OutputLine[] }> {
-    return this.tradeBuy(0, args);
+  async buyno(...args: unknown[]): Promise<Out> {
+    return this.trade(0, false, args);
   }
 
-  private async tradeBuy(
+  /** `sell <shares> [yes|no]` — AMM sell; defaults to the YES leg. */
+  async sell(...args: unknown[]): Promise<Out> {
+    const flat = Array.isArray(args[0]) ? (args[0] as unknown[]) : args;
+    const sideArg = typeof flat[1] === "string" ? flat[1].toLowerCase() : "yes";
+    const outcome = sideArg === "no" ? 0 : 1;
+    return this.trade(outcome as 0 | 1, true, [flat[0]]);
+  }
+
+  private async trade(
     outcome: 0 | 1,
+    isSell: boolean,
     args: unknown[],
-  ): Promise<{ result: CommandResult; output: OutputLine[] }> {
+  ): Promise<Out> {
     const arg0 = Array.isArray(args[0]) ? args[0][0] : args[0];
     const arg1 = Array.isArray(args[0]) ? args[0][1] : args[1];
     const sharesWad = toWadShares(typeof arg0 === "string" ? arg0 : undefined);
     if (sharesWad === null) {
-      const cmd = outcome === 1 ? "buyyes" : "buyno";
-      return {
-        result: { success: false, message: "Bad amount" },
-        output: [
-          line(
-            "error",
-            `Usage: ${cmd} <shares> [maxCostWad]  e.g. \`${cmd} 5\``,
-          ),
-        ],
-      };
+      const cmd = isSell ? "sell" : outcome === 1 ? "buyyes" : "buyno";
+      return fail(
+        "Bad amount",
+        `Usage: ${cmd} <shares>${isSell ? " [yes|no]" : " [maxCostWad]"}  e.g. \`${cmd} 5\``,
+      );
+    }
+    const market = this.marketRef();
+    if (!market) return fail("No active market", "No active market.");
+    if (isSell) {
+      // Negative delta routes the bridge to `buildSell`; slippage floor 0
+      // matches the EVM terminal's behaviour of "take what the curve gives".
+      return this.writeViaShim("tradePositions", [market, outcome, -sharesWad, 0n]);
     }
     const maxCostWad =
       toWadShares(typeof arg1 === "string" ? arg1 : undefined) ??
       sharesWad * 2n; // sane default ceiling — 2x face value
-    const market = this.demo?.marketRef;
-    if (!market) {
-      return {
-        result: { success: false, message: "No active market" },
-        output: [line("error", "No active market.")],
-      };
-    }
     return this.writeViaShim("tradePositions", [
       market,
       outcome,
@@ -365,83 +552,355 @@ export class SoothSDK {
     ]);
   }
 
-  // ─── Stubs (still EVM-shaped or behind a deferred feature) ───────────────
+  /** `place <bid|ask> <tick 1-999> <usdc>` — resting order on the book. */
+  async sbmint(...args: unknown[]): Promise<Out> {
+    const flat = Array.isArray(args[0]) ? (args[0] as unknown[]) : args;
+    const sideArg = typeof flat[0] === "string" ? flat[0].toLowerCase() : "";
+    const side = sideArg === "bid" ? 0 : sideArg === "ask" ? 1 : -1;
+    const tick = Number(flat[1] ?? NaN);
+    const amount = toUsdcBaseUnits(typeof flat[2] === "string" ? flat[2] : undefined);
+    if (side === -1 || !Number.isInteger(tick) || tick < 1 || tick > 999 || amount === null) {
+      return fail(
+        "Bad args",
+        "Usage: place <bid|ask> <tick 1-999> <usdc>  e.g. `place bid 450 25`",
+      );
+    }
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.placeWithInit(market, side, tick, amount);
+  }
 
-  async setMarket(_keyOrIndex: string) {
-    return notWired();
+  /**
+   * Places an order, creating the book first when it does not exist yet.
+   *
+   * Graduation flips the venue but allocates nothing, so the first order on
+   * a freshly graduated market always finds no book account. Initializing it
+   * here — once, on that exact error — makes `graduate` then `place` (and
+   * `simulate` straight after) work in one sitting, which is the whole point
+   * of a terminal.
+   */
+  private async placeWithInit(
+    market: string,
+    side: number,
+    tick: number,
+    amount: bigint,
+  ): Promise<Out> {
+    // Existence is checked by READING, not by pattern-matching the failed
+    // write: an absent book surfaces as a program discriminator error whose
+    // wording belongs to the program, and a client keyed to error prose
+    // breaks the day the message is edited.
+    let hasBook = true;
+    try {
+      await this.demo!.adapter.readBook(market);
+    } catch {
+      hasBook = false;
+    }
+    if (!hasBook) {
+      const init = await this.writeViaShim("bookInit", [market]);
+      if (!init.result.success) return init;
+    }
+    const placed = await this.writeViaShim("bookPlace", [market, side, tick, amount]);
+    if (!hasBook && placed.result.success) {
+      return {
+        result: placed.result,
+        output: [
+          line("info", "Book account created (first order on this market)."),
+          ...placed.output,
+        ],
+      };
+    }
+    return placed;
   }
-  async sbSetMarket(_keyOrIndex: string) {
-    return notWired();
+
+  /** `cancelorder <seq>` — seqs come from `orders`. */
+  async sbcancel(...args: unknown[]): Promise<Out> {
+    const flat = Array.isArray(args[0]) ? (args[0] as unknown[]) : args;
+    const seqRaw = typeof flat[0] === "string" ? flat[0] : "";
+    if (!/^\d+$/.test(seqRaw)) {
+      return fail("Bad args", "Usage: cancelorder <seq>  (see `orders`)");
+    }
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("bookCancel", [market, BigInt(seqRaw)]);
   }
-  async approve(..._args: unknown[]) {
-    return notWired();
+
+  async redeem(): Promise<Out> {
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("redeemAmmPosition", [market]);
   }
-  async allowance() {
-    return notWired();
+
+  async claim(): Promise<Out> {
+    return this.writeViaShim("claimUnlocked", [this.marketRef()]);
   }
-  async createmarket(..._args: unknown[]) {
-    return notWired();
+
+  async claimrefund(): Promise<Out> {
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("claimRefund", [market]);
   }
-  async graduate(..._args: unknown[]) {
-    return notWired();
+
+  async dismiss(): Promise<Out> {
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("dismissMarket", [market]);
   }
-  async simulate(..._args: unknown[]) {
-    return notWired();
+
+  async settle(): Promise<Out> {
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("settle", [market]);
   }
-  async trialstatus(..._args: unknown[]) {
-    return notWired();
+
+  async redeemlp(...args: unknown[]): Promise<Out> {
+    const flat = Array.isArray(args[0]) ? (args[0] as unknown[]) : args;
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    const shares = toWadShares(typeof flat[0] === "string" ? flat[0] : undefined);
+    return this.writeViaShim("redeemLp", [market, shares ?? 0n]);
   }
-  async dismiss(..._args: unknown[]) {
-    return notWired();
+
+  async sbredeem(): Promise<Out> {
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("redeemBookSeat", [market]);
   }
-  async claimrefund(..._args: unknown[]) {
-    return notWired();
+
+  // ─── Streamed lifecycle commands (Geek.tsx passes `out`) ─────────────────
+
+  /**
+   * `createmarket <question…> [b]` — question words, then an optional
+   * numeric b (USDC-denominated LMSR depth, default 1000).
+   */
+  async createmarket(args: unknown[], out?: Stream): Promise<Out> {
+    const words = (Array.isArray(args) ? args : [args]).map(String);
+    let b = 1000n;
+    if (words.length > 1 && /^\d+$/.test(words[words.length - 1]!)) {
+      b = BigInt(words.pop()!);
+    }
+    const question = words.join(" ").trim();
+    if (question.length < 10) {
+      return fail(
+        "Question too short",
+        'Usage: createmarket <question…> [b]  e.g. `createmarket Will BTC be above $100k by 2027? 1000`',
+      );
+    }
+    const output: OutputLine[] = [];
+    const emit = (l: OutputLine) => {
+      output.push(l);
+      out?.(l);
+    };
+    emit(line("info", `Creating market: "${question}" (b=${b})`));
+    // Dispatcher shape: [question, startTime, deadline, adjudicator, initialB].
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 7 * 86400);
+    const r = await this.writeViaShim("createMarket", [
+      question,
+      0n,
+      deadline,
+      undefined,
+      b * WAD,
+    ]);
+    for (const l of r.output) emit(l);
+    if (r.result.success) {
+      // The bridge stashes the new PDA on a global side channel before submit.
+      const g = globalThis as unknown as { __soothCreatedMarketPdas?: string[] };
+      const pda = g.__soothCreatedMarketPdas?.[g.__soothCreatedMarketPdas.length - 1];
+      if (pda) {
+        this.activeMarket = `sol:${pda}`;
+        emit(line("success", `Active market → ${pda}`));
+      }
+      emit(line("dim", "Deadline defaulted to 7 days. `marketstatus` to inspect."));
+    }
+    return { result: r.result, output };
   }
-  async lpbalance(..._args: unknown[]) {
-    return notWired();
+
+  /**
+   * `graduate [stepShares] [maxRounds]` — push the active market over the
+   * fee threshold with balanced both-leg buys, exactly like
+   * scripts/graduate-market.mjs: same size on YES and NO each round, so the
+   * price stays near 0.50 while only the fee pool grows.
+   */
+  async graduate(args: unknown[], out?: Stream): Promise<Out> {
+    const flat = (Array.isArray(args) ? args : [args]).map(String);
+    const step = toWadShares(flat[0] || "50") ?? 50n * WAD;
+    const maxRounds = /^\d+$/.test(flat[1] ?? "") ? Number(flat[1]) : 50;
+    const demo = this.demo;
+    const ref = this.marketRef();
+    if (!demo || !ref) return fail("No active market");
+
+    const output: OutputLine[] = [];
+    const emit = (l: OutputLine) => {
+      output.push(l);
+      out?.(l);
+    };
+
+    let snap = await demo.adapter.readSnapshot(ref);
+    if (snap.market.isGraduated) {
+      emit(line("success", "Already graduated."));
+      return { result: { success: true, message: "" }, output };
+    }
+    emit(line("info", `Graduating with ${fmtWadShares(step, 0)}-share rounds (max ${maxRounds})…`));
+
+    for (let round = 0; round < maxRounds; round++) {
+      for (const outcome of [1, 0] as const) {
+        const r = await this.writeViaShim("tradePositions", [
+          ref,
+          outcome,
+          step,
+          step * 2n, // a share never costs >1 USDC under LMSR; 2x is headroom
+        ]);
+        if (!r.result.success) {
+          emit(line("error", `round ${round} ${outcome === 1 ? "YES" : "NO"} leg failed: ${r.result.message}`));
+          return { result: r.result, output };
+        }
+      }
+      const g = await demo.adapter.readGraduationProgress(ref);
+      emit(
+        line(
+          "plain",
+          `round ${round}: fees ${fmtWadShares(g.feesAccumulatedWad, 2)} / ${fmtWadShares(g.thresholdWad, 2)} (${(g.progressBps / 100).toFixed(1)}%)`,
+        ),
+      );
+      if (g.isGraduated) {
+        snap = await demo.adapter.readSnapshot(ref);
+        emit(line("success", `Graduated after ${round + 1} round(s). Book venue is live.`));
+        return { result: { success: true, message: "" }, output };
+      }
+    }
+    emit(line("warn", `Not graduated after ${maxRounds} rounds — raise stepShares or maxRounds.`));
+    return { result: { success: false, message: "max rounds" }, output };
   }
-  async redeemlp(..._args: unknown[]) {
-    return notWired();
+
+  /**
+   * `simulate [N] [avgSize] [seed]` — seeded pseudo-random order flow
+   * against the active market. Pre-graduation it mixes AMM buys and sells;
+   * post-graduation it rests book orders around the current price. Same
+   * seed, same market state → same run, which is what makes a failing
+   * simulation a reproducible bug report instead of an anecdote.
+   */
+  async simulate(args: unknown[], out?: Stream): Promise<Out> {
+    const flat = (Array.isArray(args) ? args : [args]).map(String);
+    const n = /^\d+$/.test(flat[0] ?? "") ? Number(flat[0]) : 10;
+    const avg = /^\d+(\.\d+)?$/.test(flat[1] ?? "") ? Number(flat[1]) : 5;
+    const seed = /^\d+$/.test(flat[2] ?? "") ? Number(flat[2]) : 42;
+    const demo = this.demo;
+    const ref = this.marketRef();
+    if (!demo || !ref) return fail("No active market");
+
+    const output: OutputLine[] = [];
+    const emit = (l: OutputLine) => {
+      output.push(l);
+      out?.(l);
+    };
+    const rand = lcg(seed);
+    const snap = await demo.adapter.readSnapshot(ref);
+    const graduated = snap.market.isGraduated;
+
+    emit(line("bold", `Simulation — ${n} ${graduated ? "book orders" : "AMM trades"}, avg ${avg}, seed ${seed}`));
+
+    let ok = 0;
+    let failures = 0;
+    let streak = 0;
+    // Sells only spend what this run bought, so the simulation never
+    // depends on a pre-existing position.
+    const bought: [bigint, bigint] = [0n, 0n];
+
+    for (let i = 0; i < n; i++) {
+      const size = Math.max(0.5, avg * (0.5 + rand()));
+      let r: Out;
+      let desc: string;
+      if (graduated) {
+        const m = snap.market;
+        const mid = Math.round(yesPrice(m.qYes, m.qNo, m.b) * 1000);
+        const side = rand() < 0.5 ? 0 : 1;
+        const offset = 1 + Math.floor(rand() * 40);
+        const tick = Math.min(999, Math.max(1, side === 0 ? mid - offset : mid + offset));
+        const amount = toUsdcBaseUnits(size.toFixed(2))!;
+        desc = `place ${side === 0 ? "bid" : "ask"} @${tick} ${size.toFixed(2)} USDC`;
+        r = await this.placeWithInit(ref, side, tick, amount);
+      } else {
+        const outcome = (rand() < 0.5 ? 0 : 1) as 0 | 1;
+        const sharesWad = toWadShares(size.toFixed(2))!;
+        const canSell = bought[outcome] >= sharesWad;
+        const isSell = canSell && rand() < 0.3;
+        desc = `${isSell ? "sell" : "buy"} ${outcome === 1 ? "YES" : "NO"} ${size.toFixed(2)}`;
+        r = await this.writeViaShim("tradePositions", [
+          ref,
+          outcome,
+          isSell ? -sharesWad : sharesWad,
+          isSell ? 0n : sharesWad * 2n,
+        ]);
+        if (r.result.success && !isSell) bought[outcome] += sharesWad;
+        if (r.result.success && isSell) bought[outcome] -= sharesWad;
+      }
+      if (r.result.success) {
+        ok++;
+        streak = 0;
+        emit(line("plain", `  ${String(i + 1).padStart(3)}/${n}  ${desc}  ✓`));
+      } else {
+        failures++;
+        streak++;
+        emit(line("warn", `  ${String(i + 1).padStart(3)}/${n}  ${desc}  ✗ ${(r.result.message ?? "").slice(0, 60)}`));
+        if (streak >= 3) {
+          emit(line("error", "3 consecutive failures — aborting run."));
+          break;
+        }
+      }
+    }
+
+    const after = await demo.adapter.readSnapshot(ref);
+    const m = after.market;
+    emit(line("plain", ""));
+    emit(line("bold", `Done: ${ok} ok, ${failures} failed.`));
+    emit(line("plain", `YES price now ${yesPrice(m.qYes, m.qNo, m.b).toFixed(4)}  q=(${fmtWadShares(m.qYes, 1)}, ${fmtWadShares(m.qNo, 1)})`));
+    return {
+      result: { success: failures === 0, message: `${ok}/${n}` },
+      output,
+    };
   }
-  async transferlp(..._args: unknown[]) {
-    return notWired();
+
+  // ─── Honest stubs ────────────────────────────────────────────────────────
+
+  private notPorted(what: string): Out {
+    return fail(
+      "Not ported",
+      `${what} replays EVM traces upstream and has no Solana equivalent yet.`,
+    );
   }
-  async pausestatus(..._args: unknown[]) {
-    return notWired();
+  async approve(..._args: unknown[]): Promise<Out> {
+    return fail("No approvals on Solana", "SPL tokens have no allowance step — just trade.");
   }
-  async sbmint(..._args: unknown[]) {
-    return notWired();
+  async allowance(): Promise<Out> {
+    return this.approve();
   }
-  async sbmerge(..._args: unknown[]) {
-    return notWired();
+  async trialstatus(..._args: unknown[]): Promise<Out> {
+    return this.notPorted("trialstatus");
   }
-  async sbcancel(..._args: unknown[]) {
-    return notWired();
+  async transferlp(..._args: unknown[]): Promise<Out> {
+    return this.notPorted("transferlp");
   }
-  async sbredeem(..._args: unknown[]) {
-    return notWired();
+  async pausestatus(..._args: unknown[]): Promise<Out> {
+    return this.notPorted("pausestatus");
   }
-  async sbbook(..._args: unknown[]) {
-    return notWired();
+  async sbSetMarket(keyOrIndex: string): Promise<Out> {
+    return this.setMarket(keyOrIndex);
   }
-  async sbbalance(..._args: unknown[]) {
-    return notWired();
+  async sbmerge(..._args: unknown[]): Promise<Out> {
+    return this.notPorted("mergeset");
   }
-  async sbstate(..._args: unknown[]) {
-    return notWired();
+  async sbbalance(): Promise<Out> {
+    return this.balance();
   }
-  async sbprice(..._args: unknown[]) {
-    return notWired();
+  async sbprice(): Promise<Out> {
+    return this.marketstatus();
   }
-  async sbhistory(..._args: unknown[]) {
-    return notWired();
+  async sbhistory(..._args: unknown[]): Promise<Out> {
+    return this.notPorted("history");
   }
 
   // ─── Command parser ──────────────────────────────────────────────────────
 
-  async executeCommand(
-    input: string,
-  ): Promise<{ result: CommandResult; output: OutputLine[] }> {
+  async executeCommand(input: string): Promise<Out> {
     const parts = input.trim().split(/\s+/);
     const cmd = parts[0]?.toLowerCase() ?? "";
     const rest = parts.slice(1);
@@ -449,40 +908,25 @@ export class SoothSDK {
       case "":
         return { result: { success: true, message: "" }, output: [] };
       case "help":
+      case "?":
         return {
           result: { success: true, message: "" },
           output: [
-            { type: "bold", text: "Solana fork — wired commands:" },
-            {
-              type: "plain",
-              text: "  balance              — SOL + USDC + active-market position",
-            },
-            {
-              type: "plain",
-              text: "  marketstatus         — Market PDA snapshot",
-            },
-            {
-              type: "plain",
-              text: "  buyyes <shares>      — buy YES (5 = 5·WAD)",
-            },
-            { type: "plain", text: "  buyno  <shares>      — buy NO" },
-            {
-              type: "plain",
-              text: "  mint   <usdc>        — faucet (localnet only)",
-            },
-            {
-              type: "plain",
-              text: "  whoami               — connected pubkey",
-            },
-            {
-              type: "plain",
-              text: "  market               — active market PDA",
-            },
-            { type: "plain", text: "" },
-            {
-              type: "dim",
-              text: "Other upstream commands stub with 'not wired' — use the AMM / Portfolio / Faucet / Launchpad pages.",
-            },
+            line("bold", "Discovery"),
+            line("plain", "  markets | m            list markets     setmarket <n|pubkey>"),
+            line("plain", "  marketstatus | status  active-market snapshot + price"),
+            line("bold", "Wallet"),
+            line("plain", "  balance   whoami   mint <usdc> (localnet)"),
+            line("bold", "AMM"),
+            line("plain", "  buyyes <shares>   buyno <shares>   sell <shares> [yes|no]"),
+            line("plain", "  createmarket <question…> [b]      graduate [step] [rounds]"),
+            line("plain", "  simulate [N] [avgSize] [seed]     — seeded order flow"),
+            line("bold", "Book (post-graduation)"),
+            line("plain", "  book      orders      place <bid|ask> <tick> <usdc>"),
+            line("plain", "  cancelorder <seq>     sbredeem"),
+            line("bold", "Settlement"),
+            line("plain", "  settle   redeem   claim   claimrefund   dismiss"),
+            line("plain", "  redeemlp [shares]     lpbalance"),
           ],
         };
       case "whoami": {
@@ -490,41 +934,84 @@ export class SoothSDK {
         return {
           result: { success: !!u, message: u ?? "" },
           output: [
-            u
-              ? { type: "plain", text: u }
-              : { type: "error", text: "No connected wallet." },
+            u ? line("plain", u) : line("error", "No connected wallet."),
           ],
         };
       }
       case "market": {
-        const m = this.demo?.marketRef;
+        const m = this.marketRef();
         return {
           result: { success: !!m, message: m ?? "" },
           output: [
             m
-              ? { type: "plain", text: m.replace(/^sol:/, "") }
-              : { type: "error", text: "No active market." },
+              ? line("plain", m.replace(/^sol:/, ""))
+              : line("error", "No active market."),
           ],
         };
       }
+      case "markets":
+      case "m":
+        return this.markets();
+      case "setmarket":
+        return this.setMarket(rest[0] ?? "");
       case "balance":
         return this.balance();
       case "marketstatus":
       case "status":
+      case "state":
         return this.marketstatus();
       case "buyyes":
         return this.buyyes(rest);
       case "buyno":
         return this.buyno(rest);
+      case "sell":
+        return this.sell(rest);
       case "mint":
       case "faucet":
         return this.mint(rest);
+      case "book":
+        return this.sbbook();
+      case "orders":
+      case "positions":
+        return this.sbstate();
+      case "place":
+        return this.sbmint(rest);
+      case "cancelorder":
+        return this.sbcancel(rest);
+      case "sbredeem":
+        return this.sbredeem();
+      case "settle":
+      case "finalize":
+        return this.settle();
+      case "redeem":
+      case "redeemamm":
+        return this.redeem();
+      case "claim":
+        return this.claim();
+      case "claimrefund":
+        return this.claimrefund();
+      case "dismiss":
+        return this.dismiss();
+      case "redeemlp":
+        return this.redeemlp(rest);
+      case "lpbalance":
+        return this.lpbalance();
+      case "graduate":
+        return this.graduate(rest);
+      case "simulate":
+        return this.simulate(rest);
+      case "createmarket":
+        return this.createmarket(rest);
+      case "approve":
+        return this.approve();
+      case "allowance":
+        return this.allowance();
       default:
         return {
           result: { success: false, message: `Unknown command: ${cmd}` },
           output: [
-            { type: "error", text: `Unknown command: ${cmd}` },
-            { type: "dim", text: 'Type "help" for the wired-command list.' },
+            line("error", `Unknown command: ${cmd}`),
+            line("dim", 'Type "help" for the command list.'),
           ],
         };
     }

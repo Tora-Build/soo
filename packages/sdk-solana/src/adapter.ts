@@ -91,6 +91,7 @@ import {
   decodeBook,
   eventAuthorityPda,
   buildBookCancel as buildBookCancelIx,
+  buildBookInit as buildBookInitIx,
   buildBookPlace as buildBookPlaceIx,
   buildBookWithdraw as buildBookWithdrawIx,
   type BookRefs,
@@ -2086,6 +2087,49 @@ export class SolanaChainAdapter implements ChainAdapter {
       marketPda,
       usdcMint: this.bookMint,
       programs: this.programIds,
+    };
+  }
+
+  /**
+   * `book_init` as a TradeRequest — create the market's orderbook account.
+   *
+   * Graduation flips the venue but creates nothing: the book account only
+   * exists once someone pays for it, and every place/cancel until then fails
+   * with "book account not found". Permissionless on purpose — the payer is
+   * buying rent for a shared venue, not claiming authority over it.
+   * `book_init` needs the 256 KiB heap, which `submit` already requests on
+   * every transaction.
+   */
+  async buildBookInit(
+    market: MarketRef,
+    args: { user: AddressRef; capacity?: number },
+  ): Promise<TradeRequest> {
+    if (!args.user) {
+      throw new SoothError({
+        kind: "NotImplemented",
+        method: "buildBookInit — args.user is required at build time",
+      });
+    }
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    // No explicit heap-frame pre-instruction: `submit` already prepends
+    // `requestHeapFrame(256 KiB)` to every transaction, and a second copy is
+    // a DuplicateInstruction error, not extra headroom.
+    const initIx = buildBookInitIx(
+      this.bookRefs(marketPda, resolved.marketId),
+      userPk,
+      args.capacity ?? 64,
+    );
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(initIx.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(initIx, userPk),
+        operation: "bookInit",
+      },
     };
   }
 
