@@ -1360,10 +1360,13 @@ export class SoothSDK {
       const outcomeWordArg = (rest[2] ?? "").toLowerCase();
       const size = Number(rest[3] ?? NaN);
       const fleetSize = loadActors().length;
+      if (fleetSize === 0) {
+        return fail("No actors", "No actors yet — `actors create 10` first.");
+      }
       if (
         !Number.isInteger(actorIdx) ||
         actorIdx < 0 ||
-        actorIdx >= Math.max(fleetSize, 1) ||
+        actorIdx >= fleetSize ||
         (side !== "buy" && side !== "sell") ||
         (outcomeWordArg !== "yes" && outcomeWordArg !== "no") ||
         !Number.isFinite(size) ||
@@ -1371,9 +1374,7 @@ export class SoothSDK {
       ) {
         return fail(
           "Bad plan row",
-          fleetSize === 0
-            ? "No actors yet — `actors create 10` first."
-            : `Usage: plan <a0..a${fleetSize - 1}> <buy|sell> <yes|no> <size>   e.g. \`plan a2 sell yes 5\``,
+          `Usage: plan <a0..a${fleetSize - 1}> <buy|sell> <yes|no> <size>   e.g. \`plan a2 sell yes 5\``,
         );
       }
       this.plan.push({
