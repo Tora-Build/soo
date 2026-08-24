@@ -1746,24 +1746,41 @@ export class SoothSDK {
     if (planned) this.plan = [];
 
     const t0 = Date.now();
-    // Chunked sends: a proxied RPC rate-limits, and a dropped send reads as
-    // "sent" until the poll times out. Rows flip as their chunk goes out.
-    const sigs: string[] = [];
-    for (let off = 0; off < signed.length; off += 12) {
-      const chunk = await Promise.all(
-        signed.slice(off, off + 12).map((raw) =>
-          conn
-            .sendRawTransaction(raw, { skipPreflight: true })
-            .catch((e: Error) => `send-failed: ${e.message.slice(0, 120)}`),
-        ),
-      );
-      chunk.forEach((sig, k) => {
-        const i = builtOk[off + k]!.i;
-        rowState[i] = String(sig).startsWith("send-failed") ? "✗ send failed" : "→ sent";
-        emit(rowLine(i));
-      });
-      sigs.push(...chunk);
-      if (off + 12 < signed.length) await new Promise((r) => setTimeout(r, 250));
+    // Concurrency-limited sends, no fixed pacing. The previous 12-per-chunk
+    // loop slept 250ms between chunks, so the send phase grew linearly with
+    // burst size — 2.4 of a 40-burst's 3.4 measured seconds were OUR sleeps,
+    // and "tx/s" was measuring the meter again. Twelve in flight keeps the
+    // proxied RPC happy; a 429 retries with backoff instead of pacing
+    // everyone else.
+    const sigs: string[] = new Array(signed.length);
+    {
+      let next = 0;
+      const sendWorker = async () => {
+        for (;;) {
+          const k = next++;
+          if (k >= signed.length) return;
+          let out = "";
+          for (let attempt = 0; ; attempt++) {
+            try {
+              out = await conn.sendRawTransaction(signed[k]!, { skipPreflight: true });
+              break;
+            } catch (e) {
+              const msg = (e as Error).message ?? "";
+              if (attempt < 3 && /429|rate/i.test(msg)) {
+                await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+                continue;
+              }
+              out = `send-failed: ${msg.slice(0, 120)}`;
+              break;
+            }
+          }
+          sigs[k] = out;
+          const i = builtOk[k]!.i;
+          rowState[i] = out.startsWith("send-failed") ? "✗ send failed" : "→ sent";
+          emit(rowLine(i));
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(12, signed.length) }, sendWorker));
     }
     const sendMs = Date.now() - t0;
     emit(
