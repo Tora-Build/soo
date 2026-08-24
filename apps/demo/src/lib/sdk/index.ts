@@ -1406,6 +1406,9 @@ export class SoothSDK {
 
     const { blockhash } = await conn.getLatestBlockhash();
     const signed: Uint8Array[] = [];
+    // Instructions are kept beside each signed payload so a transaction whose
+    // blockhash dies under it can be re-signed fresh instead of abandoned.
+    const buildsForRetry: Array<{ actor: Keypair; ixs: TransactionInstruction[] }> = [];
     for (let i = 0; i < n; i++) {
       const actor = fleet[i % fleet.length]!;
       const outcome = (rand() < 0.5 ? 0 : 1) as 0 | 1;
@@ -1432,10 +1435,14 @@ export class SoothSDK {
             user: `sol:${actor.publicKey.toBase58()}`,
           });
       const meta = req.meta as { preIxs?: unknown[] } & Record<string, unknown>;
+      const ixs = [
+        ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }),
+        ...(meta.preIxs ?? []).map((pre) => toIx(pre as never)),
+        toIx(meta as never),
+      ];
+      buildsForRetry.push({ actor, ixs });
       const tx = new Transaction();
-      tx.add(ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }));
-      for (const pre of meta.preIxs ?? []) tx.add(toIx(pre as never));
-      tx.add(toIx(meta as never));
+      for (const ix of ixs) tx.add(ix);
       tx.feePayer = actor.publicKey;
       tx.recentBlockhash = blockhash;
       tx.sign(actor);
@@ -1448,12 +1455,35 @@ export class SoothSDK {
       signed.map((raw) =>
         conn
           .sendRawTransaction(raw, { skipPreflight: true })
-          .catch((e: Error) => `send-failed: ${e.message.slice(0, 40)}`),
+          .catch((e: Error) => `send-failed: ${e.message.slice(0, 120)}`),
       ),
     );
     const sendMs = Date.now() - t0;
     const live = sigs.filter((s) => !String(s).startsWith("send-failed"));
     emit(line("plain", `${live.length}/${n} sent in ${sendMs}ms.`));
+
+    // Second wave for the stragglers: same instructions, fresh blockhash,
+    // sequential. Under write-lock contention a burst member's blockhash can
+    // expire before its turn; abandoning it would understate the market, and
+    // the summary line reports the retry count so the wave is not silent.
+    let retried = 0;
+    for (let i = 0; i < sigs.length; i++) {
+      if (!String(sigs[i]).startsWith("send-failed")) continue;
+      const { actor, ixs } = buildsForRetry[i]!;
+      try {
+        const tx = new Transaction();
+        for (const ix of ixs) tx.add(ix);
+        tx.feePayer = actor.publicKey;
+        tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+        tx.sign(actor);
+        const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+        live.push(sig);
+        retried++;
+      } catch (e) {
+        emit(line("warn", `  retry failed: ${(e as Error).message.slice(0, 90)}`));
+      }
+    }
+    if (retried > 0) emit(line("dim", `${retried} re-sent with a fresh blockhash.`));
 
     // One poll loop over every signature at once. A connection with no
     // getSignatureStatuses (test harnesses process synchronously on send)
