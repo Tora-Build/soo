@@ -905,6 +905,30 @@ export class SoothSDK {
       ),
     );
 
+    // Rent preflight. An actor's first trade on a market creates its Position
+    // (~0.002 SOL, actor-paid), so a fleet that LOOKS funded can be unable to
+    // open a single position — and without this check that surfaces as N
+    // opaque code=1 failures instead of one sentence before any is spent.
+    if (fleet.length > 0) {
+      try {
+        const infos = await demo.adapter.connection.getMultipleAccountsInfo(
+          fleet.map((kp) => kp.publicKey),
+        );
+        const MIN_LAMPORTS = 4_500_000; // position rent + ATA rent + fees
+        const short = infos.filter((a) => (a?.lamports ?? 0) < MIN_LAMPORTS).length;
+        if (short > 0) {
+          emit(
+            line(
+              "warn",
+              `${short}/${fleet.length} actors hold under 0.0045 SOL — a first trade on a market pays ~0.002 SOL position rent (plus ~0.002 for a missing token account). \`actors fund 0.01 0\` prevents mid-run failures.`,
+            ),
+          );
+        }
+      } catch {
+        // A preflight that cannot read balances must not block the run.
+      }
+    }
+
     let ok = 0;
     let failures = 0;
     let streak = 0;
@@ -954,13 +978,17 @@ export class SoothSDK {
         emit(line("warn", `  ${String(i + 1).padStart(3)}/${n}  ${desc}  ✗ ${(r.result.message ?? "").slice(0, 90)}`));
         if (streak >= 3) {
           emit(line("error", "3 consecutive failures — aborting run."));
-          // The commonest cause by far, translated: token error 1 is
-          // InsufficientFunds, and with actors that means the fleet's USDC.
+          // Translated from a live reproduction, not the error table: code=1
+          // on a first trade is almost always the SYSTEM program refusing the
+          // Position account's rent — an actor's first play on a market pays
+          // ~0.002 SOL for its position (and ~0.002 more if a venue token
+          // account is missing). Token InsufficientFunds shares the code, so
+          // both refills are named.
           if (/code=1\b/.test(r.result.message ?? "") && fleet.length > 0) {
             emit(
               line(
                 "info",
-                "code=1 is the token program's InsufficientFunds — the actors are out of USDC. `actors` shows balances; `actors fund 0 500` refills without re-sending SOL.",
+                "code=1 means an account ran short mid-transaction. Most often it is the actor's SOL — the first trade on a market pays ~0.002 SOL rent — so `actors fund 0.01 0` tops that up; if `actors` shows USDC 0, `actors fund 0 500` instead.",
               ),
             );
           }
