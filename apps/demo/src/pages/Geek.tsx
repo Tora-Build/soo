@@ -202,6 +202,16 @@ export function Geek() {
         return streamed ? [] : output;
       }
 
+      if (cmd === "burst") {
+        let streamed = false;
+        const out = (line: OutputLine) => {
+          streamed = true;
+          stream?.(line);
+        };
+        const { output } = await sdk.burst(parts.slice(1), out);
+        return streamed ? [] : output;
+      }
+
       const { output } = await sdk.executeCommand(input);
       return output;
     },

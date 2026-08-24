@@ -205,6 +205,17 @@ export class SoothSDK {
    * test runs and cannot be stubbed after the fact.
    */
   faucetAuthorityBytes: string | null = null;
+  /**
+   * The scripted burst: exact (actor, side, outcome, size) rows the next
+   * `burst` executes instead of random flow. In-memory on purpose — a plan
+   * is choreography for the next run, not configuration.
+   */
+  private plan: Array<{
+    actor: number;
+    side: "buy" | "sell";
+    outcome: 0 | 1;
+    size: number;
+  }> = [];
 
   constructor(...args: unknown[]) {
     this.demo = extractDemo(args);
@@ -1327,6 +1338,74 @@ export class SoothSDK {
   }
 
   /**
+   * `plan <actor> <buy|sell> <yes|no> <size>` — choreograph the next burst.
+   *
+   * Random flow shows that a market moves; a plan shows a STORY: a2 dumps,
+   * a5 buys the dip, and the price does what the reader predicted. Rows
+   * accumulate; bare `plan` shows the table; `plan clear` returns burst to
+   * random flow.
+   */
+  private planCmd(rest: string[]): Out {
+    const sub = (rest[0] ?? "").toLowerCase();
+    if (sub === "clear") {
+      this.plan = [];
+      return {
+        result: { success: true, message: "" },
+        output: [line("plain", "Plan cleared — burst is random flow again.")],
+      };
+    }
+    if (sub !== "") {
+      const actorIdx = Number(sub.replace(/^a/, ""));
+      const side = (rest[1] ?? "").toLowerCase();
+      const outcomeWordArg = (rest[2] ?? "").toLowerCase();
+      const size = Number(rest[3] ?? NaN);
+      const fleetSize = loadActors().length;
+      if (
+        !Number.isInteger(actorIdx) ||
+        actorIdx < 0 ||
+        actorIdx >= Math.max(fleetSize, 1) ||
+        (side !== "buy" && side !== "sell") ||
+        (outcomeWordArg !== "yes" && outcomeWordArg !== "no") ||
+        !Number.isFinite(size) ||
+        size <= 0
+      ) {
+        return fail(
+          "Bad plan row",
+          fleetSize === 0
+            ? "No actors yet — `actors create 10` first."
+            : `Usage: plan <a0..a${fleetSize - 1}> <buy|sell> <yes|no> <size>   e.g. \`plan a2 sell yes 5\``,
+        );
+      }
+      this.plan.push({
+        actor: actorIdx,
+        side: side as "buy" | "sell",
+        outcome: outcomeWordArg === "yes" ? 1 : 0,
+        size,
+      });
+    }
+    if (this.plan.length === 0) {
+      return {
+        result: { success: true, message: "" },
+        output: [
+          line("plain", "No plan. `plan a0 buy yes 10` adds a row; `burst` then executes the plan."),
+        ],
+      };
+    }
+    const output: OutputLine[] = [
+      line("bold", `Burst plan — ${this.plan.length} row(s)`),
+      line("dim", "  #   actor  action     size"),
+      ...this.plan.map((r, i) =>
+        line(
+          "plain",
+          `  ${String(i + 1).padEnd(3)} a${String(r.actor).padEnd(5)} ${(r.side + " " + (r.outcome === 1 ? "YES" : "NO")).padEnd(10)} ${r.size.toFixed(2)}`,
+        ),
+      ),
+      line("dim", "`burst` executes this; `plan clear` discards it."),
+    ];
+    return { result: { success: true, message: String(this.plan.length) }, output };
+  }
+
+  /**
    * `burst [N] [avgSize] [seed]` — every trade signed up front, fired at
    * once, throughput measured.
    *
@@ -1394,61 +1473,151 @@ export class SoothSDK {
     // of refusals measures nothing.
     const preSnap = await demo.adapter.readSnapshot(ref);
     const graduated = preSnap.market.isGraduated;
-    emit(
-      line(
-        "bold",
-        `Burst — ${n} ${graduated ? "book orders" : "AMM buys"}, ${fleet.length} actors, one market, no waiting`,
-      ),
-    );
     const mid = Math.round(
       yesPrice(preSnap.market.qYes, preSnap.market.qNo, preSnap.market.b) * 1000,
     );
+
+    // The cast: the scripted plan when one exists, random flow otherwise.
+    interface BurstEntry {
+      label: string;
+      kp: Keypair;
+      side: "buy" | "sell";
+      outcome: 0 | 1;
+      size: number;
+      skip?: string;
+    }
+    const planned = this.plan.length > 0;
+    if (planned && graduated) {
+      return fail(
+        "Plan needs the bonding curve",
+        "Planned bursts are AMM buys and sells; this market has graduated to the order book. `plan clear`, or pick a bonding market.",
+      );
+    }
+    let entries: BurstEntry[];
+    if (planned) {
+      entries = [];
+      for (const row of this.plan) {
+        const kp = fleet[row.actor];
+        if (!kp) {
+          entries.push({ label: `a${row.actor}`, kp: fleet[0]!, side: row.side, outcome: row.outcome, size: row.size, skip: "no such actor" });
+          continue;
+        }
+        let skip: string | undefined;
+        if (row.side === "sell") {
+          // A sell's precondition is shares the actor ALREADY holds — a buy
+          // in the same burst cannot supply them, because intra-burst
+          // ordering belongs to the scheduler, not this list.
+          try {
+            const pos = await demo.adapter.readPosition(ref, `sol:${kp.publicKey.toBase58()}`);
+            const held = row.outcome === 1 ? pos.yesShares : pos.noShares;
+            if (held < toWadShares(row.size.toFixed(2))!) {
+              skip = `holds ${fmtWadShares(held, 2)} ${row.outcome === 1 ? "YES" : "NO"}, cannot sell ${row.size.toFixed(2)}`;
+            }
+          } catch {
+            skip = "no position on this market yet";
+          }
+        }
+        entries.push({ label: `a${row.actor}`, kp, side: row.side, outcome: row.outcome, size: row.size, skip });
+      }
+    } else {
+      entries = Array.from({ length: n }, (_, i) => {
+        const size = Math.max(0.5, avg * (0.5 + rand()));
+        return {
+          label: `a${i % fleet.length}`,
+          kp: fleet[i % fleet.length]!,
+          side: "buy" as const,
+          outcome: (rand() < 0.5 ? 0 : 1) as 0 | 1,
+          size,
+        };
+      });
+    }
+    const liveEntries = entries.filter((e) => !e.skip);
+
+    emit(
+      line(
+        "bold",
+        planned
+          ? `Burst — scripted plan, ${liveEntries.length} of ${entries.length} row(s) executable`
+          : `Burst — ${n} ${graduated ? "book orders" : "AMM buys"}, ${fleet.length} actors, one market, no waiting`,
+      ),
+    );
+
+    // Intent table: what each wallet is about to do, with the quoted cost —
+    // the calculation on screen before a single byte is sent.
+    emit(line("dim", "  #   actor  action     size    est. USDC"));
+    for (const [i, e] of entries.entries()) {
+      let est = "—";
+      if (!e.skip && !graduated) {
+        const sharesWad = toWadShares(e.size.toFixed(2))!;
+        const q = await this.tryQuote(ref, e.outcome, e.side === "sell" ? -sharesWad : sharesWad);
+        if (q) {
+          const abs = q.netCost < 0n ? -q.netCost : q.netCost;
+          est = `${q.netCost < 0n ? "+" : "-"}${fmtWadShares(abs, 2)}`;
+        }
+      }
+      emit(
+        line(
+          e.skip ? "warn" : "plain",
+          `  ${String(i + 1).padEnd(3)} ${e.label.padEnd(6)} ${(e.side + " " + (e.outcome === 1 ? "YES" : "NO")).padEnd(10)} ${e.size.toFixed(2).padStart(6)}  ${est.padStart(9)}${e.skip ? `   SKIP: ${e.skip}` : ""}`,
+        ),
+      );
+    }
+    if (liveEntries.length === 0) {
+      return fail("Nothing executable", "Every plan row was skipped — see the reasons above.");
+    }
 
     const { blockhash } = await conn.getLatestBlockhash();
     const signed: Uint8Array[] = [];
     // Instructions are kept beside each signed payload so a transaction whose
     // blockhash dies under it can be re-signed fresh instead of abandoned.
     const buildsForRetry: Array<{ actor: Keypair; ixs: TransactionInstruction[] }> = [];
-    for (let i = 0; i < n; i++) {
-      const actor = fleet[i % fleet.length]!;
-      const outcome = (rand() < 0.5 ? 0 : 1) as 0 | 1;
-      const size = Math.max(0.5, avg * (0.5 + rand()));
-      const sharesWad = toWadShares(size.toFixed(2))!;
+    for (const e of liveEntries) {
+      const sharesWad = toWadShares(e.size.toFixed(2))!;
+      const userRef = `sol:${e.kp.publicKey.toBase58()}`;
       const req = graduated
         ? await demo.adapter.buildBookPlace(ref, {
-            user: `sol:${actor.publicKey.toBase58()}`,
-            side: outcome,
+            user: userRef,
+            side: e.outcome,
             limitTick: Math.min(
               999,
-              Math.max(1, outcome === 0 ? mid - 1 - Math.floor(rand() * 40) : mid + 1 + Math.floor(rand() * 40)),
+              Math.max(1, e.outcome === 0 ? mid - 1 - Math.floor(rand() * 40) : mid + 1 + Math.floor(rand() * 40)),
             ),
-            amount: toUsdcBaseUnits(size.toFixed(2))!,
+            amount: toUsdcBaseUnits(e.size.toFixed(2))!,
             matchLimit: 8,
             postRemainder: true,
           })
-        : await demo.adapter.buildTrade(ref, {
-            side: "buy",
-            outcome,
-            deltaShares: sharesWad,
-            maxCostWad: sharesWad * 2n,
-            // @ts-expect-error — Solana-only meta channel; see adapter.ts.
-            user: `sol:${actor.publicKey.toBase58()}`,
-          });
+        : e.side === "sell"
+          ? await demo.adapter.buildSell(ref, {
+              outcome: e.outcome,
+              deltaShares: sharesWad,
+              minProceedsWad: 0n,
+              user: userRef,
+            })
+          : await demo.adapter.buildTrade(ref, {
+              side: "buy",
+              outcome: e.outcome,
+              deltaShares: sharesWad,
+              maxCostWad: sharesWad * 2n,
+              // @ts-expect-error — Solana-only meta channel; see adapter.ts.
+              user: userRef,
+            });
       const meta = req.meta as { preIxs?: unknown[] } & Record<string, unknown>;
       const ixs = [
         ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }),
         ...(meta.preIxs ?? []).map((pre) => toIx(pre as never)),
         toIx(meta as never),
       ];
-      buildsForRetry.push({ actor, ixs });
+      buildsForRetry.push({ actor: e.kp, ixs });
       const tx = new Transaction();
       for (const ix of ixs) tx.add(ix);
-      tx.feePayer = actor.publicKey;
+      tx.feePayer = e.kp.publicKey;
       tx.recentBlockhash = blockhash;
-      tx.sign(actor);
+      tx.sign(e.kp);
       signed.push(tx.serialize());
     }
-    emit(line("plain", `${n} transactions built and signed.`));
+    emit(line("plain", `${liveEntries.length} transactions built and signed.`));
+    const n2 = liveEntries.length;
+    if (planned) this.plan = [];
 
     const t0 = Date.now();
     const sigs = await Promise.all(
@@ -1460,7 +1629,7 @@ export class SoothSDK {
     );
     const sendMs = Date.now() - t0;
     const live = sigs.filter((s) => !String(s).startsWith("send-failed"));
-    emit(line("plain", `${live.length}/${n} sent in ${sendMs}ms.`));
+    emit(line("plain", `${live.length}/${n2} sent in ${sendMs}ms.`));
 
     // Second wave for the stragglers: same instructions, fresh blockhash,
     // sequential. Under write-lock contention a burst member's blockhash can
@@ -1515,13 +1684,13 @@ export class SoothSDK {
     emit(
       line(
         "success",
-        `${confirmed}/${n} confirmed in ${secs.toFixed(1)}s — ${(confirmed / Math.max(secs, 0.001)).toFixed(1)} tx/s on one market.`,
+        `${confirmed}/${n2} confirmed in ${secs.toFixed(1)}s — ${(confirmed / Math.max(secs, 0.001)).toFixed(1)} tx/s on one market.`,
       ),
     );
     const snap = await demo.adapter.readSnapshot(ref);
     const m = snap.market;
     emit(line("plain", `YES price now ${yesPrice(m.qYes, m.qNo, m.b).toFixed(4)}`));
-    if (confirmed < n) {
+    if (confirmed < n2) {
       emit(
         line(
           "dim",
@@ -1530,7 +1699,7 @@ export class SoothSDK {
       );
     }
     return {
-      result: { success: confirmed > 0, message: `${confirmed}/${n}` },
+      result: { success: confirmed > 0, message: `${confirmed}/${n2}` },
       output,
     };
   }
@@ -1616,6 +1785,8 @@ export class SoothSDK {
             line("plain", "  createmarket <question…> [b]      graduate [step] [rounds]"),
             line("plain", "  simulate [N] [avgSize] [seed]     — seeded order flow, one tx at a time"),
             line("plain", "  burst    [N] [avgSize] [seed]     — all at once, measures tx/s (actors only)"),
+            line("plain", "  plan <aN> <buy|sell> <yes|no> <size> — script the next burst row by row"),
+            line("plain", "  plan                — show the plan     plan clear — back to random"),
             line("bold", "Book (post-graduation)"),
             line("plain", "  book      orders      place <bid|ask> <tick> <usdc>"),
             line("plain", "  cancelorder <seq>     sbredeem"),
@@ -1713,6 +1884,8 @@ export class SoothSDK {
         return this.simulate(rest);
       case "burst":
         return this.burst(rest);
+      case "plan":
+        return this.planCmd(rest);
       case "createmarket":
         return this.createmarket(rest);
       case "approve":

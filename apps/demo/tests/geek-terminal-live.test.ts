@@ -94,6 +94,49 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   // Same seed, same shape of run — the transcript names each action.
   expect(sim.text).toMatch(/buy (YES|NO)/);
 
+  // ── Actors: a popup-free fleet funded by ONE signed transfer ──
+  // Vite loads .env.local before tests run and vi.stubEnv cannot override an
+  // already-defined import.meta.env key, so the fixture's key is injected
+  // through the SDK's own override seam.
+  sdk.faucetAuthorityBytes = JSON.stringify(
+    Array.from(smoke.mintAuthority.secretKey),
+  );
+  await run("actors clear");
+
+  // Burst refuses without a fleet — every tx must sign in-page.
+  const noFleet = await run("burst 4");
+  expect(noFleet.result.success).toBe(false);
+  expect(noFleet.text).toContain("actors");
+
+  const created = await run("actors create 3");
+  expect(created.result.success, created.text).toBe(true);
+
+  const funded = await run("actors fund 0.05 200");
+  expect(funded.result.success, funded.text).toBe(true);
+  expect(funded.text).toContain("SOL: 0.05 × 3");
+  expect(funded.text).toContain("× 3/3 minted");
+
+  const roster = await run("actors");
+  expect(roster.text).toContain("Actors (3)");
+  expect(roster.text).toContain("USDC 200.00");
+
+  // ── Scripted burst on the bonding curve ──
+  // A story, not noise: two buys land, the impossible sell is refused at
+  // build time with the reason on its row — a plan can never silently drop
+  // a leg.
+  await run("plan a0 buy yes 2");
+  await run("plan a1 buy no 1.5");
+  const planned = await run("plan a2 sell yes 1");
+  expect(planned.text).toContain("Burst plan — 3 row(s)");
+  const scripted = await run("burst");
+  expect(scripted.result.success, scripted.text).toBe(true);
+  expect(scripted.text).toContain("scripted plan, 2 of 3 row(s) executable");
+  expect(scripted.text).toMatch(/a0 {4,}buy YES/);
+  expect(scripted.text).toMatch(/SKIP: no position on this market yet|SKIP: holds 0/);
+  expect(scripted.text).toMatch(/2\/2 confirmed/);
+  // The plan is consumed by the run — the next burst is random again.
+  expect((await run("plan")).text).toContain("No plan");
+
   // Graduate, then the book venue the flip unlocks.
   const grad = await run("graduate 25 40");
   expect(grad.result.success, grad.text).toBe(true);
@@ -118,35 +161,11 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   const cancel = await run(`cancelorder ${seq}`);
   expect(cancel.result.success, cancel.text).toBe(true);
 
-  // Burst refuses without a fleet — every tx must sign in-page.
-  const noFleet = await run("burst 4");
-  expect(noFleet.result.success).toBe(false);
-  expect(noFleet.text).toContain("actors");
-
   // Post-graduation simulate rests book orders around the price.
   const bookSim = await run("simulate 4 2 7");
   expect(bookSim.result.success, bookSim.text).toBe(true);
   expect(bookSim.text).toMatch(/place (bid|ask)/);
 
-  // ── Actors: a popup-free fleet funded by ONE signed transfer ──
-  // Vite loads .env.local before tests run and vi.stubEnv cannot override an
-  // already-defined import.meta.env key, so the fixture's key is injected
-  // through the SDK's own override seam.
-  sdk.faucetAuthorityBytes = JSON.stringify(
-    Array.from(smoke.mintAuthority.secretKey),
-  );
-  await run("actors clear");
-  const created = await run("actors create 3");
-  expect(created.result.success, created.text).toBe(true);
-
-  const funded = await run("actors fund 0.05 200");
-  expect(funded.result.success, funded.text).toBe(true);
-  expect(funded.text).toContain("SOL: 0.05 × 3");
-  expect(funded.text).toContain("× 3/3 minted");
-
-  const roster = await run("actors");
-  expect(roster.text).toContain("Actors (3)");
-  expect(roster.text).toContain("USDC 200.00");
 
   // The fleet trades the book, each step signed by a different actor.
   const fleetSim = await run("simulate 6 2 9");
@@ -155,6 +174,13 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   for (const label of ["a0:", "a1:", "a2:"]) {
     expect(fleetSim.text, fleetSim.text).toContain(label);
   }
+
+  // A plan against a graduated market is refused with the reason, not run.
+  await run("plan a0 buy yes 1");
+  const planOnBook = await run("burst");
+  expect(planOnBook.result.success).toBe(false);
+  expect(planOnBook.text).toContain("graduated to the order book");
+  await run("plan clear");
 
   // Burst: all four trades signed up front, sent together, all confirmed.
   // The fixture expires the blockhash after every landed transaction, so the

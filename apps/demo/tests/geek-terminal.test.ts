@@ -83,3 +83,22 @@ describe("Geek terminal command parsing", () => {
     expect(r.output[0]!.text).toContain("allowance");
   });
 });
+
+describe("plan parsing", () => {
+  it("refuses rows before a fleet exists, naming the fix", async () => {
+    const r = await bare().executeCommand("plan a0 buy yes 10");
+    expect(r.result.success).toBe(false);
+    expect(r.output[0]!.text).toContain("actors create");
+  });
+
+  it("bare plan explains itself instead of erroring", async () => {
+    const r = await bare().executeCommand("plan");
+    expect(r.result.success).toBe(true);
+    expect(r.output[0]!.text).toContain("plan a0 buy yes 10");
+  });
+
+  it("clear is safe on an empty plan", async () => {
+    const r = await bare().executeCommand("plan clear");
+    expect(r.result.success).toBe(true);
+  });
+});
