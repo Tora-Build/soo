@@ -137,11 +137,16 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   // The plan is consumed by the run — the next burst is random again.
   expect((await run("plan")).text).toContain("No plan");
 
-  // Graduate, then the book venue the flip unlocks.
+  // Graduate: planned from the closed form, not ground out in rounds. The
+  // actors cannot cover the volume, so the connected wallet is the payer of
+  // last resort — and the whole climb is a handful of transactions.
   const grad = await run("graduate 25 40");
   expect(grad.result.success, grad.text).toBe(true);
-  expect(grad.text).toContain("Graduated after");
-  expect(grad.text, grad.text).toMatch(/spent ~\d+\.\d+ USDC/);
+  expect(grad.text).toContain("Graduation plan");
+  expect(grad.text).toMatch(/requires ~\d+\.\d+ USDC of balanced volume/);
+  expect(grad.text).toMatch(/Graduated in \d+ transaction/);
+  const txCount = Number(/Graduated in (\d+) transaction/.exec(grad.text)![1]);
+  expect(txCount, grad.text).toBeLessThanOrEqual(6);
 
   // First order on a fresh book: the account does not exist until now.
   const place = await run("place bid 450 25");

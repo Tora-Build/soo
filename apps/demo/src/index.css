@@ -5090,3 +5090,19 @@
   0%, 100% { opacity: 0.45; }
   50% { opacity: 1; }
 }
+
+/* Typewriter ellipsis: . .. ... and around again. steps() snaps between the
+   three states instead of fading, which is what makes it read as typing. */
+.terminal-dots::after {
+  content: "...";
+  display: inline-block;
+  width: 3ch;
+  overflow: hidden;
+  vertical-align: bottom;
+  animation: terminal-dots-type 1.2s steps(3, end) infinite;
+  white-space: nowrap;
+}
+@keyframes terminal-dots-type {
+  0% { width: 1ch; }
+  100% { width: 4ch; }
+}

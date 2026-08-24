@@ -168,7 +168,11 @@ export function WebTerminal({
             {line.text}
           </div>
         ))}
-        {isProcessing && <div className="text-muted">Processing...</div>}
+        {isProcessing && (
+          <div className="text-muted">
+            Processing<span className="terminal-dots" aria-hidden="true" />
+          </div>
+        )}
       </div>
 
       <form

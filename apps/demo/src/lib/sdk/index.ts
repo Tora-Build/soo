@@ -875,15 +875,24 @@ export class SoothSDK {
   }
 
   /**
-   * `graduate [stepShares] [maxRounds]` — push the active market over the
-   * fee threshold with balanced both-leg buys, exactly like
-   * scripts/graduate-market.mjs: same size on YES and NO each round, so the
-   * price stays near 0.50 while only the fee pool grows.
+   * `graduate` — computed, not ground out.
+   *
+   * The threshold is closed-form (`b·ln2`), the fee rate is on-chain config,
+   * and LMSR is translation-invariant: a balanced pair (buy X YES + buy X NO)
+   * costs exactly X and moves the price nowhere. So the volume that
+   * graduates a market is arithmetic — deficit × 10000/feeBps — and the
+   * whole climb is TWO transactions per payer instead of the old fifty-share
+   * rounds inching up 0.2% a step.
+   *
+   * Actors pay first, largest balance first; the connected wallet is the
+   * payer of last resort. If the combined fleet cannot cover the volume, the
+   * command says exactly how much more to fund instead of burning rounds. A
+   * refinement pass re-reads the chain afterwards, so any drift between this
+   * model and the program's fee accounting costs one extra pair, not a wrong
+   * answer.
    */
   async graduate(args: unknown[], out?: Stream): Promise<Out> {
-    const flat = (Array.isArray(args) ? args : [args]).map(String);
-    const step = toWadShares(flat[0] || "50") ?? 50n * WAD;
-    const maxRounds = /^\d+$/.test(flat[1] ?? "") ? Number(flat[1]) : 50;
+    const flat = (Array.isArray(args) ? args : [args]).map(String).filter(Boolean);
     const demo = this.demo;
     const ref = this.marketRef();
     if (!demo || !ref) return fail("No active market");
@@ -893,49 +902,175 @@ export class SoothSDK {
       output.push(l);
       out?.(l);
     };
+    if (flat.length > 0) {
+      emit(line("dim", "graduate is auto-planned now — step/round arguments are ignored."));
+    }
 
-    let snap = await demo.adapter.readSnapshot(ref);
-    if (snap.market.isGraduated) {
+    let g = await demo.adapter.readGraduationProgress(ref);
+    if (g.isGraduated) {
       emit(line("success", "Already graduated."));
       return { result: { success: true, message: "" }, output };
     }
-    emit(line("info", `Graduating with ${fmtWadShares(step, 0)}-share rounds (max ${maxRounds})…`));
+    const feeBps = Math.max(1, (await demo.adapter.readVenueFeeBps().catch(() => ({ amm: 500, book: 0 }))).amm || 500);
 
-    let spentWad = 0n;
-    for (let round = 0; round < maxRounds; round++) {
-      for (const outcome of [1, 0] as const) {
-        try {
-          const q = await demo.adapter.readQuote(ref, outcome, step);
-          spentWad += q.netCost;
-        } catch {
-          // No preview — the on-chain trade is still exact.
-        }
-        const r = await this.writeViaShim("tradePositions", [
-          ref,
-          outcome,
-          step,
-          step * 2n, // a share never costs >1 USDC under LMSR; 2x is headroom
-        ]);
-        if (!r.result.success) {
-          emit(line("error", `round ${round} ${outcome === 1 ? "YES" : "NO"} leg failed: ${r.result.message}`));
-          return { result: r.result, output };
-        }
-      }
-      const g = await demo.adapter.readGraduationProgress(ref);
-      emit(
-        line(
-          "plain",
-          `round ${round}: spent ~${fmtWadShares(spentWad, 2)} USDC · fees ${fmtWadShares(g.feesAccumulatedWad, 2)} / ${fmtWadShares(g.thresholdWad, 2)} (${(g.progressBps / 100).toFixed(1)}%)`,
-        ),
-      );
-      if (g.isGraduated) {
-        snap = await demo.adapter.readSnapshot(ref);
-        emit(line("success", `Graduated after ${round + 1} round(s), ~${fmtWadShares(spentWad, 2)} USDC through the curve. Book venue is live.`));
-        return { result: { success: true, message: "" }, output };
+    // ── The plan, before any transaction ──
+    const deficitWad = g.thresholdWad - g.feesAccumulatedWad;
+    // 2% overshoot so rounding in the program's favour cannot strand the
+    // market at 99.9%.
+    const volumeWad = (deficitWad * 10_000n * 102n) / (BigInt(feeBps) * 100n);
+    emit(line("bold", "Graduation plan"));
+    emit(
+      line(
+        "plain",
+        `fees ${fmtWadShares(g.feesAccumulatedWad, 2)} / ${fmtWadShares(g.thresholdWad, 2)} — deficit ${fmtWadShares(deficitWad, 2)} at ${feeBps} bps fee`,
+      ),
+    );
+    emit(
+      line(
+        "plain",
+        `requires ~${fmtWadShares(volumeWad, 2)} USDC of balanced volume (price-neutral pairs).`,
+      ),
+    );
+
+    // ── Payers: actors by balance, connected wallet last ──
+    interface Payer {
+      label: string;
+      userBase58: string;
+      signer?: SignerRef;
+      usdcWad: bigint;
+    }
+    const payers: Payer[] = [];
+    const fleet = loadActors();
+    if (fleet.length > 0) {
+      try {
+        const conn = demo.adapter.connection;
+        const atas = fleet.map((kp) =>
+          getAssociatedTokenAddressSync(demo.adapter.bookMint, kp.publicKey),
+        );
+        const infos = await conn.getMultipleAccountsInfo(atas);
+        fleet.forEach((kp, i) => {
+          let usdc = 0n;
+          const info = infos[i];
+          if (info) {
+            try {
+              usdc = TokenAccountLayout.decode(info.data).amount;
+            } catch {
+              usdc = 0n;
+            }
+          }
+          payers.push({
+            label: actorLabel(i),
+            userBase58: kp.publicKey.toBase58(),
+            signer: keypairSigner(kp),
+            usdcWad: usdc * 1_000_000_000_000n,
+          });
+        });
+      } catch {
+        // Unreadable balances — the connected wallet still stands.
       }
     }
-    emit(line("warn", `Not graduated after ${maxRounds} rounds — raise stepShares or maxRounds.`));
-    return { result: { success: false, message: "max rounds" }, output };
+    const me = userBase58FromDemo(demo);
+    if (me) {
+      // Raw account decode, not getTokenAccountBalance — the thin
+      // connections that lack the RPC method are exactly where a zero here
+      // would wrongly bench the richest payer.
+      let usdc = 0n;
+      try {
+        const ata = getAssociatedTokenAddressSync(demo.adapter.bookMint, new PublicKey(me));
+        const info = await demo.adapter.connection.getAccountInfo(ata);
+        if (info) usdc = TokenAccountLayout.decode(info.data).amount;
+      } catch {
+        usdc = 0n;
+      }
+      payers.push({ label: "you", userBase58: me, usdcWad: usdc * 1_000_000_000_000n });
+    }
+    // Largest first; a payer's usable capacity leaves 10% margin for the fee
+    // and curve asymmetry (the two legs split X unevenly around the price).
+    payers.sort((a, b) => (a.usdcWad > b.usdcWad ? -1 : 1));
+    const capacity = (p: Payer) => (p.usdcWad * 90n) / 100n;
+    const assignments: Array<{ payer: Payer; sizeWad: bigint }> = [];
+    let remaining = volumeWad;
+    for (const p of payers) {
+      if (remaining <= 0n) break;
+      const take = capacity(p) < remaining ? capacity(p) : remaining;
+      if (take < WAD) continue; // sub-1-USDC pairs are noise
+      assignments.push({ payer: p, sizeWad: take });
+      remaining -= take;
+    }
+    if (remaining > 0n) {
+      const total = payers.reduce((acc, p) => acc + capacity(p), 0n);
+      const short = volumeWad - total;
+      const perActor = fleet.length > 0 ? short / BigInt(fleet.length) + 1n : short;
+      return {
+        result: { success: false, message: "insufficient funds" },
+        output: [
+          ...output,
+          line("error", `Not enough USDC across actors + wallet: need ~${fmtWadShares(volumeWad, 2)}, usable ~${fmtWadShares(total, 2)}.`),
+          line(
+            "plain",
+            fleet.length > 0
+              ? `\`actors fund 0 ${Math.ceil(Number(perActor / WAD))}\` closes the gap, then run graduate again.`
+              : "`actors create 10` then `actors fund 0.05 <usdc>` — or top up the connected wallet.",
+          ),
+        ],
+      };
+    }
+    emit(
+      line(
+        "plain",
+        `${assignments.length} payer(s), ${assignments.length * 2} transaction(s): ` +
+          assignments.map((a) => `${a.payer.label} ${fmtWadShares(a.sizeWad, 0)}`).join(" · "),
+      ),
+    );
+
+    // ── Execute: one YES leg + one NO leg per payer, streamed ──
+    let legNo = 0;
+    let txCount = 0;
+    const runLeg = async (a: { payer: Payer; sizeWad: bigint }, outcome: 0 | 1): Promise<boolean> => {
+      const id = `grad-${++legNo}`;
+      const desc = `${a.payer.label}: buy ${outcome === 1 ? "YES" : "NO"} ${fmtWadShares(a.sizeWad, 2)}`;
+      emit(line("pending", `  ${desc} …`, id));
+      const r = await this.writeViaShim(
+        "tradePositions",
+        [ref, outcome, a.sizeWad, (a.sizeWad * 120n) / 100n],
+        a.payer.signer
+          ? { userBase58: a.payer.userBase58, signer: a.payer.signer }
+          : undefined,
+      );
+      txCount++;
+      emit(
+        line(
+          r.result.success ? "success" : "warn",
+          `  ${desc} ${r.result.success ? "✓" : `✗ ${(r.result.message ?? "").slice(0, 60)}`}`,
+          id,
+        ),
+      );
+      return r.result.success;
+    };
+    for (const a of assignments) {
+      if (!(await runLeg(a, 1))) return { result: { success: false, message: "leg failed" }, output };
+      if (!(await runLeg(a, 0))) return { result: { success: false, message: "leg failed" }, output };
+    }
+
+    // ── Refinement: the chain is the referee, not the model ──
+    for (let pass = 0; pass < 2; pass++) {
+      g = await demo.adapter.readGraduationProgress(ref);
+      if (g.isGraduated) break;
+      const left = g.thresholdWad - g.feesAccumulatedWad;
+      emit(line("plain", `fees ${fmtWadShares(g.feesAccumulatedWad, 2)} / ${fmtWadShares(g.thresholdWad, 2)} — refining.`));
+      const top = assignments[0] ?? (payers[0] ? { payer: payers[0], sizeWad: 0n } : null);
+      if (!top) break;
+      const extra = (left * 10_000n * 110n) / (BigInt(feeBps) * 100n);
+      const sized = { payer: top.payer, sizeWad: extra < WAD ? WAD : extra };
+      if (!(await runLeg(sized, 1)) || !(await runLeg(sized, 0))) break;
+    }
+    g = await demo.adapter.readGraduationProgress(ref);
+    if (g.isGraduated) {
+      emit(line("success", `Graduated in ${txCount} transaction(s). Book venue is live.`));
+      return { result: { success: true, message: String(txCount) }, output };
+    }
+    emit(line("warn", `Not graduated after ${txCount} transaction(s) — fees ${fmtWadShares(g.feesAccumulatedWad, 2)} / ${fmtWadShares(g.thresholdWad, 2)}. Run graduate again.`));
+    return { result: { success: false, message: "not graduated" }, output };
   }
 
   /**
