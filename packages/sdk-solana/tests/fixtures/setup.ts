@@ -95,6 +95,8 @@ export interface SmokeContext {
   ammMint: PublicKey;
   user: Keypair;
   creator: Keypair;
+  /** Signs test-token mints — what the demo faucet ships in its bundle. */
+  mintAuthority: Keypair;
   marketId: Uint8Array;
   marketPda: PublicKey;
   ammStatePda: PublicKey;
@@ -507,6 +509,7 @@ export async function bootSmoke(
 
   return {
     ctx,
+    mintAuthority,
     programs: PROGRAMS,
     usdcMint: USDC_MINT_DEVNET,
     ammMint: AMM_MINT_DEVNET,

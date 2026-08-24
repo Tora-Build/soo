@@ -37,9 +37,25 @@ const line = (type: OutputLineType, text: string): OutputLine => ({
 });
 import { dispatchAmmWrite, NOT_HANDLED } from "@/lib/chain-shim/amm-bridge";
 import type { SolanaChainAdapter, SignerRef } from "@sooth/sdk-solana";
-import { PublicKey } from "@solana/web3.js";
-import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import {
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
+import {
+  AccountLayout as TokenAccountLayout,
+  createAssociatedTokenAccountIdempotentInstruction,
+  createMintToInstruction,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
 import { knownMarketRefs } from "../../features/arena/marketRegistry";
+import {
+  clearActors,
+  createActors,
+  loadActors,
+  toBase58,
+} from "./actors";
 
 interface DemoLike {
   adapter: SolanaChainAdapter;
@@ -136,6 +152,21 @@ function lcg(seed: number): () => number {
 }
 
 type Out = { result: CommandResult; output: OutputLine[] };
+
+/** A SignerRef over a local Keypair — signs in-page, no wallet popup. */
+function keypairSigner(kp: Keypair): SignerRef {
+  return {
+    publicKey: kp.publicKey.toBase58(),
+    signTransaction: async (raw: Uint8Array): Promise<Uint8Array> => {
+      const tx = Transaction.from(raw);
+      tx.partialSign(kp);
+      return tx.serialize({
+        verifySignatures: false,
+        requireAllSignatures: false,
+      });
+    },
+  };
+}
 type Stream = (l: OutputLine) => void;
 
 function fail(message: string, text?: string): Out {
@@ -159,6 +190,14 @@ export class SoothSDK {
   private activeMarket: string | null = null;
   /** Last `markets` listing, so `setmarket <n>` can resolve an index. */
   private lastListing: string[] = [];
+  /**
+   * Faucet mint-authority override, JSON byte array.
+   *
+   * The deployed build reads the key Vite baked into the bundle; tests
+   * inject the fixture's key here because Vite's env is loaded before any
+   * test runs and cannot be stubbed after the fact.
+   */
+  faucetAuthorityBytes: string | null = null;
 
   constructor(...args: unknown[]) {
     this.demo = extractDemo(args);
@@ -453,6 +492,7 @@ export class SoothSDK {
   private async writeViaShim(
     functionName: string,
     args: unknown[],
+    as?: { userBase58: string; signer: SignerRef },
   ): Promise<Out> {
     const demo = this.demo;
     if (!demo) {
@@ -467,8 +507,8 @@ export class SoothSDK {
         {
           adapter: demo.adapter,
           connection: demo.adapter.connection as never,
-          userBase58: userBase58FromDemo(demo) ?? undefined,
-          signer: demo.signer,
+          userBase58: as?.userBase58 ?? userBase58FromDemo(demo) ?? undefined,
+          signer: as?.signer ?? demo.signer,
         },
       );
       if (out === NOT_HANDLED) {
@@ -614,6 +654,7 @@ export class SoothSDK {
     side: number,
     tick: number,
     amount: bigint,
+    as?: { userBase58: string; signer: SignerRef },
   ): Promise<Out> {
     // Existence is checked by READING, not by pattern-matching the failed
     // write: an absent book surfaces as a program discriminator error whose
@@ -626,10 +667,10 @@ export class SoothSDK {
       hasBook = false;
     }
     if (!hasBook) {
-      const init = await this.writeViaShim("bookInit", [market]);
+      const init = await this.writeViaShim("bookInit", [market], as);
       if (!init.result.success) return init;
     }
-    const placed = await this.writeViaShim("bookPlace", [market, side, tick, amount]);
+    const placed = await this.writeViaShim("bookPlace", [market, side, tick, amount], as);
     if (!hasBook && placed.result.success) {
       return {
         result: placed.result,
@@ -833,17 +874,37 @@ export class SoothSDK {
     const snap = await demo.adapter.readSnapshot(ref);
     const graduated = snap.market.isGraduated;
 
-    emit(line("bold", `Simulation — ${n} ${graduated ? "book orders" : "AMM trades"}, avg ${avg}, seed ${seed}`));
+    // With a funded fleet every step signs in-page as a different actor —
+    // zero popups, and the tape shows distinct traders instead of one wallet
+    // talking to itself. Without one, every step is the connected wallet
+    // (and on a real wallet extension, a confirmation each).
+    const fleet = loadActors();
+    const cast: Array<{ label: string; as?: { userBase58: string; signer: SignerRef } }> =
+      fleet.length > 0
+        ? fleet.map((kp, i) => ({
+            label: `a${i}`,
+            as: { userBase58: kp.publicKey.toBase58(), signer: keypairSigner(kp) },
+          }))
+        : [{ label: "you" }];
+
+    emit(
+      line(
+        "bold",
+        `Simulation — ${n} ${graduated ? "book orders" : "AMM trades"}, avg ${avg}, seed ${seed}, ${fleet.length > 0 ? `${fleet.length} actors` : "connected wallet"}`,
+      ),
+    );
 
     let ok = 0;
     let failures = 0;
     let streak = 0;
-    // Sells only spend what this run bought, so the simulation never
-    // depends on a pre-existing position.
-    const bought: [bigint, bigint] = [0n, 0n];
+    // Sells only spend what this run bought — per actor, because a position
+    // belongs to the wallet that opened it.
+    const bought = new Map<string, [bigint, bigint]>();
 
     for (let i = 0; i < n; i++) {
       const size = Math.max(0.5, avg * (0.5 + rand()));
+      const actor = cast[i % cast.length]!;
+      const held = bought.get(actor.label) ?? ([0n, 0n] as [bigint, bigint]);
       let r: Out;
       let desc: string;
       if (graduated) {
@@ -853,22 +914,23 @@ export class SoothSDK {
         const offset = 1 + Math.floor(rand() * 40);
         const tick = Math.min(999, Math.max(1, side === 0 ? mid - offset : mid + offset));
         const amount = toUsdcBaseUnits(size.toFixed(2))!;
-        desc = `place ${side === 0 ? "bid" : "ask"} @${tick} ${size.toFixed(2)} USDC`;
-        r = await this.placeWithInit(ref, side, tick, amount);
+        desc = `${actor.label}: place ${side === 0 ? "bid" : "ask"} @${tick} ${size.toFixed(2)} USDC`;
+        r = await this.placeWithInit(ref, side, tick, amount, actor.as);
       } else {
         const outcome = (rand() < 0.5 ? 0 : 1) as 0 | 1;
         const sharesWad = toWadShares(size.toFixed(2))!;
-        const canSell = bought[outcome] >= sharesWad;
+        const canSell = held[outcome] >= sharesWad;
         const isSell = canSell && rand() < 0.3;
-        desc = `${isSell ? "sell" : "buy"} ${outcome === 1 ? "YES" : "NO"} ${size.toFixed(2)}`;
-        r = await this.writeViaShim("tradePositions", [
-          ref,
-          outcome,
-          isSell ? -sharesWad : sharesWad,
-          isSell ? 0n : sharesWad * 2n,
-        ]);
-        if (r.result.success && !isSell) bought[outcome] += sharesWad;
-        if (r.result.success && isSell) bought[outcome] -= sharesWad;
+        desc = `${actor.label}: ${isSell ? "sell" : "buy"} ${outcome === 1 ? "YES" : "NO"} ${size.toFixed(2)}`;
+        r = await this.writeViaShim(
+          "tradePositions",
+          [ref, outcome, isSell ? -sharesWad : sharesWad, isSell ? 0n : sharesWad * 2n],
+          actor.as,
+        );
+        if (r.result.success) {
+          held[outcome] += isSell ? -sharesWad : sharesWad;
+          bought.set(actor.label, held);
+        }
       }
       if (r.result.success) {
         ok++;
@@ -895,6 +957,217 @@ export class SoothSDK {
       result: { success: failures === 0, message: `${ok}/${n}` },
       output,
     };
+  }
+
+  // ─── Actors — burner wallets that sign without popups ────────────────────
+
+  /**
+   * `actors` / `actors create N` / `actors fund <sol> <usdc>` /
+   * `actors export <n>` / `actors clear`.
+   *
+   * The fleet exists so `simulate` can move a market at chain speed: a wallet
+   * extension confirms every transaction, and the demo of "how fast is this"
+   * must not be a demo of clicking. Funding is the single confirmed
+   * transaction in the whole flow — one SOL transfer from the connected
+   * wallet fans out to every actor, and the USDC mint after it is signed by
+   * the faucet key this deployment already ships.
+   */
+  private async actorsCmd(rest: string[]): Promise<Out> {
+    const sub = (rest[0] ?? "").toLowerCase();
+    if (sub === "create") {
+      const n = /^\d+$/.test(rest[1] ?? "") ? Number(rest[1]) : 5;
+      if (n < 1 || n > 32) return fail("actors create takes 1..32");
+      const fresh = createActors(n);
+      return {
+        result: { success: true, message: String(n) },
+        output: [
+          line("success", `Created ${n} actor(s); fleet is ${loadActors().length}.`),
+          ...fresh.map((k, i) => line("dim", `  +${i} ${k.publicKey.toBase58()}`)),
+          line("plain", "Fund them: actors fund 0.05 500"),
+        ],
+      };
+    }
+    if (sub === "clear") {
+      clearActors();
+      return {
+        result: { success: true, message: "" },
+        output: [
+          line("warn", "Fleet forgotten. Keys not exported first are unrecoverable."),
+        ],
+      };
+    }
+    if (sub === "export") {
+      const idx = Number(rest[1] ?? NaN);
+      const fleet = loadActors();
+      const kp = fleet[idx];
+      if (!kp) return fail(`No actor ${rest[1] ?? ""} — fleet has ${fleet.length}.`);
+      return {
+        result: { success: true, message: kp.publicKey.toBase58() },
+        output: [
+          line("bold", `Actor ${idx} — ${kp.publicKey.toBase58()}`),
+          line("plain", "Secret key (base58, Phantom → Import Private Key):"),
+          line("plain", `  ${toBase58(kp.secretKey)}`),
+          line("warn", "Anyone with this string owns the wallet. Devnet or not, treat it like a key."),
+        ],
+      };
+    }
+    if (sub === "fund") {
+      return this.actorsFund(rest[1], rest[2]);
+    }
+    // default: list with balances
+    const fleet = loadActors();
+    if (fleet.length === 0) {
+      return {
+        result: { success: true, message: "" },
+        output: [
+          line("plain", "No actors. `actors create 10` makes a fleet;"),
+          line("plain", "`actors fund 0.05 500` funds it with one wallet confirmation."),
+        ],
+      };
+    }
+    const demo = this.demo;
+    const output: OutputLine[] = [line("bold", `Actors (${fleet.length})`)];
+    // Raw account reads, one batched RPC: lamports come straight off the
+    // account, USDC off the decoded ATA. `getBalance` /
+    // `getTokenAccountBalance` would be 2N calls and are the two methods
+    // thin connections (test harnesses) tend not to implement.
+    let infos: ({ lamports: number; data: Uint8Array } | null)[] = [];
+    if (demo) {
+      const keys = fleet.flatMap((kp) => [
+        kp.publicKey,
+        getAssociatedTokenAddressSync(demo.adapter.bookMint, kp.publicKey),
+      ]);
+      try {
+        infos = (await demo.adapter.connection.getMultipleAccountsInfo(keys)) as typeof infos;
+      } catch {
+        infos = [];
+      }
+    }
+    for (const [i, kp] of fleet.entries()) {
+      const wallet = infos[i * 2];
+      const ata = infos[i * 2 + 1];
+      const solText = wallet ? (wallet.lamports / 1e9).toFixed(3) : "0";
+      let usdcText = "0";
+      if (ata) {
+        try {
+          usdcText = fmtUsdc(TokenAccountLayout.decode(ata.data).amount);
+        } catch {
+          // Not a token account — leave 0.
+        }
+      }
+      output.push(
+        line(
+          "plain",
+          `  ${String(i).padStart(2)} ${kp.publicKey.toBase58().slice(0, 8)}…  SOL ${solText}  USDC ${usdcText}`,
+        ),
+      );
+    }
+    output.push(line("dim", "actors export <n> prints a key; actors clear forgets the fleet."));
+    return { result: { success: true, message: "" }, output };
+  }
+
+  private async actorsFund(solArg?: string, usdcArg?: string): Promise<Out> {
+    const demo = this.demo;
+    const payerBase58 = userBase58FromDemo(demo);
+    const signTx = demo?.signer?.signTransaction;
+    if (!demo || !payerBase58 || !signTx) {
+      return fail("No connected wallet", "Connect a wallet first — it pays the SOL.");
+    }
+    const fleet = loadActors();
+    if (fleet.length === 0) return fail("No actors — `actors create 10` first.");
+    const solEach = /^\d+(\.\d+)?$/.test(solArg ?? "") ? Number(solArg) : 0.05;
+    const usdcEach = toUsdcBaseUnits(usdcArg ?? "500");
+    if (usdcEach === null) return fail("Usage: actors fund <sol-each> <usdc-each>");
+    const lamportsEach = Math.round(solEach * 1e9);
+    const conn = demo.adapter.connection;
+    const output: OutputLine[] = [];
+
+    // 1. SOL: one transfer transaction, one wallet confirmation — the only
+    //    popup in the entire actor flow, and the only spend of real funds.
+    const payerPk = new PublicKey(payerBase58);
+    const tx = new Transaction();
+    for (const kp of fleet) {
+      tx.add(
+        SystemProgram.transfer({
+          fromPubkey: payerPk,
+          toPubkey: kp.publicKey,
+          lamports: lamportsEach,
+        }),
+      );
+    }
+    tx.feePayer = payerPk;
+    tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+    try {
+      const signed = await signTx(
+        tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
+      );
+      const sig = await conn.sendRawTransaction(signed, { skipPreflight: false });
+      output.push(
+        line("success", `SOL: ${solEach} × ${fleet.length} sent (${String(sig).slice(0, 12)}…).`),
+      );
+    } catch (e) {
+      return fail((e as Error).message, `SOL funding failed: ${(e as Error).message}`);
+    }
+
+    // 2. USDC: minted straight to each actor, signed by the faucet key this
+    //    deployment ships and fee-paid by the actor itself — no popups.
+    const rawBytes =
+      this.faucetAuthorityBytes ??
+      (import.meta as unknown as { env?: Record<string, string | undefined> })
+        .env?.VITE_TEST_MINT_AUTHORITY_BYTES;
+    if (!rawBytes) {
+      output.push(
+        line("warn", "No faucet key in this build — actors have SOL but no USDC."),
+      );
+      return { result: { success: true, message: "" }, output };
+    }
+    let mintAuthority: Keypair;
+    try {
+      mintAuthority = Keypair.fromSecretKey(
+        Uint8Array.from(JSON.parse(rawBytes) as number[]),
+      );
+    } catch (e) {
+      return fail(`faucet key unreadable: ${(e as Error).message}`);
+    }
+    const mints = [demo.adapter.bookMint];
+    if (!demo.adapter.ammMint.equals(demo.adapter.bookMint)) {
+      mints.push(demo.adapter.ammMint);
+    }
+    let minted = 0;
+    for (const kp of fleet) {
+      try {
+        const mtx = new Transaction();
+        for (const mint of mints) {
+          const ata = getAssociatedTokenAddressSync(mint, kp.publicKey);
+          mtx.add(
+            createAssociatedTokenAccountIdempotentInstruction(
+              kp.publicKey,
+              ata,
+              kp.publicKey,
+              mint,
+            ),
+            createMintToInstruction(mint, ata, mintAuthority.publicKey, usdcEach),
+          );
+        }
+        mtx.feePayer = kp.publicKey;
+        mtx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+        mtx.partialSign(kp, mintAuthority);
+        await conn.sendRawTransaction(
+          mtx.serialize({ requireAllSignatures: false, verifySignatures: false }),
+          { skipPreflight: false },
+        );
+        minted++;
+      } catch (e) {
+        output.push(
+          line("warn", `USDC mint to actor ${kp.publicKey.toBase58().slice(0, 8)}… failed: ${(e as Error).message}`),
+        );
+      }
+    }
+    output.push(
+      line("success", `USDC: ${fmtUsdc(usdcEach)} × ${minted}/${fleet.length} minted, no confirmations needed.`),
+    );
+    output.push(line("plain", "`actors` shows balances; `simulate` now rotates through the fleet."));
+    return { result: { success: minted === fleet.length, message: "" }, output };
   }
 
   // ─── Honest stubs ────────────────────────────────────────────────────────
@@ -964,6 +1237,9 @@ export class SoothSDK {
             line("plain", "  marketstatus | status  active-market snapshot + price"),
             line("bold", "Wallet"),
             line("plain", "  balance   whoami   mint <usdc>  — test-USDC faucet"),
+            line("bold", "Actors — popup-free fleet for simulate"),
+            line("plain", "  actors create 10       actors fund 0.05 500   (one confirmation total)"),
+            line("plain", "  actors                 actors export <n>      actors clear"),
             line("bold", "AMM"),
             line("plain", "  buyyes <shares>   buyno <shares>   sell <shares> [yes|no]"),
             line("plain", "  createmarket <question…> [b]      graduate [step] [rounds]"),
@@ -999,6 +1275,9 @@ export class SoothSDK {
       case "markets":
       case "m":
         return this.markets();
+      case "actors":
+      case "actor":
+        return this.actorsCmd(rest);
       case "setmarket":
         return this.setMarket(rest[0] ?? "");
       case "balance":

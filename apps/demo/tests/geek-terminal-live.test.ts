@@ -119,6 +119,41 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   expect(bookSim.result.success, bookSim.text).toBe(true);
   expect(bookSim.text).toMatch(/place (bid|ask)/);
 
+  // ── Actors: a popup-free fleet funded by ONE signed transfer ──
+  // Vite loads .env.local before tests run and vi.stubEnv cannot override an
+  // already-defined import.meta.env key, so the fixture's key is injected
+  // through the SDK's own override seam.
+  sdk.faucetAuthorityBytes = JSON.stringify(
+    Array.from(smoke.mintAuthority.secretKey),
+  );
+  await run("actors clear");
+  const created = await run("actors create 3");
+  expect(created.result.success, created.text).toBe(true);
+
+  const funded = await run("actors fund 0.05 200");
+  expect(funded.result.success, funded.text).toBe(true);
+  expect(funded.text).toContain("SOL: 0.05 × 3");
+  expect(funded.text).toContain("× 3/3 minted");
+
+  const roster = await run("actors");
+  expect(roster.text).toContain("Actors (3)");
+  expect(roster.text).toContain("USDC 200.00");
+
+  // The fleet trades the book, each step signed by a different actor.
+  const fleetSim = await run("simulate 6 2 9");
+  expect(fleetSim.result.success, fleetSim.text).toBe(true);
+  expect(fleetSim.text).toContain("3 actors");
+  for (const label of ["a0:", "a1:", "a2:"]) {
+    expect(fleetSim.text, fleetSim.text).toContain(label);
+  }
+
+  // Export prints a base58 secret a wallet can import; clear forgets it.
+  const exported = await run("actors export 1");
+  expect(exported.result.success).toBe(true);
+  expect(exported.text).toMatch(/[1-9A-HJ-NP-Za-km-z]{80,}/);
+  await run("actors clear");
+  expect((await run("actors")).text).toContain("No actors");
+
   // Balance reads through the same session.
   const bal = await run("balance");
   expect(bal.result.success).toBe(true);
