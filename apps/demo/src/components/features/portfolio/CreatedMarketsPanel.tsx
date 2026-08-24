@@ -13,7 +13,7 @@
 // registry-less discovery the deck uses (`marketRegistry`), filtered by
 // `Market.creator === connected wallet`.
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
@@ -31,9 +31,11 @@ import {
   type ResolutionView,
 } from "../../../features/arena/resolution";
 import {
+  addResolutionExtraRefs,
   refreshResolutionStates,
   useResolutionStates,
 } from "../../../features/arena/useResolutionStates";
+import { discoverCreatedMarkets } from "../../../features/arena/createdMarkets";
 import { useNowSec, VetoWindowBadge } from "../market/VetoWindow";
 
 type Busy = null | "lock" | "register" | "settle" | "attest";
@@ -78,6 +80,16 @@ export function CreatedMarketsPanel() {
   const nowSec = useNowSec(isConnected);
 
   const wallet = address ? String(address).replace(/^0x/, "") : null;
+
+  // The registry is a build-time snapshot filtered to the current collateral
+  // mint — right for trading, wrong for this console: a founder's older
+  // markets still need resolving. Ask the chain who they created.
+  useEffect(() => {
+    if (!wallet) return;
+    void discoverCreatedMarkets(wallet).then((refs) => {
+      if (refs.length) addResolutionExtraRefs(refs);
+    });
+  }, [wallet]);
 
   const rows = useMemo(() => {
     if (!wallet) return [];

@@ -52,6 +52,20 @@ export function normalizeMarketKey(
 }
 
 let activeAdapter: SolanaChainAdapter | null = null;
+/**
+ * Refs discovered outside the registry — today, the connected wallet's own
+ * markets found by creator on chain. Kept off the global registry so
+ * untradeable old-mint markets stay out of the deck while the founder's
+ * console still sees every market the program says they created.
+ */
+let extraRefs: string[] = [];
+
+export function addResolutionExtraRefs(refs: string[]): void {
+  const merged = new Set([...extraRefs, ...refs]);
+  if (merged.size === extraRefs.length) return;
+  extraRefs = [...merged];
+  void refreshResolutionStates();
+}
 let inFlight: Promise<void> | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let mountCount = 0;
@@ -61,7 +75,7 @@ async function fetchResolutionStates(): Promise<void> {
   if (!adapter) return;
   useStore.setState({ isFetching: true });
   try {
-    const refs = knownMarketRefs();
+    const refs = [...new Set([...knownMarketRefs(), ...extraRefs])];
     const [vetoPeriodSecs, policy, states] = await Promise.all([
       adapter.readVetoPeriodSecs().catch(() => null),
       adapter.readAdjudicatorPolicy().catch(() => null),
