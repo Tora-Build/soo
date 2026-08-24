@@ -12,6 +12,7 @@ export const MAX_UINT256 = (1n << 256n) - 1n;
 // ─── Output / command types ────────────────────────────────────────────────
 
 export type OutputLineType =
+  | "pending"
   | "plain"
   | "info"
   | "success"

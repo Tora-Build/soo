@@ -1616,6 +1616,7 @@ export class SoothSDK {
     // chain settles them.
     const runId = ++this.burstSeq;
     const rowState: string[] = entries.map((e) => (e.skip ? `SKIP: ${e.skip}` : "· queued"));
+
     // Estimates are LOCAL arithmetic over the snapshot already in hand — an
     // RPC quote per row was what tripped the proxied RPC's rate limits and
     // slowed the confirmation polls that stop the throughput clock.
@@ -1630,16 +1631,54 @@ export class SoothSDK {
       );
       return `${est >= 0 ? "+" : "-"}${Math.abs(est).toFixed(2)}`;
     });
+    // Random bursts render as a MATRIX — four transactions per display row,
+    // each a compact cell whose glyph is its lifecycle — because sixty
+    // one-line rows scroll the table off screen while the right half of the
+    // terminal sits empty. Scripted plans keep the detailed one-per-row
+    // table: a plan is a story with few rows, and the story reads best wide.
+    const matrix = !planned;
+    const CELLS = 4;
+    const glyphOf = (st: string) =>
+      st.startsWith("✓") ? "✓" : st.startsWith("✗") ? "✗" : st.startsWith("↻") ? "↻" : st.startsWith("→") ? "➤" : st.startsWith("⧗") ? "⧗" : "·";
+    const cellText = (i: number) => {
+      const e = entries[i]!;
+      return `${glyphOf(rowState[i]!)} ${e.label}${e.outcome === 1 ? "Y" : "N"} ${e.size.toFixed(2).padStart(5)} ${rowEst[i]!.padStart(6)}`;
+    };
+    const matrixRowLine = (r: number) => {
+      const cells: string[] = [];
+      let allDone = true;
+      for (let c = 0; c < CELLS; c++) {
+        const i = r * CELLS + c;
+        if (i >= entries.length) break;
+        cells.push(cellText(i).padEnd(22));
+        const st = rowState[i]!;
+        if (!st.startsWith("✓") && !st.startsWith("✗")) allDone = false;
+      }
+      return line(allDone ? "plain" : "pending", `  ${cells.join("│ ")}`, `burst-${runId}-mrow-${r}`);
+    };
+    const emitCell = (i: number) => emit(matrixRowLine(Math.floor(i / CELLS)));
     const rowLine = (i: number) => {
       const e = entries[i]!;
       return line(
-        e.skip ? "warn" : rowState[i]!.startsWith("✓") ? "success" : rowState[i]!.startsWith("✗") ? "warn" : "plain",
+        e.skip
+          ? "warn"
+          : rowState[i]!.startsWith("✓")
+            ? "success"
+            : rowState[i]!.startsWith("✗")
+              ? "warn"
+              : "pending",
         `  ${String(i + 1).padEnd(3)} ${e.label.padEnd(6)} ${(e.side + " " + (e.outcome === 1 ? "YES" : "NO")).padEnd(10)} ${e.size.toFixed(2).padStart(6)}  ${rowEst[i]!.padStart(9)}  ${rowState[i]!}`,
         `burst-${runId}-row-${i}`,
       );
     };
-    emit(line("dim", "  #   actor  action     size    est.USDC  status"));
-    for (let i = 0; i < entries.length; i++) emit(rowLine(i));
+    if (matrix) {
+      emit(line("dim", "  · queued  ⧗ signed  ➤ sent  ↻ resent  ✓ confirmed  ✗ failed   (cell: actor·side size est)"));
+      for (let r = 0; r * CELLS < entries.length; r++) emit(matrixRowLine(r));
+    } else {
+      emit(line("dim", "  #   actor  action     size    est.USDC  status"));
+      for (let i = 0; i < entries.length; i++) emit(rowLine(i));
+    }
+    const paint = (i: number) => (matrix ? emitCell(i) : emit(rowLine(i)));
     if (liveEntries.length === 0) {
       return fail("Nothing executable", "Every plan row was skipped — see the reasons above.");
     }
@@ -1700,7 +1739,7 @@ export class SoothSDK {
       tx.recentBlockhash = blockhash;
       tx.sign(e.kp);
       rowState[i] = "⧗ signed";
-      emit(rowLine(i));
+      paint(i);
       return { i, actor: e.kp, ixs, raw: tx.serialize() };
     };
     // A build that throws costs ITS ROW, never the burst: a 429 mid-pool used
@@ -1721,12 +1760,12 @@ export class SoothSDK {
               break;
             } catch (e) {
               const msg = (e as Error).message ?? "";
-              if (attempt < 3 && /429|rate/i.test(msg)) {
+              if (attempt < 3 && /429|rate|failed to fetch|fetch failed|network|timeout/i.test(msg)) {
                 await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
                 continue;
               }
               rowState[i] = `✗ build failed: ${msg.slice(0, 40)}`;
-              emit(rowLine(i));
+              paint(i);
               break;
             }
           }
@@ -1766,7 +1805,7 @@ export class SoothSDK {
               break;
             } catch (e) {
               const msg = (e as Error).message ?? "";
-              if (attempt < 3 && /429|rate/i.test(msg)) {
+              if (attempt < 3 && /429|rate|failed to fetch|fetch failed|network|timeout/i.test(msg)) {
                 await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
                 continue;
               }
@@ -1777,7 +1816,7 @@ export class SoothSDK {
           sigs[k] = out;
           const i = builtOk[k]!.i;
           rowState[i] = out.startsWith("send-failed") ? "✗ send failed" : "→ sent";
-          emit(rowLine(i));
+          paint(i);
         }
       };
       await Promise.all(Array.from({ length: Math.min(12, signed.length) }, sendWorker));
@@ -1794,7 +1833,7 @@ export class SoothSDK {
     // ── Confirmation watch: rows light up as the chain settles them ──
     const summary = (confirmedN: number, failedN: number) =>
       line(
-        "info",
+        confirmedN + failedN >= n2 ? "info" : "pending",
         `confirmed ${confirmedN}/${n2}${failedN ? ` · failed on-chain ${failedN}` : ""} · ${((Date.now() - t0) / 1000).toFixed(1)}s`,
         `burst-${runId}-progress`,
       );
@@ -1825,7 +1864,7 @@ export class SoothSDK {
           tx.sign(actor);
           sigs[k] = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
           rowState[builtOk[k]!.i] = "↻ resent";
-          emit(rowLine(builtOk[k]!.i));
+          paint(builtOk[k]!.i);
           retried++;
         } catch {
           // Row keeps its failed state; the summary counts it.
@@ -1851,7 +1890,7 @@ export class SoothSDK {
             done.add(k);
             confirmed++;
             rowState[builtOk[k]!.i] = "✓ confirmed";
-            emit(rowLine(builtOk[k]!.i));
+            paint(builtOk[k]!.i);
           }
           if ((await retryWave()) > 0) {
             for (let k = 0; k < sigs.length; k++) {
@@ -1859,7 +1898,7 @@ export class SoothSDK {
               done.add(k);
               confirmed++;
               rowState[builtOk[k]!.i] = "✓ confirmed";
-              emit(rowLine(builtOk[k]!.i));
+              paint(builtOk[k]!.i);
             }
           }
           confirmMs = Date.now() - t0;
@@ -1880,7 +1919,7 @@ export class SoothSDK {
           failedOnChain++;
           rowState[i] = "✗ failed on-chain";
         }
-        emit(rowLine(i));
+        paint(i);
       }
       confirmMs = Date.now() - t0;
       emit(summary(confirmed, failedOnChain));

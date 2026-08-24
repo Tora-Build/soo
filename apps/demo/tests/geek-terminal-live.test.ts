@@ -189,10 +189,11 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   // the first wave carries them all.
   const burst = await run("burst 4 1 11");
   expect(burst.result.success, burst.text).toBe(true);
-  // The live table: a header, and every row ends in its confirmed state.
-  expect(burst.text).toContain("#   actor  action");
+  // The matrix: a glyph legend, cells joined by │, every cell ending ✓.
+  expect(burst.text).toContain("· queued  ⧗ signed");
+  expect(burst.text).toContain("│");
   expect(burst.text).toContain("re-sent with a fresh blockhash");
-  expect(burst.text).toMatch(/✓ confirmed/);
+  expect(burst.text).toMatch(/✓ 0[0-2][YN]/);
   expect(burst.text).toMatch(/4\/4 confirmed .* tx\/s/);
 
   // Export prints a base58 secret a wallet can import; clear forgets it.

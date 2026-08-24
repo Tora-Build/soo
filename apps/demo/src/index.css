@@ -5079,3 +5079,14 @@
 .app-shell .group:hover .group-hover\:ring-rule {
   --tw-ring-color: var(--border);
 }
+
+/* A line that is still becoming something. Paired with the terminal's
+   replace-by-id streaming: rows pulse while queued/signed/sent, and the
+   pulse stops the instant a terminal state replaces the line. */
+.terminal-pending {
+  animation: terminal-pending-pulse 1.1s ease-in-out infinite;
+}
+@keyframes terminal-pending-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}

@@ -117,6 +117,10 @@ export function WebTerminal({
     switch (type) {
       case "success":
         return "text-ink";
+      case "pending":
+        // In-flight work breathes: replace-by-id rows in this state pulse
+        // until a terminal state (success/warn) replaces them.
+        return "text-muted terminal-pending";
       case "error":
         return "text-error";
       case "warn":
