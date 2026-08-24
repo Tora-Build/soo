@@ -50,7 +50,7 @@ export function EastboardHeader() {
               <strong className="block font-heading text-base uppercase tracking-[-0.04em] text-ink">
                 EastBoard
               </strong>
-              <small className="block font-mono text-[8px] uppercase tracking-[0.2em] text-accent">
+              <small className="block font-mono text-[10px] uppercase tracking-[0.2em] text-accent">
                 {t("eastboard.header.tagline")}
               </small>
             </span>
@@ -77,7 +77,7 @@ export function EastboardHeader() {
 
         <div className="flex items-center gap-2">
           {fixtureMode && (
-            <span className="hidden border border-rule bg-inset px-3 py-2 font-mono text-[9px] uppercase tracking-[0.08em] text-muted lg:block">
+            <span className="hidden border border-rule bg-inset px-3 py-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted lg:block">
               {t("eastboard.header.fixtureBalance", {
                 amount: balance.toLocaleString(numberLocale, {
                   maximumFractionDigits: 2,
@@ -85,7 +85,7 @@ export function EastboardHeader() {
               })}
             </span>
           )}
-          <span className="hidden items-center gap-2 border border-rule bg-raised px-3 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-muted sm:flex">
+          <span className="hidden items-center gap-2 border border-rule bg-raised px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-muted sm:flex">
             <span className="h-1.5 w-1.5 rounded-full bg-pos" />
             Solana Devnet
           </span>
@@ -109,7 +109,7 @@ export function EastboardHeader() {
             key={to}
             to={to}
             className={({ isActive }) =>
-              `flex-1 py-3 text-center font-mono text-[9px] font-semibold uppercase tracking-[0.11em] ${
+              `flex-1 py-3 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.11em] ${
                 isActive ? "border-b border-accent text-accent" : "text-muted"
               }`
             }

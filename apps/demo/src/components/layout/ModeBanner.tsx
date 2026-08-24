@@ -118,7 +118,7 @@ export const ModeBanner = () => {
           <Icon className="h-6 w-6" />
         </span>
         <div className="min-w-0">
-          <span className="font-mono text-[8px] font-bold uppercase tracking-[0.2em] text-current opacity-75">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-current opacity-75">
             {mode.eyebrow}
           </span>
           <h1 className="mt-2 max-w-3xl text-[clamp(1.5rem,3vw,3.1rem)] leading-[0.95] text-white">

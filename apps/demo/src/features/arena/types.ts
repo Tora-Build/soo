@@ -6,6 +6,10 @@ export interface ArenaProfile {
   wallet: string;
   handle: string;
   xp: number;
+  /** The daily-drop component of `xp` — exists only on the server. */
+  socialXp?: number;
+  /** The confirmed-play component of `xp` — the server's view of trades. */
+  playsXp?: number;
   tickets: number;
   streak: number;
   plays: number;

@@ -76,7 +76,7 @@ export const Navbar = () => {
                 <span className="font-heading text-lg uppercase tracking-[-0.05em] text-ink">
                   Soo
                 </span>
-                <span className="mt-1 font-mono text-[7px] font-semibold uppercase tracking-[0.24em] text-accent">
+                <span className="mt-1 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-accent">
                   Reality arcade
                 </span>
               </span>
@@ -87,7 +87,7 @@ export const Navbar = () => {
             <div className="hidden items-center gap-3 md:flex">
               <span className="arcade-season-badge">{SEASON.id}</span>
               <div>
-                <div className="font-mono text-[8px] font-semibold uppercase tracking-[0.18em] text-faint">
+                <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-faint">
                   Current season
                 </div>
                 <div className="mt-0.5 text-xs font-bold uppercase tracking-wide text-ink">
@@ -119,7 +119,7 @@ export const Navbar = () => {
               >
                 <span className="arcade-level-badge">{level}</span>
                 <span className="min-w-[84px] text-left">
-                  <span className="block font-mono text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">
+                  <span className="block font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
                     {levelProgress} / {XP_PER_LEVEL} XP
                   </span>
                   <span className="mt-1 block h-1 overflow-hidden rounded-full bg-inset">
@@ -330,14 +330,14 @@ const PlayerProfile = ({
               <h2 className="truncate text-3xl">
                 {syncedHandle ?? "Guest Runner"}
               </h2>
-              <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
+              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
                 {isConnected ? displayAddress : "Guest profile"}
               </p>
             </div>
           </div>
 
           <div className="mt-7">
-            <div className="flex justify-between font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+            <div className="flex justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
               <span>Level {level}</span>
               <span>
                 {levelProgress} / {XP_PER_LEVEL} XP
@@ -394,7 +394,7 @@ const PlayerProfile = ({
             <span className="block font-heading text-lg uppercase">
               {claimedToday ? "Drop claimed" : "Claim daily drop"}
             </span>
-            <span className="mt-1 block font-mono text-[8px] uppercase tracking-[0.14em] opacity-70">
+            <span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.14em] opacity-70">
               {claimedToday ? "Come back tomorrow" : "+250 XP · +1 play ticket"}
             </span>
           </span>
@@ -403,7 +403,7 @@ const PlayerProfile = ({
 
         <div className="mt-7 flex items-center justify-between">
           <div>
-            <div className="font-mono text-[8px] uppercase tracking-[0.18em] text-faint">
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-faint">
               Season rank
             </div>
             <h3 className="mt-1 text-xl">{ARENA_RANKS[rankIndex]}</h3>
@@ -545,7 +545,7 @@ const PlayerProfile = ({
 
         <div className="mt-7 border-t border-rule pt-5">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[8px] uppercase tracking-[0.18em] text-faint">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-faint">
               Color loadout
             </span>
             <AccentPicker />

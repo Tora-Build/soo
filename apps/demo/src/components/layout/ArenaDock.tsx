@@ -96,7 +96,7 @@ export const ArenaDock = () => {
               <div className="font-heading text-base uppercase tracking-[-0.03em] text-ink">
                 Game menu
               </div>
-              <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
                 Tools, labs and protocol controls
               </div>
             </div>

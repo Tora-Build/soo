@@ -229,19 +229,19 @@ export const LiquidityMap = ({
 
         {/* Y-Axis Depth Scale */}
         <div className="absolute left-0 top-2 bottom-3 flex flex-col justify-between items-end pr-1 border-r border-rule/50 pointer-events-none z-20 w-8">
-          <div className="text-[7px] text-muted font-mono flex items-center gap-1">
+          <div className="text-[10px] text-muted font-mono flex items-center gap-1">
             {totalLiquidity > 0n
               ? parseFloat(formatUnits(scaleMax, 18)).toFixed(0)
               : "0"}
             <div className="w-1.5 h-[1px] bg-raised" />
           </div>
-          <div className="text-[7px] text-muted font-mono flex items-center gap-1">
+          <div className="text-[10px] text-muted font-mono flex items-center gap-1">
             {totalLiquidity > 0n
               ? parseFloat(formatUnits(scaleMax / 2n, 18)).toFixed(0)
               : "0"}
             <div className="w-1.5 h-[1px] bg-raised" />
           </div>
-          <div className="text-[7px] text-muted font-mono flex items-center gap-1">
+          <div className="text-[10px] text-muted font-mono flex items-center gap-1">
             0
             <div className="w-1.5 h-[1px] bg-raised" />
           </div>
@@ -315,7 +315,7 @@ export const LiquidityMap = ({
                               {isBuySide ? "Buy" : "Sell"} {formatted}{" "}
                               {viewOutcome.toUpperCase()}
                             </div>
-                            <div className="text-[8px] text-muted mt-1 uppercase tracking-tighter">
+                            <div className="text-[10px] text-muted mt-1 uppercase tracking-tighter">
                               {(
                                 (bucket.liquidity * 100n) /
                                 (totalLiquidity || 1n)

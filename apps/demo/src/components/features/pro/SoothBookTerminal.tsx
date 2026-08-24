@@ -117,7 +117,7 @@ function SoothBookUnavailable({
           >
             Go to AMM
           </a>
-          <p className="font-mono text-[9px] text-faint pt-2">
+          <p className="font-mono text-[10px] text-faint pt-2">
             {marketAddress}
           </p>
         </div>
@@ -520,7 +520,7 @@ function SoothBookTerminalActive({
             >
               {t("orderbook.goToAmm")}
             </a>
-            <p className="font-mono text-[9px] text-faint pt-2">
+            <p className="font-mono text-[10px] text-faint pt-2">
               {marketAddress}
             </p>
           </div>
@@ -574,7 +574,7 @@ function SoothBookTerminalActive({
                 {marketQuestion || t("uc.pro.visuals.liquidityMap")}
               </span>
               <div className="mt-3 flex items-center gap-3">
-                <span className="inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-accent">
+                <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-accent">
                   <span className="w-1.5 h-1.5 bg-accent" />
                   {t("common.live")}
                 </span>
@@ -625,7 +625,7 @@ function SoothBookTerminalActive({
 
           <div className="bg-inset">
             {/* Column headers */}
-            <div className="grid grid-cols-[1fr_72px_1fr] font-mono text-[9px] uppercase tracking-[0.12em] text-faint border-b border-rule">
+            <div className="grid grid-cols-[1fr_72px_1fr] font-mono text-[10px] uppercase tracking-[0.12em] text-faint border-b border-rule">
               <div className="flex justify-between px-3 py-2">
                 <span>{t("orderbook.size")}</span>
                 <span>{t("orderbook.bid")}</span>
@@ -671,7 +671,7 @@ function SoothBookTerminalActive({
                           {fmtCents(midPrice)}
                         </span>
                         {spread !== null && (
-                          <span className="font-mono text-[9px] text-faint tabular-nums">
+                          <span className="font-mono text-[10px] text-faint tabular-nums">
                             {(spread * 100).toFixed(1)}
                             {"\u00A2"} spd
                           </span>
@@ -685,7 +685,7 @@ function SoothBookTerminalActive({
 
             {/* Overflow */}
             {(overflowBids > 0 || overflowAsks > 0) && (
-              <div className="grid grid-cols-[1fr_72px_1fr] font-mono text-[9px] text-faint border-t border-rule">
+              <div className="grid grid-cols-[1fr_72px_1fr] font-mono text-[10px] text-faint border-t border-rule">
                 <div className="px-3 py-1">
                   {overflowBids > 0 && `+${overflowBids} more`}
                 </div>
@@ -819,7 +819,7 @@ function SoothBookTerminalActive({
                           (Math.round(bestBid * 1000) / 10).toString(),
                         )
                       }
-                      className="font-mono text-[9px] text-muted hover:text-ink transition-colors duration-100"
+                      className="font-mono text-[10px] text-muted hover:text-ink transition-colors duration-100"
                     >
                       Bid {fmtCents(bestBid)}
                     </button>
@@ -831,7 +831,7 @@ function SoothBookTerminalActive({
                           (Math.round(bestAsk * 1000) / 10).toString(),
                         )
                       }
-                      className="font-mono text-[9px] text-muted hover:text-ink transition-colors duration-100"
+                      className="font-mono text-[10px] text-muted hover:text-ink transition-colors duration-100"
                     >
                       Ask {fmtCents(bestAsk)}
                     </button>

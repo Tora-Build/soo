@@ -61,7 +61,7 @@ export function TradeDrawer({ cell, initialAction, onClose }: TradeDrawerProps) 
       >
         <header className="sticky top-0 z-sticky flex items-start justify-between gap-5 border-b border-rule bg-canvas/95 px-5 py-4 backdrop-blur-xl sm:px-7">
           <div>
-            <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.17em] text-accent">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-accent">
               {cell.fixture
                 ? t("eastboard.trade.drawer.fixtureBook")
                 : t("eastboard.trade.drawer.canonicalBook")}
@@ -72,13 +72,13 @@ export function TradeDrawer({ cell, initialAction, onClose }: TradeDrawerProps) 
             >
               {cell.template.underlyingSymbol} ≥ {cell.template.strikeLabel}
             </h2>
-            <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
               {cell.template.expiry} · {cell.template.closeLabel}
             </p>
           </div>
           <div className="flex items-center gap-3">
             <span
-              className={`flex items-center gap-2 font-mono text-[8px] font-semibold uppercase tracking-[0.12em] ${stateTone}`}
+              className={`flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] ${stateTone}`}
             >
               <span
                 aria-hidden="true"
@@ -190,7 +190,7 @@ function FixtureBook({
             <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-muted">
               {t("eastboard.trade.depth.title")}
             </h3>
-            <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-faint">
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
               {t("eastboard.trade.depth.spread", { spread: "5¢" })}
             </span>
           </div>
@@ -212,7 +212,7 @@ function FixtureBook({
             />
           </div>
           <div className="mt-6 border-y border-rule py-6">
-            <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
               {t("eastboard.trade.fixture.midpoint")}
             </p>
             <div className="mt-2 flex items-end justify-between gap-4">
@@ -248,19 +248,19 @@ function FixtureBook({
             </button>
           </div>
           {outcome === 0 && NumericYesPriceCentsIsValid(numericYesPriceCents) && (
-            <p className="mt-2 font-mono text-[9px] leading-relaxed text-muted">
+            <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted">
               {t("eastboard.trade.fixture.sellHelper", {
                 noPrice: String(100 - numericYesPriceCents),
               })}
             </p>
           )}
-          <p className="mt-4 font-mono text-[9px] uppercase tracking-[0.12em] text-faint">
+          <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
             {t("eastboard.trade.fixture.simBalance", {
               amount: balance.toFixed(2),
             })}
           </p>
           <label className="mt-5 block">
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
               {t("eastboard.trade.fixture.yesLimitPrice")}
             </span>
             <span className="relative mt-2 block">
@@ -283,7 +283,7 @@ function FixtureBook({
             </span>
           </label>
           <label className="mt-4 block">
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
               {t("eastboard.trade.fixture.shares")}
             </span>
             <input
@@ -298,16 +298,16 @@ function FixtureBook({
           </label>
           <dl className="mt-5 grid grid-cols-2 border-y border-rule py-4 font-mono">
             <div className="pr-4">
-              <dt className="text-[8px] uppercase tracking-[0.12em] text-neg">
+              <dt className="text-[10px] uppercase tracking-[0.12em] text-neg">
                 {t("eastboard.trade.fixture.risk")}
               </dt>
               <dd className="mt-2 text-lg font-semibold tracking-[-0.04em] text-ink">
                 {Number.isFinite(maxCost) ? maxCost.toFixed(2) : "—"}
               </dd>
-              <dd className="mt-1 text-[8px] uppercase text-faint">MUSDC</dd>
+              <dd className="mt-1 text-[10px] uppercase text-faint">MUSDC</dd>
             </div>
             <div className="border-l border-rule pl-4">
-              <dt className="text-[8px] uppercase tracking-[0.12em] text-pos">
+              <dt className="text-[10px] uppercase tracking-[0.12em] text-pos">
                 {t("eastboard.trade.fixture.pays")}
               </dt>
               <dd className="mt-2 text-lg font-semibold tracking-[-0.04em] text-ink">
@@ -315,10 +315,10 @@ function FixtureBook({
                   ? numericShares.toFixed(2)
                   : "—"}
               </dd>
-              <dd className="mt-1 text-[8px] uppercase text-faint">MUSDC</dd>
+              <dd className="mt-1 text-[10px] uppercase text-faint">MUSDC</dd>
             </div>
           </dl>
-          <p className="mt-3 font-mono text-[9px] leading-relaxed text-warn">
+          <p className="mt-3 font-mono text-[10px] leading-relaxed text-warn">
             {t("eastboard.trade.fixture.invalidPayout", {
               amount: Number.isFinite(invalidPayout)
                 ? invalidPayout.toFixed(2)
@@ -356,7 +356,7 @@ function FixtureBook({
           <span className="text-[10px] font-semibold uppercase tracking-[0.13em] text-ink">
             {t("eastboard.trade.appendix.title")}
           </span>
-          <span className="text-[9px] uppercase tracking-[0.1em] text-accent">
+          <span className="text-[10px] uppercase tracking-[0.1em] text-accent">
             {t("eastboard.trade.appendix.view")}
           </span>
         </summary>

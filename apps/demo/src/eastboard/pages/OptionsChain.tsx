@@ -247,7 +247,7 @@ export function OptionsChain() {
     <div>
       <section className="grid gap-8 border-b border-rule pb-9 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.5fr)] lg:items-end">
         <div>
-          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.2em] text-accent">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
             {t("eastboard.hero.eyebrow")}
           </p>
           <h1 className="mt-4 max-w-[740px] font-heading text-[36px] font-semibold leading-[0.98] tracking-[-0.045em] text-ink md:text-[48px]">
@@ -275,7 +275,7 @@ export function OptionsChain() {
 
       <section className="grid gap-6 border-b border-rule py-7 md:grid-cols-[minmax(260px,0.78fr)_minmax(0,1.22fr)] md:items-center">
         <div>
-          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-accent">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">
             {t("eastboard.chain.payoff.eyebrow")}
           </p>
           <p className="mt-2 max-w-[48ch] text-[12px] leading-relaxed text-muted">
@@ -284,35 +284,35 @@ export function OptionsChain() {
         </div>
         <dl className="grid grid-cols-3 font-mono">
           <div className="px-3 first:pl-0">
-            <dt className="text-[8px] uppercase tracking-[0.12em] text-faint">
+            <dt className="text-[10px] uppercase tracking-[0.12em] text-faint">
               {t("eastboard.chain.payoff.correct")}
             </dt>
             <dd className="mt-2 text-base font-semibold text-pos">
               {formatCents(100, 0)}
             </dd>
-            <dd className="mt-1 text-[8px] uppercase text-faint">
+            <dd className="mt-1 text-[10px] uppercase text-faint">
               {t("eastboard.chain.payoff.perShare")}
             </dd>
           </div>
           <div className="border-l border-rule px-3">
-            <dt className="text-[8px] uppercase tracking-[0.12em] text-faint">
+            <dt className="text-[10px] uppercase tracking-[0.12em] text-faint">
               {t("eastboard.chain.payoff.wrong")}
             </dt>
             <dd className="mt-2 text-base font-semibold text-neg">
               {formatCents(0, 0)}
             </dd>
-            <dd className="mt-1 text-[8px] uppercase text-faint">
+            <dd className="mt-1 text-[10px] uppercase text-faint">
               {t("eastboard.chain.payoff.perShare")}
             </dd>
           </div>
           <div className="border-l border-rule px-3 last:pr-0">
-            <dt className="text-[8px] uppercase tracking-[0.12em] text-faint">
+            <dt className="text-[10px] uppercase tracking-[0.12em] text-faint">
               {t("eastboard.chain.payoff.invalid")}
             </dt>
             <dd className="mt-2 text-base font-semibold text-warn">
               {formatCents(50, 0)}
             </dd>
-            <dd className="mt-1 text-[8px] uppercase text-faint">
+            <dd className="mt-1 text-[10px] uppercase text-faint">
               {t("eastboard.chain.payoff.eitherSide")}
             </dd>
           </div>
@@ -322,7 +322,7 @@ export function OptionsChain() {
       <section className="mt-7">
         <div className="flex items-end justify-between gap-5">
           <div>
-            <p className="font-mono text-[9px] uppercase tracking-[0.17em] text-faint">
+            <p className="font-mono text-[10px] uppercase tracking-[0.17em] text-faint">
               {t("eastboard.chain.underlying")}
             </p>
             <h2 className="mt-2 font-heading text-xl font-semibold tracking-[-0.035em] text-ink">
@@ -339,7 +339,7 @@ export function OptionsChain() {
                 type="button"
                 aria-pressed={!activeOnly}
                 onClick={() => setActiveOnly(false)}
-                className={`border-r border-rule px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
+                className={`border-r border-rule px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.12em] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
                   !activeOnly
                     ? "bg-accent text-canvas"
                     : "text-muted hover:bg-raised hover:text-ink"
@@ -351,7 +351,7 @@ export function OptionsChain() {
                 type="button"
                 aria-pressed={activeOnly}
                 onClick={() => setActiveOnly(true)}
-                className={`px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
+                className={`px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.12em] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
                   activeOnly
                     ? "bg-accent text-canvas"
                     : "text-muted hover:bg-raised hover:text-ink"
@@ -371,7 +371,7 @@ export function OptionsChain() {
                 aria-label={t("eastboard.chain.outcomeCallAria")}
                 onClick={() => setDisplayedOutcome(1)}
                 title={t("eastboard.chain.outcomeCallRule")}
-                className={`border-r border-rule px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
+                className={`border-r border-rule px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.12em] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
                   displayedOutcome === 1
                     ? "bg-pos text-canvas"
                     : "text-muted hover:bg-raised hover:text-ink"
@@ -385,7 +385,7 @@ export function OptionsChain() {
                 aria-label={t("eastboard.chain.outcomePutAria")}
                 onClick={() => setDisplayedOutcome(0)}
                 title={t("eastboard.chain.outcomePutRule")}
-                className={`px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
+                className={`px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.12em] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
                   displayedOutcome === 0
                     ? "bg-neg text-canvas"
                     : "text-muted hover:bg-raised hover:text-ink"
@@ -421,12 +421,12 @@ export function OptionsChain() {
       </section>
 
       {chain.fixtureMode && (
-        <div className="mt-5 border border-info/30 bg-raised px-4 py-3 font-mono text-[9px] uppercase leading-relaxed tracking-[0.11em] text-muted">
+        <div className="mt-5 border border-info/30 bg-raised px-4 py-3 font-mono text-[10px] uppercase leading-relaxed tracking-[0.11em] text-muted">
           {t("eastboard.chain.fixtureNotice")}
         </div>
       )}
       {chain.metadataCandidates > 0 && (
-        <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.11em] text-faint">
+        <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.11em] text-faint">
           {t("eastboard.chain.hiddenMarkets", {
             count: chain.metadataCandidates,
           })}
@@ -444,7 +444,7 @@ export function OptionsChain() {
           <button
             type="button"
             onClick={() => void chain.refetch()}
-            className="border border-neg/50 px-3 py-2 font-mono text-[9px] uppercase active:translate-y-px"
+            className="border border-neg/50 px-3 py-2 font-mono text-[10px] uppercase active:translate-y-px"
           >
             {t("eastboard.chain.retry")}
           </button>
@@ -488,7 +488,7 @@ export function OptionsChain() {
             >
               <div
                 data-strike-rail="left"
-                className={`sticky left-0 z-[3] bg-inset px-2 py-3 font-mono text-[9px] uppercase tracking-[0.15em] text-faint after:pointer-events-none after:absolute after:inset-y-0 after:left-full after:w-4 after:bg-gradient-to-r after:from-inset after:to-transparent after:transition-opacity after:content-[''] md:px-3 2xl:px-4 ${
+                className={`sticky left-0 z-[3] bg-inset px-2 py-3 font-mono text-[10px] uppercase tracking-[0.15em] text-faint after:pointer-events-none after:absolute after:inset-y-0 after:left-full after:w-4 after:bg-gradient-to-r after:from-inset after:to-transparent after:transition-opacity after:content-[''] md:px-3 2xl:px-4 ${
                   scrollEdges.canScrollLeft
                     ? "after:opacity-100"
                     : "after:opacity-0"
@@ -514,12 +514,12 @@ export function OptionsChain() {
                   <p className="flex items-center gap-2 font-mono text-[10px] font-semibold tabular-nums text-ink">
                     <span>{expiry.slice(5)}</span>
                     {expiry === focusedExpiry && focusLabel && (
-                      <span className="whitespace-nowrap border border-accent/50 px-1.5 py-0.5 text-[7px] uppercase tracking-[0.1em] text-accent">
+                      <span className="whitespace-nowrap border border-accent/50 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-accent">
                         {focusLabel}
                       </span>
                     )}
                   </p>
-                  <p className="mt-1 font-mono text-[8px] uppercase tracking-[0.1em] text-faint">
+                  <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
                     {
                       chain.templates.find((item) => item.expiry === expiry)
                         ?.closeLabel
@@ -530,7 +530,7 @@ export function OptionsChain() {
               <div
                 aria-hidden="true"
                 data-strike-rail="right"
-                className={`sticky right-0 z-[3] hidden bg-inset p-3 text-right font-mono text-[9px] uppercase tracking-[0.15em] text-faint before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-gradient-to-l before:from-inset before:to-transparent before:transition-opacity before:content-[''] 2xl:block ${
+                className={`sticky right-0 z-[3] hidden bg-inset p-3 text-right font-mono text-[10px] uppercase tracking-[0.15em] text-faint before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-gradient-to-l before:from-inset before:to-transparent before:transition-opacity before:content-[''] 2xl:block ${
                   scrollEdges.canScrollRight
                     ? "before:opacity-100"
                     : "before:opacity-0"
@@ -661,7 +661,7 @@ export function OptionsChain() {
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-l border-rule px-4 first:border-l-0 first:pl-0 last:pr-0">
-      <dt className="text-[8px] uppercase tracking-[0.15em] text-faint">
+      <dt className="text-[10px] uppercase tracking-[0.15em] text-faint">
         {label}
       </dt>
       <dd className="mt-2 text-lg font-semibold tracking-[-0.04em] text-ink">
@@ -747,7 +747,7 @@ function OptionCellButton({
           className={`h-1.5 w-1.5 rounded-full ${cell.status === "live" ? "bg-pos" : cell.status === "closed" ? "bg-warn" : cell.status === "settled" ? "bg-faint" : "border border-faint"}`}
         />
         <span
-          className={`font-mono text-[9px] font-bold uppercase tracking-[0.12em] ${cell.status === "live" ? "text-pos" : cell.status === "closed" ? "text-warn" : "text-muted"}`}
+          className={`font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${cell.status === "live" ? "text-pos" : cell.status === "closed" ? "text-warn" : "text-muted"}`}
         >
           {t(STATUS_KEY[cell.status])}
         </span>
@@ -759,7 +759,7 @@ function OptionCellButton({
         >
           {cellPriceLabel}
         </span>
-        <span className="whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.1em] text-faint">
+        <span className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
           {cell.fixture
             ? t("eastboard.chain.meta.fixture")
             : t(META_KEY[cell.status])}

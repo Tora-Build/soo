@@ -145,10 +145,17 @@ async function ensurePlayer(db, wallet) {
 }
 
 function serializeProfile(row) {
+  // `socialXp` is the daily-drop component of `xp`, split out so a client
+  // that ALSO scores plays from the chain can combine the two ledgers
+  // without double counting: chain play XP and server play XP describe the
+  // same trades, but drops exist only here.
+  const socialXp = 250 * Number(row.claim_count ?? 0);
   return {
     wallet: row.wallet,
     handle: row.handle,
     xp: Number(row.xp),
+    socialXp,
+    playsXp: Math.max(0, Number(row.xp) - socialXp),
     tickets: Number(row.tickets),
     streak: Number(row.streak),
     plays: Number(row.plays),
@@ -162,13 +169,22 @@ function serializeProfile(row) {
 
 async function getProfile(db, wallet, create = true) {
   if (create) await ensurePlayer(db, wallet);
-  const row = await db.prepare("SELECT * FROM arena_players WHERE wallet = ?").bind(wallet).first();
+  const row = await db
+    .prepare(
+      `SELECT p.*,
+              (SELECT COUNT(*) FROM arena_daily_claims c WHERE c.wallet = p.wallet) AS claim_count
+       FROM arena_players p WHERE p.wallet = ?`,
+    )
+    .bind(wallet)
+    .first();
   if (!row && !create) {
     const now = nowSeconds();
     return {
       wallet,
       handle: defaultHandle(wallet),
       xp: 0,
+      socialXp: 0,
+      playsXp: 0,
       tickets: 3,
       streak: 0,
       plays: 0,
@@ -186,10 +202,11 @@ async function getProfile(db, wallet, create = true) {
 async function getLeaderboard(db) {
   const result = await db
     .prepare(
-      `SELECT wallet, handle, xp, streak, plays
-       FROM arena_players
-       WHERE season = 1
-       ORDER BY xp DESC, updated_at ASC
+      `SELECT p.wallet, p.handle, p.xp, p.streak, p.plays,
+              (SELECT COUNT(*) FROM arena_daily_claims c WHERE c.wallet = p.wallet) AS claim_count
+       FROM arena_players p
+       WHERE p.season = 1
+       ORDER BY p.xp DESC, p.updated_at ASC
        LIMIT 20`,
     )
     .all();
@@ -198,6 +215,7 @@ async function getLeaderboard(db) {
     wallet: row.wallet,
     handle: row.handle,
     xp: Number(row.xp),
+    socialXp: 250 * Number(row.claim_count ?? 0),
     streak: Number(row.streak),
     plays: Number(row.plays),
   }));

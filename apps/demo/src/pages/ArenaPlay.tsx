@@ -518,7 +518,7 @@ const RealityCard = ({
     .map((comment) => comment.handle.slice(0, 2).toUpperCase());
   const sentimentCopy = social?.sentiment.total
     ? `${social.sentiment.yesPercent}% of ${social.sentiment.total} players lean YES`
-    : "Be the first player to score this reality";
+    : "No calls yet — play YES or NO to open this market's tape";
 
   return (
     <article className={`reality-card is-${market.arenaCategory}`}>
@@ -562,13 +562,24 @@ const RealityCard = ({
         </div>
 
         <div className="reality-squad-line">
-          <div className="play-avatar-stack" aria-hidden="true">
-            {[...squadLabels, ...(squadLabels.length ? [] : ["?"])].map((label, index) => (
-              <span key={label} style={{ zIndex: 4 - index }}>
-                {label}
-              </span>
-            ))}
-          </div>
+          {/* Initials of the last squad comments on this market. An empty
+              stack renders nothing: a "?" bubble was a mystery badge that
+              explained itself to nobody. */}
+          {squadLabels.length > 0 && (
+            <div
+              className="play-avatar-stack"
+              title={`Recent squad calls: ${(social?.comments ?? [])
+                .slice(0, 3)
+                .map((c) => c.handle)
+                .join(", ")}`}
+            >
+              {squadLabels.map((label, index) => (
+                <span key={label} style={{ zIndex: 4 - index }}>
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
           <p>
             <strong>{sentimentCopy}</strong>
           </p>
@@ -846,7 +857,7 @@ const LeaderRow = ({
       <strong className="inline-flex items-center gap-1.5">
         {handle ?? shortenAddress(entry.wallet, 4)}
         {tag && (
-          <span className="rounded border border-white/15 bg-white/5 px-1.5 py-px font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-faint">
+          <span className="rounded border border-white/15 bg-white/5 px-1.5 py-px font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">
             {tag}
           </span>
         )}
@@ -930,7 +941,7 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
           aria-label="Open the full signal league"
         >
           <div>
-            <span>Live squad</span>
+            <span>Live squad · on-chain play XP</span>
             <h2>Signal league</h2>
           </div>
           <Trophy className="h-5 w-5" />
@@ -975,7 +986,9 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
         <div className="play-side-title">
           <div>
             <span>Season pulse</span>
-            <h2>{board.season.totalPlays} verified calls</h2>
+            {/* "Calls" is scene language for on-chain trades; the sub-line
+                anchors it so the number is checkable, not vibes. */}
+            <h2>{board.season.totalPlays} calls on-chain</h2>
           </div>
           <Users className="h-5 w-5" />
         </div>

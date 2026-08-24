@@ -31,11 +31,11 @@ export function DepthSide({
     <div data-depth-side={side}>
       <div className="flex items-end justify-between gap-3">
         <p
-          className={`font-mono text-[9px] font-semibold uppercase tracking-[0.12em] ${bid ? "text-pos" : "text-neg"}`}
+          className={`font-mono text-[10px] font-semibold uppercase tracking-[0.12em] ${bid ? "text-pos" : "text-neg"}`}
         >
           {label}
         </p>
-        <span className="font-mono text-[8px] uppercase tracking-[0.1em] text-faint">
+        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
           {bid
             ? t("eastboard.trade.depth.sizePrice")
             : t("eastboard.trade.depth.priceSize")}
@@ -43,7 +43,7 @@ export function DepthSide({
       </div>
       <div className="mt-2 divide-y divide-subtle border-y border-subtle">
         {rows.length === 0 ? (
-          <p className="py-3 font-mono text-[9px] text-faint">
+          <p className="py-3 font-mono text-[10px] text-faint">
             {resolvedEmptyLabel}
           </p>
         ) : (

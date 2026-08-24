@@ -38,7 +38,7 @@ export const Footer = () => {
 
             <div className="relative">
               <button
-                className="w-4 h-4 border border-rule text-faint hover:text-muted transition-colors duration-100 flex items-center justify-center font-mono text-[9px]"
+                className="w-4 h-4 border border-rule text-faint hover:text-muted transition-colors duration-100 flex items-center justify-center font-mono text-[10px]"
                 onMouseEnter={() => setShowStatusHelp(true)}
                 onMouseLeave={() => setShowStatusHelp(false)}
                 aria-label="Status indicator help"
@@ -56,7 +56,7 @@ export const Footer = () => {
                       <div className="flex items-center gap-2 mb-1">
                         <div className="w-1 h-1 bg-accent"></div>
                         <span className="text-ink">RPC</span>
-                        <span className="text-accent font-mono text-[9px] uppercase">
+                        <span className="text-accent font-mono text-[10px] uppercase">
                           CRITICAL
                         </span>
                       </div>

@@ -107,8 +107,21 @@ export const EntityIcon = ({
     </div>
   );
 
+  // The ring is DATA, not decoration — a partial ring is graduation progress
+  // on the bonding curve, a solid one means the order book is live. Nothing
+  // on screen said so, and an unexplained badge that varies between cards
+  // reads as a bug. The title is where a curious hover lands.
+  const ringTitle =
+    ringMode === "bonding"
+      ? `Bonding curve — ${Math.round(progress ?? 0)}% of the fees needed to graduate to the order book`
+      : ringMode === "graduated"
+        ? "Graduated — this market trades on the order book"
+        : ringMode === "dismissed"
+          ? "Dismissed — refunds only"
+          : undefined;
+
   return (
-    <div className={outerRingClass} style={ringStyle} aria-hidden="true">
+    <div className={outerRingClass} style={ringStyle} title={ringTitle}>
       <div className={innerTileClass}>{tileBody}</div>
     </div>
   );

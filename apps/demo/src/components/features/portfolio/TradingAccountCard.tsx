@@ -124,7 +124,7 @@ export const TradingAccountCard: React.FC = () => {
         <div className="flex items-stretch gap-1.5">
           {/* Liquid Cash */}
           <div className="flex-1 flex flex-col justify-between p-3">
-            <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted flex items-center gap-1">
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex items-center gap-1">
               <Coins size={9} className="text-faint" />{" "}
               {t("portfolio.liquid")}
             </div>
@@ -138,7 +138,7 @@ export const TradingAccountCard: React.FC = () => {
             className="flex-1 flex flex-col justify-between p-3"
             title={t("portfolio.reservedTooltip")}
           >
-            <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted flex items-center gap-1">
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex items-center gap-1">
               <Lock size={9} className="text-faint" />{" "}
               {t("portfolio.reserved")}
             </div>
@@ -155,7 +155,7 @@ export const TradingAccountCard: React.FC = () => {
               className="flex-1 flex flex-col justify-between p-3"
               title="Refunds from cancelled orders. Cancelling returns collateral to your book account, not your wallet — withdraw to move it back."
             >
-              <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted flex items-center gap-1">
+              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex items-center gap-1">
                 <ArrowDownLeft size={9} className="text-faint" /> Claimable
               </div>
               <div className="flex items-center gap-2 mt-1">
@@ -180,7 +180,7 @@ export const TradingAccountCard: React.FC = () => {
               These convert a settled POSITION into money, and the subsidy one
               only succeeds for a market's creator. */}
           <div className="flex-1 flex flex-col justify-between p-3">
-            <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted flex items-center gap-1">
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex items-center gap-1">
               <Coins size={9} className="text-faint" /> Settled
             </div>
             <div className="flex items-center gap-1 mt-1">
@@ -209,7 +209,7 @@ export const TradingAccountCard: React.FC = () => {
 
           {/* Position Value */}
           <div className="flex-1 flex flex-col justify-between p-3">
-            <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted flex items-center gap-1">
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex items-center gap-1">
               <TrendingUp size={9} className="text-faint" />{" "}
               {t("portfolio.positions")}
             </div>
