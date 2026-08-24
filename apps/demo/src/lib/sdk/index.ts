@@ -141,6 +141,38 @@ function toWadShares(s: string | undefined): bigint | null {
   return BigInt(whole) * WAD + BigInt(fracPadded || "0");
 }
 
+/**
+ * Local LMSR trade estimate in USDC — ΔC plus the 5% bonding fee, floats.
+ *
+ * The burst's est column used to be one readQuote RPC per row; forty rows of
+ * that (on top of forty builds) tripped the proxied RPC's rate limits and
+ * the throttling then slowed the very confirmation polls that stop the
+ * clock. The cost function is closed-form and every input is already in the
+ * snapshot, so the estimate is arithmetic, not I/O. Log-sum-exp with a shift
+ * for stability; "est" in the header stays honest about the fee approximation.
+ */
+function lmsrEstUsdc(
+  qYes: bigint,
+  qNo: bigint,
+  b: bigint,
+  outcome: 0 | 1,
+  deltaShares: number, // positive buy, negative sell
+): number {
+  const bf = Number(b) / 1e18;
+  if (bf <= 0) return 0;
+  const qy = Number(qYes) / 1e18;
+  const qn = Number(qNo) / 1e18;
+  const C = (a: number, c: number) => {
+    const m = Math.max(a, c);
+    return m + bf * Math.log(Math.exp((a - m) / bf) + Math.exp((c - m) / bf));
+  };
+  const before = C(qy, qn);
+  const after = outcome === 1 ? C(qy + deltaShares, qn) : C(qy, qn + deltaShares);
+  const delta = after - before; // positive on buys, negative on sells
+  const fee = Math.abs(delta) * 0.05;
+  return delta >= 0 ? -(delta + fee) : -delta - fee; // display sign: buys negative, sells positive net
+}
+
 /** LMSR YES price from the market snapshot, as a float in (0, 1). */
 function yesPrice(qYes: bigint, qNo: bigint, b: bigint): number {
   if (b === 0n) return 0.5;
@@ -228,6 +260,10 @@ export class SoothSDK {
     outcome: 0 | 1;
     size: number;
   }> = [];
+  /** Monotonic per-instance run counter, so two bursts' row ids never
+   *  collide — colliding ids made a second burst overwrite the first
+   *  burst's table in place. */
+  private burstSeq = 0;
 
   constructor(...args: unknown[]) {
     this.demo = extractDemo(args);
@@ -1561,14 +1597,28 @@ export class SoothSDK {
     // arrive independently of send order — that is the point of the table:
     // the reader watches rows 7, 3 and 12 light up in whatever order the
     // chain settles them.
+    const runId = ++this.burstSeq;
     const rowState: string[] = entries.map((e) => (e.skip ? `SKIP: ${e.skip}` : "· queued"));
-    const rowEst: string[] = entries.map(() => "—");
+    // Estimates are LOCAL arithmetic over the snapshot already in hand — an
+    // RPC quote per row was what tripped the proxied RPC's rate limits and
+    // slowed the confirmation polls that stop the throughput clock.
+    const rowEst: string[] = entries.map((e) => {
+      if (e.skip || graduated) return "—";
+      const est = lmsrEstUsdc(
+        preSnap.market.qYes,
+        preSnap.market.qNo,
+        preSnap.market.b,
+        e.outcome,
+        e.side === "sell" ? -e.size : e.size,
+      );
+      return `${est >= 0 ? "+" : "-"}${Math.abs(est).toFixed(2)}`;
+    });
     const rowLine = (i: number) => {
       const e = entries[i]!;
       return line(
         e.skip ? "warn" : rowState[i]!.startsWith("✓") ? "success" : rowState[i]!.startsWith("✗") ? "warn" : "plain",
         `  ${String(i + 1).padEnd(3)} ${e.label.padEnd(6)} ${(e.side + " " + (e.outcome === 1 ? "YES" : "NO")).padEnd(10)} ${e.size.toFixed(2).padStart(6)}  ${rowEst[i]!.padStart(9)}  ${rowState[i]!}`,
-        `burst-row-${i}`,
+        `burst-${runId}-row-${i}`,
       );
     };
     emit(line("dim", "  #   actor  action     size    est.USDC  status"));
@@ -1585,64 +1635,69 @@ export class SoothSDK {
     const liveIdx = entries.map((e, i) => (e.skip ? -1 : i)).filter((i) => i >= 0);
     const buildsForRetry: Array<{ actor: Keypair; ixs: TransactionInstruction[] }> = [];
     const signed: Uint8Array[] = [];
-    const built = await Promise.all(
-      liveIdx.map(async (i) => {
-        const e = entries[i]!;
-        const sharesWad = toWadShares(e.size.toFixed(2))!;
-        const userRef = `sol:${e.kp.publicKey.toBase58()}`;
-        const [req, q] = await Promise.all([
-          graduated
-            ? demo.adapter.buildBookPlace(ref, {
-                user: userRef,
-                side: e.outcome,
-                limitTick: Math.min(
-                  999,
-                  Math.max(1, e.outcome === 0 ? mid - 1 - Math.floor(rand() * 40) : mid + 1 + Math.floor(rand() * 40)),
-                ),
-                amount: toUsdcBaseUnits(e.size.toFixed(2))!,
-                matchLimit: 8,
-                postRemainder: true,
-              })
-            : e.side === "sell"
-              ? demo.adapter.buildSell(ref, {
-                  outcome: e.outcome,
-                  deltaShares: sharesWad,
-                  minProceedsWad: 0n,
-                  user: userRef,
-                })
-              : demo.adapter.buildTrade(ref, {
-                  side: "buy",
-                  outcome: e.outcome,
-                  deltaShares: sharesWad,
-                  maxCostWad: sharesWad * 2n,
-                  // @ts-expect-error — Solana-only meta channel; see adapter.ts.
-                  user: userRef,
-                }),
-          graduated
-            ? Promise.resolve(null)
-            : this.tryQuote(ref, e.outcome, e.side === "sell" ? -sharesWad : sharesWad),
-        ]);
-        if (q) {
-          const abs = q.netCost < 0n ? -q.netCost : q.netCost;
-          rowEst[i] = `${q.netCost < 0n ? "+" : "-"}${fmtWadShares(abs, 2)}`;
+    // Bounded parallelism: eight builds in flight. Fully parallel builds are
+    // what tripped the proxied RPC's rate limits — the throttling then
+    // outlived the build phase and slowed the confirmation polls, which is
+    // how a fully-confirmed burst reported 3.7 tx/s.
+    const buildOne = async (i: number) => {
+      const e = entries[i]!;
+      const sharesWad = toWadShares(e.size.toFixed(2))!;
+      const userRef = `sol:${e.kp.publicKey.toBase58()}`;
+      const req = graduated
+        ? await demo.adapter.buildBookPlace(ref, {
+            user: userRef,
+            side: e.outcome,
+            limitTick: Math.min(
+              999,
+              Math.max(1, e.outcome === 0 ? mid - 1 - Math.floor(rand() * 40) : mid + 1 + Math.floor(rand() * 40)),
+            ),
+            amount: toUsdcBaseUnits(e.size.toFixed(2))!,
+            matchLimit: 8,
+            postRemainder: true,
+          })
+        : e.side === "sell"
+          ? await demo.adapter.buildSell(ref, {
+              outcome: e.outcome,
+              deltaShares: sharesWad,
+              minProceedsWad: 0n,
+              user: userRef,
+            })
+          : await demo.adapter.buildTrade(ref, {
+              side: "buy",
+              outcome: e.outcome,
+              deltaShares: sharesWad,
+              maxCostWad: sharesWad * 2n,
+              // @ts-expect-error — Solana-only meta channel; see adapter.ts.
+              user: userRef,
+            });
+      const meta = req.meta as { preIxs?: unknown[] } & Record<string, unknown>;
+      const ixs = [
+        ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }),
+        ComputeBudgetProgram.setComputeUnitLimit({ units: BURST_CU_LIMIT }),
+        ...(meta.preIxs ?? []).map((pre) => toIx(pre as never)),
+        toIx(meta as never),
+      ];
+      const tx = new Transaction();
+      for (const ix of ixs) tx.add(ix);
+      tx.feePayer = e.kp.publicKey;
+      tx.recentBlockhash = blockhash;
+      tx.sign(e.kp);
+      rowState[i] = "⧗ signed";
+      emit(rowLine(i));
+      return { i, actor: e.kp, ixs, raw: tx.serialize() };
+    };
+    const built: Array<Awaited<ReturnType<typeof buildOne>>> = new Array(liveIdx.length);
+    {
+      let next = 0;
+      const worker = async () => {
+        for (;;) {
+          const slot = next++;
+          if (slot >= liveIdx.length) return;
+          built[slot] = await buildOne(liveIdx[slot]!);
         }
-        const meta = req.meta as { preIxs?: unknown[] } & Record<string, unknown>;
-        const ixs = [
-          ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }),
-          ComputeBudgetProgram.setComputeUnitLimit({ units: BURST_CU_LIMIT }),
-          ...(meta.preIxs ?? []).map((pre) => toIx(pre as never)),
-          toIx(meta as never),
-        ];
-        const tx = new Transaction();
-        for (const ix of ixs) tx.add(ix);
-        tx.feePayer = e.kp.publicKey;
-        tx.recentBlockhash = blockhash;
-        tx.sign(e.kp);
-        rowState[i] = "⧗ signed";
-        emit(rowLine(i));
-        return { i, actor: e.kp, ixs, raw: tx.serialize() };
-      }),
-    );
+      };
+      await Promise.all(Array.from({ length: Math.min(8, liveIdx.length) }, worker));
+    }
     for (const b of built) {
       buildsForRetry.push({ actor: b.actor, ixs: b.ixs });
       signed.push(b.raw);
@@ -1675,7 +1730,7 @@ export class SoothSDK {
       line(
         "plain",
         `${sigs.filter((x) => !String(x).startsWith("send-failed")).length}/${n2} sent in ${sendMs}ms.`,
-        "burst-sent",
+        `burst-${runId}-sent`,
       ),
     );
 
@@ -1684,7 +1739,7 @@ export class SoothSDK {
       line(
         "info",
         `confirmed ${confirmedN}/${n2}${failedN ? ` · failed on-chain ${failedN}` : ""} · ${((Date.now() - t0) / 1000).toFixed(1)}s`,
-        "burst-progress",
+        `burst-${runId}-progress`,
       );
     emit(summary(0, 0));
 
