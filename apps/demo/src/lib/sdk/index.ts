@@ -95,6 +95,17 @@ function userBase58FromDemo(demo: DemoLike | null): string | null {
 
 const WAD = 1_000_000_000_000_000_000n;
 
+/**
+ * Explicit compute budget for burst transactions.
+ *
+ * Without one, the runtime RESERVES the default — 200k per instruction, 600k
+ * for a three-instruction trade — against the 12M CU-per-account-per-block
+ * write cap, so exactly 20 bursting trades fit a block no matter that each
+ * actually consumes ~115k. Measured on devnet: 114,841 CU for a live trade;
+ * 160k leaves headroom without hoarding the block. 12M / 160k ≈ 75 per block.
+ */
+const BURST_CU_LIMIT = 160_000;
+
 function fmtUsdc(baseUnits: bigint): string {
   // USDC is 6 decimals.
   const whole = baseUnits / 1_000_000n;
@@ -1605,6 +1616,7 @@ export class SoothSDK {
       const meta = req.meta as { preIxs?: unknown[] } & Record<string, unknown>;
       const ixs = [
         ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }),
+        ComputeBudgetProgram.setComputeUnitLimit({ units: BURST_CU_LIMIT }),
         ...(meta.preIxs ?? []).map((pre) => toIx(pre as never)),
         toIx(meta as never),
       ];
@@ -1621,24 +1633,56 @@ export class SoothSDK {
     if (planned) this.plan = [];
 
     const t0 = Date.now();
-    const sigs = await Promise.all(
-      signed.map((raw) =>
-        conn
-          .sendRawTransaction(raw, { skipPreflight: true })
-          .catch((e: Error) => `send-failed: ${e.message.slice(0, 120)}`),
-      ),
-    );
+    // Chunked, not one giant volley: a proxied RPC rate-limits, and a dropped
+    // send is indistinguishable from a dropped transaction until the poll
+    // times out. Twelve per chunk keeps each request burst under the limits
+    // the free tiers publish while still finishing a 40-trade burst in ~1s.
+    const sigs: string[] = [];
+    for (let off = 0; off < signed.length; off += 12) {
+      const chunk = await Promise.all(
+        signed.slice(off, off + 12).map((raw) =>
+          conn
+            .sendRawTransaction(raw, { skipPreflight: true })
+            .catch((e: Error) => `send-failed: ${e.message.slice(0, 120)}`),
+        ),
+      );
+      sigs.push(...chunk);
+      if (off + 12 < signed.length) await new Promise((r) => setTimeout(r, 250));
+    }
     const sendMs = Date.now() - t0;
     const live = sigs.filter((s) => !String(s).startsWith("send-failed"));
     emit(line("plain", `${live.length}/${n2} sent in ${sendMs}ms.`));
 
-    // Second wave for the stragglers: same instructions, fresh blockhash,
-    // sequential. Under write-lock contention a burst member's blockhash can
-    // expire before its turn; abandoning it would understate the market, and
-    // the summary line reports the retry count so the wave is not silent.
+    // Give the first wave a moment to land, then find who actually did.
+    // Under write-lock contention a leader can drop the overflow outright,
+    // and those transactions report as "sent" with a status that never
+    // arrives — indistinguishable from slow without this read.
+    await new Promise((r) => setTimeout(r, 1_500));
+    const landed = new Set<number>();
+    try {
+      const first = await conn.getSignatureStatuses(
+        sigs.filter((x) => !String(x).startsWith("send-failed")) as string[],
+      );
+      let cursor = 0;
+      for (let i = 0; i < sigs.length; i++) {
+        if (String(sigs[i]).startsWith("send-failed")) continue;
+        if (first.value?.[cursor]) landed.add(i);
+        cursor++;
+      }
+    } catch {
+      // No status read on this connection — treat every send as landed.
+      for (let i = 0; i < sigs.length; i++) {
+        if (!String(sigs[i]).startsWith("send-failed")) landed.add(i);
+      }
+    }
+
+    // Second wave for the stragglers — send failures AND never-landed alike:
+    // same instructions, fresh blockhash, sequential. Abandoning them would
+    // understate the market, and the count is reported so the wave is not
+    // silent.
     let retried = 0;
     for (let i = 0; i < sigs.length; i++) {
-      if (!String(sigs[i]).startsWith("send-failed")) continue;
+      if (!String(sigs[i]).startsWith("send-failed") && landed.has(i)) continue;
       const { actor, ixs } = buildsForRetry[i]!;
       try {
         const tx = new Transaction();
@@ -1647,6 +1691,7 @@ export class SoothSDK {
         tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
         tx.sign(actor);
         const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+        sigs[i] = sig;
         live.push(sig);
         retried++;
       } catch (e) {
@@ -1655,30 +1700,38 @@ export class SoothSDK {
     }
     if (retried > 0) emit(line("dim", `${retried} re-sent with a fresh blockhash.`));
 
+    // Poll the CURRENT signatures — a replaced straggler's dead first sig
+    // would otherwise hold the loop open for the full timeout.
+    const pollList = sigs.filter((x) => !String(x).startsWith("send-failed")) as string[];
+
     // One poll loop over every signature at once. A connection with no
     // getSignatureStatuses (test harnesses process synchronously on send)
     // reads as "sent == executed" — which for those connections is the truth.
     let confirmed = 0;
+    let failedOnChain = 0;
     let confirmMs = Date.now() - t0;
     let pollFailures = 0;
     for (let tick = 0; tick < 60; tick++) {
       try {
-        const st = await conn.getSignatureStatuses(live as string[]);
+        const st = await conn.getSignatureStatuses(pollList);
         confirmed = (st.value ?? []).filter((v) => v && v.err === null).length;
-        const failedOnChain = (st.value ?? []).filter(
+        failedOnChain = (st.value ?? []).filter(
           (v) => v && v.err !== null,
         ).length;
         confirmMs = Date.now() - t0;
-        if (confirmed + failedOnChain >= live.length) break;
+        if (confirmed + failedOnChain >= pollList.length) break;
       } catch {
         pollFailures++;
         if (pollFailures >= 3) {
-          confirmed = live.length;
+          confirmed = pollList.length;
           confirmMs = Date.now() - t0;
           break;
         }
       }
       await new Promise((r) => setTimeout(r, 400));
+    }
+    if (failedOnChain > 0) {
+      emit(line("warn", `${failedOnChain} landed but failed on-chain (slippage or balance) — not counted.`));
     }
     const secs = confirmMs / 1000;
     emit(line("plain", ""));
@@ -1703,6 +1756,71 @@ export class SoothSDK {
       result: { success: confirmed > 0, message: `${confirmed}/${n2}` },
       output,
     };
+  }
+
+  /**
+   * `history [aN|me] [count]` — recent transactions of one wallet, each with
+   * its explorer link.
+   *
+   * The link is the deliverable: a demo's "that really happened" moment is a
+   * signature the viewer can open on a block explorer themselves, and until
+   * now the terminal printed synthetic hashes that resolve nowhere.
+   */
+  async history(...args: unknown[]): Promise<Out> {
+    const flat = (Array.isArray(args[0]) ? (args[0] as unknown[]) : args).map(String);
+    const demo = this.demo;
+
+    // Target resolution needs no connection, so it happens first — a person
+    // with no wallet still deserves "no actor a7" over "no demo context".
+    const who = (flat[0] ?? "me").toLowerCase();
+    const limit = /^\d+$/.test(flat[1] ?? "") ? Math.min(20, Number(flat[1])) : 8;
+    let pk: PublicKey;
+    let label: string;
+    if (/^a\d+$/.test(who) || /^\d+$/.test(who)) {
+      const idx = Number(who.replace(/^a/, ""));
+      const kp = loadActors()[idx];
+      if (!kp) return fail(`No actor ${who} — fleet has ${loadActors().length}.`);
+      pk = kp.publicKey;
+      label = `a${idx} · ${pk.toBase58()}`;
+    } else {
+      const me = userBase58FromDemo(demo);
+      if (!me) return fail("No connected wallet", "Connect a wallet, or name an actor: `history a3`.");
+      pk = new PublicKey(me);
+      label = `you · ${me}`;
+    }
+    if (!demo) return fail("No demo context");
+
+    let sigs: Array<{ signature: string; slot: number; err: unknown; blockTime?: number | null }>;
+    try {
+      sigs = await demo.adapter.connection.getSignaturesForAddress(pk, { limit });
+    } catch (e) {
+      return fail(
+        (e as Error).message,
+        "History needs an RPC that serves getSignaturesForAddress — this connection does not.",
+      );
+    }
+    if (sigs.length === 0) {
+      return {
+        result: { success: true, message: "" },
+        output: [line("plain", `No transactions yet for ${label}.`)],
+      };
+    }
+    const output: OutputLine[] = [line("bold", `History — ${label}`)];
+    for (const [i, sig] of sigs.entries()) {
+      const when = sig.blockTime
+        ? new Date(sig.blockTime * 1000).toISOString().slice(5, 19).replace("T", " ")
+        : `slot ${sig.slot}`;
+      output.push(
+        line(
+          sig.err ? "warn" : "plain",
+          `  ${String(i + 1).padEnd(3)} ${when}  ${sig.err ? "FAILED" : "ok"}  ${sig.signature.slice(0, 20)}…`,
+        ),
+        // The full URL on its own line: clickable where the terminal links,
+        // selectable everywhere else.
+        line("dim", `      https://explorer.solana.com/tx/${sig.signature}?cluster=devnet`),
+      );
+    }
+    return { result: { success: true, message: String(sigs.length) }, output };
   }
 
   // ─── Honest stubs ────────────────────────────────────────────────────────
@@ -1746,8 +1864,8 @@ export class SoothSDK {
   async sbprice(): Promise<Out> {
     return this.marketstatus();
   }
-  async sbhistory(..._args: unknown[]): Promise<Out> {
-    return this.notPorted("history");
+  async sbhistory(...args: unknown[]): Promise<Out> {
+    return this.history(...args);
   }
 
   // ─── Command parser ──────────────────────────────────────────────────────
@@ -1778,6 +1896,7 @@ export class SoothSDK {
             line("plain", "  marketstatus | status  active-market snapshot + price"),
             line("bold", "Wallet"),
             line("plain", "  balance   whoami   mint <usdc>  — test-USDC faucet"),
+            line("plain", "  history [aN|me] [count]  — recent txs with explorer links"),
             line("bold", "Actors — popup-free fleet for simulate"),
             line("plain", "  actors create 10       actors fund 0.05 500   (one confirmation total)"),
             line("plain", "  actors                 actors export <n>      actors clear"),
@@ -1846,6 +1965,8 @@ export class SoothSDK {
       case "orders":
       case "positions":
         return this.sbstate();
+      case "history":
+        return this.history(rest);
       case "place":
         return this.sbmint(rest);
       case "cancelorder":

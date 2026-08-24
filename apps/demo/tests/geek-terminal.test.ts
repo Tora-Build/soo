@@ -84,6 +84,20 @@ describe("Geek terminal command parsing", () => {
   });
 });
 
+describe("history", () => {
+  it("with no wallet points at the two ways to name one", async () => {
+    const r = await bare().executeCommand("history");
+    expect(r.result.success).toBe(false);
+    expect(r.output[0]!.text).toContain("history a3");
+  });
+
+  it("refuses an actor index outside the fleet", async () => {
+    const r = await bare().executeCommand("history a7");
+    expect(r.result.success).toBe(false);
+    expect(r.output[0]!.text).toContain("fleet has");
+  });
+});
+
 describe("plan parsing", () => {
   it("refuses rows before a fleet exists, naming the fix", async () => {
     const r = await bare().executeCommand("plan a0 buy yes 10");
