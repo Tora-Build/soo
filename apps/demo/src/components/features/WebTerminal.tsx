@@ -50,7 +50,17 @@ export function WebTerminal({
       setIsProcessing(true);
 
       const streamLine: StreamCallback = (line) => {
-        setHistory((prev) => [...prev, line]);
+        setHistory((prev) => {
+          if (line.id) {
+            const at = prev.findIndex((l) => l.id === line.id);
+            if (at >= 0) {
+              const next = prev.slice();
+              next[at] = line;
+              return next;
+            }
+          }
+          return [...prev, line];
+        });
       };
 
       try {

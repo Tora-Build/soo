@@ -31,9 +31,10 @@ import type {
 // Tiny helper so inline `{ type: "info", text: "..." }` literals don't
 // widen `type` to `string` when wrapped in array literals returned from
 // methods (TS only narrows when the contextual type is OutputLine[]).
-const line = (type: OutputLineType, text: string): OutputLine => ({
+const line = (type: OutputLineType, text: string, id?: string): OutputLine => ({
   type,
   text,
+  ...(id ? { id } : {}),
 });
 import { dispatchAmmWrite, NOT_HANDLED } from "@/lib/chain-shim/amm-bridge";
 import type { SolanaChainAdapter, SignerRef } from "@sooth/sdk-solana";
@@ -1554,89 +1555,104 @@ export class SoothSDK {
       ),
     );
 
-    // Intent table: what each wallet is about to do, with the quoted cost —
-    // the calculation on screen before a single byte is sent.
-    emit(line("dim", "  #   actor  action     size    est. USDC"));
-    for (const [i, e] of entries.entries()) {
-      let est = "—";
-      if (!e.skip && !graduated) {
-        const sharesWad = toWadShares(e.size.toFixed(2))!;
-        const q = await this.tryQuote(ref, e.outcome, e.side === "sell" ? -sharesWad : sharesWad);
-        if (q) {
-          const abs = q.netCost < 0n ? -q.netCost : q.netCost;
-          est = `${q.netCost < 0n ? "+" : "-"}${fmtWadShares(abs, 2)}`;
-        }
-      }
-      emit(
-        line(
-          e.skip ? "warn" : "plain",
-          `  ${String(i + 1).padEnd(3)} ${e.label.padEnd(6)} ${(e.side + " " + (e.outcome === 1 ? "YES" : "NO")).padEnd(10)} ${e.size.toFixed(2).padStart(6)}  ${est.padStart(9)}${e.skip ? `   SKIP: ${e.skip}` : ""}`,
-        ),
+    // ── The live table ──
+    // Each row carries a stable id; re-emitting the id REPLACES the line, so
+    // the same row walks queued → signed → sent → ✓ in place. Confirmations
+    // arrive independently of send order — that is the point of the table:
+    // the reader watches rows 7, 3 and 12 light up in whatever order the
+    // chain settles them.
+    const rowState: string[] = entries.map((e) => (e.skip ? `SKIP: ${e.skip}` : "· queued"));
+    const rowEst: string[] = entries.map(() => "—");
+    const rowLine = (i: number) => {
+      const e = entries[i]!;
+      return line(
+        e.skip ? "warn" : rowState[i]!.startsWith("✓") ? "success" : rowState[i]!.startsWith("✗") ? "warn" : "plain",
+        `  ${String(i + 1).padEnd(3)} ${e.label.padEnd(6)} ${(e.side + " " + (e.outcome === 1 ? "YES" : "NO")).padEnd(10)} ${e.size.toFixed(2).padStart(6)}  ${rowEst[i]!.padStart(9)}  ${rowState[i]!}`,
+        `burst-row-${i}`,
       );
-    }
+    };
+    emit(line("dim", "  #   actor  action     size    est.USDC  status"));
+    for (let i = 0; i < entries.length; i++) emit(rowLine(i));
     if (liveEntries.length === 0) {
       return fail("Nothing executable", "Every plan row was skipped — see the reasons above.");
     }
 
+    // ── Build + sign, all rows in parallel ──
+    // Building is one RPC round trip per row; done sequentially it WAS the
+    // visible slow phase. The signatures share one blockhash so the send
+    // window that follows measures the network, not this loop.
     const { blockhash } = await conn.getLatestBlockhash();
-    const signed: Uint8Array[] = [];
-    // Instructions are kept beside each signed payload so a transaction whose
-    // blockhash dies under it can be re-signed fresh instead of abandoned.
+    const liveIdx = entries.map((e, i) => (e.skip ? -1 : i)).filter((i) => i >= 0);
     const buildsForRetry: Array<{ actor: Keypair; ixs: TransactionInstruction[] }> = [];
-    for (const e of liveEntries) {
-      const sharesWad = toWadShares(e.size.toFixed(2))!;
-      const userRef = `sol:${e.kp.publicKey.toBase58()}`;
-      const req = graduated
-        ? await demo.adapter.buildBookPlace(ref, {
-            user: userRef,
-            side: e.outcome,
-            limitTick: Math.min(
-              999,
-              Math.max(1, e.outcome === 0 ? mid - 1 - Math.floor(rand() * 40) : mid + 1 + Math.floor(rand() * 40)),
-            ),
-            amount: toUsdcBaseUnits(e.size.toFixed(2))!,
-            matchLimit: 8,
-            postRemainder: true,
-          })
-        : e.side === "sell"
-          ? await demo.adapter.buildSell(ref, {
-              outcome: e.outcome,
-              deltaShares: sharesWad,
-              minProceedsWad: 0n,
-              user: userRef,
-            })
-          : await demo.adapter.buildTrade(ref, {
-              side: "buy",
-              outcome: e.outcome,
-              deltaShares: sharesWad,
-              maxCostWad: sharesWad * 2n,
-              // @ts-expect-error — Solana-only meta channel; see adapter.ts.
-              user: userRef,
-            });
-      const meta = req.meta as { preIxs?: unknown[] } & Record<string, unknown>;
-      const ixs = [
-        ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }),
-        ComputeBudgetProgram.setComputeUnitLimit({ units: BURST_CU_LIMIT }),
-        ...(meta.preIxs ?? []).map((pre) => toIx(pre as never)),
-        toIx(meta as never),
-      ];
-      buildsForRetry.push({ actor: e.kp, ixs });
-      const tx = new Transaction();
-      for (const ix of ixs) tx.add(ix);
-      tx.feePayer = e.kp.publicKey;
-      tx.recentBlockhash = blockhash;
-      tx.sign(e.kp);
-      signed.push(tx.serialize());
+    const signed: Uint8Array[] = [];
+    const built = await Promise.all(
+      liveIdx.map(async (i) => {
+        const e = entries[i]!;
+        const sharesWad = toWadShares(e.size.toFixed(2))!;
+        const userRef = `sol:${e.kp.publicKey.toBase58()}`;
+        const [req, q] = await Promise.all([
+          graduated
+            ? demo.adapter.buildBookPlace(ref, {
+                user: userRef,
+                side: e.outcome,
+                limitTick: Math.min(
+                  999,
+                  Math.max(1, e.outcome === 0 ? mid - 1 - Math.floor(rand() * 40) : mid + 1 + Math.floor(rand() * 40)),
+                ),
+                amount: toUsdcBaseUnits(e.size.toFixed(2))!,
+                matchLimit: 8,
+                postRemainder: true,
+              })
+            : e.side === "sell"
+              ? demo.adapter.buildSell(ref, {
+                  outcome: e.outcome,
+                  deltaShares: sharesWad,
+                  minProceedsWad: 0n,
+                  user: userRef,
+                })
+              : demo.adapter.buildTrade(ref, {
+                  side: "buy",
+                  outcome: e.outcome,
+                  deltaShares: sharesWad,
+                  maxCostWad: sharesWad * 2n,
+                  // @ts-expect-error — Solana-only meta channel; see adapter.ts.
+                  user: userRef,
+                }),
+          graduated
+            ? Promise.resolve(null)
+            : this.tryQuote(ref, e.outcome, e.side === "sell" ? -sharesWad : sharesWad),
+        ]);
+        if (q) {
+          const abs = q.netCost < 0n ? -q.netCost : q.netCost;
+          rowEst[i] = `${q.netCost < 0n ? "+" : "-"}${fmtWadShares(abs, 2)}`;
+        }
+        const meta = req.meta as { preIxs?: unknown[] } & Record<string, unknown>;
+        const ixs = [
+          ComputeBudgetProgram.requestHeapFrame({ bytes: 262144 }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: BURST_CU_LIMIT }),
+          ...(meta.preIxs ?? []).map((pre) => toIx(pre as never)),
+          toIx(meta as never),
+        ];
+        const tx = new Transaction();
+        for (const ix of ixs) tx.add(ix);
+        tx.feePayer = e.kp.publicKey;
+        tx.recentBlockhash = blockhash;
+        tx.sign(e.kp);
+        rowState[i] = "⧗ signed";
+        emit(rowLine(i));
+        return { i, actor: e.kp, ixs, raw: tx.serialize() };
+      }),
+    );
+    for (const b of built) {
+      buildsForRetry.push({ actor: b.actor, ixs: b.ixs });
+      signed.push(b.raw);
     }
-    emit(line("plain", `${liveEntries.length} transactions built and signed.`));
     const n2 = liveEntries.length;
     if (planned) this.plan = [];
 
     const t0 = Date.now();
-    // Chunked, not one giant volley: a proxied RPC rate-limits, and a dropped
-    // send is indistinguishable from a dropped transaction until the poll
-    // times out. Twelve per chunk keeps each request burst under the limits
-    // the free tiers publish while still finishing a 40-trade burst in ~1s.
+    // Chunked sends: a proxied RPC rate-limits, and a dropped send reads as
+    // "sent" until the poll times out. Rows flip as their chunk goes out.
     const sigs: string[] = [];
     for (let off = 0; off < signed.length; off += 12) {
       const chunk = await Promise.all(
@@ -1646,95 +1662,138 @@ export class SoothSDK {
             .catch((e: Error) => `send-failed: ${e.message.slice(0, 120)}`),
         ),
       );
+      chunk.forEach((sig, k) => {
+        const i = built[off + k]!.i;
+        rowState[i] = String(sig).startsWith("send-failed") ? "✗ send failed" : "→ sent";
+        emit(rowLine(i));
+      });
       sigs.push(...chunk);
       if (off + 12 < signed.length) await new Promise((r) => setTimeout(r, 250));
     }
     const sendMs = Date.now() - t0;
-    const live = sigs.filter((s) => !String(s).startsWith("send-failed"));
-    emit(line("plain", `${live.length}/${n2} sent in ${sendMs}ms.`));
+    emit(
+      line(
+        "plain",
+        `${sigs.filter((x) => !String(x).startsWith("send-failed")).length}/${n2} sent in ${sendMs}ms.`,
+        "burst-sent",
+      ),
+    );
 
-    // Give the first wave a moment to land, then find who actually did.
-    // Under write-lock contention a leader can drop the overflow outright,
-    // and those transactions report as "sent" with a status that never
-    // arrives — indistinguishable from slow without this read.
-    await new Promise((r) => setTimeout(r, 1_500));
-    const landed = new Set<number>();
-    try {
-      const first = await conn.getSignatureStatuses(
-        sigs.filter((x) => !String(x).startsWith("send-failed")) as string[],
+    // ── Confirmation watch: rows light up as the chain settles them ──
+    const summary = (confirmedN: number, failedN: number) =>
+      line(
+        "info",
+        `confirmed ${confirmedN}/${n2}${failedN ? ` · failed on-chain ${failedN}` : ""} · ${((Date.now() - t0) / 1000).toFixed(1)}s`,
+        "burst-progress",
       );
-      let cursor = 0;
-      for (let i = 0; i < sigs.length; i++) {
-        if (String(sigs[i]).startsWith("send-failed")) continue;
-        if (first.value?.[cursor]) landed.add(i);
-        cursor++;
-      }
-    } catch {
-      // No status read on this connection — treat every send as landed.
-      for (let i = 0; i < sigs.length; i++) {
-        if (!String(sigs[i]).startsWith("send-failed")) landed.add(i);
-      }
-    }
+    emit(summary(0, 0));
 
-    // Second wave for the stragglers — send failures AND never-landed alike:
-    // same instructions, fresh blockhash, sequential. Abandoning them would
-    // understate the market, and the count is reported so the wave is not
-    // silent.
-    let retried = 0;
-    for (let i = 0; i < sigs.length; i++) {
-      if (!String(sigs[i]).startsWith("send-failed") && landed.has(i)) continue;
-      const { actor, ixs } = buildsForRetry[i]!;
-      try {
-        const tx = new Transaction();
-        for (const ix of ixs) tx.add(ix);
-        tx.feePayer = actor.publicKey;
-        tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
-        tx.sign(actor);
-        const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
-        sigs[i] = sig;
-        live.push(sig);
-        retried++;
-      } catch (e) {
-        emit(line("warn", `  retry failed: ${(e as Error).message.slice(0, 90)}`));
-      }
-    }
-    if (retried > 0) emit(line("dim", `${retried} re-sent with a fresh blockhash.`));
-
-    // Poll the CURRENT signatures — a replaced straggler's dead first sig
-    // would otherwise hold the loop open for the full timeout.
-    const pollList = sigs.filter((x) => !String(x).startsWith("send-failed")) as string[];
-
-    // One poll loop over every signature at once. A connection with no
-    // getSignatureStatuses (test harnesses process synchronously on send)
-    // reads as "sent == executed" — which for those connections is the truth.
+    const done = new Set<number>();
     let confirmed = 0;
     let failedOnChain = 0;
-    let confirmMs = Date.now() - t0;
+    let retriedOnce = false;
     let pollFailures = 0;
+    let confirmMs = Date.now() - t0;
+
+    // Fresh blockhash for everything the first wave lost — send failures and
+    // never-landed alike. Shared by the poll loop and the statusless-
+    // connection fallback, which must retry BEFORE declaring itself done.
+    const retryWave = async () => {
+      if (retriedOnce) return 0;
+      retriedOnce = true;
+      let retried = 0;
+      for (let k = 0; k < sigs.length; k++) {
+        if (done.has(k)) continue;
+        const { actor, ixs } = buildsForRetry[k]!;
+        try {
+          const tx = new Transaction();
+          for (const ix of ixs) tx.add(ix);
+          tx.feePayer = actor.publicKey;
+          tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+          tx.sign(actor);
+          sigs[k] = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+          rowState[built[k]!.i] = "↻ resent";
+          emit(rowLine(built[k]!.i));
+          retried++;
+        } catch {
+          // Row keeps its failed state; the summary counts it.
+        }
+      }
+      if (retried > 0) emit(line("dim", `${retried} re-sent with a fresh blockhash.`));
+      return retried;
+    };
     for (let tick = 0; tick < 60; tick++) {
+      await new Promise((r) => setTimeout(r, 400));
+      let statuses: Array<{ err: unknown } | null>;
       try {
-        const st = await conn.getSignatureStatuses(pollList);
-        confirmed = (st.value ?? []).filter((v) => v && v.err === null).length;
-        failedOnChain = (st.value ?? []).filter(
-          (v) => v && v.err !== null,
-        ).length;
-        confirmMs = Date.now() - t0;
-        if (confirmed + failedOnChain >= pollList.length) break;
+        const pollList = sigs.map((x) => (String(x).startsWith("send-failed") ? "1".repeat(87) : (x as string)));
+        statuses = (await conn.getSignatureStatuses(pollList)).value ?? [];
       } catch {
         pollFailures++;
         if (pollFailures >= 3) {
-          confirmed = pollList.length;
+          // No status read on this connection (synchronous harnesses execute
+          // on send): a successful send IS execution there — so retry the
+          // losses first, then count every landed send as done.
+          for (let k = 0; k < sigs.length; k++) {
+            if (String(sigs[k]).startsWith("send-failed") || done.has(k)) continue;
+            done.add(k);
+            confirmed++;
+            rowState[built[k]!.i] = "✓ confirmed";
+            emit(rowLine(built[k]!.i));
+          }
+          if ((await retryWave()) > 0) {
+            for (let k = 0; k < sigs.length; k++) {
+              if (String(sigs[k]).startsWith("send-failed") || done.has(k)) continue;
+              done.add(k);
+              confirmed++;
+              rowState[built[k]!.i] = "✓ confirmed";
+              emit(rowLine(built[k]!.i));
+            }
+          }
           confirmMs = Date.now() - t0;
           break;
         }
+        continue;
       }
-      await new Promise((r) => setTimeout(r, 400));
+      for (let k = 0; k < sigs.length; k++) {
+        if (done.has(k) || String(sigs[k]).startsWith("send-failed")) continue;
+        const st = statuses[k];
+        if (!st) continue;
+        done.add(k);
+        const i = built[k]!.i;
+        if (st.err === null) {
+          confirmed++;
+          rowState[i] = "✓ confirmed";
+        } else {
+          failedOnChain++;
+          rowState[i] = "✗ failed on-chain";
+        }
+        emit(rowLine(i));
+      }
+      confirmMs = Date.now() - t0;
+      emit(summary(confirmed, failedOnChain));
+      const pending = sigs.filter(
+        (x, k) => !done.has(k) && !String(x).startsWith("send-failed"),
+      ).length;
+      const sendFails = sigs.filter((x) => String(x).startsWith("send-failed")).length;
+      if (pending === 0 && sendFails === 0) break;
+
+      // The retry fires as soon as it is clearly needed: everything sent has
+      // settled and losses remain, or three seconds have passed with
+      // stragglers.
+      if (
+        !retriedOnce &&
+        (pending === 0 || Date.now() - t0 > 3_000) &&
+        (pending > 0 || sendFails > 0)
+      ) {
+        await retryWave();
+        continue;
+      }
+      if (pending === 0) break;
     }
-    if (failedOnChain > 0) {
-      emit(line("warn", `${failedOnChain} landed but failed on-chain (slippage or balance) — not counted.`));
-    }
+
     const secs = confirmMs / 1000;
-    emit(line("plain", ""));
+    emit(summary(confirmed, failedOnChain));
     emit(
       line(
         "success",
@@ -1744,17 +1803,22 @@ export class SoothSDK {
     const snap = await demo.adapter.readSnapshot(ref);
     const m = snap.market;
     emit(line("plain", `YES price now ${yesPrice(m.qYes, m.qNo, m.b).toFixed(4)}`));
-    if (confirmed < n2) {
-      emit(
-        line(
-          "dim",
-          "Unconfirmed remainder: same-account write locks mean some burst members can expire their blockhash under contention — rerun or raise actor count.",
-        ),
-      );
+
+    // The streamed path replaced rows in place; the buffered path (no stream)
+    // must not return every intermediate state of every row.
+    const seen = new Set<string>();
+    const finalOutput: OutputLine[] = [];
+    for (let i = output.length - 1; i >= 0; i--) {
+      const l = output[i]!;
+      if (l.id) {
+        if (seen.has(l.id)) continue;
+        seen.add(l.id);
+      }
+      finalOutput.unshift(l);
     }
     return {
       result: { success: confirmed > 0, message: `${confirmed}/${n2}` },
-      output,
+      output: finalOutput,
     };
   }
 

@@ -22,6 +22,13 @@ export type OutputLineType =
 
 export interface OutputLine {
   type: OutputLineType;
+  /**
+   * Stable identity for in-place updates. A streamed line whose id already
+   * exists REPLACES that line instead of appending — which is what turns an
+   * append-only terminal into one that can show a row going pending → sent
+   * → confirmed without reprinting the table.
+   */
+  id?: string;
   text: string;
 }
 
