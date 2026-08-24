@@ -199,6 +199,23 @@ function lcg(seed: number): () => number {
 
 type Out = { result: CommandResult; output: OutputLine[] };
 
+/**
+ * Actor identity is a hex pair: 00–ff.
+ *
+ * Two characters address 256 actors where a0–a9 style ran out of alignment
+ * at ten, and every table column stays exactly two wide. Input accepts the
+ * hex pair OR the legacy aN decimal form, tried in that order of shape.
+ */
+const actorLabel = (i: number) => i.toString(16).padStart(2, "0");
+
+function parseActorRef(raw: string): number | null {
+  const t = raw.trim().toLowerCase();
+  const legacy = /^a(\d+)$/.exec(t);
+  if (legacy) return Number(legacy[1]);
+  if (/^[0-9a-f]{1,2}$/.test(t)) return parseInt(t, 16);
+  return null;
+}
+
 /** 0 NO · 1 YES · 2 INVALID, as the program's enum reads. */
 function outcomeWord(outcome: number): string {
   return outcome === 1 ? "YES" : outcome === 0 ? "NO" : outcome === 2 ? "INVALID" : `?${outcome}`;
@@ -954,7 +971,7 @@ export class SoothSDK {
     const cast: Array<{ label: string; as?: { userBase58: string; signer: SignerRef } }> =
       fleet.length > 0
         ? fleet.map((kp, i) => ({
-            label: `a${i}`,
+            label: actorLabel(i),
             as: { userBase58: kp.publicKey.toBase58(), signer: keypairSigner(kp) },
           }))
         : [{ label: "you" }];
@@ -1092,7 +1109,7 @@ export class SoothSDK {
         result: { success: true, message: String(n) },
         output: [
           line("success", `Created ${n} actor(s); fleet is ${loadActors().length}.`),
-          ...fresh.map((k, i) => line("dim", `  +${i} ${k.publicKey.toBase58()}`)),
+          ...fresh.map((k, i) => line("dim", `  +${actorLabel(loadActors().length - fresh.length + i)} ${k.publicKey.toBase58()}`)),
           line("plain", "Fund them: actors fund 0.05 500"),
         ],
       };
@@ -1107,14 +1124,14 @@ export class SoothSDK {
       };
     }
     if (sub === "export") {
-      const idx = Number(rest[1] ?? NaN);
+      const idx = parseActorRef(rest[1] ?? "") ?? NaN;
       const fleet = loadActors();
       const kp = fleet[idx];
       if (!kp) return fail(`No actor ${rest[1] ?? ""} — fleet has ${fleet.length}.`);
       return {
         result: { success: true, message: kp.publicKey.toBase58() },
         output: [
-          line("bold", `Actor ${idx} — ${kp.publicKey.toBase58()}`),
+          line("bold", `Actor ${actorLabel(idx)} — ${kp.publicKey.toBase58()}`),
           line("plain", "Secret key (base58, Phantom → Import Private Key):"),
           line("plain", `  ${toBase58(kp.secretKey)}`),
           line("warn", "Anyone with this string owns the wallet. Devnet or not, treat it like a key."),
@@ -1168,7 +1185,7 @@ export class SoothSDK {
       output.push(
         line(
           "plain",
-          `  ${String(i).padStart(2)} ${kp.publicKey.toBase58().slice(0, 8)}…  SOL ${solText}  USDC ${usdcText}`,
+          `  ${actorLabel(i)} ${kp.publicKey.toBase58().slice(0, 8)}…  SOL ${solText}  USDC ${usdcText}`,
         ),
       );
     }
@@ -1403,7 +1420,7 @@ export class SoothSDK {
       };
     }
     if (sub !== "") {
-      const actorIdx = Number(sub.replace(/^a/, ""));
+      const actorIdx = parseActorRef(sub) ?? -1;
       const side = (rest[1] ?? "").toLowerCase();
       const outcomeWordArg = (rest[2] ?? "").toLowerCase();
       const size = Number(rest[3] ?? NaN);
@@ -1422,7 +1439,7 @@ export class SoothSDK {
       ) {
         return fail(
           "Bad plan row",
-          `Usage: plan <a0..a${fleetSize - 1}> <buy|sell> <yes|no> <size>   e.g. \`plan a2 sell yes 5\``,
+          `Usage: plan <00..${actorLabel(fleetSize - 1)}> <buy|sell> <yes|no> <size>   e.g. \`plan 02 sell yes 5\``,
         );
       }
       this.plan.push({
@@ -1446,7 +1463,7 @@ export class SoothSDK {
       ...this.plan.map((r, i) =>
         line(
           "plain",
-          `  ${String(i + 1).padEnd(3)} a${String(r.actor).padEnd(5)} ${(r.side + " " + (r.outcome === 1 ? "YES" : "NO")).padEnd(10)} ${r.size.toFixed(2)}`,
+          `  ${String(i + 1).padEnd(3)} ${actorLabel(r.actor).padEnd(6)} ${(r.side + " " + (r.outcome === 1 ? "YES" : "NO")).padEnd(10)} ${r.size.toFixed(2)}`,
         ),
       ),
       line("dim", "`burst` executes this; `plan clear` discards it."),
@@ -1548,7 +1565,7 @@ export class SoothSDK {
       for (const row of this.plan) {
         const kp = fleet[row.actor];
         if (!kp) {
-          entries.push({ label: `a${row.actor}`, kp: fleet[0]!, side: row.side, outcome: row.outcome, size: row.size, skip: "no such actor" });
+          entries.push({ label: actorLabel(row.actor), kp: fleet[0]!, side: row.side, outcome: row.outcome, size: row.size, skip: "no such actor" });
           continue;
         }
         let skip: string | undefined;
@@ -1566,13 +1583,13 @@ export class SoothSDK {
             skip = "no position on this market yet";
           }
         }
-        entries.push({ label: `a${row.actor}`, kp, side: row.side, outcome: row.outcome, size: row.size, skip });
+        entries.push({ label: actorLabel(row.actor), kp, side: row.side, outcome: row.outcome, size: row.size, skip });
       }
     } else {
       entries = Array.from({ length: n }, (_, i) => {
         const size = Math.max(0.5, avg * (0.5 + rand()));
         return {
-          label: `a${i % fleet.length}`,
+          label: actorLabel(i % fleet.length),
           kp: fleet[i % fleet.length]!,
           side: "buy" as const,
           outcome: (rand() < 0.5 ? 0 : 1) as 0 | 1,
@@ -1686,23 +1703,46 @@ export class SoothSDK {
       emit(rowLine(i));
       return { i, actor: e.kp, ixs, raw: tx.serialize() };
     };
-    const built: Array<Awaited<ReturnType<typeof buildOne>>> = new Array(liveIdx.length);
+    // A build that throws costs ITS ROW, never the burst: a 429 mid-pool used
+    // to reject the whole Promise.all and surface as a bare "Error: 429" with
+    // half the table stuck on "queued". Rate limits get three tries with
+    // growing backoff first, because a 429 is by definition temporary.
+    const built: Array<Awaited<ReturnType<typeof buildOne>> | null> = new Array(liveIdx.length).fill(null);
     {
       let next = 0;
       const worker = async () => {
         for (;;) {
           const slot = next++;
           if (slot >= liveIdx.length) return;
-          built[slot] = await buildOne(liveIdx[slot]!);
+          const i = liveIdx[slot]!;
+          for (let attempt = 0; ; attempt++) {
+            try {
+              built[slot] = await buildOne(i);
+              break;
+            } catch (e) {
+              const msg = (e as Error).message ?? "";
+              if (attempt < 3 && /429|rate/i.test(msg)) {
+                await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+                continue;
+              }
+              rowState[i] = `✗ build failed: ${msg.slice(0, 40)}`;
+              emit(rowLine(i));
+              break;
+            }
+          }
         }
       };
       await Promise.all(Array.from({ length: Math.min(8, liveIdx.length) }, worker));
     }
-    for (const b of built) {
+    const builtOk = built.filter((b): b is NonNullable<typeof b> => b !== null);
+    if (builtOk.length === 0) {
+      return fail("No transaction could be built", "Every build failed — see the rows above.");
+    }
+    for (const b of builtOk) {
       buildsForRetry.push({ actor: b.actor, ixs: b.ixs });
       signed.push(b.raw);
     }
-    const n2 = liveEntries.length;
+    const n2 = builtOk.length;
     if (planned) this.plan = [];
 
     const t0 = Date.now();
@@ -1718,7 +1758,7 @@ export class SoothSDK {
         ),
       );
       chunk.forEach((sig, k) => {
-        const i = built[off + k]!.i;
+        const i = builtOk[off + k]!.i;
         rowState[i] = String(sig).startsWith("send-failed") ? "✗ send failed" : "→ sent";
         emit(rowLine(i));
       });
@@ -1767,8 +1807,8 @@ export class SoothSDK {
           tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
           tx.sign(actor);
           sigs[k] = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
-          rowState[built[k]!.i] = "↻ resent";
-          emit(rowLine(built[k]!.i));
+          rowState[builtOk[k]!.i] = "↻ resent";
+          emit(rowLine(builtOk[k]!.i));
           retried++;
         } catch {
           // Row keeps its failed state; the summary counts it.
@@ -1793,16 +1833,16 @@ export class SoothSDK {
             if (String(sigs[k]).startsWith("send-failed") || done.has(k)) continue;
             done.add(k);
             confirmed++;
-            rowState[built[k]!.i] = "✓ confirmed";
-            emit(rowLine(built[k]!.i));
+            rowState[builtOk[k]!.i] = "✓ confirmed";
+            emit(rowLine(builtOk[k]!.i));
           }
           if ((await retryWave()) > 0) {
             for (let k = 0; k < sigs.length; k++) {
               if (String(sigs[k]).startsWith("send-failed") || done.has(k)) continue;
               done.add(k);
               confirmed++;
-              rowState[built[k]!.i] = "✓ confirmed";
-              emit(rowLine(built[k]!.i));
+              rowState[builtOk[k]!.i] = "✓ confirmed";
+              emit(rowLine(builtOk[k]!.i));
             }
           }
           confirmMs = Date.now() - t0;
@@ -1815,7 +1855,7 @@ export class SoothSDK {
         const st = statuses[k];
         if (!st) continue;
         done.add(k);
-        const i = built[k]!.i;
+        const i = builtOk[k]!.i;
         if (st.err === null) {
           confirmed++;
           rowState[i] = "✓ confirmed";
@@ -1855,9 +1895,13 @@ export class SoothSDK {
         `${confirmed}/${n2} confirmed in ${secs.toFixed(1)}s — ${(confirmed / Math.max(secs, 0.001)).toFixed(1)} tx/s on one market.`,
       ),
     );
-    const snap = await demo.adapter.readSnapshot(ref);
-    const m = snap.market;
-    emit(line("plain", `YES price now ${yesPrice(m.qYes, m.qNo, m.b).toFixed(4)}`));
+    try {
+      const snap = await demo.adapter.readSnapshot(ref);
+      const m = snap.market;
+      emit(line("plain", `YES price now ${yesPrice(m.qYes, m.qNo, m.b).toFixed(4)}`));
+    } catch {
+      // A throttled price read must not throw away a finished burst.
+    }
 
     // The streamed path replaced rows in place; the buffered path (no stream)
     // must not return every intermediate state of every row.
@@ -1895,15 +1939,15 @@ export class SoothSDK {
     const limit = /^\d+$/.test(flat[1] ?? "") ? Math.min(20, Number(flat[1])) : 8;
     let pk: PublicKey;
     let label: string;
-    if (/^a\d+$/.test(who) || /^\d+$/.test(who)) {
-      const idx = Number(who.replace(/^a/, ""));
-      const kp = loadActors()[idx];
+    const actorIdx = who === "me" ? null : parseActorRef(who);
+    if (actorIdx !== null) {
+      const kp = loadActors()[actorIdx];
       if (!kp) return fail(`No actor ${who} — fleet has ${loadActors().length}.`);
       pk = kp.publicKey;
-      label = `a${idx} · ${pk.toBase58()}`;
+      label = `${actorLabel(actorIdx)} · ${pk.toBase58()}`;
     } else {
       const me = userBase58FromDemo(demo);
-      if (!me) return fail("No connected wallet", "Connect a wallet, or name an actor: `history a3`.");
+      if (!me) return fail("No connected wallet", "Connect a wallet, or name an actor: `history 03`.");
       pk = new PublicKey(me);
       label = `you · ${me}`;
     }
@@ -2015,7 +2059,7 @@ export class SoothSDK {
             line("plain", "  marketstatus | status  active-market snapshot + price"),
             line("bold", "Wallet"),
             line("plain", "  balance   whoami   mint <usdc>  — test-USDC faucet"),
-            line("plain", "  history [aN|me] [count]  — recent txs with explorer links"),
+            line("plain", "  history [00..ff|me] [count]  — recent txs with explorer links"),
             line("bold", "Actors — popup-free fleet for simulate"),
             line("plain", "  actors create 10       actors fund 0.05 500   (one confirmation total)"),
             line("plain", "  actors                 actors export <n>      actors clear"),
@@ -2024,7 +2068,7 @@ export class SoothSDK {
             line("plain", "  createmarket <question…> [b]      graduate [step] [rounds]"),
             line("plain", "  simulate [N] [avgSize] [seed]     — seeded order flow, one tx at a time"),
             line("plain", "  burst    [N] [avgSize] [seed]     — all at once, measures tx/s (actors only)"),
-            line("plain", "  plan <aN> <buy|sell> <yes|no> <size> — script the next burst row by row"),
+            line("plain", "  plan <00..ff> <buy|sell> <yes|no> <size> — script the next burst row by row"),
             line("plain", "  plan                — show the plan     plan clear — back to random"),
             line("bold", "Book (post-graduation)"),
             line("plain", "  book      orders      place <bid|ask> <tick> <usdc>"),

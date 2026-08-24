@@ -88,7 +88,7 @@ describe("history", () => {
   it("with no wallet points at the two ways to name one", async () => {
     const r = await bare().executeCommand("history");
     expect(r.result.success).toBe(false);
-    expect(r.output[0]!.text).toContain("history a3");
+    expect(r.output[0]!.text).toContain("history 03");
   });
 
   it("refuses an actor index outside the fleet", async () => {

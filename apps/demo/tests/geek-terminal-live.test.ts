@@ -131,7 +131,7 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   const scripted = await run("burst");
   expect(scripted.result.success, scripted.text).toBe(true);
   expect(scripted.text).toContain("scripted plan, 2 of 3 row(s) executable");
-  expect(scripted.text).toMatch(/a0 {4,}buy YES/);
+  expect(scripted.text).toMatch(/00 {4,}buy YES/);
   expect(scripted.text).toMatch(/SKIP: no position on this market yet|SKIP: holds 0/);
   expect(scripted.text).toMatch(/2\/2 confirmed/);
   // The plan is consumed by the run — the next burst is random again.
@@ -171,7 +171,7 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   const fleetSim = await run("simulate 6 2 9");
   expect(fleetSim.result.success, fleetSim.text).toBe(true);
   expect(fleetSim.text).toContain("3 actors");
-  for (const label of ["a0:", "a1:", "a2:"]) {
+  for (const label of ["00:", "01:", "02:"]) {
     expect(fleetSim.text, fleetSim.text).toContain(label);
   }
 
