@@ -25,6 +25,8 @@ export interface ArenaLeaderboardEntry {
   wallet: string;
   handle: string;
   xp: number;
+  /** Daily-drop XP component — the server-only ledger no chain event mirrors. */
+  socialXp?: number;
   streak: number;
   plays: number;
 }

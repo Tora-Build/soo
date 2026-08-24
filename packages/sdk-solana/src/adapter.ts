@@ -180,6 +180,13 @@ export interface AdjudicatorView {
   disputedAt: bigint | null;
   /** Written by `force_invalid_attestation`, not by an adjudicator. */
   forcedInvalid: boolean;
+  /**
+   * True iff `register_zk_adjudicator` configured this entry — keyed on the
+   * zk comparator, mirroring the program's `is_zk_enabled`. An automatic
+   * market's resolver settles it, but the entry authority may still attest
+   * manually; the flag exists so a UI can say which kind it is looking at.
+   */
+  isZk: boolean;
 }
 
 /** One market's lifecycle + adjudication state, as `readResolutionStates`
@@ -215,6 +222,7 @@ function decodeAdjudicatorEntry(raw: any): AdjudicatorView {
     disputed: !!raw.disputed,
     disputedAt: optionalI64(raw.disputedAt ?? raw.disputed_at),
     forcedInvalid: !!(raw.forcedInvalid ?? raw.forced_invalid),
+    isZk: Number(raw.zkComparator ?? raw.zk_comparator ?? 0) !== 0,
   };
 }
 

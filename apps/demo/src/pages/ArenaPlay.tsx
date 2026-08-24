@@ -882,6 +882,16 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
     if (profile) map.set(profile.wallet, profile.handle);
     return (wallet: string) => map.get(wallet);
   }, [serviceBoard, profile]);
+  // The league total is play XP plus drop XP — the SAME sum the player's own
+  // pill shows via usePlayerStats. When the two used different arithmetic the
+  // page displayed 2,680 for a wallet whose pill said 3,930, and the pair
+  // read as one broken counter rather than two ledgers.
+  const socialFor = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of serviceBoard) map.set(row.wallet, row.socialXp ?? 0);
+    if (profile) map.set(profile.wallet, profile.socialXp ?? 0);
+    return (wallet: string) => map.get(wallet) ?? 0;
+  }, [serviceBoard, profile]);
   const [leagueOpen, setLeagueOpen] = useState(false);
   // The one merged stats source — the same hook the navbar pill and the
   // player card render from, so the three can never disagree.
@@ -889,7 +899,14 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
   const chain = board.you;
   const levelTitle = ARENA_RANKS[rankIndexFromLevel(level)];
 
-  const leaders = board.leaders.slice(0, 5);
+  const foldedLeaders = useMemo(
+    () =>
+      board.leaders
+        .map((e) => ({ ...e, xp: e.xp + socialFor(e.wallet) }))
+        .sort((a, b) => b.xp - a.xp),
+    [board.leaders, socialFor],
+  );
+  const leaders = foldedLeaders.slice(0, 5);
   const youOutsideTop = chain !== null && chain.position > 5 ? chain : null;
   const isYou = (entry: WalletScore) =>
     (chain !== null && entry.wallet === chain.wallet) ||
@@ -941,7 +958,7 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
           aria-label="Open the full signal league"
         >
           <div>
-            <span>Live squad · on-chain play XP</span>
+            <span>Live squad · season XP</span>
             <h2>Signal league</h2>
           </div>
           <Trophy className="h-5 w-5" />
@@ -971,7 +988,7 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
           ))}
           {youOutsideTop && (
             <LeaderRow
-              entry={youOutsideTop}
+              entry={{ ...youOutsideTop, xp: youOutsideTop.xp + socialFor(youOutsideTop.wallet) }}
               position={youOutsideTop.position}
               positionLabel={`#${youOutsideTop.position} · you`}
               index={3}
@@ -1012,7 +1029,7 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
         className="play-league-drawer"
       >
         <div className="space-y-2">
-          {board.leaders.slice(0, 25).map((entry, index) => (
+          {foldedLeaders.slice(0, 25).map((entry, index) => (
             <LeaderRow
               key={entry.wallet}
               entry={entry}

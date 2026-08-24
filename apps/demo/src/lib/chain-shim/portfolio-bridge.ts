@@ -28,8 +28,89 @@
 // still displays the user's AMM positions correctly.
 
 import { yesPriceWad, type SolanaChainAdapter } from "@sooth/sdk-solana";
+import { PublicKey } from "@solana/web3.js";
+import { getAccount, getMint } from "@solana/spl-token";
 import { toMarketRef, type ReadCallShape } from "./amm-bridge";
 import { fallbackUnlessUnreachable } from "./rpc-errors";
+
+// ─── AMM finance — the real numbers behind the EVM accounting reads ─────────
+//
+// Upstream's LaunchpadMarket is its own vault, so totalAssets/totalNetAssets/
+// ammAssets/pureCeilingAssets are one contract read each. Here they were
+// hardwired to 0n — "graceful zero" — which cascaded: LP floor 0, share 0%,
+// the Locker's LP totals 0.00, and the Vault page's accounting formulas all
+// anchored on zeros dressed up as data. The truth is three reads away:
+//
+//   cash       vault_amm's token balance (USDC, 6dp)
+//   liability  worst-case payout = max(qYes, qNo) at 1 USDC face
+//   floor      cash − liability;  ceiling  cash − min(qYes, qNo)
+//
+// WAD share counts convert to 6dp by /1e12. Cached briefly because one page
+// render asks for all four numbers for the same market.
+const WAD_TO_USDC = 1_000_000_000_000n;
+
+interface AmmFinance {
+  cash: bigint; // 6dp
+  floor: bigint; // 6dp
+  ceiling: bigint; // 6dp
+  creator: string; // base58
+  lpSupplyRaw: bigint; // LP mint base units (6dp mint)
+  lpMint: string; // base58
+}
+
+const financeCache = new Map<string, { at: number; v: AmmFinance }>();
+
+async function readAmmFinance(
+  ctx: PortfolioBridgeCtx,
+  marketRef: string,
+): Promise<AmmFinance | null> {
+  const hit = financeCache.get(marketRef);
+  if (hit && Date.now() - hit.at < 15_000) return hit.v;
+  try {
+    const adapter = ctx.adapter;
+    const conn = adapter.connection;
+    const marketPda = new PublicKey(marketRef.replace(/^sol:/, ""));
+    const info = await conn.getAccountInfo(marketPda);
+    if (!info) return null;
+    // `Market.market_id` is [u8; 16], first field after the discriminator.
+    const marketId = info.data.subarray(8, 8 + 16);
+    const [vaultAmm] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault_amm"), marketId],
+      adapter.programIds.soothCore,
+    );
+    const [lpMint] = PublicKey.findProgramAddressSync(
+      [Buffer.from("lp"), marketId],
+      adapter.programIds.soothCore,
+    );
+    let cash = 0n;
+    try {
+      cash = (await getAccount(conn, vaultAmm)).amount;
+    } catch {
+      // Vault not created yet — a market with no AMM has no cash.
+    }
+    let lpSupplyRaw = 0n;
+    try {
+      lpSupplyRaw = (await getMint(conn, lpMint)).supply;
+    } catch {
+      // Pre-seed_lp: no mint, no supply.
+    }
+    const amm = await adapter.readAmmState(marketRef);
+    const qMax = (amm.qYes > amm.qNo ? amm.qYes : amm.qNo) / WAD_TO_USDC;
+    const qMin = (amm.qYes > amm.qNo ? amm.qNo : amm.qYes) / WAD_TO_USDC;
+    const v: AmmFinance = {
+      cash,
+      floor: cash > qMax ? cash - qMax : 0n,
+      ceiling: cash > qMin ? cash - qMin : 0n,
+      creator: String(amm.creator).replace(/^sol:/, ""),
+      lpSupplyRaw,
+      lpMint: lpMint.toBase58(),
+    };
+    financeCache.set(marketRef, { at: Date.now(), v });
+    return v;
+  } catch {
+    return null;
+  }
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -145,15 +226,72 @@ export async function dispatchPortfolioRead(
       });
     }
 
-    // ─── LP / Vault / Locked-funds — graceful zero ──────────────────────
-    // NOTE: `totalSupply` is deliberately absent from this list — it falls
-    // through to the markets-bridge so MarketStats's LP-supply dependent math
-    // (floorRate/ceilingRate) gets a synthetic anchor value instead of zero.
+    // ─── LP / Vault accounting — real chain state ───────────────────────
     case "totalAssets":
-    case "totalNetAssets":
-    case "ammAssets":
-    case "pureCeilingAssets":
-    case "graduationThreshold":
+    case "ammAssets": {
+      const marketRef = toMarketRef(call.address) ?? toMarketRef(call.args?.[0]);
+      if (!marketRef) return 0n;
+      return (await readAmmFinance(ctx, marketRef))?.cash ?? 0n;
+    }
+
+    case "totalNetAssets": {
+      const marketRef = toMarketRef(call.address) ?? toMarketRef(call.args?.[0]);
+      if (!marketRef) return 0n;
+      return (await readAmmFinance(ctx, marketRef))?.floor ?? 0n;
+    }
+
+    case "pureCeilingAssets": {
+      const marketRef = toMarketRef(call.address) ?? toMarketRef(call.args?.[0]);
+      if (!marketRef) return 0n;
+      return (await readAmmFinance(ctx, marketRef))?.ceiling ?? 0n;
+    }
+
+    case "graduationThreshold": {
+      const marketRef = toMarketRef(call.address) ?? toMarketRef(call.args?.[0]);
+      if (!marketRef) return 0n;
+      try {
+        const g = await ctx.adapter.readGraduationProgress(marketRef);
+        return g.thresholdWad / 1_000_000_000_000n;
+      } catch {
+        return 0n;
+      }
+    }
+
+    // The LP token is the market itself in the EVM ABI, so balanceOf on a
+    // market PDA is the holder's LP ATA balance. Claimed here BEFORE the
+    // amm-bridge's mint-shaped balanceOf, which would otherwise resolve the
+    // market address to a venue mint and report the holder's USDC as "LP".
+    case "balanceOf": {
+      const marketRef = toMarketRef(call.address);
+      if (!marketRef) return PORTFOLIO_NOT_HANDLED;
+      const fin = await readAmmFinance(ctx, marketRef);
+      if (!fin) return PORTFOLIO_NOT_HANDLED;
+      const holder = String(call.args?.[0] ?? "").replace(/^(0x|sol:)/, "");
+      try {
+        const holderPk = new PublicKey(holder);
+        const { getAssociatedTokenAddressSync } = await import("@solana/spl-token");
+        const ata = getAssociatedTokenAddressSync(new PublicKey(fin.lpMint), holderPk, true);
+        const amount = (await getAccount(ctx.adapter.connection, ata)).amount;
+        return amount * 1_000_000_000_000n; // 6dp mint → the 18dp callers format
+      } catch {
+        // No ATA — a holder with no LP genuinely has zero.
+        return 0n;
+      }
+    }
+
+    // The LP token is the market itself in the EVM ABI, so totalSupply on a
+    // market PDA is the real LP mint's supply. Scaled 6dp → 18dp because
+    // every consumer formats with formatUnits(x, 18); the synthetic b·ln2
+    // anchor in markets-bridge remains only for calls that name no market.
+    case "totalSupply": {
+      const marketRef = toMarketRef(call.address);
+      if (!marketRef) return PORTFOLIO_NOT_HANDLED;
+      const fin = await readAmmFinance(ctx, marketRef);
+      if (!fin) return PORTFOLIO_NOT_HANDLED;
+      return fin.lpSupplyRaw * 1_000_000_000_000n;
+    }
+
+    // ─── Locked-funds — graceful zero (no per-user EVM-shaped read here) ─
     case "lockedProceeds":
     case "lockedBalance":
     case "claimableBalance":
@@ -170,11 +308,20 @@ export async function dispatchPortfolioRead(
     case "deadline":
       return readMarketField(call, ctx, 0n, (m) => m.deadline);
 
-    case "creator":
+    case "creator": {
+      // The real creator, in the shim's 0x<base58> convention. The zero
+      // address here made every "Creator" row a $0 placeholder — the Vault
+      // page's LP leaderboard listed "0x0000…0001" as the market's founder.
+      const marketRef = toMarketRef(call.address) ?? toMarketRef(call.args?.[0]);
+      if (!marketRef) return "0x0000000000000000000000000000000000000000";
+      const fin = await readAmmFinance(ctx, marketRef);
+      return fin ? `0x${fin.creator}` : "0x0000000000000000000000000000000000000000";
+    }
+
     case "factory":
     case "outcomeToken":
     case "adjudicator":
-      // Solana has no separate creator/factory/adjudicator contract — return
+      // Solana has no separate factory/adjudicator contract — return
       // zero address so upstream's `!== ZERO_ADDRESS` gates short-circuit.
       return "0x0000000000000000000000000000000000000000";
 

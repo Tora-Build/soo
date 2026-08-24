@@ -139,6 +139,8 @@ export function CreatedMarketsPanel() {
               key={state.market}
               market={state.market}
               view={view}
+              isZk={state.adjudicatorEntry?.isZk ?? false}
+              hasEntry={state.adjudicatorEntry !== null}
               locale={i18n.language === "zh" ? "zh-CN" : "en-US"}
             />
           ))}
@@ -151,10 +153,14 @@ export function CreatedMarketsPanel() {
 function CreatedMarketRow({
   market,
   view,
+  isZk,
+  hasEntry,
   locale,
 }: {
   market: string;
   view: ResolutionView;
+  isZk: boolean;
+  hasEntry: boolean;
   locale: string;
 }) {
   const { t } = useTranslation();
@@ -257,6 +263,26 @@ function CreatedMarketRow({
             >
               {PHASE_LABEL[view.phase] ?? view.phase}
             </span>
+            {/* Which kind of market this is. An automatic market's resolver
+                settles it from the committed zkTLS rule — but the creator
+                still holds the entry authority, so the manual attest path
+                below stays open either way. Without this badge a founder had
+                no way to tell whether anything was watching their market. */}
+            {hasEntry && (
+              <span
+                className={cn(
+                  "font-mono text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5 border",
+                  isZk ? "border-accent/50 text-accent" : "border-rule text-muted",
+                )}
+                title={
+                  isZk
+                    ? "Automatic — a zkTLS rule is committed and the resolver can settle this market; you can still attest manually after the deadline."
+                    : "Manual — you attest the outcome yourself after the deadline."
+                }
+              >
+                {isZk ? "AUTO · zkTLS" : "MANUAL"}
+              </span>
+            )}
             <span className="font-mono text-[10px] text-faint">
               {shortenAddress(market, 4)}
             </span>

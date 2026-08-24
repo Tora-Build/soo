@@ -319,10 +319,19 @@ export async function dispatchAmmRead(
       }
       try {
         const snap = await ctx.adapter.readSnapshot(marketRef);
-        // Synthetic creator ref — uses the user's address space so the
-        // EVM-typed `0x${string}` slot type-checks. The value is opaque
-        // to upstream code; only its non-zero-ness matters.
-        const synthCreator = ("0x" + "1".padStart(40, "0")) as `0x${string}`;
+        // The REAL creator in the shim's 0x<base58> convention. This used to
+        // be a synthetic "0x…0001" on the theory that only non-zero-ness
+        // mattered — but the Vault page's LP leaderboard renders this slot as
+        // the founder's identity, so the market appeared to be created by
+        // nobody. Falls back to the old sentinel only if AmmState is gone.
+        let synthCreator = ("0x" + "1".padStart(40, "0")) as `0x${string}`;
+        try {
+          const amm = await ctx.adapter.readAmmState(marketRef);
+          const b58 = String(amm.creator).replace(/^sol:/, "");
+          if (b58) synthCreator = `0x${b58}` as `0x${string}`;
+        } catch {
+          // keep sentinel
+        }
         // Synthetic `creatorDeposit` ≈ b · ln(2), expressed in USDC base
         // units (6 decimals), matching the convention upstream expects
         // (LaunchpadEngine.markets()'s `creatorDeposit` slot is in USDC

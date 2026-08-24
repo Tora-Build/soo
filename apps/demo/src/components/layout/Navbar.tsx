@@ -119,7 +119,7 @@ export const Navbar = () => {
               >
                 <span className="arcade-level-badge">{level}</span>
                 <span className="min-w-[84px] text-left">
-                  <span className="block font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+                  <span className="block font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-ink">
                     {levelProgress} / {XP_PER_LEVEL} XP
                   </span>
                   <span className="mt-1 block h-1 overflow-hidden rounded-full bg-inset">

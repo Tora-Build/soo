@@ -45,6 +45,7 @@ function entry(over: Partial<NonNullable<MarketResolutionState["adjudicatorEntry
     disputed: false,
     disputedAt: null,
     forcedInvalid: false,
+    isZk: false,
     ...over,
   };
 }

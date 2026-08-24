@@ -1410,7 +1410,7 @@
 
   .reality-social small {
     font-family: var(--font-mono);
-    font-size: 6px;
+    font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1593,7 +1593,7 @@
   .play-leader-row strong {
     overflow: hidden;
     color: var(--text);
-    font-size: 10px;
+    font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1602,14 +1602,14 @@
     margin-top: 2px;
     color: var(--text-faint);
     font-family: var(--font-mono);
-    font-size: 6px;
+    font-size: 10px;
     text-transform: uppercase;
   }
 
   .play-leader-row b {
-    color: var(--text-muted);
+    color: var(--text);
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .play-squad-reward {
@@ -2089,7 +2089,7 @@
     .play-mobile-next > span {
       color: var(--text-faint);
       font-family: var(--font-mono);
-      font-size: 6px;
+      font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.1em;
       text-transform: uppercase;
@@ -3348,7 +3348,7 @@
       min-height: 72px;
       gap: 7px;
       border-radius: 18px 9px 18px 9px;
-      font-size: 6px;
+      font-size: 10px;
     }
 
     .arena-dock-active {
@@ -4129,7 +4129,7 @@
     .arena-dock-item {
       min-height: 50px;
       border-radius: 14px;
-      font-size: 6px;
+      font-size: 10px;
       letter-spacing: 0.06em;
     }
 
@@ -4711,7 +4711,7 @@
       min-height: 72px;
       gap: 7px;
       border-radius: 18px 9px 18px 9px;
-      font-size: 6px;
+      font-size: 10px;
     }
 
     .arena-dock-active {
@@ -4907,7 +4907,7 @@
     margin-top: 2px;
     color: var(--text-faint);
     font-family: var(--font-mono);
-    font-size: 6px;
+    font-size: 10px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
   }
