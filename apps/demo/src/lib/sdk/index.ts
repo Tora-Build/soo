@@ -951,9 +951,19 @@ export class SoothSDK {
       } else {
         failures++;
         streak++;
-        emit(line("warn", `  ${String(i + 1).padStart(3)}/${n}  ${desc}  ✗ ${(r.result.message ?? "").slice(0, 60)}`));
+        emit(line("warn", `  ${String(i + 1).padStart(3)}/${n}  ${desc}  ✗ ${(r.result.message ?? "").slice(0, 90)}`));
         if (streak >= 3) {
           emit(line("error", "3 consecutive failures — aborting run."));
+          // The commonest cause by far, translated: token error 1 is
+          // InsufficientFunds, and with actors that means the fleet's USDC.
+          if (/code=1\b/.test(r.result.message ?? "") && fleet.length > 0) {
+            emit(
+              line(
+                "info",
+                "code=1 is the token program's InsufficientFunds — the actors are out of USDC. `actors` shows balances; `actors fund 0 500` refills without re-sending SOL.",
+              ),
+            );
+          }
           break;
         }
       }
