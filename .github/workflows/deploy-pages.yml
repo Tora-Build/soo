@@ -32,9 +32,18 @@ jobs:
         env:
           VITE_TEST_MODE: "false"
           VITE_SOLANA_RPC_URL: ${{ vars.SOLANA_RPC_URL }}
-          # Public URL of the deployed infra/arena-api Worker — without it the
-          # arena runs local-only and the navbar says so.
+          # Public service URLs and chain config. None are secrets — they are
+          # baked into the shipped bundle by design, and every one that is
+          # missing silently amputates a feature (no drafter URL = the AI
+          # draft button renders disabled; no resolver URL = automatic
+          # markets can be created but never watched; no arena base = the
+          # local-season banner).
           VITE_ARENA_API_BASE: https://soo-arena.zak-a35.workers.dev
+          VITE_AI_DRAFTER_URL: https://soo-ai-drafter.zak-a35.workers.dev
+          VITE_RESOLVER_URL: https://resolver.sooth.market
+          VITE_USE_INDEXER: "false"
+          VITE_SOOTH_CORE_ID: EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw
+          VITE_USDC_MINT: ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX
         run: pnpm build
       # Plain wrangler via pnpm dlx — wrangler-action installs wrangler with
       # npm inside the working directory, and npm cannot read the pnpm
