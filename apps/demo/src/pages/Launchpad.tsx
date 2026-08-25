@@ -75,6 +75,7 @@ import {
 import { AdvancedSection } from "../components/features/launchpad/AdvancedSection";
 import {
   proofCoversDraft,
+  registerWithResolver,
   type ProvenRule,
 } from "../components/features/launchpad/rule-services";
 import { computeRuleHash } from "@sooth/sdk-solana";
@@ -327,6 +328,27 @@ export const Launchpad = () => {
         try {
           await demo.adapter.submit(zkReq, signer as never);
           zkRegistered = true;
+          // Hand the resolver the rule's preimage so the market is WATCHED
+          // from birth. The chain holds only the hash; this browser is the
+          // one place the plaintext exists right now. Fire-and-report: a
+          // failure leaves a market that still resolves at its deadline
+          // once registered by hand, so it must not fail the launch.
+          void registerWithResolver(
+            marketAddress.replace(/^0x/, ""),
+            zkDraft.url.trim(),
+            zkDraft.parsePath.trim(),
+          ).then((r) => {
+            if (r.ok) {
+              toast.success(t("launchpad.zk.watching", {
+                defaultValue: "Resolver is watching this market — it settles itself the moment the rule is met.",
+              }), { duration: 6000 });
+            } else {
+              toast(t("launchpad.zk.notWatching", {
+                defaultValue: "Resolver not notified ({{detail}}) — the market still resolves at its deadline.",
+                detail: r.detail ?? "unreachable",
+              }), { icon: "⚠️", duration: 8000 });
+            }
+          });
         } catch (e) {
           console.warn("[launchpad] register_zk_adjudicator failed", e);
         }

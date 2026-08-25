@@ -365,3 +365,78 @@ test("the request shape validator is exported and agrees with the handler", () =
     { ok: true, url: "https://a.example/x", parsePath: "$.a.b" },
   );
 });
+
+// ── POST /register ───────────────────────────────────────────────────────────
+// Registration is verification, not trust: the preimage must hash to the
+// market's on-chain rule before a byte lands in the registry.
+
+import { createRegisterHandler } from "../src/serve.mjs";
+import { mkdtempSync as mkdtemp2, writeFileSync as write2, readFileSync as read2 } from "node:fs";
+import { tmpdir as tmp2 } from "node:os";
+import { join as join2 } from "node:path";
+
+const MARKET_B58 = "2LSY2xGyd8ibsxyJioyVmBFgiF5FtJHqKnDNswvqSsZF";
+
+function registerFixture({ verdict = { ok: true }, existing = [] } = {}) {
+  const dir = mkdtemp2(join2(tmp2(), "reg-"));
+  const path = join2(dir, "markets.json");
+  write2(path, JSON.stringify({ markets: existing }, null, 2));
+  const kicked = [];
+  const handler = createRegisterHandler({
+    registryPath: path,
+    verifyOnChain: async () => verdict,
+    kickPass: (m) => kicked.push(m),
+    log: () => {},
+  });
+  return { handler, path, kicked };
+}
+
+const GOOD = {
+  market: MARKET_B58,
+  url: "https://api.coinbase.com/v2/prices/BTC-USD/spot",
+  parsePath: "$.data.amount",
+};
+
+test("a verified registration lands in the registry and kicks a pass", async () => {
+  const { handler, path, kicked } = registerFixture();
+  const r = await handler(GOOD);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.watching, true);
+  const reg = JSON.parse(read2(path, "utf8"));
+  assert.equal(reg.markets.length, 1);
+  assert.equal(reg.markets[0].market, MARKET_B58);
+  assert.equal(reg.markets[0].url, GOOD.url);
+  assert.deepEqual(kicked, [MARKET_B58]);
+});
+
+test("a preimage that does not hash to the on-chain rule is refused", async () => {
+  const { handler, path } = registerFixture({
+    verdict: { ok: false, detail: "rule hash mismatch" },
+  });
+  const r = await handler(GOOD);
+  assert.equal(r.status, 422);
+  assert.equal(JSON.parse(read2(path, "utf8")).markets.length, 0, "nothing written");
+});
+
+test("re-registering the same market is idempotent, not a duplicate", async () => {
+  const { handler, path, kicked } = registerFixture({
+    existing: [{ market: MARKET_B58, label: "x", url: GOOD.url, parsePath: GOOD.parsePath, keyName: "amount" }],
+  });
+  const r = await handler(GOOD);
+  assert.equal(r.status, 200);
+  assert.match(r.body.detail, /already/);
+  assert.equal(JSON.parse(read2(path, "utf8")).markets.length, 1);
+  assert.equal(kicked.length, 0, "no pass for a market already watched");
+});
+
+test("malformed submissions are refused before the chain is asked", async () => {
+  const { handler } = registerFixture();
+  for (const bad of [
+    { ...GOOD, market: "not-base58!" },
+    { ...GOOD, url: "http://insecure.example" },
+    { ...GOOD, parsePath: "data.amount" },
+  ]) {
+    const r = await handler(bad);
+    assert.equal(r.status, 400, JSON.stringify(bad));
+  }
+});

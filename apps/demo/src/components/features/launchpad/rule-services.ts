@@ -285,3 +285,37 @@ export const proofCoversDraft = (
   proven !== null &&
   proven.url === url.trim() &&
   proven.parsePath === parsePath.trim();
+
+
+/**
+ * Hands the rule's preimage to the resolver so the market is WATCHED.
+ *
+ * The chain stores only `sha256(url ‖ parsePath)`; the plaintext exists in
+ * exactly one place at creation time — this browser — and the resolver
+ * cannot watch what it cannot name. The endpoint verifies the preimage
+ * against the on-chain rule hash before accepting, so this is a
+ * notification, not a trust grant. Failure is survivable (the market still
+ * resolves at its deadline once someone registers it by hand), which is why
+ * the caller treats it as fire-and-report rather than fire-and-die.
+ */
+export async function registerWithResolver(
+  marketPda: string,
+  url: string,
+  parsePath: string,
+): Promise<{ ok: boolean; detail?: string }> {
+  if (!RESOLVER_URL) return { ok: false, detail: "VITE_RESOLVER_URL is not set" };
+  try {
+    const res = await fetch(`${RESOLVER_URL}/register`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(RESOLVER_TOKEN ? { authorization: `Bearer ${RESOLVER_TOKEN}` } : {}),
+      },
+      body: JSON.stringify({ market: marketPda, url, parsePath }),
+    });
+    const body = (await res.json().catch(() => null)) as { ok?: boolean; detail?: string } | null;
+    return { ok: body?.ok === true, detail: body?.detail };
+  } catch (e) {
+    return { ok: false, detail: (e as Error).message };
+  }
+}

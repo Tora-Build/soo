@@ -57,6 +57,7 @@ import {
   lookupMarketQuestion,
   rememberMarketQuestion,
 } from "../../lib/market-questions";
+import { registerWithResolver } from "../../components/features/launchpad/rule-services";
 import {
   clearActors,
   createActors,
@@ -2355,6 +2356,38 @@ export class SoothSDK {
     return { result: { success: true, message: String(sigs.length) }, output };
   }
 
+  /**
+   * `watch <url> <parsePath>` — hand the active market's rule preimage to
+   * the resolver so it is watched for early resolution.
+   *
+   * The url and path must be typed because the chain holds only their hash
+   * and this terminal never saw the creation form. The resolver verifies
+   * the pair against the on-chain rule before accepting, so a typo is
+   * refused, not watched.
+   */
+  async watch(...args: unknown[]): Promise<Out> {
+    const flat = (Array.isArray(args[0]) ? (args[0] as unknown[]) : args).map(String);
+    const url = flat[0] ?? "";
+    const parsePath = flat[1] ?? "";
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    if (!url.startsWith("https://") || !parsePath.startsWith("$")) {
+      return fail(
+        "Bad args",
+        "Usage: watch <https-url> <$.parse.path> — the exact pair the market's rule committed to.",
+      );
+    }
+    const r = await registerWithResolver(market.replace(/^sol:/, ""), url, parsePath);
+    return r.ok
+      ? {
+          result: { success: true, message: "watching" },
+          output: [
+            line("success", "Resolver is watching this market — it settles itself the moment the rule is met."),
+          ],
+        }
+      : fail(r.detail ?? "resolver unreachable", `Not watching: ${r.detail ?? "resolver unreachable"}`);
+  }
+
   // ─── Honest stubs ────────────────────────────────────────────────────────
 
   private notPorted(what: string): Out {
@@ -2446,6 +2479,7 @@ export class SoothSDK {
             line("plain", "  cancelorder <seq>     sbredeem"),
             line("bold", "Resolution"),
             line("plain", "  resolution  — lifecycle, attested outcome, veto countdown, next step"),
+            line("plain", "  watch <url> <$.path>  — resolver watches an automatic market for early resolution"),
             line("plain", "  lock   attest <yes|no|invalid>   register [authority]   settle"),
             line("bold", "Settlement"),
             line("plain", "  redeem   claim   claimrefund   dismiss   redeemlp [shares]   lpbalance"),
@@ -2501,6 +2535,8 @@ export class SoothSDK {
         return this.sbstate();
       case "history":
         return this.history(rest);
+      case "watch":
+        return this.watch(rest);
       case "place":
         return this.sbmint(rest);
       case "cancelorder":

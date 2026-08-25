@@ -396,7 +396,81 @@ function readBody(req) {
  * endpoint is open, which is only safe because the default bind is loopback —
  * `startPreviewServer` says so out loud when both are true.
  */
-export function createPreviewServer({ handlePreview, token = null, budget, allowedOrigin = "*" }) {
+/**
+ * Builds the `POST /register` handler — the missing hinge between "a market
+ * was created in a browser" and "the watcher watches it".
+ *
+ * The chain stores only the rule's HASH; the (url, parsePath) preimage
+ * exists in exactly one place at creation time — the creator's browser — so
+ * the browser hands it over here. Registration is verification, not trust:
+ * the preimage is hashed and checked against the market's on-chain
+ * `rule_hash` before a byte lands in the registry, so a wrong or malicious
+ * submission cannot make the resolver watch anything the market did not
+ * commit to. On success the entry is appended (deduplicated by market) and
+ * a one-shot pass is kicked for that market alone — if the rule is already
+ * satisfied, early resolution fires within seconds of creation.
+ *
+ * `verifyOnChain` and `kickPass` are injected so the route is testable
+ * without a chain or a child process.
+ */
+export function createRegisterHandler({ verifyOnChain, registryPath, kickPass, log }) {
+  return async (body) => {
+    const market = typeof body?.market === "string" ? body.market.trim().replace(/^sol:/, "") : "";
+    const url = typeof body?.url === "string" ? body.url.trim() : "";
+    const parsePath = typeof body?.parsePath === "string" ? body.parsePath.trim() : "";
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(market)) {
+      return { status: 400, body: { ok: false, reason: "bad_request", detail: "market must be a base58 pubkey" } };
+    }
+    if (!url.startsWith("https://")) {
+      return { status: 400, body: { ok: false, reason: "bad_request", detail: "url must be https" } };
+    }
+    if (!parsePath.startsWith("$")) {
+      return { status: 400, body: { ok: false, reason: "bad_request", detail: "parsePath must start with $" } };
+    }
+
+    const verdict = await verifyOnChain({ market, url, parsePath });
+    if (!verdict.ok) {
+      return { status: 422, body: { ok: false, reason: "rule_mismatch", detail: verdict.detail } };
+    }
+
+    const { readFileSync, writeFileSync } = await import("node:fs");
+    let registry;
+    try {
+      registry = JSON.parse(readFileSync(registryPath, "utf8"));
+    } catch (e) {
+      return { status: 500, body: { ok: false, reason: "registry_unreadable", detail: e.message } };
+    }
+    const markets = Array.isArray(registry.markets) ? registry.markets : [];
+    if (markets.some((m) => m.market === market)) {
+      return { status: 200, body: { ok: true, watching: true, detail: "already registered" } };
+    }
+    if (markets.length >= 200) {
+      return { status: 507, body: { ok: false, reason: "registry_full", detail: "200-market cap reached" } };
+    }
+    markets.push({
+      market,
+      label: `auto-${market.slice(0, 8)}`,
+      url,
+      parsePath,
+      keyName: typeof body?.keyName === "string" && body.keyName ? body.keyName : keyNameFor(parsePath),
+      note: `Registered via POST /register at ${new Date().toISOString()}.`,
+    });
+    registry.markets = markets;
+    writeFileSync(registryPath, JSON.stringify(registry, null, 2) + "\n");
+    log?.(`register: now watching ${market} (${url} ${parsePath})`);
+
+    // Fire-and-forget: if the rule is already satisfied, early resolution
+    // lands within this pass rather than at the next cron tick.
+    try {
+      kickPass?.(market);
+    } catch {
+      // The cron sweep still covers it.
+    }
+    return { status: 200, body: { ok: true, watching: true } };
+  };
+}
+
+export function createPreviewServer({ handlePreview, handleRegister = null, token = null, budget, allowedOrigin = "*" }) {
   return createServer((req, res) => {
     const send = (status, payload) => {
       const json = JSON.stringify(payload);
@@ -429,12 +503,13 @@ export function createPreviewServer({ handlePreview, token = null, budget, allow
       return;
     }
 
-    if (path !== "/attest-preview") {
+    const isRegister = path === "/register" && handleRegister !== null;
+    if (path !== "/attest-preview" && !isRegister) {
       send(404, { ok: false, reason: "not_found", detail: `no route ${req.method} ${path}` });
       return;
     }
     if (req.method !== "POST") {
-      send(405, { ok: false, reason: "method_not_allowed", detail: "POST /attest-preview" });
+      send(405, { ok: false, reason: "method_not_allowed", detail: `POST ${path}` });
       return;
     }
 
@@ -463,7 +538,8 @@ export function createPreviewServer({ handlePreview, token = null, budget, allow
           send(400, { ok: false, reason: "bad_request", detail: "body is not valid JSON" });
           return null;
         }
-        return handlePreview(parsed).then((r) => send(r.status, r.body));
+        const handler = isRegister ? handleRegister : handlePreview;
+        return handler(parsed).then((r) => send(r.status, r.body));
       })
       .catch((err) => {
         send(400, { ok: false, reason: "bad_request", detail: err?.message ?? String(err) });
@@ -510,8 +586,43 @@ export async function startPreviewServer({ config, env, args, log, warn }) {
     budget,
   });
 
+  // Registration verifies the submitted preimage against the market's
+  // on-chain rule hash — read-only, no payer involved.
+  const { Chain, sdk } = await import("./chain.mjs");
+  const { verifyRule } = await import("./registry.mjs");
+  const chain = await Chain.connect({ rpcUrl: config.rpcUrl, payer: null, programId: config.programId });
+  const handleRegister = createRegisterHandler({
+    registryPath: config.registryPath,
+    verifyOnChain: async ({ market, url, parsePath }) => {
+      let state;
+      try {
+        state = await chain.readMarket(market);
+      } catch (e) {
+        return { ok: false, detail: `market unreadable: ${e.message}` };
+      }
+      if (!state.exists) return { ok: false, detail: "no such market on chain" };
+      if (!state.entry || state.entry.comparator === 0) {
+        return { ok: false, detail: "market has no zk rule — it resolves manually" };
+      }
+      const check = await verifyRule({ url, parsePath }, state.entry.ruleHash, sdk.computeRuleHash);
+      return check.ok ? { ok: true } : { ok: false, detail: check.detail };
+    },
+    kickPass: (market) => {
+      import("node:child_process").then(({ spawn }) => {
+        const child = spawn(process.execPath, ["src/index.mjs", "--once", "--only", market], {
+          cwd: SERVICE_ROOT,
+          detached: true,
+          stdio: "ignore",
+        });
+        child.unref();
+      });
+    },
+    log,
+  });
+
   const server = createPreviewServer({
     handlePreview,
+    handleRegister,
     token,
     budget,
     allowedOrigin: env.RESOLVER_ALLOWED_ORIGIN ?? "*",
@@ -522,7 +633,7 @@ export async function startPreviewServer({ config, env, args, log, warn }) {
     server.listen(port, host, res);
   });
 
-  log(`serving POST /attest-preview on http://${host}:${port}`);
+  log(`serving POST /attest-preview and POST /register on http://${host}:${port}`);
   log(`attestor: ${PADO_ATTESTOR}`);
   log(
     `budget:   1 attestation per ${Math.round(budget.minIntervalMs / 1000)}s, ` +
