@@ -271,7 +271,7 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   // Before the deadline, the resolution readout says so and points at lock.
   const early = await run("resolution");
   expect(early.text).toContain("Lifecycle:   Open");
-  expect(early.text).toContain("lock — permissionless once the deadline");
+  expect(early.text).toContain("may lock EARLY at any time");
 
   const soothRef = encodePubkeyRef(smoke.marketPda);
   const deadline = (await adapter.readResolutionState(soothRef))!.deadline;

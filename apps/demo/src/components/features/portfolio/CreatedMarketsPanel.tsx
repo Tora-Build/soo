@@ -283,12 +283,16 @@ function CreatedMarketRow({
     [t],
   );
 
+  // Pre-deadline the lock is the ADJUDICATOR's early lock (any time,
+  // authority-gated); post-deadline the permissionless request_lock does the
+  // same transition without needing the authority's key.
+  const earlyLock = view.phase === "open";
   const lock = () =>
     run(
       "lock",
       () =>
         writeContractAsync({
-          functionName: "requestLock",
+          functionName: earlyLock ? "lockForResolution" : "requestLock",
           args: [`sol:${market}`],
         }),
       t("createdMarkets.locked", { defaultValue: "Market locked" }),
@@ -406,7 +410,9 @@ function CreatedMarketRow({
         <div className="shrink-0 flex items-center gap-2">
           {view.action === "lock" && (
             <ActionButton busy={busy === "lock"} onClick={lock}>
-              {t("createdMarkets.lockIt", { defaultValue: "Lock it" })}
+              {earlyLock
+                ? t("createdMarkets.lockEarly", { defaultValue: "Resolve early — lock now" })
+                : t("createdMarkets.lockIt", { defaultValue: "Lock it" })}
             </ActionButton>
           )}
           {view.action === "register" && (
@@ -508,7 +514,13 @@ function RowExplainer({
     case "open":
       return (
         <>
-          {view.action === "register"
+          {view.action === "lock"
+            ? t("createdMarkets.openAdjudicator", {
+                defaultValue:
+                  "Trading until {{date}} — but as the adjudicator you may resolve EARLY: lock now, attest, and the veto window runs from there. Use it when the question's answer is already known.",
+                date: formatDate(view.deadline, locale),
+              })
+            : view.action === "register"
             ? t("createdMarkets.openNoAdjudicator", {
                 defaultValue:
                   "Trading until {{date}}. No adjudicator is registered yet — naming one now is the only step you can take early.",

@@ -1558,7 +1558,7 @@ export class SoothSDK {
       hint =
         state.lifecycle === "Locked"
           ? "attest <yes|no|invalid> — signer must be the entry authority."
-          : "lock — permissionless once the deadline has passed.";
+          : "lock — the adjudicator may lock EARLY at any time; anyone may once the deadline passes.";
     } else {
       const vetoSecs = (await demo.adapter.readVetoPeriodSecs()) ?? 0;
       const vetoEndsAt = Number(entry.attestedAt ?? 0n) + vetoSecs;
@@ -1576,7 +1576,15 @@ export class SoothSDK {
   async lock(): Promise<Out> {
     const market = this.marketRef();
     if (!market) return fail("No active market");
-    return this.writeViaShim("requestLock", [market]);
+    // Pre-deadline, only the adjudicator's early lock can land; after it,
+    // the permissionless transition needs no authority. Pick by the clock.
+    try {
+      const st = await this.demo!.adapter.readResolutionState(market);
+      const early = st !== null && Number(st.deadline) > Date.now() / 1000;
+      return this.writeViaShim(early ? "lockForResolution" : "requestLock", [market]);
+    } catch {
+      return this.writeViaShim("requestLock", [market]);
+    }
   }
 
   async attest(...args: unknown[]): Promise<Out> {

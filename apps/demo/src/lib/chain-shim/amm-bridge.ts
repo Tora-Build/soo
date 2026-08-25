@@ -808,6 +808,9 @@ export async function dispatchAmmWrite(
   if (call.functionName === "addAdjudicator") {
     return dispatchAddAdjudicator(call, ctx);
   }
+  if (call.functionName === "lockForResolution") {
+    return dispatchLockForResolution(call, ctx);
+  }
   if (call.functionName === "requestLock") {
     return dispatchRequestLock(call, ctx);
   }
@@ -1245,14 +1248,27 @@ async function dispatchRegisterAdjudicator(
 }
 
 /**
- * Operator: request_lock — adjudicator authority drives Market.lifecycle
- * Open → Locked. CPI'd into sooth_core::lock_for_resolution. Caller
- * must be Adjudicator.authority for the target market (set at
- * register_adjudicator time).
+ * request_lock — the PERMISSIONLESS Open → Locked transition, valid once
+ * the deadline has passed. The adjudicator's any-time early lock is the
+ * separate `lockForResolution` dispatch above.
  *
  * Args:
  *   args[0]: market reference — `0x<base58>` or `sol:<base58>`
  */
+/** The adjudicator's early lock — Open → Locked at ANY time, authority-gated. */
+async function dispatchLockForResolution(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "lockForResolution");
+  const marketRef = toMarketRef((call.args ?? [])[0]);
+  if (!marketRef) throw new Error("lockForResolution: invalid market reference");
+  const req = await ctx.adapter.buildLockForResolution(marketRef, {
+    user: `sol:${userBase58}`,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
 async function dispatchRequestLock(
   call: WriteCallShape,
   ctx: AmmBridgeCtx,

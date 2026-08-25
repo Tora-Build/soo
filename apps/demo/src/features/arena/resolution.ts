@@ -195,6 +195,9 @@ export function resolveMarketView({
   return {
     ...base,
     phase: "open",
-    action: mayRegisterEarly ? "register" : "none",
+    // The adjudicator's lock is valid at ANY time — early resolution is the
+    // designed power, not a deadline formality. Everyone else waits for the
+    // permissionless post-deadline lock.
+    action: isAdjudicator ? "lock" : mayRegisterEarly ? "register" : "none",
   };
 }

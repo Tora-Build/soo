@@ -1586,6 +1586,46 @@ export class SolanaChainAdapter implements ChainAdapter {
     };
   }
 
+  /**
+   * `lock_for_resolution` — the ADJUDICATOR's lock, valid at any time.
+   *
+   * The Polymarket-shaped power this protocol was designed around: when the
+   * question's answer is already known, the adjudicator freezes trading
+   * before the deadline and attests immediately. `request_lock` is the
+   * permissionless post-deadline twin. This builder did not exist — the
+   * program supported early resolution and no client could reach it, which
+   * read on screen as "nothing to do until the deadline".
+   */
+  async buildLockForResolution(
+    market: MarketRef,
+    args: { user: AddressRef },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const [adjudicatorEntryPda] = deriveAdjudicatorEntryPda(
+      marketPda,
+      this.programIds,
+    );
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .lockForResolution()
+      .accounts({
+        market: marketPda,
+        adjudicatorEntry: adjudicatorEntryPda,
+        authority: userPk,
+      })
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "lockForResolution",
+      },
+    };
+  }
+
   async buildAttestOutcome(
     market: MarketRef,
     args: { user: AddressRef; winningOutcome: 0 | 1 | 2 },

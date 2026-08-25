@@ -60,18 +60,32 @@ const view = (state: MarketResolutionState, nowSec: number, wallet = ME) =>
   });
 
 describe("resolveMarketView", () => {
-  it("offers nothing to do on an open market before its deadline", () => {
+  it("offers the ADJUDICATOR the early lock on an open market", () => {
+    // lock_for_resolution runs at any time for the entry authority — early
+    // resolution is the designed power, not a deadline formality.
     const v = view(market({ adjudicatorEntry: entry() }), Number(DEADLINE) - 10);
+    expect(v.phase).toBe("open");
+    expect(v.action).toBe("lock");
+  });
+
+  it("offers a stranger nothing on an open market before its deadline", () => {
+    const v = view(
+      market({ adjudicatorEntry: entry() }),
+      Number(DEADLINE) - 10,
+      "Stranger1111111111111111111111111111111111",
+    );
     expect(v.phase).toBe("open");
     expect(v.action).toBe("none");
   });
 
-  it("offers the lock the instant the deadline arrives, not a second before", () => {
+  it("offers strangers the lock at the deadline exactly, not a second before", () => {
+    // `request_lock` requires `now >= deadline` — inclusive boundary. The
+    // ADJUDICATOR is exempt from the clock entirely (early-lock case above).
+    const stranger = "Stranger1111111111111111111111111111111111";
     const m = market({ adjudicatorEntry: entry() });
-    // `request_lock` requires `now >= deadline` — the boundary is inclusive.
-    expect(view(m, Number(DEADLINE) - 1).action).toBe("none");
-    expect(view(m, Number(DEADLINE)).action).toBe("lock");
-    expect(view(m, Number(DEADLINE)).phase).toBe("pastDeadline");
+    expect(view(m, Number(DEADLINE) - 1, stranger).action).toBe("none");
+    expect(view(m, Number(DEADLINE), stranger).action).toBe("lock");
+    expect(view(m, Number(DEADLINE), stranger).phase).toBe("pastDeadline");
   });
 
   it("offers registration only to the creator, and only while no entry exists", () => {
