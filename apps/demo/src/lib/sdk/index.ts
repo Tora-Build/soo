@@ -434,16 +434,29 @@ export class SoothSDK {
       line("bold", `Markets (${refs.length})`),
     ];
     const listing: string[] = [];
-    // One snapshot batch, not N round trips.
-    let snaps: Awaited<ReturnType<SolanaChainAdapter["readSnapshots"]>>;
-    try {
-      snaps = await demo.adapter.readSnapshots(refs);
-    } catch {
-      snaps = [];
+    // Per-market reads with bounded parallelism — the batch was Promise.all,
+    // so ONE unreadable market rejected the whole set and every row printed
+    // "(unreadable)" while thirty-one snapshots sat readable behind it.
+    const snaps: Array<Awaited<ReturnType<SolanaChainAdapter["readSnapshot"]>> | null> =
+      new Array(refs.length).fill(null);
+    {
+      let next = 0;
+      const worker = async () => {
+        for (;;) {
+          const i = next++;
+          if (i >= refs.length) return;
+          try {
+            snaps[i] = await demo.adapter.readSnapshot(refs[i]!);
+          } catch {
+            snaps[i] = null;
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(8, refs.length) }, worker));
     }
     refs.forEach((ref, i) => {
       listing.push(ref);
-      const snap = Array.isArray(snaps) ? snaps[i] : undefined;
+      const snap = snaps[i] ?? undefined;
       const pda = ref.replace(/^sol:/, "");
       const mark = ref === active ? "→" : " ";
       if (snap?.market) {
@@ -1643,6 +1656,17 @@ export class SoothSDK {
    */
   async burst(args: unknown[], out?: Stream): Promise<Out> {
     const flat = (Array.isArray(args) ? args : [args]).map(String);
+    // The venue is named, never inferred: an AMM burst and a book burst are
+    // different demonstrations (curve trades vs crossing fills), and a
+    // default that silently switched between them at graduation produced
+    // runs nobody had asked for.
+    const venue = (flat.shift() ?? "").toLowerCase();
+    if (venue !== "amm" && venue !== "book") {
+      return fail(
+        "Name the venue",
+        "Usage: burst <amm|book> [N] [avgSize] [seed] — amm trades the curve, book crosses orders so they FILL.",
+      );
+    }
     const n = /^\d+$/.test(flat[0] ?? "") ? Number(flat[0]) : 10;
     const avg = /^\d+(\.\d+)?$/.test(flat[1] ?? "") ? Number(flat[1]) : 3;
     const seed = /^\d+$/.test(flat[2] ?? "") ? Number(flat[2]) : 42;
@@ -1687,11 +1711,20 @@ export class SoothSDK {
         data: Buffer.from((m.ixData ?? m.data)!, "base64"),
       });
 
-    // Venue follows the market, exactly as `simulate` does: a graduated
-    // market's writes are book orders — its AMM refuses trades, and a burst
-    // of refusals measures nothing.
     const preSnap = await demo.adapter.readSnapshot(ref);
-    const graduated = preSnap.market.isGraduated;
+    if (venue === "amm" && preSnap.market.isGraduated) {
+      return fail(
+        "Graduated market",
+        "This market's AMM is closed — it trades on the order book now. `burst book …`, or pick a bonding market from `markets`.",
+      );
+    }
+    if (venue === "book" && !preSnap.market.isGraduated) {
+      return fail(
+        "Not graduated",
+        "This market has no order book yet — it is still on the bonding curve. `burst amm …`, or `graduate` first.",
+      );
+    }
+    const graduated = venue === "book";
     const mid = Math.round(
       yesPrice(preSnap.market.qYes, preSnap.market.qNo, preSnap.market.b) * 1000,
     );
@@ -1706,10 +1739,10 @@ export class SoothSDK {
       skip?: string;
     }
     const planned = this.plan.length > 0;
-    if (planned && graduated) {
+    if (planned && venue === "book") {
       return fail(
-        "Plan needs the bonding curve",
-        "Planned bursts are AMM buys and sells; this market has graduated to the order book. `plan clear`, or pick a bonding market.",
+        "Plans are AMM choreography",
+        "A plan scripts curve buys and sells — run `burst amm` on a bonding market, or `plan clear`.",
       );
     }
     // A graduated market's book account only exists once someone paid its
@@ -1730,13 +1763,34 @@ export class SoothSDK {
         }
         emit(line("info", "Book account created (first orders on this market)."));
       }
-      if (book && book.orderCount + n > book.capacity) {
-        emit(
-          line(
-            "warn",
-            `Book holds ${book.orderCount}/${book.capacity} resting orders — up to ${book.orderCount + n - book.capacity} of this burst may fail with a full book. Cancel resting orders or burst smaller.`,
-          ),
-        );
+      if (book) {
+        // Capacity counts BLOCKS — resting orders AND per-trader seats share
+        // one pool. The old warning counted orders alone, which is how a
+        // "40 of 60 may fail" burst failed all sixty: 44 orders + 20 seats
+        // was already a full book. Grow toward what this burst needs; the
+        // runtime caps each realloc step, so growth is a short loop.
+        const needed = book.blockCount + n + fleet.length + 8;
+        let capacity = book.capacity;
+        let growSteps = 0;
+        while (capacity < needed && growSteps < 8) {
+          const grow = await this.writeViaShim("bookGrow", [ref, needed], {
+            userBase58: fleet[0]!.publicKey.toBase58(),
+            signer: keypairSigner(fleet[0]!),
+          });
+          growSteps++;
+          if (!grow.result.success) break;
+          try {
+            capacity = (await demo.adapter.readBook(ref)).capacity;
+          } catch {
+            break;
+          }
+        }
+        if (growSteps > 0) {
+          emit(line("info", `Book grown to ${capacity} blocks (${growSteps} step(s)) for ${book.blockCount} in use + ${n} incoming.`));
+        }
+        if (capacity < needed) {
+          emit(line("warn", `Book capacity ${capacity} may still be short of ${needed} — some orders can fail full.`));
+        }
       }
     }
 
@@ -1773,7 +1827,9 @@ export class SoothSDK {
           label: actorLabel(i % fleet.length),
           kp: fleet[i % fleet.length]!,
           side: "buy" as const,
-          outcome: (rand() < 0.5 ? 0 : 1) as 0 | 1,
+          // On the book, strict bid/ask alternation guarantees every order
+          // has a counterpart to cross; on the curve, a fair coin.
+          outcome: (graduated ? i % 2 : rand() < 0.5 ? 0 : 1) as 0 | 1,
           size,
         };
       });
@@ -1880,13 +1936,23 @@ export class SoothSDK {
       const e = entries[i]!;
       const sharesWad = toWadShares(e.size.toFixed(2))!;
       const userRef = `sol:${e.kp.publicKey.toBase58()}`;
+      // Book bursts are built to FILL, not to decorate the depth chart:
+      // bids land ABOVE the mid and asks BELOW it, so the two halves cross
+      // and consume each other. Resting inventory stays near zero, the
+      // block pool is not eaten alive, and the tx/s number measures trades
+      // that actually traded. (`place` remains the tool for resting orders.)
       const req = graduated
         ? await demo.adapter.buildBookPlace(ref, {
             user: userRef,
             side: e.outcome,
             limitTick: Math.min(
               999,
-              Math.max(1, e.outcome === 0 ? mid - 1 - Math.floor(rand() * 40) : mid + 1 + Math.floor(rand() * 40)),
+              Math.max(
+                1,
+                e.outcome === 0
+                  ? mid + 1 + Math.floor(rand() * 4)
+                  : mid - 1 - Math.floor(rand() * 4),
+              ),
             ),
             amount: toUsdcBaseUnits(e.size.toFixed(2))!,
             matchLimit: 8,
@@ -2305,7 +2371,8 @@ export class SoothSDK {
             line("plain", "  createmarket <question…> [b]      graduate — actors pay, no popups"),
             line("plain", "  graduate wallet     — same plan, the connected wallet pays"),
             line("plain", "  simulate [N] [avgSize] [seed]     — seeded order flow, one tx at a time"),
-            line("plain", "  burst    [N] [avgSize] [seed]     — all at once, measures tx/s (actors only)"),
+            line("plain", "  burst amm  [N] [avg] [seed]  — curve trades, all at once, measures tx/s"),
+            line("plain", "  burst book [N] [avg] [seed]  — crossing orders that FILL each other"),
             line("plain", "  plan <00..ff> <buy|sell> <yes|no> <size> — script the next burst row by row"),
             line("plain", "  plan                — show the plan     plan clear — back to random"),
             line("bold", "Book (post-graduation)"),

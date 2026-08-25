@@ -118,7 +118,7 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   await run("actors clear");
 
   // Burst refuses without a fleet — every tx must sign in-page.
-  const noFleet = await run("burst 4");
+  const noFleet = await run("burst amm 4");
   expect(noFleet.result.success).toBe(false);
   expect(noFleet.text).toContain("actors");
 
@@ -142,7 +142,7 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   await run("plan a1 buy no 1.5");
   const planned = await run("plan a2 sell yes 1");
   expect(planned.text).toContain("Burst plan — 3 row(s)");
-  const scripted = await run("burst");
+  const scripted = await run("burst amm");
   expect(scripted.result.success, scripted.text).toBe(true);
   expect(scripted.text).toContain("scripted plan, 2 of 3 row(s) executable");
   expect(scripted.text).toMatch(/00 {4,}buy YES/);
@@ -200,9 +200,12 @@ test("terminal session: trade → simulate → graduate → book", async () => {
 
   // A plan against a graduated market is refused with the reason, not run.
   await run("plan a0 buy yes 1");
-  const planOnBook = await run("burst");
+  const planOnBook = await run("burst book");
   expect(planOnBook.result.success).toBe(false);
-  expect(planOnBook.text).toContain("graduated to the order book");
+  expect(planOnBook.text).toContain("scripts curve buys and sells");
+  const ammOnBook = await run("burst amm 4");
+  expect(ammOnBook.result.success).toBe(false);
+  expect(ammOnBook.text).toContain("order book now");
   await run("plan clear");
 
   // Burst: all four trades signed up front, sent together, all confirmed.
@@ -210,7 +213,7 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   // first wave can only ever carry one — the fresh-blockhash retry wave is
   // what completes the burst here. On devnet, where a blockhash lives ~60s,
   // the first wave carries them all.
-  const burst = await run("burst 4 1 11");
+  const burst = await run("burst book 4 1 11");
   expect(burst.result.success, burst.text).toBe(true);
   // The matrix: a glyph legend, cells joined by │, every cell ending ✓.
   expect(burst.text).toContain("· queued  ⧗ signed");

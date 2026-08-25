@@ -91,6 +91,7 @@ import {
   decodeBook,
   eventAuthorityPda,
   buildBookCancel as buildBookCancelIx,
+  buildBookGrow as buildBookGrowIx,
   buildBookInit as buildBookInitIx,
   buildBookPlace as buildBookPlaceIx,
   buildBookWithdraw as buildBookWithdrawIx,
@@ -2137,6 +2138,38 @@ export class SolanaChainAdapter implements ChainAdapter {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(initIx, userPk),
         operation: "bookInit",
+      },
+    };
+  }
+
+  /**
+   * `book_grow` as a TradeRequest — one realloc step toward `wanted`.
+   *
+   * The runtime caps growth at 10,240 bytes per instruction, so reaching a
+   * large capacity is a LOOP of these; the program clamps each step and the
+   * caller re-reads capacity between calls. Permissionless like init: the
+   * payer buys rent for a shared venue.
+   */
+  async buildBookGrow(
+    market: MarketRef,
+    args: { user: AddressRef; wantedCapacity: number },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const ix = buildBookGrowIx(
+      this.bookRefs(marketPda, resolved.marketId),
+      userPk,
+      args.wantedCapacity,
+    );
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "bookGrow",
       },
     };
   }

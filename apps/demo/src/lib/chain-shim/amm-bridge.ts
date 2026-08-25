@@ -838,6 +838,9 @@ export async function dispatchAmmWrite(
   if (call.functionName === "bookInit") {
     return dispatchBookInit(call, ctx);
   }
+  if (call.functionName === "bookGrow") {
+    return dispatchBookGrow(call, ctx);
+  }
   if (call.functionName === "bookCancel") {
     return dispatchBookCancel(call, ctx);
   }
@@ -1407,6 +1410,26 @@ async function dispatchBookInit(
   const req = await ctx.adapter.buildBookInit(marketRef, {
     user: `sol:${userBase58}`,
     capacity: Number.isInteger(capacity) && capacity > 0 ? capacity : 64,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+/** `bookGrow(market, wantedCapacity)` — one permissionless realloc step. */
+async function dispatchBookGrow(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "bookGrow");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) throw new Error("bookGrow: invalid market reference");
+  const wanted = Number(args[1] ?? 0);
+  if (!Number.isInteger(wanted) || wanted < 1) {
+    throw new Error("bookGrow: wantedCapacity must be a positive integer");
+  }
+  const req = await ctx.adapter.buildBookGrow(marketRef, {
+    user: `sol:${userBase58}`,
+    wantedCapacity: wanted,
   });
   return submitAndSynth(ctx.adapter, req, signer);
 }
