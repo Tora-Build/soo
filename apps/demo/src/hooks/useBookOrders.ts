@@ -48,7 +48,7 @@ function clampPercent(v: number): number {
  *
  * Here each order carries its real `seq`, which is what `book_cancel` takes.
  */
-async function fetchOpenOrdersFromBook(
+export async function fetchOpenOrdersFromBook(
   publicClient: PublicClient,
   marketAddress: `0x${string}`,
   owner: `0x${string}`,

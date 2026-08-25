@@ -23,6 +23,7 @@ import toast from "react-hot-toast";
 import { ERC20_ABI, SOOTHBOOK_ABI } from "../config/abis";
 import { useDeployments } from "./useDeployments";
 import { useOrderStore } from "../store/useOrderStore";
+import { fetchOpenOrdersFromBook } from "./useBookOrders";
 import { shortenAddress } from "../utils/format";
 
 type WriteFunctionName =
@@ -271,8 +272,36 @@ export function useOrderbookTrade(marketAddress: `0x${string}`) {
       }
 
       if (success) {
-        const marketName = shortenAddress(marketAddress);
-        {
+        // A confirmed transaction has two very different outcomes here: the
+        // order RESTS in the book, or it CROSSED and filled on the spot. The
+        // second leaves nothing in open orders, which without this check
+        // reads as "my order vanished" — when what actually happened is the
+        // best possible outcome, an instant fill.
+        let rested: boolean | null = null;
+        try {
+          const rows = await fetchOpenOrdersFromBook(
+            publicClient as never,
+            marketAddress,
+            userAddress as `0x${string}`,
+          );
+          rested = rows.some(
+            (r) =>
+              Math.round(r.yesPrice * 1000) === actualTick &&
+              (r.isBuy ? 0 : 1) === (actualSide === 0 ? 1 : 0),
+          );
+        } catch {
+          // Read failed; stay neutral rather than claim either outcome.
+        }
+        if (rested === false) {
+          toast.success(
+            "Filled instantly — your order crossed the book and executed. It's in your position, not open orders.",
+            { duration: 6000 },
+          );
+        } else if (rested === true) {
+          toast.success("Order resting in the book", { duration: 4000 });
+        }
+        if (rested !== false) {
+          const marketName = shortenAddress(marketAddress);
           const orderId = `${actualSide}:${actualTick}`;
           useOrderStore.getState().addOrder({
             id: orderId,

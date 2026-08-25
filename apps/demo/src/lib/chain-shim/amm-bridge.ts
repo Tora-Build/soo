@@ -1395,6 +1395,18 @@ export function __resetBookCache(): void {
   bookCache.clear();
 }
 
+/**
+ * Drop one market's cached book after a write lands on it.
+ *
+ * The 2s TTL exists to serve 999 ladder reads from one fetch, not to make a
+ * just-confirmed order invisible: the UI refetches the instant a write
+ * succeeds, and hitting the pre-write snapshot there turns "placed" into
+ * "vanished" for the length of the TTL.
+ */
+function invalidateBookCache(marketRef: string): void {
+  bookCache.delete(marketRef);
+}
+
 async function readBookCached(
   ctx: AmmBridgeCtx,
   marketRef: string,
@@ -1432,7 +1444,8 @@ async function dispatchBookInit(
     user: `sol:${userBase58}`,
     capacity: Number.isInteger(capacity) && capacity > 0 ? capacity : 64,
   });
-  return submitAndSynth(ctx.adapter, req, signer);
+  invalidateBookCache(marketRef);
+    return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /** `bookGrow(market, wantedCapacity)` — one permissionless realloc step. */
@@ -1452,7 +1465,8 @@ async function dispatchBookGrow(
     user: `sol:${userBase58}`,
     wantedCapacity: wanted,
   });
-  return submitAndSynth(ctx.adapter, req, signer);
+  invalidateBookCache(marketRef);
+    return submitAndSynth(ctx.adapter, req, signer);
 }
 
 async function dispatchBookPlace(
@@ -1489,6 +1503,7 @@ async function dispatchBookPlace(
   // recoverable from a transaction's logs for debugging without surfacing a
   // toast on every order that happens to replace one of the trader's own.
   const receipt = await ctx.adapter.submit(req, signer);
+  invalidateBookCache(marketRef);
   const realSignature = receipt.txId.replace(/^sol:/, "");
   return synthHashFromSignature(realSignature);
 }
@@ -1546,12 +1561,15 @@ async function dispatchBookCancel(
         operation: "bookCancel",
       },
     } as typeof cancel;
-    return await submitAndSynth(ctx.adapter, composed, signer);
+    const sig = await submitAndSynth(ctx.adapter, composed, signer);
+    invalidateBookCache(marketRef);
+    return sig;
   } catch (err) {
     // If the composed form fails for any reason, the cancel itself must still
     // go through — leaving the order resting would be strictly worse than
     // leaving the refund in seat credit, which the Withdraw button recovers.
     void err;
+    invalidateBookCache(marketRef);
     return submitAndSynth(ctx.adapter, cancel, signer);
   }
 }
@@ -1593,6 +1611,7 @@ async function dispatchBookCancelMany(
       orderSeqs: chunk,
     });
     lastSig = await submitAndSynth(ctx.adapter, req, signer);
+    invalidateBookCache(marketRef);
   }
   return lastSig;
 }
@@ -1710,7 +1729,8 @@ async function dispatchBookWithdraw(
   const req = await ctx.adapter.buildBookWithdraw(marketRef, {
     user: `sol:${userBase58}`,
   });
-  return submitAndSynth(ctx.adapter, req, signer);
+  invalidateBookCache(marketRef);
+    return submitAndSynth(ctx.adapter, req, signer);
 }
 
 async function dispatchDismissMarket(
