@@ -20,7 +20,11 @@ import { useTranslation } from "react-i18next";
 import { ArrowRight, Hammer } from "lucide-react";
 import { useAccount, useWriteContract } from "@/lib/chain-shim";
 import { Card } from "../../ui/Card";
-import { lookupMarketQuestion } from "../../../lib/market-questions";
+import {
+  lookupMarketQuestion,
+  rememberMarketQuestion,
+} from "../../../lib/market-questions";
+import { useDemo } from "../../../lib/DemoContext";
 import { parseSQFSafe } from "../../../lib/sqf";
 import { shortenAddress } from "../../../utils/format";
 import { cn } from "../../../lib/utils";
@@ -235,8 +239,30 @@ function CreatedMarketRow({
   // wants the question out of it, not the whole envelope. `parseSQF` is
   // line-based, and some create flows emitted the tags inline on one line —
   // so fall back to stripping the markers rather than printing them.
+  const demo = useDemo();
   const raw = lookupMarketQuestion(market);
-  const question = raw ? questionFromSqf(raw) : shortenAddress(market, 6);
+  const [recovered, setRecovered] = useState<string | null>(null);
+  // The account stores only the question's hash; the text rides the creation
+  // transaction. Legacy markets predate the local cache, so their rows showed
+  // bare addresses — blind adjudication. Recover once, remember forever.
+  useEffect(() => {
+    if (raw || recovered || !demo?.adapter) return;
+    let dead = false;
+    void demo.adapter
+      .readMarketQuestion(`sol:${market}`)
+      .then((q) => {
+        if (dead || !q) return;
+        rememberMarketQuestion(market, q);
+        setRecovered(q);
+      })
+      .catch(() => undefined);
+    return () => {
+      dead = true;
+    };
+  }, [raw, recovered, demo, market]);
+  const rawText = raw ?? recovered;
+  const question = rawText ? questionFromSqf(rawText) : shortenAddress(market, 6);
+  const appUrl = `${window.location.origin}/${view.phase === "settled" || isZk ? "orderbook" : "amm"}/${market}`;
 
   const run = useCallback(
     async (kind: Busy, fn: () => Promise<unknown>, done: string) => {
@@ -358,10 +384,23 @@ function CreatedMarketRow({
           <p className="text-sm text-ink leading-snug line-clamp-2 mt-1">
             {question}
           </p>
+          <a
+            href={appUrl}
+            className="mt-0.5 inline-block font-mono text-[10px] text-faint underline decoration-dotted hover:text-accent"
+          >
+            open market page →
+          </a>
           <p className="text-[11px] text-muted mt-1">
             <RowExplainer view={view} locale={locale} />
           </p>
           <StepTimeline view={view} />
+          {isZk && view.phase !== "settled" && (
+            <p className="mt-1 text-[10px] text-muted">
+              Automatic: after the deadline the resolver attests from the
+              committed zkTLS rule on its own — your manual attest stays
+              available as override.
+            </p>
+          )}
         </div>
 
         <div className="shrink-0 flex items-center gap-2">
@@ -391,19 +430,40 @@ function CreatedMarketRow({
             </Link>
           )}
           {view.action === "attest" && (
-            <div className="flex items-center gap-1">
-              {([1, 0, 2] as const).map((outcome) => (
-                <button
-                  key={outcome}
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={() => attest(outcome)}
-                  className="btn btn-secondary px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-[0.12em] disabled:opacity-50"
-                  data-testid={`created-market-attest-${outcomeLabel(outcome).toLowerCase()}`}
-                >
-                  {outcomeLabel(outcome)}
-                </button>
-              ))}
+            <div
+              className="border border-accent/40 bg-accent-muted/20 p-3 space-y-2 min-w-[220px]"
+              data-testid="created-market-attest-block"
+            >
+              {/* This is the market's RULING — the single most consequential
+                  click in its life — and it rendered as three unlabeled
+                  10px chips. It gets a frame, a sentence, and buttons sized
+                  like they decide something, because they do. */}
+              <p className="text-xs font-semibold text-ink">
+                Attest the outcome — your ruling as adjudicator
+              </p>
+              <div className="flex items-stretch gap-1.5">
+                {([1, 0, 2] as const).map((outcome) => (
+                  <button
+                    key={outcome}
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => attest(outcome)}
+                    className={cn(
+                      "flex-1 px-3 py-2 font-mono text-xs font-bold uppercase tracking-[0.1em] border transition-all disabled:opacity-50",
+                      outcome === 1 && "border-accent text-accent hover:bg-accent hover:text-canvas",
+                      outcome === 0 && "border-rule text-ink hover:bg-inset",
+                      outcome === 2 && "border-rule text-muted hover:bg-inset",
+                    )}
+                    data-testid={`created-market-attest-${outcomeLabel(outcome).toLowerCase()}`}
+                  >
+                    {outcomeLabel(outcome)}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted leading-relaxed">
+                A veto window follows before anyone can settle; INVALID refunds
+                every trader at cost.
+              </p>
             </div>
           )}
         </div>
@@ -455,7 +515,8 @@ function RowExplainer({
                 date: formatDate(view.deadline, locale),
               })
             : t("createdMarkets.openUntil", {
-                defaultValue: "Trading until {{date}} — nothing to do yet.",
+                defaultValue:
+                  "Trading until {{date}}. Resolution starts then: Lock unlocks here the moment the deadline passes.",
                 date: formatDate(view.deadline, locale),
               })}
         </>

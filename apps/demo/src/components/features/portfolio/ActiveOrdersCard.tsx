@@ -9,7 +9,10 @@ import { formatCurrency } from '../../../utils/format';
 import { formatDistanceToNow } from 'date-fns';
 import { PortfolioCard } from './PortfolioCard';
 import { useDemo } from '../../../lib/DemoContext';
-import { fetchUserOpenOrders } from '../../../lib/chain-shim/orderbook-reads';
+import {
+    fetchUserOpenOrders,
+    fetchUserOpenOrdersAcrossMarkets,
+} from '../../../lib/chain-shim/orderbook-reads';
 import { knownMarketRefs } from '../../../features/arena/marketRegistry';
 
 const OrderItem: React.FC<{ order: ActiveOrder }> = ({ order }) => {
@@ -110,24 +113,29 @@ export const ActiveOrdersCard: React.FC<{ marketRef?: string | null }> = ({ mark
             // orders live wherever the user traded. It used to read only the
             // param — null on /locker — so a wallet with live on-chain orders
             // saw "no active orders" on the very page meant to list them.
-            const refs = marketRef ? [marketRef] : knownMarketRefs();
-            const perMarket = await Promise.all(
-                refs.map(async (ref) => {
-                    try {
-                        const orders = await fetchUserOpenOrders(
-                            connection as never,
-                            demo.adapter,
-                            ref,
-                            userBase58,
-                        );
-                        return orders.map((order) => orderToActiveOrder(ref, order));
-                    } catch {
-                        // No book on this market — pre-graduation is the norm.
-                        return [];
-                    }
-                }),
+            if (marketRef) {
+                try {
+                    const orders = await fetchUserOpenOrders(
+                        connection as never,
+                        demo.adapter,
+                        marketRef,
+                        userBase58,
+                    );
+                    return orders.map((order) => orderToActiveOrder(marketRef, order));
+                } catch {
+                    return [];
+                }
+            }
+            // The sweep is two batched existence reads plus one book read per
+            // GRADUATED market — the per-market version fetched every book
+            // account whole and took ~30s against a rate-limited gateway.
+            const found = await fetchUserOpenOrdersAcrossMarkets(
+                connection as never,
+                demo.adapter,
+                knownMarketRefs(),
+                userBase58,
             );
-            return perMarket.flat();
+            return found.map(({ marketRef: ref, order }) => orderToActiveOrder(ref, order));
         },
         enabled: !!userBase58,
         refetchInterval: 30_000,

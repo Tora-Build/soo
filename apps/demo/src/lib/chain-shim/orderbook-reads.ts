@@ -6,7 +6,7 @@
 // the shape `ActiveOrdersCard` and `wagmi-shim` consume.
 
 import { PublicKey, type Connection as SolanaConnection } from "@solana/web3.js";
-import { type SolanaChainAdapter } from "@sooth/sdk-solana";
+import { bookPda, type SolanaChainAdapter } from "@sooth/sdk-solana";
 
 export interface OnChainOrder {
   orderId: bigint;
@@ -136,4 +136,70 @@ function leastSignificantBit(word: bigint): number {
     bit += 1;
   }
   return bit;
+}
+
+
+/**
+ * A wallet's open orders across MANY markets, in three RPC phases instead of
+ * a read-everything sweep.
+ *
+ * The naive version called `readBook` per market — a market fetch plus a
+ * book-account fetch each, against accounts that run to tens of kilobytes —
+ * thirty-two times to find the two or three books that exist. Thirty seconds
+ * on a rate-limited gateway. The shape of the data allows better:
+ *
+ *   1. one getMultipleAccountsInfo over every market, sliced to the 16-byte
+ *      market_id (offset 8) — the only field book derivation needs;
+ *   2. one getMultipleAccountsInfo over the derived book PDAs, sliced to
+ *      zero bytes — existence is the question, not content;
+ *   3. full `readBook` only on the books that exist, which is the number of
+ *      GRADUATED markets, not the number of markets.
+ */
+export async function fetchUserOpenOrdersAcrossMarkets(
+  connection: SolanaConnection,
+  adapter: SolanaChainAdapter,
+  marketRefs: string[],
+  userBase58: string,
+): Promise<Array<{ marketRef: string; order: OnChainOrder }>> {
+  if (marketRefs.length === 0) return [];
+  const marketPks = marketRefs.map(
+    (r) => new PublicKey(r.replace(/^(sol:|0x)/, "")),
+  );
+  let marketInfos: Array<{ data: Uint8Array } | null>;
+  try {
+    marketInfos = (await connection.getMultipleAccountsInfo(marketPks, {
+      dataSlice: { offset: 8, length: 16 },
+    } as never)) as never;
+  } catch {
+    return [];
+  }
+  const withBooks: Array<{ ref: string; bookPk: PublicKey }> = [];
+  marketInfos.forEach((info, i) => {
+    if (!info || info.data.length < 16) return;
+    const [pk] = bookPda(new Uint8Array(info.data), adapter.programIds);
+    withBooks.push({ ref: marketRefs[i]!, bookPk: pk });
+  });
+  if (withBooks.length === 0) return [];
+  let bookInfos: Array<unknown | null>;
+  try {
+    bookInfos = await connection.getMultipleAccountsInfo(
+      withBooks.map((b) => b.bookPk),
+      { dataSlice: { offset: 0, length: 0 } } as never,
+    );
+  } catch {
+    return [];
+  }
+  const existing = withBooks.filter((_, i) => bookInfos[i] != null);
+  const out: Array<{ marketRef: string; order: OnChainOrder }> = [];
+  await Promise.all(
+    existing.map(async ({ ref }) => {
+      try {
+        const orders = await fetchUserOpenOrders(connection, adapter, ref, userBase58);
+        for (const order of orders) out.push({ marketRef: ref, order });
+      } catch {
+        // One unreadable book costs its own market only.
+      }
+    }),
+  );
+  return out;
 }
