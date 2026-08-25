@@ -16,6 +16,8 @@ import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
 import { tokenSymbols } from "../../../lib/config";
 import { knownMarketRefs } from "../../../features/arena/marketRegistry";
+import { PublicKey } from "@solana/web3.js";
+import { derivePositionPda } from "@sooth/sdk-solana";
 import { lookupMarketQuestion } from "../../../lib/market-questions";
 
 interface PendingUnlock {
@@ -53,14 +55,47 @@ export function ClaimUnlockedPanel() {
     }
     setLoading(true);
     try {
-      // Sell locks live per (market, user); the user sells wherever they
-      // trade, so every discovered market is scanned. This used to read ONE
-      // env-seeded market — on the deployed site that ref did not even exist,
-      // so a person with matured proceeds saw an empty panel and no way to
-      // learn the money was theirs to claim.
+      // Sell locks live per (market, user), so every discovered market is a
+      // candidate — but reading a Position account per market to find the one
+      // or two with locks is the expensive way to ask a cheap question. Two
+      // batched slice-reads answer it: market ids (16 bytes each), then each
+      // derived Position's lock_nonce (8 bytes at offset 112 — discriminator,
+      // user, market, two share counts, locked cost, in that order). Only
+      // markets whose nonce is nonzero get the real per-entry scan.
       const refs = knownMarketRefs();
+      let candidates = refs;
+      try {
+        const conn = adapter.connection;
+        const userPk = new PublicKey(userRef.replace(/^sol:/, ""));
+        const marketPks = refs.map((r) => new PublicKey(r.replace(/^sol:/, "")));
+        const idInfos = (await conn.getMultipleAccountsInfo(marketPks, {
+          dataSlice: { offset: 8, length: 16 },
+        } as never)) as Array<{ data: Uint8Array } | null>;
+        const posRefs: Array<{ ref: string; pda: PublicKey }> = [];
+        idInfos.forEach((info, i) => {
+          if (!info || info.data.length < 16) return;
+          const [pda] = derivePositionPda(
+            new Uint8Array(info.data),
+            userPk,
+            adapter.programIds,
+          );
+          posRefs.push({ ref: refs[i]!, pda });
+        });
+        const nonceInfos = (await conn.getMultipleAccountsInfo(
+          posRefs.map((p) => p.pda),
+          { dataSlice: { offset: 112, length: 8 } } as never,
+        )) as Array<{ data: Uint8Array } | null>;
+        candidates = posRefs
+          .filter((_, i) => {
+            const d = nonceInfos[i]?.data;
+            return d && d.length === 8 && Buffer.from(d).readBigUInt64LE(0) > 0n;
+          })
+          .map((p) => p.ref);
+      } catch {
+        // Pre-filter is an optimization; the full scan is the fallback.
+      }
       const perMarket = await Promise.all(
-        refs.map(async (ref) => {
+        candidates.map(async (ref) => {
           try {
             const list = await adapter.readPendingUnlocks(ref, userRef);
             return list.map((e) => ({ ...e, marketRef: ref }));

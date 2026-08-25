@@ -367,7 +367,38 @@ export class SolanaChainAdapter implements ChainAdapter {
 
   // ─── Reads ───────────────────────────────────────────────────────────────
 
-  async readSnapshot(
+  /**
+   * Promise-memo for user-less snapshots, 8s TTL, write-invalidated.
+   *
+   * The chain-shim reads markets FIELD BY FIELD — isSettled, price,
+   * deadline, isLive each arrive as their own call — and every one resolved
+   * a fresh snapshot: two account fetches, multiplied by fields, markets and
+   * poll ticks. The memo collapses a render's worth of same-market reads
+   * into one flight; the market's own writes invalidate it, so the writer
+   * always re-reads fresh, and other viewers see at most 8s of staleness on
+   * data the UI polls anyway.
+   */
+  private snapshotMemo = new Map<string, { at: number; v: Promise<SoothCoreSnapshot> }>();
+
+  readSnapshot(
+    market: MarketRef,
+    user?: AddressRef,
+  ): Promise<SoothCoreSnapshot> {
+    // A user-scoped snapshot carries a Position, which moves with every
+    // trade — only the market-shaped read is safe to share.
+    if (user) return this.readSnapshotUncached(market, user);
+    const key = typeof market === "string" ? market : String(market);
+    const hit = this.snapshotMemo.get(key);
+    if (hit && Date.now() - hit.at < 8_000) return hit.v;
+    const v = this.readSnapshotUncached(market).catch((e) => {
+      this.snapshotMemo.delete(key);
+      throw e;
+    });
+    this.snapshotMemo.set(key, { at: Date.now(), v });
+    return v;
+  }
+
+  private async readSnapshotUncached(
     market: MarketRef,
     user?: AddressRef,
   ): Promise<SoothCoreSnapshot> {
@@ -4112,9 +4143,13 @@ export class SolanaChainAdapter implements ChainAdapter {
     return v;
   }
 
-  /** Drop a market's memo — writes call this so their own follow-up reads see fresh state. */
+  /** Drop a market's memos — writes call this so their own follow-up reads see fresh state. */
   invalidateMarketMemo(marketPda58: string): void {
     this.marketMemo.delete(marketPda58);
+    // Snapshot memo keys are refs; both prefix forms may be in play.
+    this.snapshotMemo.delete(`sol:${marketPda58}`);
+    this.snapshotMemo.delete(`0x${marketPda58}`);
+    this.snapshotMemo.delete(marketPda58);
   }
 
   private async fetchMarketUncached(marketPda: PublicKey): Promise<ResolvedMarket> {
