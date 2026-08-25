@@ -1293,6 +1293,8 @@ async function dispatchRequestLock(
  * Args:
  *   args[0]: market reference — `0x<base58>` or `sol:<base58>`
  *   args[1]: winning outcome — 0 (NO), 1 (YES), 2 (INVALID)
+ *   args[2]: optional "early" — the market is still Open, bundle the
+ *            adjudicator's lock_for_resolution in front of the attest
  */
 async function dispatchAttestOutcome(
   call: WriteCallShape,
@@ -1313,6 +1315,9 @@ async function dispatchAttestOutcome(
   const req = await ctx.adapter.buildAttestOutcome(marketRef, {
     user: `sol:${userBase58}`,
     winningOutcome: outcome as 0 | 1 | 2,
+    // "early" asks the builder to bundle lock_for_resolution ahead of the
+    // attest, so a pre-deadline ruling is one signature.
+    earlyLock: args[2] === "early",
   });
   return submitAndSynth(ctx.adapter, req, signer);
 }

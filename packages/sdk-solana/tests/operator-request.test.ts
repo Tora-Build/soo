@@ -111,5 +111,31 @@ describe("operator request shapes", () => {
       winningOutcome: 2,
     });
     expect((invReq.meta as { winningOutcome?: number }).winningOutcome).toBe(2);
+
+    // Plain attest carries NO pre-instructions — post-deadline the lock is
+    // someone else's (permissionless) crank.
+    expect((yesReq.meta as { preIxs?: unknown[] }).preIxs).toBeUndefined();
+
+    // earlyLock bundles lock_for_resolution IN FRONT of the attest, so a
+    // pre-deadline ruling is one signature. The pre-ix must target the core
+    // program and name market + entry + the same authority.
+    const earlyReq = await adapter.buildAttestOutcome(marketRef, {
+      user: userRef,
+      winningOutcome: 1,
+      earlyLock: true,
+    });
+    const early = earlyReq.meta as {
+      operation?: string;
+      preIxs?: Array<{ programId: string; keys: Array<{ pubkey: string }> }>;
+    };
+    expect(early.operation).toBe("attestOutcome");
+    expect(early.preIxs).toHaveLength(1);
+    const lockIx = early.preIxs![0];
+    expect(lockIx.programId).toBe(smoke.programs.soothCore.toBase58());
+    const lockKeys = lockIx.keys.map((k) => k.pubkey);
+    const [entryPda] = deriveAdjudicatorEntryPda(smoke.marketPda, smoke.programs);
+    expect(lockKeys).toContain(smoke.marketPda.toBase58());
+    expect(lockKeys).toContain(entryPda.toBase58());
+    expect(lockKeys).toContain(smoke.user.publicKey.toBase58());
   });
 });

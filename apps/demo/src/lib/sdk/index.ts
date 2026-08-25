@@ -1597,6 +1597,16 @@ export class SoothSDK {
     }
     const market = this.marketRef();
     if (!market) return fail("No active market");
+    // On an Open market the ruling is an EARLY resolution: ask the bridge to
+    // bundle lock_for_resolution in front of the attest — one signature.
+    try {
+      const st = await this.demo!.adapter.readResolutionState(market);
+      if (st?.lifecycle === "Open") {
+        return this.writeViaShim("attestOutcome", [market, outcome, "early"]);
+      }
+    } catch {
+      // Unreadable state: fall through to the plain attest.
+    }
     return this.writeViaShim("attestOutcome", [market, outcome]);
   }
 

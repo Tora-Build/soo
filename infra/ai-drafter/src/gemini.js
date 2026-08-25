@@ -163,7 +163,10 @@ export function createGeminiModel({ apiKey, model = DEFAULT_MODEL, fetchImpl = f
       // abort, one hang holds the caller's request open until the BROWSER
       // gives up — 90s of spinner for an outage a 20s timeout names in 20.
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 20_000);
+      // Eight seconds: a healthy Gemini answers this prompt in 1-2s, so 8s
+      // separates slow from gone without making a four-key rotation (or the
+      // catalog fallback behind it) feel like an outage of our own.
+      const timer = setTimeout(() => controller.abort(), 8_000);
       let res;
       try {
         res = await fetchImpl(`${API_BASE}/${model}:generateContent?key=${keys[index]}`, {

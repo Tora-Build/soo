@@ -1657,9 +1657,17 @@ export class SolanaChainAdapter implements ChainAdapter {
     };
   }
 
+  /**
+   * `earlyLock` bundles `lock_for_resolution` as a pre-instruction, so an
+   * adjudicator resolving BEFORE the deadline signs once, not twice. The
+   * lock exists as a separate instruction because post-deadline it is
+   * permissionless (anyone cranks it, the adjudicator may be gone) — but
+   * when the ADJUDICATOR resolves early, the lock and the ruling are one
+   * decision, and one decision should be one signature.
+   */
   async buildAttestOutcome(
     market: MarketRef,
-    args: { user: AddressRef; winningOutcome: 0 | 1 | 2 },
+    args: { user: AddressRef; winningOutcome: 0 | 1 | 2; earlyLock?: boolean },
   ): Promise<TradeRequest> {
     if (!args.user) {
       throw new SoothError({
@@ -1687,6 +1695,19 @@ export class SolanaChainAdapter implements ChainAdapter {
       })
       .instruction();
 
+    const preIxs: SerializedIx[] = [];
+    if (args.earlyLock) {
+      const lockIx: TransactionInstruction = await (this.program.methods as any)
+        .lockForResolution()
+        .accounts({
+          market: marketPda,
+          adjudicatorEntry: adjudicatorEntryPda,
+          authority: userPk,
+        })
+        .instruction();
+      preIxs.push(serializeIx(lockIx));
+    }
+
     const accounts = ixKeysToShim(ix.keys);
     return {
       kind: "trade",
@@ -1695,6 +1716,7 @@ export class SolanaChainAdapter implements ChainAdapter {
       meta: {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, userPk),
+        ...(preIxs.length ? { preIxs } : {}),
         operation: "attestOutcome",
         winningOutcome: args.winningOutcome,
       },

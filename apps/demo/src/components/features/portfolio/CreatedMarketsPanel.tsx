@@ -283,16 +283,16 @@ function CreatedMarketRow({
     [t],
   );
 
-  // Pre-deadline the lock is the ADJUDICATOR's early lock (any time,
-  // authority-gated); post-deadline the permissionless request_lock does the
-  // same transition without needing the authority's key.
-  const earlyLock = view.phase === "open";
+  // Post-deadline the permissionless request_lock freezes trading. The
+  // pre-deadline case never shows this button any more: the adjudicator's
+  // early lock rides inside the attest transaction below, so resolving
+  // early is one signature, not lock-then-attest.
   const lock = () =>
     run(
       "lock",
       () =>
         writeContractAsync({
-          functionName: earlyLock ? "lockForResolution" : "requestLock",
+          functionName: "requestLock",
           args: [`sol:${market}`],
         }),
       t("createdMarkets.locked", { defaultValue: "Market locked" }),
@@ -322,13 +322,18 @@ function CreatedMarketRow({
       t("createdMarkets.settled", { defaultValue: "Market settled" }),
     );
 
+  // Still Open? Then this ruling is an EARLY resolution and the transaction
+  // carries lock_for_resolution in front of the attest — one signature.
+  const attestEarly = view.phase === "open";
   const attest = (outcome: 0 | 1 | 2) =>
     run(
       "attest",
       () =>
         writeContractAsync({
           functionName: "attestOutcome",
-          args: [`sol:${market}`, outcome],
+          args: attestEarly
+            ? [`sol:${market}`, outcome, "early"]
+            : [`sol:${market}`, outcome],
         }),
       t("createdMarkets.attested", {
         defaultValue: "Outcome attested — the dispute window has started",
@@ -410,9 +415,7 @@ function CreatedMarketRow({
         <div className="shrink-0 flex items-center gap-2">
           {view.action === "lock" && (
             <ActionButton busy={busy === "lock"} onClick={lock}>
-              {earlyLock
-                ? t("createdMarkets.lockEarly", { defaultValue: "Resolve early — lock now" })
-                : t("createdMarkets.lockIt", { defaultValue: "Lock it" })}
+              {t("createdMarkets.lockIt", { defaultValue: "Lock it" })}
             </ActionButton>
           )}
           {view.action === "register" && (
@@ -445,7 +448,9 @@ function CreatedMarketRow({
                   10px chips. It gets a frame, a sentence, and buttons sized
                   like they decide something, because they do. */}
               <p className="text-xs font-semibold text-ink">
-                Attest the outcome — your ruling as adjudicator
+                {attestEarly
+                  ? "Resolve early — one signature locks and rules"
+                  : "Attest the outcome — your ruling as adjudicator"}
               </p>
               <div className="flex items-stretch gap-1.5">
                 {([1, 0, 2] as const).map((outcome) => (
@@ -514,10 +519,10 @@ function RowExplainer({
     case "open":
       return (
         <>
-          {view.action === "lock"
+          {view.action === "attest"
             ? t("createdMarkets.openAdjudicator", {
                 defaultValue:
-                  "Trading until {{date}} — but as the adjudicator you may resolve EARLY: lock now, attest, and the veto window runs from there. Use it when the question's answer is already known.",
+                  "Trading until {{date}} — but as the adjudicator you may resolve EARLY: pick the outcome and one signature locks the market and records your ruling. Use it when the question's answer is already known.",
                 date: formatDate(view.deadline, locale),
               })
             : view.action === "register"

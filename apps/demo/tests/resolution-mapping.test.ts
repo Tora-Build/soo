@@ -60,12 +60,13 @@ const view = (state: MarketResolutionState, nowSec: number, wallet = ME) =>
   });
 
 describe("resolveMarketView", () => {
-  it("offers the ADJUDICATOR the early lock on an open market", () => {
-    // lock_for_resolution runs at any time for the entry authority — early
-    // resolution is the designed power, not a deadline formality.
+  it("offers the ADJUDICATOR the one-step early resolve on an open market", () => {
+    // lock_for_resolution runs at any time for the entry authority — and the
+    // client bundles it in front of the attest, so the action offered is
+    // the ruling itself, not a bare lock.
     const v = view(market({ adjudicatorEntry: entry() }), Number(DEADLINE) - 10);
     expect(v.phase).toBe("open");
-    expect(v.action).toBe("lock");
+    expect(v.action).toBe("attest");
   });
 
   it("offers a stranger nothing on an open market before its deadline", () => {

@@ -608,11 +608,15 @@ export async function startPreviewServer({ config, env, args, log, warn }) {
       return check.ok ? { ok: true } : { ok: false, detail: check.detail };
     },
     kickPass: (market) => {
-      import("node:child_process").then(({ spawn }) => {
+      Promise.all([import("node:child_process"), import("node:fs")]).then(([{ spawn }, fs]) => {
+        // The kicked pass's output goes to a file, not to /dev/null — the
+        // first field failure of this feature was invisible for exactly
+        // that reason, and a watcher whose failures vanish is not watching.
+        const out = fs.openSync(resolve(SERVICE_ROOT, ".state", "kicked-passes.log"), "a");
         const child = spawn(process.execPath, ["src/index.mjs", "--once", "--only", market], {
           cwd: SERVICE_ROOT,
           detached: true,
-          stdio: "ignore",
+          stdio: ["ignore", out, out],
         });
         child.unref();
       });
