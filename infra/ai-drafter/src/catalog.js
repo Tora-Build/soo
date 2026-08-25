@@ -43,3 +43,58 @@ export const CATALOG = [
 export function catalogLines() {
   return CATALOG.map((e) => `  ${e.url}  ->  ${e.parsePath}   (${e.what})`);
 }
+
+
+/**
+ * Keyword routing for the model-less fallback.
+ *
+ * When the model is unreachable — observed live: Gemini accepting TLS and
+ * never answering, from Cloudflare's egress specifically — drafting must not
+ * die with it. Every entry here has been fetched and parsed by this repo, so
+ * matching a question's tokens against a small keyword map and validating
+ * the winners exactly like model proposals gives real, verified candidates
+ * with zero model involvement. Cruder than the model (no exotic endpoints,
+ * no threshold nuance) and honest about it: the caller labels the result as
+ * catalog-drafted.
+ */
+const KEYWORDS = [
+  { match: /\b(btc|bitcoin)\b/i, urls: ["api.coinbase.com/v2/prices/BTC-USD", "api.binance.com", "api.kraken.com"] },
+  { match: /\b(eth|ethereum)\b/i, urls: ["ETH-USD"] },
+  { match: /\b(iss|space station)\b/i, urls: ["wheretheiss"] },
+  { match: /\b(rain|temperature|weather|hot|cold)\b/i, urls: ["open-meteo"] },
+  { match: /\b(jpy|yen|eur|euro|exchange rate)\b/i, urls: ["er-api", "frankfurter"] },
+  { match: /\bblock height\b/i, urls: ["mempool.space"] },
+  { match: /\bnpm|downloads\b/i, urls: ["npmjs"] },
+  { match: /\bgithub|stars\b/i, urls: ["api.github.com"] },
+];
+
+/** A plain number out of the question — "$70,000", "70k", "0.85". */
+export function thresholdFromQuestion(question) {
+  const m = /\$?\s*([\d,]+(?:\.\d+)?)\s*(k|m)?\b/i.exec(question.replace(/\b20\d\d\b/g, ""));
+  if (!m) return null;
+  let n = Number(m[1].replace(/,/g, ""));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (m[2]?.toLowerCase() === "k") n *= 1_000;
+  if (m[2]?.toLowerCase() === "m") n *= 1_000_000;
+  return String(n);
+}
+
+/** Catalog entries whose subject plausibly matches the question. */
+export function catalogFallbackProposals(question) {
+  const rule = KEYWORDS.find((k) => k.match.test(question));
+  if (!rule) return [];
+  const threshold = thresholdFromQuestion(question);
+  if (!threshold) return [];
+  const below = /\b(below|under|less than|fall|drop)\b/i.test(question);
+  return CATALOG.filter((e) => rule.urls.some((frag) => e.url.includes(frag)))
+    .slice(0, 3)
+    .map((e) => ({
+      url: e.url,
+      parsePath: e.parsePath,
+      comparator: below ? "lte" : "gte",
+      threshold,
+      valueScale: 8,
+      confidence: 0.5,
+      rationale: `Catalog fallback: resolves ${below ? "YES if at or below" : "YES if at or above"} ${threshold} on ${new URL(e.url).host} (drafting model was unreachable).`,
+    }));
+}

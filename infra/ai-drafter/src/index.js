@@ -16,6 +16,8 @@
 // or in any response.
 
 import { draft } from "./draft.js";
+import { catalogFallbackProposals } from "./catalog.js";
+import { validateProposal } from "./validate.js";
 import { createGeminiModel } from "./gemini.js";
 import { take } from "./ratelimit.js";
 
@@ -102,8 +104,19 @@ export async function handle(request, env, _ctx, deps = {}) {
     result = await draft(question, { model, fetchImpl: deps.fetchImpl ?? fetch });
   } catch (e) {
     void polishPromise;
-    // The model failed outright. Say so plainly rather than returning an empty
-    // list, which a caller could read as "no rule exists for this question".
+    // The model failed outright — unreachable, out of quota, hung past its
+    // timeout. Drafting must not die with it: the verified catalog can still
+    // answer the common subjects, and every fallback candidate passes the
+    // SAME live-fetch validation as a model proposal. Only when the catalog
+    // has nothing either does the caller see the model's error.
+    const proposals = catalogFallbackProposals(question);
+    const checked = await Promise.all(
+      proposals.map((p) => validateProposal(p, { fetchImpl: deps.fetchImpl ?? fetch })),
+    );
+    const candidates = checked.filter((r) => r.ok).map((r) => r.candidate);
+    if (candidates.length > 0) {
+      return json({ candidates, attempts: 0, fallback: "catalog" });
+    }
     return json({ error: `drafting failed: ${e?.message ?? e}` }, 502);
   }
 

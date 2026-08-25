@@ -155,19 +155,41 @@ export function createGeminiModel({ apiKey, model = DEFAULT_MODEL, fetchImpl = f
    */
   async function call(body) {
     let last = null;
+    let lastError = null;
     for (let i = 0; i < keys.length; i++) {
       const index = (cursor + i) % keys.length;
-      const res = await fetchImpl(`${API_BASE}/${model}:generateContent?key=${keys[index]}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body,
-      });
+      // A hung upstream is a real failure mode (observed: Gemini accepting
+      // TLS and then never answering, from some networks only). Without an
+      // abort, one hang holds the caller's request open until the BROWSER
+      // gives up — 90s of spinner for an outage a 20s timeout names in 20.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20_000);
+      let res;
+      try {
+        res = await fetchImpl(`${API_BASE}/${model}:generateContent?key=${keys[index]}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+          signal: controller.signal,
+        });
+      } catch (e) {
+        clearTimeout(timer);
+        // A timeout might be per-connection bad luck — the next key is also
+        // a fresh connection. Fall through to it.
+        last = null;
+        lastError = e;
+        continue;
+      }
+      clearTimeout(timer);
       if (res.ok) {
         cursor = index;
         return res;
       }
       if (res.status !== 429) return res;
       last = res;
+    }
+    if (last === null && lastError) {
+      throw new Error(`Gemini unreachable: ${lastError.message ?? lastError}`);
     }
     return last;
   }

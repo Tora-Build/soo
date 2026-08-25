@@ -182,3 +182,42 @@ test("a validated candidate outranks the model calling it unresolvable", async (
   assert.equal(res.status, 200);
   assert.equal((await res.json()).candidates.length, 1);
 });
+
+test("a dead model falls back to verified catalog candidates", async () => {
+  // Observed live: Gemini accepting TLS and never answering. Drafting must
+  // not die with the model — the catalog answers the common subjects, and
+  // its candidates pass the SAME live-fetch validation as model proposals.
+  reset();
+  const deadModel = {
+    propose: async () => {
+      throw new Error("Gemini unreachable: aborted");
+    },
+  };
+  const res = await handle(
+    post("Will Bitcoin be above $70,000 by September 5th 2026?"),
+    {},
+    null,
+    {
+      model: deadModel,
+      fetchImpl: stubFetch({
+        "https://api.coinbase.com/v2/prices/BTC-USD/spot": { body: { data: { amount: "79350.4" } } },
+      }),
+    },
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.fallback, "catalog");
+  assert.ok(body.candidates.length >= 1);
+  assert.equal(body.candidates[0].threshold, "70000");
+  assert.equal(body.candidates[0].comparator, "gte");
+  assert.equal(body.candidates[0].reading, "79350.4");
+});
+
+test("a dead model with no catalog match surfaces the model's error", async () => {
+  reset();
+  const res = await handle(post("will the vibes be immaculate"), {}, null, {
+    model: { propose: async () => { throw new Error("Gemini unreachable: aborted"); } },
+    fetchImpl: stubFetch({}),
+  });
+  assert.equal(res.status, 502);
+});
