@@ -26,6 +26,7 @@ function market(
     market: "Mkt1111111111111111111111111111111111111111",
     creator: ME,
     adjudicator: ME,
+    startTime: 0n,
     deadline: DEADLINE,
     lifecycle: "Open",
     winningOutcome: 0,

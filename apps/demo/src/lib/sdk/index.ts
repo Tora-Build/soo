@@ -405,27 +405,70 @@ export class SoothSDK {
       );
     }
     try {
-      const snap = await demo.adapter.readSnapshot(ref);
+      // One RPC pass for everything the row can say: prices out of the
+      // snapshot, timeline + adjudication out of the resolution state.
+      const [snap, res] = await Promise.all([
+        demo.adapter.readSnapshot(ref),
+        demo.adapter.readResolutionState(ref).catch(() => null),
+      ]);
       const m = snap.market;
-      const lifecycle = m.isSettled
-        ? `Settled (winning=${m.outcome ?? "?"})`
-        : m.isLive
-          ? "Live"
-          : "Initializing";
       const p = yesPrice(m.qYes, m.qNo, m.b);
       const questionText = (await this.questionOf(ref)) ?? "";
       const pda58 = ref.replace(/^sol:/, "");
+
+      const fmtTs = (sec: bigint | number | null | undefined): string => {
+        const n = Number(sec ?? 0);
+        if (!n) return "—";
+        const d = new Date(n * 1000);
+        const deltaSec = Math.round(n - Date.now() / 1000);
+        const abs = Math.abs(deltaSec);
+        const span =
+          abs >= 86400
+            ? `${Math.round(abs / 86400)}d`
+            : abs >= 3600
+              ? `${Math.round(abs / 3600)}h`
+              : `${Math.max(1, Math.round(abs / 60))}m`;
+        return `${d.toISOString().replace("T", " ").slice(0, 16)} UTC (${deltaSec >= 0 ? `in ${span}` : `${span} ago`})`;
+      };
+      const outcomeWord = (o: number | null | undefined): string =>
+        o === 1 ? "YES" : o === 0 ? "NO" : o === 2 ? "INVALID" : "?";
+
+      const entry = res?.adjudicatorEntry ?? null;
+      const lifecycle = res
+        ? res.lifecycle === "Settled"
+          ? `Settled — ${outcomeWord(res.winningOutcome)} won`
+          : entry?.attestedOutcome !== null && entry?.attestedOutcome !== undefined
+            ? `Locked — attested ${outcomeWord(entry.attestedOutcome)}, veto window running`
+            : res.lifecycle
+        : m.isSettled
+          ? `Settled — ${outcomeWord(m.outcome ?? null)} won`
+          : m.isLive
+            ? "Open"
+            : "Initializing";
+      const kind = entry ? (entry.isZk ? "AUTO · zkTLS" : "MANUAL") : "none registered yet";
+
       const lines: OutputLine[] = [
         ...(questionText ? [line("bold", questionText)] : []),
-        line("plain", `Market:    ${pda58}`),
-        line("dim", `App:       ${window.location.origin}/${m.isGraduated ? "orderbook" : "amm"}/${pda58}`),
-        line("dim", `Explorer:  https://explorer.solana.com/address/${pda58}?cluster=devnet`),
-        line("plain", `Lifecycle: ${lifecycle}`),
-        line("plain", `YES price: ${p.toFixed(4)}`),
-        line("plain", `qYes:      ${fmtWadShares(m.qYes)}`),
-        line("plain", `qNo:       ${fmtWadShares(m.qNo)}`),
-        line("plain", `b:         ${fmtWadShares(m.b)}`),
-        line("plain", `Graduated: ${m.isGraduated}`),
+        line("plain", `Market:     ${pda58}`),
+        line("dim", `App:        ${window.location.origin}/${m.isGraduated ? "orderbook" : "amm"}/${pda58}`),
+        line("dim", `Explorer:   https://explorer.solana.com/address/${pda58}?cluster=devnet`),
+        line("plain", `Lifecycle:  ${lifecycle}`),
+        line("plain", `Venue:      ${m.isGraduated ? "orderbook (graduated — AMM stays open)" : "AMM (bonding curve)"}`),
+        ...(res ? [line("plain", `Started:    ${fmtTs(res.startTime)}`)] : []),
+        line("plain", `Ends:       ${fmtTs(res?.deadline ?? m.deadline)}`),
+        line("plain", `YES price:  ${p.toFixed(4)}   NO ${(1 - p).toFixed(4)}`),
+        line("plain", `qYes:       ${fmtWadShares(m.qYes)}`),
+        line("plain", `qNo:        ${fmtWadShares(m.qNo)}`),
+        line("plain", `b:          ${fmtWadShares(m.b)}`),
+        ...(res ? [line("plain", `Creator:    ${res.creator}`)] : []),
+        line("plain", `Resolution: ${kind}`),
+        ...(entry && entry.authority !== "11111111111111111111111111111111"
+          ? [line("dim", `Adjudicator: ${entry.authority}`)]
+          : []),
+        ...(entry?.attestedAt
+          ? [line("plain", `Attested:   ${outcomeWord(entry.attestedOutcome)} at ${fmtTs(entry.attestedAt)}`)]
+          : []),
+        ...(entry?.disputed ? [line("warn", "DISPUTED — the veto was used.")] : []),
       ];
       if (!m.isGraduated) {
         try {
@@ -433,16 +476,12 @@ export class SoothSDK {
           lines.push(
             line(
               "plain",
-              `Fees:      ${fmtWadShares(g.feesAccumulatedWad)} / ${fmtWadShares(g.thresholdWad)} (${(g.progressBps / 100).toFixed(1)}%)`,
+              `Graduation: ${fmtWadShares(g.feesAccumulatedWad)} / ${fmtWadShares(g.thresholdWad)} fees (${(g.progressBps / 100).toFixed(1)}%)`,
             ),
           );
         } catch {
           // AmmState may not exist on a foreign market; the core lines stand.
         }
-      }
-      if (m.deadline !== undefined && m.deadline > 0n) {
-        const d = new Date(Number(m.deadline) * 1000);
-        lines.push(line("plain", `Deadline:  ${d.toISOString()}`));
       }
       return { result: { success: true, message: "" }, output: lines };
     } catch (e) {

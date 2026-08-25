@@ -87,8 +87,11 @@ test("terminal session: trade → simulate → graduate → book", async () => {
 
   const status = await run("status");
   expect(status.result.success, status.text).toBe(true);
-  expect(status.text).toContain("Live");
-  expect(status.text).toContain("Graduated: false");
+  expect(status.text).toContain("Lifecycle:  Open");
+  expect(status.text).toContain("Venue:      AMM");
+  expect(status.text).toContain("Started:");
+  expect(status.text).toContain("Ends:");
+  expect(status.text).toContain("YES price:");
 
   // AMM, both directions.
   expect((await run("buyyes 10")).result.success).toBe(true);

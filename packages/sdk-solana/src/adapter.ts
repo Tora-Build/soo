@@ -196,6 +196,7 @@ export interface MarketResolutionState {
   market: string;
   creator: string;
   adjudicator: string;
+  startTime: bigint;
   deadline: bigint;
   lifecycle: "Initializing" | "Open" | "Locked" | "Settled";
   winningOutcome: number;
@@ -769,6 +770,7 @@ export class SolanaChainAdapter implements ChainAdapter {
         market: pda.toBase58(),
         creator: (raw.creator as PublicKey).toBase58(),
         adjudicator: (raw.adjudicator as PublicKey).toBase58(),
+        startTime: BigInt((raw.startTime ?? raw.start_time).toString()),
         deadline: BigInt(raw.deadline.toString()),
         lifecycle: lifecycleName(raw.lifecycle),
         winningOutcome: Number(raw.winningOutcome ?? 0),
