@@ -203,10 +203,13 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   const planOnBook = await run("burst book");
   expect(planOnBook.result.success).toBe(false);
   expect(planOnBook.text).toContain("scripts curve buys and sells");
-  const ammOnBook = await run("burst amm 4");
-  expect(ammOnBook.result.success).toBe(false);
-  expect(ammOnBook.text).toContain("order book now");
+  // The program never closes the AMM at graduation — an AMM burst on a
+  // graduated market is legal and lands, pinning that truth against the
+  // program itself.
   await run("plan clear");
+  const ammOnBook = await run("burst amm 4 1 13");
+  expect(ammOnBook.result.success, ammOnBook.text).toBe(true);
+  expect(ammOnBook.text).toMatch(/4\/4 confirmed/);
 
   // Burst: all four trades signed up front, sent together, all confirmed.
   // The fixture expires the blockhash after every landed transaction, so the

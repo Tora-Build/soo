@@ -54,6 +54,10 @@ import {
 } from "@solana/spl-token";
 import { knownMarketRefs } from "../../features/arena/marketRegistry";
 import {
+  lookupMarketQuestion,
+  rememberMarketQuestion,
+} from "../../lib/market-questions";
+import {
   clearActors,
   createActors,
   loadActors,
@@ -294,6 +298,30 @@ export class SoothSDK {
   }
   setWalletClient(_wc: unknown): void {}
 
+  /**
+   * The market's question TEXT. The account stores only its hash — the text
+   * rides the creation transaction's MarketCreated event — so this reads the
+   * local cache first and walks the chain once per unknown market, caching
+   * what it recovers. Listing rows showed the hash and were useless for
+   * telling markets apart until this existed.
+   */
+  private async questionOf(ref: string): Promise<string | null> {
+    const pda = ref.replace(/^sol:/, "");
+    const cached = lookupMarketQuestion(pda);
+    const strip = (q: string) => q.replace(/§[a-z]+\s*/gi, " ").replace(/\s+/g, " ").trim();
+    if (cached) return strip(cached);
+    try {
+      const recovered = await this.demo?.adapter.readMarketQuestion(ref);
+      if (recovered) {
+        rememberMarketQuestion(pda, recovered);
+        return strip(recovered);
+      }
+    } catch {
+      // A market with an unrecoverable question keeps its address.
+    }
+    return null;
+  }
+
   /** The market every command acts on: `setmarket`'s pick, else the env default. */
   private marketRef(): string | null {
     return this.activeMarket ?? this.demo?.marketRef ?? null;
@@ -384,10 +412,13 @@ export class SoothSDK {
           ? "Live"
           : "Initializing";
       const p = yesPrice(m.qYes, m.qNo, m.b);
-      const questionText = (m.question ?? "").replace(/§[a-z]+\s*/gi, " ").trim();
+      const questionText = (await this.questionOf(ref)) ?? "";
+      const pda58 = ref.replace(/^sol:/, "");
       const lines: OutputLine[] = [
         ...(questionText ? [line("bold", questionText)] : []),
-        line("plain", `Market:    ${ref.replace(/^sol:/, "")}`),
+        line("plain", `Market:    ${pda58}`),
+        line("dim", `App:       ${window.location.origin}/${m.isGraduated ? "orderbook" : "amm"}/${pda58}`),
+        line("dim", `Explorer:  https://explorer.solana.com/address/${pda58}?cluster=devnet`),
         line("plain", `Lifecycle: ${lifecycle}`),
         line("plain", `YES price: ${p.toFixed(4)}`),
         line("plain", `qYes:      ${fmtWadShares(m.qYes)}`),
@@ -439,6 +470,7 @@ export class SoothSDK {
     // "(unreadable)" while thirty-one snapshots sat readable behind it.
     const snaps: Array<Awaited<ReturnType<SolanaChainAdapter["readSnapshot"]>> | null> =
       new Array(refs.length).fill(null);
+    const questions: Array<string | null> = new Array(refs.length).fill(null);
     {
       let next = 0;
       const worker = async () => {
@@ -450,6 +482,7 @@ export class SoothSDK {
           } catch {
             snaps[i] = null;
           }
+          questions[i] = await this.questionOf(refs[i]!);
         }
       };
       await Promise.all(Array.from({ length: Math.min(8, refs.length) }, worker));
@@ -465,11 +498,11 @@ export class SoothSDK {
         const p = yesPrice(m.qYes, m.qNo, m.b);
         // The full PDA, copyable: a truncated prefix cannot be pasted into
         // setmarket, an explorer, or anything else that wants an address.
-        const q = (snap.market.question ?? "").replace(/§[a-z]+\s*/gi, " ").trim();
+        const q = questions[i] ?? "";
         output.push(
           line(
             "plain",
-            `${mark} ${String(i).padStart(2)}  ${state.padEnd(7)} YES ${p.toFixed(2)}  ${q.slice(0, 44) || "(no question text)"}`,
+            `${mark} ${String(i).padStart(2)}  ${state.padEnd(7)} YES ${p.toFixed(2)}  ${q.slice(0, 44) || "(question not recoverable)"}`,
           ),
           line("dim", `        ${pda}`),
         );
@@ -1712,12 +1745,11 @@ export class SoothSDK {
       });
 
     const preSnap = await demo.adapter.readSnapshot(ref);
-    if (venue === "amm" && preSnap.market.isGraduated) {
-      return fail(
-        "Graduated market",
-        "This market's AMM is closed — it trades on the order book now. `burst book …`, or pick a bonding market from `markets`.",
-      );
-    }
+    // The program never closes the AMM: graduation OPENS the book alongside
+    // it (`book_enabled`), and `trade_positions` carries no graduation gate.
+    // An earlier version refused AMM bursts on graduated markets on the
+    // opposite belief, which the program does not hold. The book, by
+    // contrast, is genuinely gated pre-graduation (`NotGraduated`).
     if (venue === "book" && !preSnap.market.isGraduated) {
       return fail(
         "Not graduated",
