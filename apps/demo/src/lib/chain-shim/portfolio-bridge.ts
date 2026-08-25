@@ -58,14 +58,32 @@ interface AmmFinance {
   lpMint: string; // base58
 }
 
-const financeCache = new Map<string, { at: number; v: AmmFinance }>();
+// The cache stores the PROMISE, not the value: one Locker render fires
+// eight reads per market simultaneously, and a value-only cache let all
+// eight miss together and each run the full four-RPC fetch — a thousand
+// requests per refresh across thirty-two markets, which is what made the
+// positions panel crawl while everything else was quick.
+const financeCache = new Map<string, { at: number; v: Promise<AmmFinance | null> }>();
 
-async function readAmmFinance(
+function readAmmFinance(
   ctx: PortfolioBridgeCtx,
   marketRef: string,
 ): Promise<AmmFinance | null> {
   const hit = financeCache.get(marketRef);
-  if (hit && Date.now() - hit.at < 15_000) return hit.v;
+  if (hit && Date.now() - hit.at < 45_000) return hit.v;
+  const p = readAmmFinanceUncached(ctx, marketRef).then((v) => {
+    // A null (failed) read must not poison the cache for its full TTL.
+    if (v === null) financeCache.delete(marketRef);
+    return v;
+  });
+  financeCache.set(marketRef, { at: Date.now(), v: p });
+  return p;
+}
+
+async function readAmmFinanceUncached(
+  ctx: PortfolioBridgeCtx,
+  marketRef: string,
+): Promise<AmmFinance | null> {
   try {
     const adapter = ctx.adapter;
     const conn = adapter.connection;
@@ -105,7 +123,6 @@ async function readAmmFinance(
       lpSupplyRaw,
       lpMint: lpMint.toBase58(),
     };
-    financeCache.set(marketRef, { at: Date.now(), v });
     return v;
   } catch {
     return null;

@@ -53,6 +53,59 @@ const PHASE_LABEL: Record<string, string> = {
   settled: "SETTLED",
 };
 
+/**
+ * The road to settlement, drawn on every row.
+ *
+ * The panel offers exactly ONE button — the next instruction that would
+ * land — which is correct and was also why the founder of six markets asked
+ * three times where the resolve button was: standing at "Lock it", nothing
+ * said that Adjudicator, Attest, Veto and Settle were behind it. The map is
+ * not the button; it is what makes the button make sense.
+ */
+const STEPS = ["Lock", "Adjudicator", "Attest", "Veto", "Settle"] as const;
+
+function stepIndex(view: ResolutionView): number {
+  switch (view.phase) {
+    case "open":
+    case "pastDeadline":
+      return 0;
+    case "awaitingAdjudicator":
+    case "unattestable":
+      return 1;
+    case "attestable":
+      return 2;
+    case "veto":
+      return 3;
+    case "settleable":
+      return 4;
+    case "settled":
+      return 5;
+    default:
+      return 0;
+  }
+}
+
+function StepTimeline({ view }: { view: ResolutionView }) {
+  if (view.phase === "dismissed" || view.phase === "initializing") return null;
+  const at = stepIndex(view);
+  return (
+    <p className="mt-1 font-mono text-[10px] tracking-wide" aria-label="resolution steps">
+      {STEPS.map((step, i) => (
+        <span key={step}>
+          <span
+            className={cn(
+              i < at ? "text-accent" : i === at ? "text-ink font-bold" : "text-faint",
+            )}
+          >
+            {i < at ? "✓" : i === at ? "▶" : "·"} {step}
+          </span>
+          {i < STEPS.length - 1 && <span className="text-faint"> — </span>}
+        </span>
+      ))}
+    </p>
+  );
+}
+
 /** The question out of an SQF envelope, whatever shape it arrived in. */
 function questionFromSqf(raw: string): string {
   const parsed = parseSQFSafe(raw).question?.trim();
@@ -308,6 +361,7 @@ function CreatedMarketRow({
           <p className="text-[11px] text-muted mt-1">
             <RowExplainer view={view} locale={locale} />
           </p>
+          <StepTimeline view={view} />
         </div>
 
         <div className="shrink-0 flex items-center gap-2">
