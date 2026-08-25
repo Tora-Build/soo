@@ -32,6 +32,9 @@ jobs:
         env:
           VITE_TEST_MODE: "false"
           VITE_SOLANA_RPC_URL: ${{ vars.SOLANA_RPC_URL }}
+          # Public URL of the deployed infra/arena-api Worker — without it the
+          # arena runs local-only and the navbar says so.
+          VITE_ARENA_API_BASE: https://soo-arena.zak-a35.workers.dev
         run: pnpm build
       # Plain wrangler via pnpm dlx — wrangler-action installs wrangler with
       # npm inside the working directory, and npm cannot read the pnpm
