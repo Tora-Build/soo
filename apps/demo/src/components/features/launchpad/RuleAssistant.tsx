@@ -35,6 +35,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
+import { normalizeCategory } from "../../../lib/categories";
 import { COMPARATORS, type ZkRuleDraft } from "./zk-rule";
 import {
   DRAFTER_URL,
@@ -106,6 +107,9 @@ export const RuleDrafter = ({
   // so the one thing the screen never showed was the choice that had been made.
   const [chosen, setChosen] = useState<number | null>(null);
   const [polish, setPolish] = useState<PolishSuggestion | null>(null);
+  // The wording as the creator typed it, kept so the auto-applied rephrase
+  // has a one-click way back.
+  const [preRephrase, setPreRephrase] = useState<string | null>(null);
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [needsAdjudicator, setNeedsAdjudicator] = useState(false);
@@ -149,12 +153,24 @@ export const RuleDrafter = ({
     setPolish(null);
     setNeedsAdjudicator(false);
     try {
-      const result = await draftRules(question.trim(), controller.signal);
+      const original = question.trim();
+      const result = await draftRules(original, controller.signal);
       setCandidates(result.candidates.length > 0 ? result.candidates : null);
-      // Only a suggestion that actually differs is worth the creator's
-      // attention; an echo of their own sentence is noise dressed as help.
-      setPolish(result.polish?.changed ? result.polish : null);
-      if (result.polish?.category) onCategoryChange(result.polish.category);
+      // The rephrase is applied, not offered — a creator who asked the AI to
+      // draft wants the drafted sentence in the box, with a way back, not a
+      // second decision. Only a suggestion that actually differs shows at all.
+      if (result.polish?.changed) {
+        setPolish(result.polish);
+        setPreRephrase(original);
+        onQuestionChange(result.polish.polished);
+      } else {
+        setPolish(null);
+        setPreRephrase(null);
+      }
+      // The model names categories freely ("Crypto", "finance"); the shelves
+      // are a fixed lowercase set, so an unnormalised name selects nothing.
+      if (result.polish?.category)
+        onCategoryChange(normalizeCategory(result.polish.category));
       if (result.polish?.deadline) onDeadlineChange(result.polish.deadline);
       setChosen(null);
       setNeedsAdjudicator(result.needsAdjudicator);
@@ -196,10 +212,11 @@ export const RuleDrafter = ({
     setChosen(index);
   };
 
-  /** Takes the tightened wording. The rule fields are untouched — only the question moves. */
-  const applyPolish = () => {
-    if (polish) onQuestionChange(polish.polished);
+  /** Puts the creator's own wording back. The rule fields are untouched. */
+  const revertPolish = () => {
+    if (preRephrase !== null) onQuestionChange(preRephrase);
     setPolish(null);
+    setPreRephrase(null);
   };
 
   const canDraft = Boolean(DRAFTER_URL) && question.trim().length >= 10;
@@ -290,8 +307,9 @@ export const RuleDrafter = ({
         </div>
       )}
 
-      {/* The question is committed too, and a dispute is settled by reading it.
-          Offered, never applied on its own: the creator's wording is theirs. */}
+      {/* The rephrase is already in the question box; this strip says so and
+          holds the way back. The question is committed on-chain and disputes
+          are settled by reading it, so the creator keeps the last word. */}
       {polish && (
         <div
           data-testid="launchpad-zk-polish"
@@ -299,26 +317,35 @@ export const RuleDrafter = ({
         >
           <p className="text-sm text-muted flex items-center gap-1.5">
             <Wand2 className="w-3 h-3 shrink-0" />
-            {t("launchpad.zk.assist.polishLabel")}
+            {t("launchpad.zk.assist.polishApplied", {
+              defaultValue: "Question rephrased by the drafter",
+            })}
           </p>
-          <p className="text-sm text-ink leading-snug">{polish.polished}</p>
           {polish.notes && (
             <p className="text-sm text-faint leading-snug">{polish.notes}</p>
           )}
+          {preRephrase !== null && (
+            <p className="text-sm text-faint leading-snug line-through decoration-rule">
+              {preRephrase}
+            </p>
+          )}
           <div className="flex items-center gap-2 pt-0.5">
             <button
-              data-testid="launchpad-zk-polish-apply"
-              onClick={applyPolish}
+              data-testid="launchpad-zk-polish-revert"
+              onClick={revertPolish}
               className="px-2 py-1 text-xs font-bold border border-rule bg-raised text-ink hover:border-accent transition-all"
             >
-              {t("launchpad.zk.assist.polishApply")}
+              {t("launchpad.zk.assist.polishKeep")}
             </button>
             <button
               data-testid="launchpad-zk-polish-dismiss"
-              onClick={() => setPolish(null)}
+              onClick={() => {
+                setPolish(null);
+                setPreRephrase(null);
+              }}
               className="px-2 py-1 text-xs text-muted hover:text-ink transition-colors"
             >
-              {t("launchpad.zk.assist.polishKeep")}
+              {t("launchpad.zk.assist.polishDismiss", { defaultValue: "OK" })}
             </button>
           </div>
         </div>

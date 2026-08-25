@@ -16,7 +16,7 @@
 // or in any response.
 
 import { draft } from "./draft.js";
-import { catalogFallbackProposals } from "./catalog.js";
+import { catalogFallbackProposals, heuristicPolish } from "./catalog.js";
 import { validateProposal } from "./validate.js";
 import { createGeminiModel } from "./gemini.js";
 import { take } from "./ratelimit.js";
@@ -115,7 +115,12 @@ export async function handle(request, env, _ctx, deps = {}) {
     );
     const candidates = checked.filter((r) => r.ok).map((r) => r.candidate);
     if (candidates.length > 0) {
-      return json({ candidates, attempts: 0, fallback: "catalog" });
+      return json({
+        candidates,
+        attempts: 0,
+        fallback: "catalog",
+        polish: heuristicPolish(question, Date.now()),
+      });
     }
     return json({ error: `drafting failed: ${e?.message ?? e}` }, 502);
   }

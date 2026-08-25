@@ -58,15 +58,66 @@ export function catalogLines() {
  * catalog-drafted.
  */
 const KEYWORDS = [
-  { match: /\b(btc|bitcoin)\b/i, urls: ["api.coinbase.com/v2/prices/BTC-USD", "api.binance.com", "api.kraken.com"] },
-  { match: /\b(eth|ethereum)\b/i, urls: ["ETH-USD"] },
-  { match: /\b(iss|space station)\b/i, urls: ["wheretheiss"] },
-  { match: /\b(rain|temperature|weather|hot|cold)\b/i, urls: ["open-meteo"] },
-  { match: /\b(jpy|yen|eur|euro|exchange rate)\b/i, urls: ["er-api", "frankfurter"] },
-  { match: /\bblock height\b/i, urls: ["mempool.space"] },
-  { match: /\bnpm|downloads\b/i, urls: ["npmjs"] },
-  { match: /\bgithub|stars\b/i, urls: ["api.github.com"] },
+  { match: /\b(btc|bitcoin)\b/i, urls: ["api.coinbase.com/v2/prices/BTC-USD", "api.binance.com", "api.kraken.com"], category: "crypto" },
+  { match: /\b(eth|ethereum)\b/i, urls: ["ETH-USD"], category: "crypto" },
+  { match: /\b(iss|space station)\b/i, urls: ["wheretheiss"], category: "tech" },
+  { match: /\b(rain|temperature|weather|hot|cold)\b/i, urls: ["open-meteo"], category: "weather" },
+  { match: /\b(jpy|yen|eur|euro|exchange rate)\b/i, urls: ["er-api", "frankfurter"], category: "others" },
+  { match: /\bblock height\b/i, urls: ["mempool.space"], category: "crypto" },
+  { match: /\bnpm|downloads\b/i, urls: ["npmjs"], category: "tech" },
+  { match: /\bgithub|stars\b/i, urls: ["api.github.com"], category: "tech" },
 ];
+
+const MONTHS = "january|february|march|april|may|june|july|august|september|october|november|december";
+const MONTH_END = { 1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31 };
+
+/**
+ * A deadline out of the question text, as YYYY-MM-DD, or null.
+ *
+ * Three shapes, most-specific first: an ISO date verbatim; a month name with
+ * an optional year ("by March 2026" -> that month's last day); a bare year
+ * ("by 2026" -> its December 31). "By <when>" means "any time up to the end
+ * of <when>", so an under-specified date always rounds to the period's END —
+ * rounding down would close the market before the question's own window.
+ */
+export function deadlineFromQuestion(question, nowMs = 0) {
+  const iso = /\b(20\d\d)-(\d{2})-(\d{2})\b/.exec(question);
+  if (iso) return iso[0];
+  const monthRe = new RegExp(`\\b(${MONTHS})\\.?\\s*,?\\s*(20\\d\\d)?\\b`, "i");
+  const m = monthRe.exec(question);
+  const yearMatch = /\b(20\d\d)\b/.exec(question);
+  if (m) {
+    const month = MONTHS.split("|").indexOf(m[1].toLowerCase()) + 1;
+    const now = new Date(nowMs || 0);
+    const year = m[2]
+      ? Number(m[2])
+      : nowMs
+        ? now.getUTCFullYear() + (month < now.getUTCMonth() + 1 ? 1 : 0)
+        : null;
+    if (year) return `${year}-${String(month).padStart(2, "0")}-${MONTH_END[month]}`;
+  }
+  if (yearMatch) return `${yearMatch[1]}-12-31`;
+  return null;
+}
+
+/**
+ * The polish block the model would have produced, minus the one thing only a
+ * model can do (rewording). Rides with catalog-fallback candidates so a
+ * Gemini outage costs the creator the rephrase, not ALSO the category and
+ * the deadline their own sentence already states.
+ */
+export function heuristicPolish(question, nowMs = 0) {
+  const rule = KEYWORDS.find((k) => k.match.test(question));
+  const deadline = deadlineFromQuestion(question, nowMs);
+  return {
+    polished: question,
+    changed: false,
+    notes: null,
+    category: rule?.category ?? null,
+    deadline,
+    resolvable: true,
+  };
+}
 
 /** A plain number out of the question — "$70,000", "70k", "0.85". */
 export function thresholdFromQuestion(question) {

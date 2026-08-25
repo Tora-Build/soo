@@ -4,7 +4,9 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATALOG, catalogLines } from "../src/catalog.js";
+import { CATALOG, catalogLines, deadlineFromQuestion, heuristicPolish } from "../src/catalog.js";
+
+const NOW = Date.parse("2026-08-25");
 import { buildPrompt } from "../src/gemini.js";
 import { COMPARATORS } from "../src/validate.js";
 
@@ -48,4 +50,30 @@ test("the catalog reaches the prompt as a preference, not a restriction", () => 
 
 test("comparators the catalog would be used with are the supported set", () => {
   assert.deepEqual(COMPARATORS, ["gt", "gte", "lt", "lte", "eq"]);
+});
+
+test("deadlineFromQuestion: bare year rounds to its end", () => {
+  assert.equal(deadlineFromQuestion("btc above 100k by 2026?", NOW), "2026-12-31");
+});
+
+test("deadlineFromQuestion: month with year rounds to month end", () => {
+  assert.equal(deadlineFromQuestion("rain by March 2027", NOW), "2027-03-31");
+});
+
+test("deadlineFromQuestion: bare month lands on the next occurrence", () => {
+  // NOW is 2026-08-25 — December is still ahead this year.
+  assert.equal(deadlineFromQuestion("eth above 5000 by december", NOW), "2026-12-31");
+  // March has passed — it means March next year.
+  assert.equal(deadlineFromQuestion("eth above 5000 by march", NOW), "2027-03-31");
+});
+
+test("deadlineFromQuestion: a verbatim ISO date wins", () => {
+  assert.equal(deadlineFromQuestion("btc by 2026-10-01 exactly", NOW), "2026-10-01");
+});
+
+test("heuristicPolish carries category and deadline, never a rewording", () => {
+  const p = heuristicPolish("btc price that reaches 100k by 2026?", NOW);
+  assert.equal(p.changed, false);
+  assert.equal(p.category, "crypto");
+  assert.equal(p.deadline, "2026-12-31");
 });

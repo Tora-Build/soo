@@ -361,15 +361,15 @@
         "cancel": "取消",
         "timedOut": "起草在 {{seconds}} 秒后放弃。请重试，或在下方手动填写数据源。",
         "noneValidated": "没有数据源通过核对。请改写问题，或在「高级」中手动设置。",
-        "polishLabel": "建议的表述",
-        "polishApply": "采用",
         "polishKeep": "保留原文",
         "needRule": "尚无规则——请在上方起草，或在「高级」中设置。",
         "pickOne": "找到 {{count}} 个数据源，请选择其一。",
         "picked": "已采用该数据源。点击其他可切换。",
         "orOwn": "想用其他数据源？请在「高级」中设置。",
         "needsAdjudicator": "没有公开数据源可以结算这个问题。",
-        "needsAdjudicatorDetail": "你仍然可以创建——它将由人工裁定而非自动结算。请在「高级」中切换结算方式。"
+        "needsAdjudicatorDetail": "你仍然可以创建——它将由人工裁定而非自动结算。请在「高级」中切换结算方式。",
+        "polishApplied": "提问已由起草器改写",
+        "polishDismiss": "好"
       }
     },
     "questionHint": "请提问一个带阈值的公开数值——价格、汇率、指数或计数。",

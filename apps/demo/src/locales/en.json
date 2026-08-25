@@ -361,15 +361,15 @@
         "cancel": "Cancel",
         "timedOut": "Drafting gave up after {{seconds}}s. Try again, or fill the source in by hand below.",
         "noneValidated": "No source survived checking. Try rewording, or set one under Advanced.",
-        "polishLabel": "Suggested wording",
-        "polishApply": "Use this",
         "polishKeep": "Keep mine",
         "needRule": "No rule yet — draft one above, or set one under Advanced.",
         "pickOne": "{{count}} sources found. Pick one.",
         "picked": "Using this source. Pick another to swap.",
         "orOwn": "Want a different source? Set it under Advanced.",
         "needsAdjudicator": "No public data feed can settle this question.",
-        "needsAdjudicatorDetail": "You can still launch it — it will be settled by a human adjudicator instead of automatically. Switch the resolver under Advanced."
+        "needsAdjudicatorDetail": "You can still launch it — it will be settled by a human adjudicator instead of automatically. Switch the resolver under Advanced.",
+        "polishApplied": "Question rephrased by the drafter",
+        "polishDismiss": "OK"
       }
     },
     "questionHint": "Ask about a public number with a threshold — a price, rate, index, or count.",
