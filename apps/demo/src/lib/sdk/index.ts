@@ -2072,6 +2072,13 @@ export class SoothSDK {
     // everyone else.
     const sigs: string[] = new Array(signed.length);
     {
+      // Adaptive pacing. Rate-limited gateways punish bursts: the first 429
+      // means the wall is ALREADY hit, and ramming it with per-send retries
+      // is what turned a 90-burst's send phase into 82 seconds. On the first
+      // 429 every worker starts spacing its sends; clean sends walk the
+      // spacing back down. The pace is shared — one worker's 429 slows all.
+      let paceMs = 0;
+      let clean = 0;
       let next = 0;
       const sendWorker = async () => {
         for (;;) {
@@ -2079,13 +2086,25 @@ export class SoothSDK {
           if (k >= signed.length) return;
           let out = "";
           for (let attempt = 0; ; attempt++) {
+            if (paceMs > 0) {
+              await new Promise((r) => setTimeout(r, paceMs + Math.random() * 100));
+            }
             try {
               out = await conn.sendRawTransaction(signed[k]!, { skipPreflight: true });
+              if (++clean >= 8 && paceMs > 0) {
+                clean = 0;
+                paceMs = Math.max(0, paceMs - 50);
+              }
               break;
             } catch (e) {
               const msg = (e as Error).message ?? "";
-              if (attempt < 3 && /429|rate|failed to fetch|fetch failed|network|timeout/i.test(msg)) {
-                await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+              const throttled = /429|rate/i.test(msg);
+              if (throttled) {
+                clean = 0;
+                paceMs = Math.min(500, paceMs === 0 ? 150 : paceMs * 2);
+              }
+              if (attempt < 3 && (throttled || /failed to fetch|fetch failed|network|timeout/i.test(msg))) {
+                await new Promise((r) => setTimeout(r, 400 * (attempt + 1) + Math.random() * 300));
                 continue;
               }
               out = `send-failed: ${msg.slice(0, 120)}`;
@@ -2153,6 +2172,13 @@ export class SoothSDK {
       return retried;
     };
     for (let tick = 0; tick < 60; tick++) {
+      // Watchdog: the meter must never outlast the audience. Anything still
+      // unresolved at 50s is reported pending, not waited on — `history`
+      // shows where it landed.
+      if (Date.now() - t0 > 50_000) {
+        emit(line("warn", "Watchdog: stopping the meter at 50s — unresolved transactions may still land; `history <actor>` shows them."));
+        break;
+      }
       await new Promise((r) => setTimeout(r, 400));
       let statuses: Array<{ err: unknown } | null>;
       try {

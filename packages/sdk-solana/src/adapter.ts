@@ -3806,6 +3806,11 @@ export class SolanaChainAdapter implements ChainAdapter {
         throw classified.error;
       }
 
+      // The write just changed this market — its memoized record must not
+      // outlive the change, or the writer's own follow-up read lies to it.
+      const wrotePda = (meta as unknown as { marketPda?: string }).marketPda;
+      if (wrotePda) this.invalidateMarketMemo(wrotePda);
+
       return {
         txId: encodeSignatureRef(sig),
         confirmedAt: BigInt(Date.now()),
@@ -4005,7 +4010,37 @@ export class SolanaChainAdapter implements ChainAdapter {
 
   // ─── Internals ──────────────────────────────────────────────────────────
 
-  private async fetchMarket(marketPda: PublicKey): Promise<ResolvedMarket> {
+  /**
+   * Memoized per market, 10s TTL, promise-cached, invalidated by `submit`.
+   *
+   * Nearly every builder starts here, so a 90-transaction burst was ninety
+   * identical account fetches of a record whose useful fields (marketId,
+   * vaults, PDAs) never change — enough by itself to trip a rate-limited
+   * RPC gateway before a single transaction went out. The mutable tail
+   * (lifecycle, outcome) can go 10s stale at worst; the program re-checks
+   * both on every instruction, so staleness costs a rejection, never a
+   * wrong execution.
+   */
+  private marketMemo = new Map<string, { at: number; v: Promise<ResolvedMarket> }>();
+
+  private fetchMarket(marketPda: PublicKey): Promise<ResolvedMarket> {
+    const key = marketPda.toBase58();
+    const hit = this.marketMemo.get(key);
+    if (hit && Date.now() - hit.at < 10_000) return hit.v;
+    const v = this.fetchMarketUncached(marketPda).catch((e) => {
+      this.marketMemo.delete(key);
+      throw e;
+    });
+    this.marketMemo.set(key, { at: Date.now(), v });
+    return v;
+  }
+
+  /** Drop a market's memo — writes call this so their own follow-up reads see fresh state. */
+  invalidateMarketMemo(marketPda58: string): void {
+    this.marketMemo.delete(marketPda58);
+  }
+
+  private async fetchMarketUncached(marketPda: PublicKey): Promise<ResolvedMarket> {
     const raw = await (this.program.account as any).market.fetchNullable(
       marketPda,
     );
