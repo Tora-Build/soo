@@ -3310,6 +3310,18 @@ export class SolanaChainAdapter implements ChainAdapter {
    * not an index, and the cost is one `getTransaction` per signature. Callers
    * wanting deep history need a real indexer.
    */
+  /**
+   * Per-signature event cache for `readBookHistory`.
+   *
+   * A confirmed transaction is immutable, so its decoded events are too —
+   * fetching it twice buys nothing. Without this the history panel replayed
+   * one getTransaction per signature, SERIALLY, on every load: a book with a
+   * few hundred transactions took thirty seconds against a rate-limited
+   * gateway, every time it was looked at. With it, a load costs one
+   * signature listing plus a fetch per UNSEEN transaction only.
+   */
+  private bookEventCache = new Map<string, BookEvent[]>();
+
   async readBookHistory(
     market: MarketRef,
     opts?: { limit?: number },
@@ -3322,22 +3334,47 @@ export class SolanaChainAdapter implements ChainAdapter {
     const sigs = await this.connection.getSignaturesForAddress(pda, { limit });
     if (sigs.length === 0) return [];
 
+    // Fetch only what the cache has never seen, six at a time — serial
+    // fetches under throttling are how thirty seconds happen.
+    const unseen = sigs.filter((s) => !s.err && !this.bookEventCache.has(s.signature));
+    {
+      let next = 0;
+      const worker = async () => {
+        for (;;) {
+          const k = next++;
+          if (k >= unseen.length) return;
+          const sig = unseen[k]!;
+          try {
+            const tx = await this.connection.getTransaction(sig.signature, {
+              maxSupportedTransactionVersion: 0,
+              commitment: "confirmed",
+            });
+            if (!tx?.meta?.innerInstructions) {
+              this.bookEventCache.set(sig.signature, []);
+              continue;
+            }
+            const inner = tx.meta.innerInstructions.flatMap((group) =>
+              // web3.js hands inner-instruction data back base58-encoded.
+              group.instructions.map((ix) =>
+                anchorUtils.bytes.bs58.decode((ix as { data: string }).data),
+              ),
+            );
+            this.bookEventCache.set(sig.signature, [...decodeBookEventsFromInner(inner)]);
+          } catch {
+            // Not cached — a transient failure retries on the next load.
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(6, unseen.length) }, worker));
+    }
+
     const out: Array<{ signature: string; slot: number; event: BookEvent }> = [];
     // Oldest first, so the caller sees the order the chain applied.
     for (const sig of [...sigs].reverse()) {
       if (sig.err) continue; // a failed tx changed nothing
-      const tx = await this.connection.getTransaction(sig.signature, {
-        maxSupportedTransactionVersion: 0,
-        commitment: "confirmed",
-      });
-      if (!tx?.meta?.innerInstructions) continue;
-      const inner = tx.meta.innerInstructions.flatMap((group) =>
-        // web3.js hands inner-instruction data back base58-encoded.
-        group.instructions.map((ix) =>
-          anchorUtils.bytes.bs58.decode((ix as { data: string }).data),
-        ),
-      );
-      for (const event of decodeBookEventsFromInner(inner)) {
+      const events = this.bookEventCache.get(sig.signature);
+      if (!events) continue;
+      for (const event of events) {
         out.push({ signature: sig.signature, slot: sig.slot, event });
       }
     }
