@@ -22,7 +22,8 @@
     "test": "vitest run",
     "e2e": "node scripts/run-playwright-e2e.mjs",
     "test:watch": "vitest",
-    "test:e2e": "node scripts/run-playwright-e2e.mjs"
+    "test:e2e": "node scripts/run-playwright-e2e.mjs",
+    "build:prod": "VITE_TEST_MODE=false VITE_TEST_KEYPAIR_BYTES= VITE_TEST_AUTHORITY_BYTES= pnpm build"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
