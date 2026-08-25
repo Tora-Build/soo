@@ -111,14 +111,14 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   const created = await run("actors create 3");
   expect(created.result.success, created.text).toBe(true);
 
-  const funded = await run("actors fund 0.05 200");
+  const funded = await run("actors fund 0.05 300");
   expect(funded.result.success, funded.text).toBe(true);
   expect(funded.text).toContain("SOL: 0.05 × 3");
   expect(funded.text).toContain("× 3/3 minted");
 
   const roster = await run("actors");
   expect(roster.text).toContain("Actors (3)");
-  expect(roster.text).toContain("USDC 200.00");
+  expect(roster.text).toContain("USDC 300.00");
 
   // ── Scripted burst on the bonding curve ──
   // A story, not noise: two buys land, the impossible sell is refused at
@@ -140,7 +140,7 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   // Graduate: planned from the closed form, not ground out in rounds. The
   // actors cannot cover the volume, so the connected wallet is the payer of
   // last resort — and the whole climb is a handful of transactions.
-  const grad = await run("graduate 25 40");
+  const grad = await run("graduate");
   expect(grad.result.success, grad.text).toBe(true);
   expect(grad.text).toContain("Graduation plan");
   expect(grad.text).toMatch(/requires ~\d+\.\d+ USDC of balanced volume/);
@@ -149,10 +149,8 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   expect(txCount, grad.text).toBeLessThanOrEqual(8);
   // Actors pay before the founder's wallet — the fleet exists to absorb the
   // popups, so the wallet must appear last in the payer list if at all.
-  const payerLine = /(\d+) payer\(s\).*: (.*)/.exec(grad.text)![2]!;
-  if (payerLine.includes("you")) {
-    expect(payerLine.trim().split(" · ").pop()).toContain("you");
-  }
+  // Default graduation never touches the connected wallet.
+  expect(grad.text).not.toMatch(/payer\(s\).*you/);
 
   // First order on a fresh book: the account does not exist until now.
   const place = await run("place bid 450 25");

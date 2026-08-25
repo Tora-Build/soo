@@ -384,7 +384,9 @@ export class SoothSDK {
           ? "Live"
           : "Initializing";
       const p = yesPrice(m.qYes, m.qNo, m.b);
+      const questionText = (m.question ?? "").replace(/§[a-z]+\s*/gi, " ").trim();
       const lines: OutputLine[] = [
+        ...(questionText ? [line("bold", questionText)] : []),
         line("plain", `Market:    ${ref.replace(/^sol:/, "")}`),
         line("plain", `Lifecycle: ${lifecycle}`),
         line("plain", `YES price: ${p.toFixed(4)}`),
@@ -450,11 +452,13 @@ export class SoothSDK {
         const p = yesPrice(m.qYes, m.qNo, m.b);
         // The full PDA, copyable: a truncated prefix cannot be pasted into
         // setmarket, an explorer, or anything else that wants an address.
+        const q = (snap.market.question ?? "").replace(/§[a-z]+\s*/gi, " ").trim();
         output.push(
           line(
             "plain",
-            `${mark} ${String(i).padStart(2)}  ${state.padEnd(7)} YES ${p.toFixed(2)}  ${pda}`,
+            `${mark} ${String(i).padStart(2)}  ${state.padEnd(7)} YES ${p.toFixed(2)}  ${q.slice(0, 44) || "(no question text)"}`,
           ),
+          line("dim", `        ${pda}`),
         );
       } else {
         output.push(
@@ -902,8 +906,9 @@ export class SoothSDK {
       output.push(l);
       out?.(l);
     };
-    if (flat.length > 0) {
-      emit(line("dim", "graduate is auto-planned now — step/round arguments are ignored."));
+    const useWallet = flat[0]?.toLowerCase() === "wallet";
+    if (flat.length > 0 && !useWallet) {
+      emit(line("dim", "graduate is auto-planned now — `graduate` spends actors, `graduate wallet` spends the connected wallet."));
     }
 
     let g = await demo.adapter.readGraduationProgress(ref);
@@ -940,7 +945,7 @@ export class SoothSDK {
       usdcWad: bigint;
     }
     const payers: Payer[] = [];
-    const fleet = loadActors();
+    const fleet = useWallet ? [] : loadActors();
     if (fleet.length > 0) {
       try {
         const conn = demo.adapter.connection;
@@ -969,7 +974,10 @@ export class SoothSDK {
         // Unreadable balances — the connected wallet still stands.
       }
     }
-    const me = userBase58FromDemo(demo);
+    // The connected wallet joins ONLY when asked for by name. The default is
+    // the fleet: every wallet transaction is a popup, and springing even one
+    // on a founder who built a fleet to avoid them is the wrong surprise.
+    const me = useWallet ? userBase58FromDemo(demo) : null;
     if (me) {
       // Raw account decode, not getTokenAccountBalance — the thin
       // connections that lack the RPC method are exactly where a zero here
@@ -1016,9 +1024,11 @@ export class SoothSDK {
           line("error", `Not enough USDC across actors + wallet: need ~${fmtWadShares(volumeWad, 2)}, usable ~${fmtWadShares(total, 2)}.`),
           line(
             "plain",
-            fleet.length > 0
-              ? `\`actors fund 0 ${Math.ceil(Number(perActor / WAD))}\` closes the gap, then run graduate again.`
-              : "`actors create 10` then `actors fund 0.05 <usdc>` — or top up the connected wallet.",
+            useWallet
+              ? "Top up the connected wallet, or fund the fleet and run plain `graduate`."
+              : fleet.length > 0
+                ? `\`actors fund 0 ${Math.ceil(Number(perActor / WAD))}\` closes the gap and keeps it popup-free — or \`graduate wallet\` to spend the connected wallet.`
+                : "`actors create 10` then `actors fund 0.05 <usdc>` — or `graduate wallet` to spend the connected wallet.",
           ),
         ],
       };
@@ -1702,6 +1712,34 @@ export class SoothSDK {
         "Planned bursts are AMM buys and sells; this market has graduated to the order book. `plan clear`, or pick a bonding market.",
       );
     }
+    // A graduated market's book account only exists once someone paid its
+    // rent — and the burst built straight against it, so a first burst on a
+    // fresh book was forty instant on-chain failures. Same ensure-then-write
+    // the single `place` command uses, with the first actor paying.
+    if (graduated) {
+      let book: Awaited<ReturnType<SolanaChainAdapter["readBook"]>> | null = null;
+      try {
+        book = await demo.adapter.readBook(ref);
+      } catch {
+        const init = await this.writeViaShim("bookInit", [ref], {
+          userBase58: fleet[0]!.publicKey.toBase58(),
+          signer: keypairSigner(fleet[0]!),
+        });
+        if (!init.result.success) {
+          return fail("Book init failed", `The order book account could not be created: ${init.result.message ?? ""}`);
+        }
+        emit(line("info", "Book account created (first orders on this market)."));
+      }
+      if (book && book.orderCount + n > book.capacity) {
+        emit(
+          line(
+            "warn",
+            `Book holds ${book.orderCount}/${book.capacity} resting orders — up to ${book.orderCount + n - book.capacity} of this burst may fail with a full book. Cancel resting orders or burst smaller.`,
+          ),
+        );
+      }
+    }
+
     let entries: BurstEntry[];
     if (planned) {
       entries = [];
@@ -2264,7 +2302,8 @@ export class SoothSDK {
             line("plain", "  actors                 actors export <n>      actors clear"),
             line("bold", "AMM"),
             line("plain", "  buyyes <shares>   buyno <shares>   sell <shares> [yes|no]"),
-            line("plain", "  createmarket <question…> [b]      graduate [step] [rounds]"),
+            line("plain", "  createmarket <question…> [b]      graduate — actors pay, no popups"),
+            line("plain", "  graduate wallet     — same plan, the connected wallet pays"),
             line("plain", "  simulate [N] [avgSize] [seed]     — seeded order flow, one tx at a time"),
             line("plain", "  burst    [N] [avgSize] [seed]     — all at once, measures tx/s (actors only)"),
             line("plain", "  plan <00..ff> <buy|sell> <yes|no> <size> — script the next burst row by row"),
