@@ -187,3 +187,55 @@ test("a corrupt journal is discarded rather than fatal", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ── Early resolution ────────────────────────────────────────────────────────
+// Pre-deadline, an Open market attests EARLY exactly when the cheap probe
+// says the rule is satisfied — and only then, because the program rejects an
+// unmet early reading and a wasted attestation costs quota.
+
+test("a satisfied probe on an open pre-deadline market resolves early", () => {
+  const d = decideAction({
+    chainState: state({ market: { lifecycle: "open" } }),
+    ruleCheck: ok,
+    now: DEADLINE - 3_600,
+    canLock: false,
+    probeSatisfied: true,
+  });
+  assert.equal(d.action, ACTION.ATTEST_EARLY);
+});
+
+test("an unmet probe waits, and says how long", () => {
+  const d = decideAction({
+    chainState: state({ market: { lifecycle: "open" } }),
+    ruleCheck: ok,
+    now: DEADLINE - 3_600,
+    canLock: false,
+    probeSatisfied: false,
+  });
+  assert.equal(d.action, ACTION.SKIP);
+  assert.match(d.reason, /not yet satisfied/);
+});
+
+test("an unavailable probe reads as not-satisfied, never as a spend", () => {
+  const d = decideAction({
+    chainState: state({ market: { lifecycle: "open" } }),
+    ruleCheck: ok,
+    now: DEADLINE - 3_600,
+    canLock: false,
+    probeSatisfied: null,
+  });
+  assert.equal(d.action, ACTION.SKIP);
+});
+
+test("a LOCKED pre-deadline market never early-attests off a probe", () => {
+  // Locked-before-deadline means a human already froze it — the ordinary
+  // attest path handles it AT the deadline floor, not this shortcut.
+  const d = decideAction({
+    chainState: state({ market: { lifecycle: "locked" } }),
+    ruleCheck: ok,
+    now: DEADLINE - 3_600,
+    canLock: false,
+    probeSatisfied: true,
+  });
+  assert.equal(d.action, ACTION.SKIP);
+});

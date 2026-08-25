@@ -25,14 +25,32 @@
 //!    registration. Without this, check 1 only proves the attestor saw
 //!    *something*: any attestation the same attestor ever signed, for any
 //!    endpoint, would otherwise resolve this market.
-//! 3. **Timestamp** — the observation must be at or after the market's
-//!    deadline, so a reading taken while the market was still trading cannot
-//!    resolve it.
+//! 3. **Timestamp** — the observation's floor depends on WHEN it arrives.
+//!    Post-deadline (the market already `Locked`): at or after the deadline,
+//!    so a stale mid-trading reading cannot masquerade as the closing one.
+//!    Pre-deadline (the market still `Open`): at or after `start_time` — a
+//!    mid-trading reading is exactly the point.
+//!
+//! # Early resolution
+//!
+//! An automatic market's rule is one-directional by definition here: the
+//! moment a verified attestation shows the rule SATISFIED, the outcome is
+//! decided — waiting for the deadline adds nothing but time. So a satisfied
+//! proof may arrive while the market is still `Open`: this instruction then
+//! performs the `Locked` transition itself (the same one
+//! `lock_for_resolution` performs for a human) and attests YES atomically.
+//! The proof is the authority for both steps, exactly as it already was for
+//! one.
+//!
+//! An UNMET reading proves nothing early — the value may cross the threshold
+//! tomorrow — so pre-deadline attestations that do not satisfy the rule are
+//! rejected outright, and NO can only ever be attested at or after the
+//! deadline, from a reading taken at or after the deadline.
 
 use anchor_lang::prelude::*;
 
 use crate::error::SoothCoreError;
-use crate::events::{OutcomeAttested, ZkOutcomeAttested};
+use crate::events::{MarketLocked, OutcomeAttested, ZkOutcomeAttested};
 use crate::state::{AdjudicatorEntry, Market, MarketLifecycle, ADJUDICATOR_ENTRY_SEED};
 use crate::zk::{verify_attestation, ZkAttestation};
 
@@ -47,9 +65,11 @@ pub struct AttestOutcomeZk<'info> {
     )]
     pub adjudicator_entry: Account<'info, AdjudicatorEntry>,
 
-    /// Read-only: attestation does not change the lifecycle. `settle` does
-    /// that, after the veto window.
+    /// Mutable for ONE transition: a pre-deadline attestation that proves
+    /// the rule satisfied performs Open → Locked itself. Settlement still
+    /// belongs to `settle`, after the veto window.
     #[account(
+        mut,
         seeds = [b"market", market.market_id.as_ref()],
         bump = market.bump,
     )]
@@ -62,12 +82,19 @@ pub struct AttestOutcomeZk<'info> {
 }
 
 pub fn handler(ctx: Context<AttestOutcomeZk>, attestation: ZkAttestation) -> Result<()> {
-    // Attestation must gate the lifecycle itself — otherwise an Open market
-    // could be attested and would then settle straight out of trading once
-    // the veto window elapsed.
+    // Two admissible shapes. `Locked`: the ordinary post-deadline path.
+    // `Open`: the early path — admitted provisionally here and pinned below
+    // to a SATISFIED verdict with a mid-trading timestamp floor; the
+    // lifecycle transition happens in the same instruction, so an Open
+    // market still can never sit attested-but-trading.
+    let early = matches!(ctx.accounts.market.lifecycle, MarketLifecycle::Open);
     require!(
-        matches!(ctx.accounts.market.lifecycle, MarketLifecycle::Locked),
+        early || matches!(ctx.accounts.market.lifecycle, MarketLifecycle::Locked),
         SoothCoreError::InvalidLifecycleTransition
+    );
+    require!(
+        !ctx.accounts.market.is_dismissed,
+        SoothCoreError::MarketDismissed
     );
     // One-shot, with the same single exception the manual path makes: an
     // outcome the permissionless abandonment hatch wrote. A zk market whose
@@ -83,9 +110,23 @@ pub fn handler(ctx: Context<AttestOutcomeZk>, attestation: ZkAttestation) -> Res
     );
 
     let rule = ctx.accounts.adjudicator_entry.require_zk_rule()?;
-    // The observation must be at or after the deadline, so a reading taken
-    // while the market was still trading cannot resolve it.
-    let verdict = verify_attestation(&attestation, &rule, ctx.accounts.market.deadline)?;
+    // Post-deadline the floor is the deadline: a stale mid-trading reading
+    // must not masquerade as the closing one. Pre-deadline the floor is
+    // start_time: a mid-trading reading is exactly the point.
+    let min_ts = if early {
+        ctx.accounts.market.start_time
+    } else {
+        ctx.accounts.market.deadline
+    };
+    let verdict = verify_attestation(&attestation, &rule, min_ts)?;
+    if early {
+        // Only a SATISFIED rule decides anything before the deadline — an
+        // unmet reading may be met tomorrow. NO exists only at the deadline.
+        require!(
+            verdict.winning_outcome == crate::state::market::OUTCOME_YES,
+            SoothCoreError::ZkEarlyRequiresSatisfied
+        );
+    }
 
     let now = Clock::get()?.unix_timestamp;
     let market_key = ctx.accounts.market.key();
@@ -96,6 +137,17 @@ pub fn handler(ctx: Context<AttestOutcomeZk>, attestation: ZkAttestation) -> Res
         entry.attested_outcome = Some(verdict.winning_outcome);
         entry.attested_at = Some(now);
         entry.forced_invalid = false;
+    }
+
+    if early {
+        // The transition `lock_for_resolution` performs for a human, done by
+        // the proof itself. Same event, so every consumer of MarketLocked
+        // keeps working unchanged.
+        ctx.accounts.market.lifecycle = MarketLifecycle::Locked;
+        emit!(MarketLocked {
+            market: market_key,
+            ts: now,
+        });
     }
 
     // Both events fire: consumers that only track outcomes keep working

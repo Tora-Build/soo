@@ -375,7 +375,7 @@
     "questionHint": "请提问一个带阈值的公开数值——价格、汇率、指数或计数。",
     "advancedLabel": "高级",
     "advancedSummary": "分类：{{category}}",
-    "resolvesEarly": "自动市场在截止时间结算：结算器届时读取数据源并出证比较结果。若答案提前揭晓，你作为裁定者可在 Locker 中提前结算。",
+    "resolvesEarly": "自动市场在规则被可验证满足的那一刻即结算——一份满足条件的 zkTLS 出证会自行锁定并出证 YES，随时生效。若始终未满足，则以截止时间的读数为准。你也可以在 Locker 中手动提前结算。",
     "liquidityLabel": "初始流动性",
     "youDeposit": "你需存入 {{symbol}}"
   },

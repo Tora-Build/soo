@@ -7,6 +7,10 @@
 
 /** Actions `decideAction` can return. */
 export const ACTION = {
+  /** Open, pre-deadline, and the cheap probe says the rule is SATISFIED:
+   *  spend a real attestation — the program locks and attests YES in one
+   *  instruction. */
+  ATTEST_EARLY: "attest_early",
   /** Nothing to do, for a benign reason. */
   SKIP: "skip",
   /** Deadline passed but the market is still Open; lock it first. */
@@ -33,7 +37,7 @@ export const ACTION = {
  * attestation with `AlreadyAttested` even if two processes race past this
  * check simultaneously.
  */
-export function decideAction({ chainState, ruleCheck, now, canLock }) {
+export function decideAction({ chainState, ruleCheck, now, canLock, probeSatisfied = null }) {
   if (!chainState.exists) {
     return { action: ACTION.SKIP, reason: chainState.reason };
   }
@@ -66,9 +70,26 @@ export function decideAction({ chainState, ruleCheck, now, canLock }) {
   }
 
   if (now < market.deadline) {
+    // Early resolution: the program accepts a pre-deadline attestation that
+    // proves the rule SATISFIED — it performs the lock itself and attests
+    // YES atomically. The probe below is the caller's CHEAP read of the
+    // feed (plain HTTPS, no Primus quota); only a satisfied probe is worth
+    // a real attestation, because the program rejects an unmet early
+    // reading outright (`ZkEarlyRequiresSatisfied`). An unavailable probe
+    // reads as "not satisfied": waiting costs a pass, a wasted attestation
+    // costs quota.
+    if (market.lifecycle === "open" && probeSatisfied === true) {
+      return {
+        action: ACTION.ATTEST_EARLY,
+        reason: "rule already satisfied on the live feed — resolving early",
+      };
+    }
     return {
       action: ACTION.SKIP,
-      reason: `deadline not passed (${market.deadline - now}s remaining)`,
+      reason:
+        probeSatisfied === false
+          ? `rule not yet satisfied; deadline in ${market.deadline - now}s`
+          : `deadline not passed (${market.deadline - now}s remaining)`,
       dueIn: market.deadline - now,
     };
   }

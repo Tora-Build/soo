@@ -331,6 +331,9 @@ pub enum SoothCoreError {
     // else wrote there.
     #[msg("Adjudicator entry account is not owned by sooth_core")]
     AdjudicatorEntryOwnerMismatch,
+
+    #[msg("Early zk attestation must prove the rule SATISFIED — an unmet reading proves nothing before the deadline")]
+    ZkEarlyRequiresSatisfied,
 }
 
 #[cfg(test)]

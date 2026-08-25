@@ -1,13 +1,19 @@
-{
+/**
+ * Program IDL in camelCase format in order to be used in JS/TS.
+ *
+ * Note that this is only a type helper and is not the actual IDL. The original
+ * IDL can be found at `target/idl/sooth_core.json`.
+ */
+export type SoothCore = {
   "address": "EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw",
   "metadata": {
-    "name": "sooth_core",
+    "name": "soothCore",
     "version": "0.0.0",
     "spec": "0.1.0"
   },
   "instructions": [
     {
-      "name": "accept_authority",
+      "name": "acceptAuthority",
       "docs": [
         "Take the protocol authority seat this config nominated you for."
       ],
@@ -51,7 +57,7 @@
           }
         },
         {
-          "name": "new_authority",
+          "name": "newAuthority",
           "docs": [
             "The nominee. Its signature is the whole point of the second step: it",
             "proves the key that is about to own the protocol exists and is",
@@ -63,7 +69,7 @@
       "args": []
     },
     {
-      "name": "attest_outcome",
+      "name": "attestOutcome",
       "discriminator": [
         115,
         210,
@@ -76,7 +82,7 @@
       ],
       "accounts": [
         {
-          "name": "adjudicator_entry",
+          "name": "adjudicatorEntry",
           "writable": true,
           "pda": {
             "seeds": [
@@ -125,7 +131,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -137,13 +143,13 @@
       ],
       "args": [
         {
-          "name": "winning_outcome",
+          "name": "winningOutcome",
           "type": "u8"
         }
       ]
     },
     {
-      "name": "attest_outcome_zk",
+      "name": "attestOutcomeZk",
       "docs": [
         "Record an outcome derived from a verified Primus zkTLS attestation.",
         "Permissionless: the attestation carries its own authority. Like",
@@ -162,7 +168,7 @@
       ],
       "accounts": [
         {
-          "name": "adjudicator_entry",
+          "name": "adjudicatorEntry",
           "writable": true,
           "pda": {
             "seeds": [
@@ -213,7 +219,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -233,14 +239,14 @@
           "name": "attestation",
           "type": {
             "defined": {
-              "name": "ZkAttestation"
+              "name": "zkAttestation"
             }
           }
         }
       ]
     },
     {
-      "name": "book_cancel",
+      "name": "bookCancel",
       "docs": [
         "Cancel a resting book order; the escrow lands in the owner's seat",
         "credit. See `book_ops`."
@@ -273,7 +279,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -296,7 +302,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -306,7 +312,7 @@
           "signer": true
         },
         {
-          "name": "event_authority",
+          "name": "eventAuthority",
           "pda": {
             "seeds": [
               {
@@ -340,13 +346,13 @@
       ],
       "args": [
         {
-          "name": "order_seq",
+          "name": "orderSeq",
           "type": "u64"
         }
       ]
     },
     {
-      "name": "book_grow",
+      "name": "bookGrow",
       "docs": [
         "Extend the book toward `wanted_capacity`, one realloc step per call."
       ],
@@ -378,7 +384,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -401,7 +407,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -412,19 +418,19 @@
           "signer": true
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "wanted_capacity",
+          "name": "wantedCapacity",
           "type": "u16"
         }
       ]
     },
     {
-      "name": "book_init",
+      "name": "bookInit",
       "docs": [
         "Create the per-market book. See `book_init`."
       ],
@@ -459,7 +465,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -482,7 +488,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -493,19 +499,19 @@
           "signer": true
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "initial_capacity",
+          "name": "initialCapacity",
           "type": "u16"
         }
       ]
     },
     {
-      "name": "book_place",
+      "name": "bookPlace",
       "docs": [
         "Place an order on the book. See `book_place` module docs."
       ],
@@ -540,7 +546,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -563,13 +569,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "vault_authority",
+          "name": "vaultAuthority",
           "pda": {
             "seeds": [
               {
@@ -585,21 +591,21 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "vault_book",
+          "name": "vaultBook",
           "writable": true
         },
         {
-          "name": "taker_usdc_ata",
+          "name": "takerUsdcAta",
           "writable": true
         },
         {
-          "name": "fee_pool_book",
+          "name": "feePoolBook",
           "writable": true,
           "pda": {
             "seeds": [
@@ -624,13 +630,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "protocol_config",
+          "name": "protocolConfig",
           "pda": {
             "seeds": [
               {
@@ -661,11 +667,11 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "event_authority",
+          "name": "eventAuthority",
           "pda": {
             "seeds": [
               {
@@ -703,7 +709,7 @@
           "type": "u8"
         },
         {
-          "name": "limit_tick",
+          "name": "limitTick",
           "type": "u16"
         },
         {
@@ -711,17 +717,17 @@
           "type": "u64"
         },
         {
-          "name": "match_limit",
+          "name": "matchLimit",
           "type": "u32"
         },
         {
-          "name": "post_remainder",
+          "name": "postRemainder",
           "type": "bool"
         }
       ]
     },
     {
-      "name": "book_withdraw",
+      "name": "bookWithdraw",
       "docs": [
         "Move accumulated seat credit into the caller's wallet."
       ],
@@ -753,7 +759,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -776,13 +782,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "vault_authority",
+          "name": "vaultAuthority",
           "pda": {
             "seeds": [
               {
@@ -798,17 +804,17 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "vault_book",
+          "name": "vaultBook",
           "writable": true
         },
         {
-          "name": "user_usdc_ata",
+          "name": "userUsdcAta",
           "writable": true
         },
         {
@@ -816,14 +822,14 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": []
     },
     {
-      "name": "claim_refund",
+      "name": "claimRefund",
       "discriminator": [
         15,
         16,
@@ -858,13 +864,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "docs": [
             "AMM state for this market. Must be dismissed.",
             "",
@@ -885,13 +891,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "vault_authority",
+          "name": "vaultAuthority",
           "docs": [
             "Vault authority signer-only PDA."
           ],
@@ -910,17 +916,17 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "market_vault",
+          "name": "marketVault",
           "writable": true
         },
         {
-          "name": "user_amm_ata",
+          "name": "userAmmAta",
           "writable": true
         },
         {
@@ -931,18 +937,18 @@
           "writable": true
         },
         {
-          "name": "amm_mint",
+          "name": "ammMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": []
     },
     {
-      "name": "claim_unlocked",
+      "name": "claimUnlocked",
       "discriminator": [
         70,
         139,
@@ -972,13 +978,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           },
           "relations": [
             "position",
-            "lock_entry"
+            "lockEntry"
           ]
         },
         {
@@ -996,7 +1002,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               },
               {
                 "kind": "account",
@@ -1006,7 +1012,7 @@
           }
         },
         {
-          "name": "lock_entry",
+          "name": "lockEntry",
           "docs": [
             "Lock entry to drain + close. Anchor's `close = user` refunds the",
             "rent lamports to `user` and zeroes the discriminator on success."
@@ -1036,13 +1042,13 @@
               {
                 "kind": "account",
                 "path": "lock_entry.nonce",
-                "account": "LockEntry"
+                "account": "lockEntry"
               }
             ]
           }
         },
         {
-          "name": "lock_authority",
+          "name": "lockAuthority",
           "pda": {
             "seeds": [
               {
@@ -1057,21 +1063,21 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lock_vault",
+          "name": "lockVault",
           "writable": true
         },
         {
-          "name": "user_amm_ata",
+          "name": "userAmmAta",
           "writable": true
         },
         {
-          "name": "amm_mint",
+          "name": "ammMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
@@ -1080,18 +1086,18 @@
           "signer": true,
           "relations": [
             "position",
-            "lock_entry"
+            "lockEntry"
           ]
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": []
     },
     {
-      "name": "close_market",
+      "name": "closeMarket",
       "discriminator": [
         88,
         154,
@@ -1126,13 +1132,13 @@
               },
               {
                 "kind": "arg",
-                "path": "market_id"
+                "path": "marketId"
               }
             ]
           }
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1146,7 +1152,7 @@
               },
               {
                 "kind": "arg",
-                "path": "market_id"
+                "path": "marketId"
               }
             ]
           }
@@ -1175,25 +1181,25 @@
               },
               {
                 "kind": "arg",
-                "path": "market_id"
+                "path": "marketId"
               }
             ]
           }
         },
         {
-          "name": "vault_book",
+          "name": "vaultBook",
           "writable": true
         },
         {
-          "name": "vault_amm",
+          "name": "vaultAmm",
           "writable": true
         },
         {
-          "name": "lock_vault",
+          "name": "lockVault",
           "writable": true
         },
         {
-          "name": "fee_pool_amm",
+          "name": "feePoolAmm",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1216,13 +1222,13 @@
               },
               {
                 "kind": "arg",
-                "path": "market_id"
+                "path": "marketId"
               }
             ]
           }
         },
         {
-          "name": "fee_pool_book",
+          "name": "feePoolBook",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1246,13 +1252,13 @@
               },
               {
                 "kind": "arg",
-                "path": "market_id"
+                "path": "marketId"
               }
             ]
           }
         },
         {
-          "name": "lp_yield_amm",
+          "name": "lpYieldAmm",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1275,13 +1281,13 @@
               },
               {
                 "kind": "arg",
-                "path": "market_id"
+                "path": "marketId"
               }
             ]
           }
         },
         {
-          "name": "lp_yield_book",
+          "name": "lpYieldBook",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1305,13 +1311,13 @@
               },
               {
                 "kind": "arg",
-                "path": "market_id"
+                "path": "marketId"
               }
             ]
           }
         },
         {
-          "name": "vault_authority",
+          "name": "vaultAuthority",
           "pda": {
             "seeds": [
               {
@@ -1326,13 +1332,13 @@
               },
               {
                 "kind": "arg",
-                "path": "market_id"
+                "path": "marketId"
               }
             ]
           }
         },
         {
-          "name": "lock_authority",
+          "name": "lockAuthority",
           "pda": {
             "seeds": [
               {
@@ -1346,13 +1352,13 @@
               },
               {
                 "kind": "arg",
-                "path": "market_id"
+                "path": "marketId"
               }
             ]
           }
         },
         {
-          "name": "fee_pool_authority",
+          "name": "feePoolAuthority",
           "pda": {
             "seeds": [
               {
@@ -1382,7 +1388,7 @@
           }
         },
         {
-          "name": "lp_yield_authority",
+          "name": "lpYieldAuthority",
           "pda": {
             "seeds": [
               {
@@ -1421,13 +1427,13 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": [
         {
-          "name": "market_id",
+          "name": "marketId",
           "type": {
             "array": [
               "u8",
@@ -1438,7 +1444,7 @@
       ]
     },
     {
-      "name": "create_market",
+      "name": "createMarket",
       "discriminator": [
         103,
         226,
@@ -1504,7 +1510,7 @@
           }
         },
         {
-          "name": "vault_authority",
+          "name": "vaultAuthority",
           "pda": {
             "seeds": [
               {
@@ -1525,7 +1531,7 @@
           }
         },
         {
-          "name": "lock_authority",
+          "name": "lockAuthority",
           "pda": {
             "seeds": [
               {
@@ -1545,19 +1551,19 @@
           }
         },
         {
-          "name": "book_mint",
+          "name": "bookMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "amm_mint",
+          "name": "ammMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "vault_book",
+          "name": "vaultBook",
           "writable": true
         },
         {
-          "name": "vault_amm",
+          "name": "vaultAmm",
           "docs": [
             "`vault_authority`; created and initialized in the handler, which",
             "re-derives the address before signing.",
@@ -1572,11 +1578,11 @@
           "writable": true
         },
         {
-          "name": "lock_vault",
+          "name": "lockVault",
           "writable": true
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1601,15 +1607,15 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "associated_token_program",
+          "name": "associatedTokenProgram",
           "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         },
         {
@@ -1622,14 +1628,14 @@
           "name": "args",
           "type": {
             "defined": {
-              "name": "CreateMarketArgs"
+              "name": "createMarketArgs"
             }
           }
         }
       ]
     },
     {
-      "name": "dismiss_market",
+      "name": "dismissMarket",
       "discriminator": [
         138,
         225,
@@ -1660,13 +1666,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1681,7 +1687,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -1707,7 +1713,7 @@
       ],
       "accounts": [
         {
-          "name": "adjudicator_entry",
+          "name": "adjudicatorEntry",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1755,13 +1761,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "protocol_config",
+          "name": "protocolConfig",
           "pda": {
             "seeds": [
               {
@@ -1794,13 +1800,13 @@
       ],
       "args": [
         {
-          "name": "new_outcome",
+          "name": "newOutcome",
           "type": "u8"
         }
       ]
     },
     {
-      "name": "distribute_fees_amm",
+      "name": "distributeFeesAmm",
       "discriminator": [
         109,
         158,
@@ -1857,13 +1863,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "fee_pool_authority",
+          "name": "feePoolAuthority",
           "docs": [
             "account."
           ],
@@ -1896,11 +1902,11 @@
           }
         },
         {
-          "name": "venue_mint",
+          "name": "venueMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "fee_pool",
+          "name": "feePool",
           "writable": true,
           "pda": {
             "seeds": [
@@ -1924,13 +1930,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "b_base_yield_vault",
+          "name": "bBaseYieldVault",
           "docs": [
             "The venue's own collateral vault: the `b_base` share stays with the",
             "market rather than leaving it.",
@@ -1944,7 +1950,7 @@
           "writable": true
         },
         {
-          "name": "lp_yield_authority",
+          "name": "lpYieldAuthority",
           "pda": {
             "seeds": [
               {
@@ -1974,7 +1980,7 @@
           }
         },
         {
-          "name": "lp_mint",
+          "name": "lpMint",
           "docs": [
             "The market's LP mint — read for its SUPPLY. Yield paid into the vault",
             "after the last LP has burned is unclaimable forever (`redeem_lp` needs",
@@ -1999,13 +2005,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_yield_vault",
+          "name": "lpYieldVault",
           "docs": [
             "THIS market's AMM-side yield vault — the same account `redeem_lp`",
             "pays LP holders from, so the share lands where the claim path expects",
@@ -2035,13 +2041,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "adjudicator_fee_vault",
+          "name": "adjudicatorFeeVault",
           "docs": [
             "The market's own adjudicator, from `Market`. Not a caller-supplied",
             "address."
@@ -2049,7 +2055,7 @@
           "writable": true
         },
         {
-          "name": "protocol_treasury_vault",
+          "name": "protocolTreasuryVault",
           "docs": [
             "`config.treasury` is the treasury's OWNER, not one token account.",
             "",
@@ -2068,14 +2074,14 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": []
     },
     {
-      "name": "distribute_fees_book",
+      "name": "distributeFeesBook",
       "discriminator": [
         84,
         180,
@@ -2132,13 +2138,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "fee_pool_authority",
+          "name": "feePoolAuthority",
           "docs": [
             "account."
           ],
@@ -2171,11 +2177,11 @@
           }
         },
         {
-          "name": "venue_mint",
+          "name": "venueMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "fee_pool",
+          "name": "feePool",
           "writable": true,
           "pda": {
             "seeds": [
@@ -2200,13 +2206,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_yield_authority",
+          "name": "lpYieldAuthority",
           "pda": {
             "seeds": [
               {
@@ -2236,7 +2242,7 @@
           }
         },
         {
-          "name": "lp_mint",
+          "name": "lpMint",
           "docs": [
             "The market's LP mint — read for its SUPPLY. Yield paid into the vault",
             "after the last LP has burned is unclaimable forever (`redeem_lp` needs",
@@ -2261,13 +2267,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_yield_vault",
+          "name": "lpYieldVault",
           "docs": [
             "THIS market's book-side yield vault, in the BOOK's token. `redeem_lp`",
             "pays from both venues' vaults in one burn, so this balance has a",
@@ -2298,20 +2304,20 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "adjudicator_fee_vault",
+          "name": "adjudicatorFeeVault",
           "docs": [
             "The market's own adjudicator, from `Market`."
           ],
           "writable": true
         },
         {
-          "name": "protocol_treasury_vault",
+          "name": "protocolTreasuryVault",
           "docs": [
             "The treasury's OWNER — see the AMM's counterpart. `address =` here",
             "would make this venue and the AMM's mutually exclusive."
@@ -2323,14 +2329,14 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": []
     },
     {
-      "name": "force_invalid_attestation",
+      "name": "forceInvalidAttestation",
       "docs": [
         "Write `INVALID` onto a market whose adjudicator never attested, once",
         "`settle::ABANDONED_MARKET_TIMEOUT_SECS` has passed since its deadline.",
@@ -2372,13 +2378,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "adjudicator_entry",
+          "name": "adjudicatorEntry",
           "docs": [
             "account, in which case the handler creates it. When it does exist the",
             "handler verifies the owner, the discriminator, the stored `market` and",
@@ -2422,14 +2428,14 @@
           "signer": true
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
     },
     {
-      "name": "init_market_fee_pool",
+      "name": "initMarketFeePool",
       "discriminator": [
         51,
         19,
@@ -2459,13 +2465,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "fee_pool_authority",
+          "name": "feePoolAuthority",
           "pda": {
             "seeds": [
               {
@@ -2495,15 +2501,15 @@
           }
         },
         {
-          "name": "book_mint",
+          "name": "bookMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "amm_mint",
+          "name": "ammMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "fee_pool_book",
+          "name": "feePoolBook",
           "writable": true,
           "pda": {
             "seeds": [
@@ -2528,13 +2534,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "fee_pool_amm",
+          "name": "feePoolAmm",
           "writable": true,
           "pda": {
             "seeds": [
@@ -2558,13 +2564,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_yield_authority",
+          "name": "lpYieldAuthority",
           "pda": {
             "seeds": [
               {
@@ -2594,7 +2600,7 @@
           }
         },
         {
-          "name": "lp_yield_amm",
+          "name": "lpYieldAmm",
           "writable": true,
           "pda": {
             "seeds": [
@@ -2618,13 +2624,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_yield_book",
+          "name": "lpYieldBook",
           "writable": true,
           "pda": {
             "seeds": [
@@ -2649,7 +2655,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -2660,11 +2666,11 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         },
         {
@@ -2675,7 +2681,7 @@
       "args": []
     },
     {
-      "name": "initialize_protocol",
+      "name": "initializeProtocol",
       "discriminator": [
         188,
         233,
@@ -2721,7 +2727,7 @@
           "signer": true
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -2730,14 +2736,14 @@
           "name": "args",
           "type": {
             "defined": {
-              "name": "InitializeProtocolArgs"
+              "name": "initializeProtocolArgs"
             }
           }
         }
       ]
     },
     {
-      "name": "lock_for_resolution",
+      "name": "lockForResolution",
       "discriminator": [
         218,
         72,
@@ -2768,13 +2774,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "adjudicator_entry",
+          "name": "adjudicatorEntry",
           "docs": [
             "Per-market adjudicator record. Bound to `market` via seed derivation."
           ],
@@ -2862,7 +2868,7 @@
       "args": []
     },
     {
-      "name": "publish_resolution_commitment",
+      "name": "publishResolutionCommitment",
       "docs": [
         "Commit to a T\\* voiding computation for a market. Adjudicator-signed,",
         "accepted only inside the veto window. See `publish_resolution`."
@@ -2879,7 +2885,7 @@
       ],
       "accounts": [
         {
-          "name": "resolution_commitment",
+          "name": "resolutionCommitment",
           "docs": [
             "One per market, created once. `init` (not `init_if_needed`) is the",
             "one-shot guard."
@@ -2930,13 +2936,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "adjudicator_entry",
+          "name": "adjudicatorEntry",
           "docs": [
             "Supplies the attestation timestamp the veto window is measured from,",
             "and the authority allowed to publish."
@@ -2967,7 +2973,7 @@
           }
         },
         {
-          "name": "protocol_config",
+          "name": "protocolConfig",
           "pda": {
             "seeds": [
               {
@@ -2994,7 +3000,7 @@
           }
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "docs": [
             "Read-only. Supplies the outstanding share ledger the solvency bound",
             "below is computed against."
@@ -3012,13 +3018,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "vault_amm",
+          "name": "vaultAmm",
           "docs": [
             "The cash the AMM's claims are payable from. Read-only — publication",
             "moves no money; it only refuses to promise more than this holds."
@@ -3045,13 +3051,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "vault_book"
+          "name": "vaultBook"
         },
         {
           "name": "authority",
@@ -3059,7 +3065,7 @@
           "signer": true
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -3068,14 +3074,14 @@
           "name": "args",
           "type": {
             "defined": {
-              "name": "PublishResolutionCommitmentArgs"
+              "name": "publishResolutionCommitmentArgs"
             }
           }
         }
       ]
     },
     {
-      "name": "reclaim_subsidy",
+      "name": "reclaimSubsidy",
       "docs": [
         "Return the unspent LMSR subsidy to the creator after settlement.",
         "See `reclaim_subsidy`."
@@ -3109,17 +3115,17 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           },
           "relations": [
-            "amm_state",
-            "lp_position"
+            "ammState",
+            "lpPosition"
           ]
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "pda": {
             "seeds": [
               {
@@ -3133,13 +3139,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_position",
+          "name": "lpPosition",
           "writable": true,
           "pda": {
             "seeds": [
@@ -3162,7 +3168,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               },
               {
                 "kind": "account",
@@ -3172,7 +3178,7 @@
           }
         },
         {
-          "name": "vault_authority",
+          "name": "vaultAuthority",
           "pda": {
             "seeds": [
               {
@@ -3188,13 +3194,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "vault_amm",
+          "name": "vaultAmm",
           "docs": [
             "The AMM vault, and only the AMM vault.",
             "",
@@ -3206,7 +3212,7 @@
           "writable": true
         },
         {
-          "name": "creator_amm_ata",
+          "name": "creatorAmmAta",
           "writable": true
         },
         {
@@ -3214,18 +3220,18 @@
           "writable": true,
           "signer": true,
           "relations": [
-            "lp_position"
+            "lpPosition"
           ]
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": []
     },
     {
-      "name": "redeem_amm_position",
+      "name": "redeemAmmPosition",
       "docs": [
         "Pay out a settled AMM position.",
         "",
@@ -3262,7 +3268,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           },
@@ -3271,7 +3277,7 @@
           ]
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "docs": [
             "Decremented as shares are redeemed, so `q_<side> - seed_q_<side>`",
             "always equals the winning shares still unclaimed. `sweep_residual`",
@@ -3293,13 +3299,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "vault_authority",
+          "name": "vaultAuthority",
           "pda": {
             "seeds": [
               {
@@ -3315,7 +3321,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -3339,7 +3345,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               },
               {
                 "kind": "account",
@@ -3353,11 +3359,11 @@
           "writable": true
         },
         {
-          "name": "user_amm_ata",
+          "name": "userAmmAta",
           "writable": true
         },
         {
-          "name": "resolution_commitment",
+          "name": "resolutionCommitment",
           "docs": [
             "`Account<'_, ResolutionCommitment>` would fail every ordinary market's",
             "redemption. The seeds pin the address, so an empty account here is",
@@ -3398,17 +3404,17 @@
           ]
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": [
         {
-          "name": "voided_claim",
+          "name": "voidedClaim",
           "type": {
             "option": {
               "defined": {
-                "name": "VoidedClaimArgs"
+                "name": "voidedClaimArgs"
               }
             }
           }
@@ -3416,7 +3422,7 @@
       ]
     },
     {
-      "name": "redeem_book_seat",
+      "name": "redeemBookSeat",
       "docs": [
         "Pay out a winning book seat position after settlement. See",
         "`redeem_book_seat`."
@@ -3452,7 +3458,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -3475,13 +3481,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "vault_authority",
+          "name": "vaultAuthority",
           "pda": {
             "seeds": [
               {
@@ -3497,21 +3503,21 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "vault_book",
+          "name": "vaultBook",
           "writable": true
         },
         {
-          "name": "user_usdc_ata",
+          "name": "userUsdcAta",
           "writable": true
         },
         {
-          "name": "resolution_commitment",
+          "name": "resolutionCommitment",
           "docs": [
             "`Account<'_, ResolutionCommitment>` would fail every ordinary market's",
             "redemption. The seeds pin the address, so an empty account here is",
@@ -3549,17 +3555,17 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": [
         {
-          "name": "voided_claim",
+          "name": "voidedClaim",
           "type": {
             "option": {
               "defined": {
-                "name": "VoidedBookClaimArgs"
+                "name": "voidedBookClaimArgs"
               }
             }
           }
@@ -3567,7 +3573,7 @@
       ]
     },
     {
-      "name": "redeem_lp",
+      "name": "redeemLp",
       "discriminator": [
         12,
         99,
@@ -3597,13 +3603,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "pda": {
             "seeds": [
               {
@@ -3617,13 +3623,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_mint",
+          "name": "lpMint",
           "writable": true,
           "pda": {
             "seeds": [
@@ -3637,13 +3643,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "user_lp_ata",
+          "name": "userLpAta",
           "writable": true,
           "pda": {
             "seeds": [
@@ -3690,7 +3696,7 @@
               },
               {
                 "kind": "account",
-                "path": "lp_mint"
+                "path": "lpMint"
               }
             ],
             "program": {
@@ -3733,7 +3739,7 @@
           }
         },
         {
-          "name": "lp_yield_amm",
+          "name": "lpYieldAmm",
           "docs": [
             "THIS market's AMM-side yield vault."
           ],
@@ -3760,13 +3766,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_yield_book",
+          "name": "lpYieldBook",
           "docs": [
             "THIS market's book-side yield vault, in the book's token."
           ],
@@ -3794,13 +3800,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_yield_authority",
+          "name": "lpYieldAuthority",
           "pda": {
             "seeds": [
               {
@@ -3830,11 +3836,11 @@
           }
         },
         {
-          "name": "user_amm_ata",
+          "name": "userAmmAta",
           "writable": true
         },
         {
-          "name": "user_book_ata",
+          "name": "userBookAta",
           "writable": true
         },
         {
@@ -3842,19 +3848,19 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": [
         {
-          "name": "lp_amount",
+          "name": "lpAmount",
           "type": "u64"
         }
       ]
     },
     {
-      "name": "register_adjudicator",
+      "name": "registerAdjudicator",
       "discriminator": [
         112,
         204,
@@ -3867,7 +3873,7 @@
       ],
       "accounts": [
         {
-          "name": "adjudicator_entry",
+          "name": "adjudicatorEntry",
           "docs": [
             "New per-market `AdjudicatorEntry` PDA."
           ],
@@ -3915,13 +3921,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "protocol_config",
+          "name": "protocolConfig",
           "pda": {
             "seeds": [
               {
@@ -3953,7 +3959,7 @@
           "signer": true
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -3965,7 +3971,7 @@
       ]
     },
     {
-      "name": "register_zk_adjudicator",
+      "name": "registerZkAdjudicator",
       "docs": [
         "Register a per-market adjudicator that resolves from a Primus zkTLS",
         "attestation rather than a human signature. Separate from",
@@ -3984,7 +3990,7 @@
       ],
       "accounts": [
         {
-          "name": "adjudicator_entry",
+          "name": "adjudicatorEntry",
           "writable": true,
           "pda": {
             "seeds": [
@@ -4029,13 +4035,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "protocol_config",
+          "name": "protocolConfig",
           "pda": {
             "seeds": [
               {
@@ -4067,7 +4073,7 @@
           "signer": true
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
       ],
@@ -4076,14 +4082,14 @@
           "name": "args",
           "type": {
             "defined": {
-              "name": "RegisterZkAdjudicatorArgs"
+              "name": "registerZkAdjudicatorArgs"
             }
           }
         }
       ]
     },
     {
-      "name": "request_lock",
+      "name": "requestLock",
       "discriminator": [
         184,
         126,
@@ -4096,7 +4102,7 @@
       ],
       "accounts": [
         {
-          "name": "adjudicator_entry",
+          "name": "adjudicatorEntry",
           "docs": [
             "the account list so callers built against the old IDL still work.",
             "",
@@ -4157,7 +4163,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -4175,7 +4181,7 @@
       "args": []
     },
     {
-      "name": "revoke_resolution_commitment",
+      "name": "revokeResolutionCommitment",
       "docs": [
         "Withdraw a published commitment inside the veto window, restoring the",
         "market's ordinary payout. The dispute authority's veto over the",
@@ -4193,7 +4199,7 @@
       ],
       "accounts": [
         {
-          "name": "resolution_commitment",
+          "name": "resolutionCommitment",
           "docs": [
             "Closed, with the rent returned to whoever paid it. Closing is the",
             "whole point: `redeem_amm_position` reads an absent account as \"no",
@@ -4243,13 +4249,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "adjudicator_entry",
+          "name": "adjudicatorEntry",
           "pda": {
             "seeds": [
               {
@@ -4276,7 +4282,7 @@
           }
         },
         {
-          "name": "protocol_config",
+          "name": "protocolConfig",
           "pda": {
             "seeds": [
               {
@@ -4311,14 +4317,14 @@
           "writable": true
         },
         {
-          "name": "dispute_authority",
+          "name": "disputeAuthority",
           "signer": true
         }
       ],
       "args": []
     },
     {
-      "name": "seed_lp",
+      "name": "seedLp",
       "discriminator": [
         94,
         237,
@@ -4375,13 +4381,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "docs": [
             "`mut` for exactly one write: `is_seeded`, which opens the trading",
             "paths. Nothing else in this instruction touches `AmmState`."
@@ -4400,13 +4406,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_mint",
+          "name": "lpMint",
           "writable": true,
           "pda": {
             "seeds": [
@@ -4420,13 +4426,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_mint_authority",
+          "name": "lpMintAuthority",
           "pda": {
             "seeds": [
               {
@@ -4454,17 +4460,17 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "creator_lp_ata",
+          "name": "creatorLpAta",
           "writable": true
         },
         {
-          "name": "lp_position",
+          "name": "lpPosition",
           "writable": true,
           "pda": {
             "seeds": [
@@ -4487,7 +4493,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               },
               {
                 "kind": "account",
@@ -4497,15 +4503,15 @@
           }
         },
         {
-          "name": "market_vault",
+          "name": "marketVault",
           "writable": true
         },
         {
-          "name": "creator_amm_ata",
+          "name": "creatorAmmAta",
           "writable": true
         },
         {
-          "name": "amm_mint",
+          "name": "ammMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
@@ -4517,15 +4523,15 @@
           ]
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "associated_token_program",
+          "name": "associatedTokenProgram",
           "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         },
         {
@@ -4538,14 +4544,14 @@
           "name": "args",
           "type": {
             "defined": {
-              "name": "SeedLpArgs"
+              "name": "seedLpArgs"
             }
           }
         }
       ]
     },
     {
-      "name": "sell_positions",
+      "name": "sellPositions",
       "discriminator": [
         3,
         151,
@@ -4581,7 +4587,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           },
@@ -4590,7 +4596,7 @@
           ]
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "writable": true,
           "pda": {
             "seeds": [
@@ -4605,7 +4611,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -4630,7 +4636,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               },
               {
                 "kind": "account",
@@ -4640,7 +4646,7 @@
           }
         },
         {
-          "name": "vault_authority",
+          "name": "vaultAuthority",
           "pda": {
             "seeds": [
               {
@@ -4656,13 +4662,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lock_authority",
+          "name": "lockAuthority",
           "pda": {
             "seeds": [
               {
@@ -4677,21 +4683,21 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "market_vault",
+          "name": "marketVault",
           "writable": true
         },
         {
-          "name": "lock_vault",
+          "name": "lockVault",
           "writable": true
         },
         {
-          "name": "lock_entry",
+          "name": "lockEntry",
           "docs": [
             "New `LockEntry` PDA. Seeds `[b\"lock_entry\", position.key(), lock_nonce.to_le_bytes()]`.",
             "The `lock_nonce` instruction parameter must equal `position.lock_nonce`."
@@ -4720,17 +4726,17 @@
               },
               {
                 "kind": "arg",
-                "path": "lock_nonce"
+                "path": "lockNonce"
               }
             ]
           }
         },
         {
-          "name": "amm_mint",
+          "name": "ammMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "protocol_config",
+          "name": "protocolConfig",
           "pda": {
             "seeds": [
               {
@@ -4757,7 +4763,7 @@
           }
         },
         {
-          "name": "fee_pool_amm",
+          "name": "feePoolAmm",
           "writable": true,
           "pda": {
             "seeds": [
@@ -4781,7 +4787,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -4795,11 +4801,11 @@
           ]
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
@@ -4813,15 +4819,15 @@
           "type": "u8"
         },
         {
-          "name": "delta_shares",
+          "name": "deltaShares",
           "type": "i128"
         },
         {
-          "name": "min_proceeds_wad",
+          "name": "minProceedsWad",
           "type": "u128"
         },
         {
-          "name": "lock_nonce",
+          "name": "lockNonce",
           "type": "u64"
         }
       ]
@@ -4862,13 +4868,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "adjudicator_entry",
+          "name": "adjudicatorEntry",
           "docs": [
             "Per-market adjudicator record; supplies the attested outcome and",
             "timestamp."
@@ -4899,7 +4905,7 @@
           }
         },
         {
-          "name": "protocol_config",
+          "name": "protocolConfig",
           "pda": {
             "seeds": [
               {
@@ -4937,7 +4943,7 @@
       "args": []
     },
     {
-      "name": "sweep_lp_yield",
+      "name": "sweepLpYield",
       "docs": [
         "Recover an LP-yield balance that no LP token can claim, so the market",
         "can still reach the all-zero balances `close_market` requires.",
@@ -4999,13 +5005,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "docs": [
             "Read for `is_graduated` / `is_dismissed` — half the gate that proves",
             "LP minting has stopped."
@@ -5023,13 +5029,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_mint",
+          "name": "lpMint",
           "docs": [
             "Read for its SUPPLY, which must be zero. Bound by seeds: an unbound",
             "mint would let a caller present any zero-supply mint and drain the",
@@ -5047,13 +5053,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_yield_authority",
+          "name": "lpYieldAuthority",
           "pda": {
             "seeds": [
               {
@@ -5083,15 +5089,15 @@
           }
         },
         {
-          "name": "amm_mint",
+          "name": "ammMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "book_mint",
+          "name": "bookMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "lp_yield_amm",
+          "name": "lpYieldAmm",
           "writable": true,
           "pda": {
             "seeds": [
@@ -5115,13 +5121,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_yield_book",
+          "name": "lpYieldBook",
           "writable": true,
           "pda": {
             "seeds": [
@@ -5146,13 +5152,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "treasury_amm_vault",
+          "name": "treasuryAmmVault",
           "docs": [
             "Treasury account for the AMM's token — owner pinned by config, the",
             "same binding `distribute_fees` uses. The cranker chooses nothing."
@@ -5160,7 +5166,7 @@
           "writable": true
         },
         {
-          "name": "treasury_book_vault",
+          "name": "treasuryBookVault",
           "docs": [
             "Treasury account for the book's token. Two accounts because one SPL",
             "account holds one mint, and the venues are denominated differently."
@@ -5172,14 +5178,14 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": []
     },
     {
-      "name": "sweep_residual",
+      "name": "sweepResidual",
       "discriminator": [
         230,
         118,
@@ -5236,13 +5242,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "pda": {
             "seeds": [
               {
@@ -5256,13 +5262,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "vault_authority",
+          "name": "vaultAuthority",
           "pda": {
             "seeds": [
               {
@@ -5278,21 +5284,21 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "venue_mint",
+          "name": "venueMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "vault_amm",
+          "name": "vaultAmm",
           "writable": true
         },
         {
-          "name": "lp_position",
+          "name": "lpPosition",
           "docs": [
             "The creator's subsidy ledger. Read-only here: the sweep must LEAVE the",
             "unreclaimed portion of the subsidy in the vault, because a",
@@ -5337,18 +5343,18 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               },
               {
                 "kind": "account",
                 "path": "market.creator",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "protocol_treasury_vault",
+          "name": "protocolTreasuryVault",
           "docs": [
             "The treasury's account for the AMM's token — owner pinned by config,",
             "exactly as in `distribute_fees`. The cranker chooses nothing."
@@ -5364,14 +5370,14 @@
           "signer": true
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": []
     },
     {
-      "name": "trade_positions",
+      "name": "tradePositions",
       "discriminator": [
         14,
         33,
@@ -5406,13 +5412,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "amm_state",
+          "name": "ammState",
           "writable": true,
           "pda": {
             "seeds": [
@@ -5427,7 +5433,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
@@ -5448,7 +5454,7 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               },
               {
                 "kind": "account",
@@ -5458,7 +5464,7 @@
           }
         },
         {
-          "name": "vault_authority",
+          "name": "vaultAuthority",
           "pda": {
             "seeds": [
               {
@@ -5474,25 +5480,25 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "user_amm_ata",
+          "name": "userAmmAta",
           "writable": true
         },
         {
-          "name": "market_vault",
+          "name": "marketVault",
           "writable": true
         },
         {
-          "name": "amm_mint",
+          "name": "ammMint",
           "address": "ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX"
         },
         {
-          "name": "protocol_config",
+          "name": "protocolConfig",
           "pda": {
             "seeds": [
               {
@@ -5519,7 +5525,7 @@
           }
         },
         {
-          "name": "fee_pool_amm",
+          "name": "feePoolAmm",
           "writable": true,
           "pda": {
             "seeds": [
@@ -5543,13 +5549,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_mint",
+          "name": "lpMint",
           "writable": true,
           "pda": {
             "seeds": [
@@ -5563,13 +5569,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "lp_mint_authority",
+          "name": "lpMintAuthority",
           "pda": {
             "seeds": [
               {
@@ -5597,13 +5603,13 @@
               {
                 "kind": "account",
                 "path": "market.market_id",
-                "account": "Market"
+                "account": "market"
               }
             ]
           }
         },
         {
-          "name": "user_lp_ata",
+          "name": "userLpAta",
           "writable": true
         },
         {
@@ -5612,11 +5618,11 @@
           "signer": true
         },
         {
-          "name": "system_program",
+          "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         },
         {
-          "name": "token_program",
+          "name": "tokenProgram",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
@@ -5630,17 +5636,17 @@
           "type": "u8"
         },
         {
-          "name": "delta_shares",
+          "name": "deltaShares",
           "type": "i128"
         },
         {
-          "name": "max_cost_wad",
+          "name": "maxCostWad",
           "type": "u128"
         }
       ]
     },
     {
-      "name": "transfer_authority",
+      "name": "transferAuthority",
       "docs": [
         "Nominate a new protocol authority. Nothing moves until the nominee",
         "signs `accept_authority`; passing the default pubkey withdraws a",
@@ -5692,7 +5698,7 @@
       ],
       "args": [
         {
-          "name": "new_authority",
+          "name": "newAuthority",
           "type": "pubkey"
         }
       ]
@@ -5746,7 +5752,7 @@
       "args": []
     },
     {
-      "name": "update_protocol_config",
+      "name": "updateProtocolConfig",
       "docs": [
         "Update the live `ProtocolConfig`. Authority-gated, sparse — `None`",
         "leaves a field alone. `authority`, `pending_authority` and `paused`",
@@ -5801,7 +5807,7 @@
           "name": "args",
           "type": {
             "defined": {
-              "name": "UpdateProtocolConfigArgs"
+              "name": "updateProtocolConfigArgs"
             }
           }
         }
@@ -5810,7 +5816,7 @@
   ],
   "accounts": [
     {
-      "name": "AdjudicatorEntry",
+      "name": "adjudicatorEntry",
       "discriminator": [
         250,
         169,
@@ -5823,7 +5829,7 @@
       ]
     },
     {
-      "name": "AmmState",
+      "name": "ammState",
       "discriminator": [
         66,
         127,
@@ -5836,7 +5842,7 @@
       ]
     },
     {
-      "name": "LockEntry",
+      "name": "lockEntry",
       "discriminator": [
         16,
         231,
@@ -5849,7 +5855,7 @@
       ]
     },
     {
-      "name": "LpPosition",
+      "name": "lpPosition",
       "discriminator": [
         105,
         241,
@@ -5862,7 +5868,7 @@
       ]
     },
     {
-      "name": "Market",
+      "name": "market",
       "discriminator": [
         219,
         190,
@@ -5875,7 +5881,7 @@
       ]
     },
     {
-      "name": "Position",
+      "name": "position",
       "discriminator": [
         170,
         188,
@@ -5888,7 +5894,7 @@
       ]
     },
     {
-      "name": "ProtocolConfig",
+      "name": "protocolConfig",
       "discriminator": [
         207,
         91,
@@ -5901,7 +5907,7 @@
       ]
     },
     {
-      "name": "ResolutionCommitment",
+      "name": "resolutionCommitment",
       "discriminator": [
         132,
         101,
@@ -5916,7 +5922,7 @@
   ],
   "events": [
     {
-      "name": "AdjudicatorEntryForceCreated",
+      "name": "adjudicatorEntryForceCreated",
       "discriminator": [
         255,
         150,
@@ -5929,7 +5935,7 @@
       ]
     },
     {
-      "name": "AdjudicatorRegistered",
+      "name": "adjudicatorRegistered",
       "discriminator": [
         55,
         141,
@@ -5942,7 +5948,7 @@
       ]
     },
     {
-      "name": "AuthorityTransferAccepted",
+      "name": "authorityTransferAccepted",
       "discriminator": [
         149,
         165,
@@ -5955,7 +5961,7 @@
       ]
     },
     {
-      "name": "AuthorityTransferStarted",
+      "name": "authorityTransferStarted",
       "discriminator": [
         226,
         104,
@@ -5968,7 +5974,7 @@
       ]
     },
     {
-      "name": "BookFilled",
+      "name": "bookFilled",
       "discriminator": [
         134,
         27,
@@ -5981,7 +5987,7 @@
       ]
     },
     {
-      "name": "BookOrderCancelled",
+      "name": "bookOrderCancelled",
       "discriminator": [
         30,
         121,
@@ -5994,7 +6000,7 @@
       ]
     },
     {
-      "name": "BookOrderPlaced",
+      "name": "bookOrderPlaced",
       "discriminator": [
         249,
         106,
@@ -6007,7 +6013,7 @@
       ]
     },
     {
-      "name": "DisputeRaised",
+      "name": "disputeRaised",
       "discriminator": [
         246,
         167,
@@ -6020,7 +6026,7 @@
       ]
     },
     {
-      "name": "InvalidAttestationForced",
+      "name": "invalidAttestationForced",
       "discriminator": [
         242,
         35,
@@ -6033,7 +6039,7 @@
       ]
     },
     {
-      "name": "LockClaimed",
+      "name": "lockClaimed",
       "discriminator": [
         226,
         164,
@@ -6046,7 +6052,7 @@
       ]
     },
     {
-      "name": "LpRedeemed",
+      "name": "lpRedeemed",
       "discriminator": [
         232,
         192,
@@ -6059,7 +6065,7 @@
       ]
     },
     {
-      "name": "LpSeeded",
+      "name": "lpSeeded",
       "discriminator": [
         34,
         83,
@@ -6072,7 +6078,7 @@
       ]
     },
     {
-      "name": "LpYieldSwept",
+      "name": "lpYieldSwept",
       "discriminator": [
         204,
         18,
@@ -6085,7 +6091,7 @@
       ]
     },
     {
-      "name": "MarketClosed",
+      "name": "marketClosed",
       "discriminator": [
         86,
         91,
@@ -6098,7 +6104,7 @@
       ]
     },
     {
-      "name": "MarketCreated",
+      "name": "marketCreated",
       "discriminator": [
         88,
         184,
@@ -6111,7 +6117,7 @@
       ]
     },
     {
-      "name": "MarketDismissed",
+      "name": "marketDismissed",
       "discriminator": [
         38,
         151,
@@ -6124,7 +6130,7 @@
       ]
     },
     {
-      "name": "MarketFeesDistributed",
+      "name": "marketFeesDistributed",
       "discriminator": [
         13,
         149,
@@ -6137,7 +6143,7 @@
       ]
     },
     {
-      "name": "MarketGraduated",
+      "name": "marketGraduated",
       "discriminator": [
         66,
         242,
@@ -6150,7 +6156,7 @@
       ]
     },
     {
-      "name": "MarketLocked",
+      "name": "marketLocked",
       "discriminator": [
         57,
         30,
@@ -6163,7 +6169,7 @@
       ]
     },
     {
-      "name": "MarketSettled",
+      "name": "marketSettled",
       "discriminator": [
         237,
         212,
@@ -6176,7 +6182,7 @@
       ]
     },
     {
-      "name": "OutcomeAttested",
+      "name": "outcomeAttested",
       "discriminator": [
         249,
         112,
@@ -6189,7 +6195,7 @@
       ]
     },
     {
-      "name": "PositionSold",
+      "name": "positionSold",
       "discriminator": [
         117,
         122,
@@ -6202,7 +6208,7 @@
       ]
     },
     {
-      "name": "PositionTraded",
+      "name": "positionTraded",
       "discriminator": [
         47,
         104,
@@ -6215,7 +6221,7 @@
       ]
     },
     {
-      "name": "ProtocolConfigUpdated",
+      "name": "protocolConfigUpdated",
       "discriminator": [
         20,
         99,
@@ -6228,7 +6234,7 @@
       ]
     },
     {
-      "name": "ProtocolInitialized",
+      "name": "protocolInitialized",
       "discriminator": [
         173,
         122,
@@ -6241,7 +6247,7 @@
       ]
     },
     {
-      "name": "ProtocolPausedEvent",
+      "name": "protocolPausedEvent",
       "discriminator": [
         0,
         32,
@@ -6254,7 +6260,7 @@
       ]
     },
     {
-      "name": "Redeemed",
+      "name": "redeemed",
       "discriminator": [
         14,
         29,
@@ -6267,7 +6273,7 @@
       ]
     },
     {
-      "name": "RefundClaimed",
+      "name": "refundClaimed",
       "discriminator": [
         136,
         64,
@@ -6280,7 +6286,7 @@
       ]
     },
     {
-      "name": "ResidualSwept",
+      "name": "residualSwept",
       "discriminator": [
         72,
         205,
@@ -6293,7 +6299,7 @@
       ]
     },
     {
-      "name": "ResolutionCommitmentPublished",
+      "name": "resolutionCommitmentPublished",
       "discriminator": [
         26,
         142,
@@ -6306,7 +6312,7 @@
       ]
     },
     {
-      "name": "ResolutionCommitmentRevoked",
+      "name": "resolutionCommitmentRevoked",
       "discriminator": [
         211,
         178,
@@ -6319,7 +6325,7 @@
       ]
     },
     {
-      "name": "VoidedBookRedeem",
+      "name": "voidedBookRedeem",
       "discriminator": [
         157,
         97,
@@ -6332,7 +6338,7 @@
       ]
     },
     {
-      "name": "VoidedRedeem",
+      "name": "voidedRedeem",
       "discriminator": [
         248,
         251,
@@ -6345,7 +6351,7 @@
       ]
     },
     {
-      "name": "ZkAdjudicatorRegistered",
+      "name": "zkAdjudicatorRegistered",
       "discriminator": [
         31,
         90,
@@ -6358,7 +6364,7 @@
       ]
     },
     {
-      "name": "ZkOutcomeAttested",
+      "name": "zkOutcomeAttested",
       "discriminator": [
         99,
         58,
@@ -6374,498 +6380,498 @@
   "errors": [
     {
       "code": 6000,
-      "name": "MarketNotOpen",
+      "name": "marketNotOpen",
       "msg": "Market is not in the Open lifecycle state"
     },
     {
       "code": 6001,
-      "name": "MarketNotSettled",
+      "name": "marketNotSettled",
       "msg": "Market is not Settled"
     },
     {
       "code": 6002,
-      "name": "InvalidLifecycleTransition",
+      "name": "invalidLifecycleTransition",
       "msg": "Lifecycle transition not permitted from current state"
     },
     {
       "code": 6003,
-      "name": "InvalidOutcome",
+      "name": "invalidOutcome",
       "msg": "Invalid outcome (must be NO=0, YES=1, or INVALID=2)"
     },
     {
       "code": 6004,
-      "name": "ZeroAmount",
+      "name": "zeroAmount",
       "msg": "Amount must be non-zero"
     },
     {
       "code": 6005,
-      "name": "InsufficientOutcomeShares",
+      "name": "insufficientOutcomeShares",
       "msg": "Insufficient outcome-token balance"
     },
     {
       "code": 6006,
-      "name": "MathOverflow",
+      "name": "mathOverflow",
       "msg": "Math overflow"
     },
     {
       "code": 6007,
-      "name": "VaultAuthorityMismatch",
+      "name": "vaultAuthorityMismatch",
       "msg": "Vault / mint authority mismatch"
     },
     {
       "code": 6008,
-      "name": "InvalidDeadline",
+      "name": "invalidDeadline",
       "msg": "Deadline must be greater than start_time"
     },
     {
       "code": 6009,
-      "name": "AdjudicatorIsDefault",
+      "name": "adjudicatorIsDefault",
       "msg": "Adjudicator pubkey must not be the default (all-zero) key"
     },
     {
       "code": 6010,
-      "name": "MarketNotDismissed",
+      "name": "marketNotDismissed",
       "msg": "Market is not dismissed"
     },
     {
       "code": 6011,
-      "name": "TradingClosed",
+      "name": "tradingClosed",
       "msg": "Trading window has closed (now >= deadline)"
     },
     {
       "code": 6012,
-      "name": "InvalidTick",
+      "name": "invalidTick",
       "msg": "Invalid tick"
     },
     {
       "code": 6013,
-      "name": "AmountTooSmallForBaseTokenDecimals",
+      "name": "amountTooSmallForBaseTokenDecimals",
       "msg": "Amount too small for base token decimals"
     },
     {
       "code": 6014,
-      "name": "SlippageExceeded",
+      "name": "slippageExceeded",
       "msg": "Slippage: cost exceeded max_cost_wad"
     },
     {
       "code": 6015,
-      "name": "ZeroDelta",
+      "name": "zeroDelta",
       "msg": "delta_shares must be non-zero"
     },
     {
       "code": 6016,
-      "name": "InsufficientShares",
+      "name": "insufficientShares",
       "msg": "Insufficient shares to sell"
     },
     {
       "code": 6017,
-      "name": "MarketDismissed",
+      "name": "marketDismissed",
       "msg": "Market is dismissed"
     },
     {
       "code": 6018,
-      "name": "InvalidLiquidity",
+      "name": "invalidLiquidity",
       "msg": "Liquidity parameter b must be > 0"
     },
     {
       "code": 6019,
-      "name": "Unauthorized",
+      "name": "unauthorized",
       "msg": "Caller is not authorized for this action (creator mismatch)"
     },
     {
       "code": 6020,
-      "name": "TradingNotStarted",
+      "name": "tradingNotStarted",
       "msg": "Trading window has not started yet (now < start_time)"
     },
     {
       "code": 6021,
-      "name": "SellNotImplemented",
+      "name": "sellNotImplemented",
       "msg": "Sell path is not implemented yet — see trade_positions.rs §6 / architecture §4.3"
     },
     {
       "code": 6022,
-      "name": "LockNotElapsed",
+      "name": "lockNotElapsed",
       "msg": "Lock has not elapsed yet (now < lock_entry.unlock_at)"
     },
     {
       "code": 6023,
-      "name": "LockVaultMismatch",
+      "name": "lockVaultMismatch",
       "msg": "Lock vault account does not match market.lock_vault"
     },
     {
       "code": 6024,
-      "name": "TrialNotExpired",
+      "name": "trialNotExpired",
       "msg": "Trial period has not expired yet"
     },
     {
       "code": 6025,
-      "name": "AlreadyGraduated",
+      "name": "alreadyGraduated",
       "msg": "Market has already graduated"
     },
     {
       "code": 6026,
-      "name": "AlreadyDismissed",
+      "name": "alreadyDismissed",
       "msg": "Market has already been dismissed"
     },
     {
       "code": 6027,
-      "name": "AmmStateMarketMismatch",
+      "name": "ammStateMarketMismatch",
       "msg": "AmmState market backlink does not match market account"
     },
     {
       "code": 6028,
-      "name": "FeeBpsOutOfRange",
+      "name": "feeBpsOutOfRange",
       "msg": "Fee bps must not exceed 10000 (100%)"
     },
     {
       "code": 6029,
-      "name": "FeeSplitMismatch",
+      "name": "feeSplitMismatch",
       "msg": "Fee split bps do not sum to 10000"
     },
     {
       "code": 6030,
-      "name": "InvalidTreasury",
+      "name": "invalidTreasury",
       "msg": "Treasury pubkey must be non-default"
     },
     {
       "code": 6031,
-      "name": "InvalidTrialPeriod",
+      "name": "invalidTrialPeriod",
       "msg": "Default trial period must be > 0"
     },
     {
       "code": 6032,
-      "name": "NothingToDistribute",
+      "name": "nothingToDistribute",
       "msg": "Fee pool is empty — nothing to distribute"
     },
     {
       "code": 6033,
-      "name": "NotGraduated",
+      "name": "notGraduated",
       "msg": "Market is not graduated"
     },
     {
       "code": 6034,
-      "name": "ZeroLpAmount",
+      "name": "zeroLpAmount",
       "msg": "LP amount must be > 0"
     },
     {
       "code": 6035,
-      "name": "EmptyLpSupply",
+      "name": "emptyLpSupply",
       "msg": "LP supply is empty"
     },
     {
       "code": 6036,
-      "name": "LegacyDrainAlreadyExecuted",
+      "name": "legacyDrainAlreadyExecuted",
       "msg": "Legacy fee drain already executed"
     },
     {
       "code": 6037,
-      "name": "NotAuthority",
+      "name": "notAuthority",
       "msg": "Caller is not the registered authority for this adjudicator"
     },
     {
       "code": 6038,
-      "name": "AlreadyAttested",
+      "name": "alreadyAttested",
       "msg": "Adjudicator has already attested an outcome; re-attestation is not permitted"
     },
     {
       "code": 6039,
-      "name": "AdjudicatorMarketMismatch",
+      "name": "adjudicatorMarketMismatch",
       "msg": "Adjudicator account does not match the supplied market"
     },
     {
       "code": 6040,
-      "name": "AlreadyDisputed",
+      "name": "alreadyDisputed",
       "msg": "Adjudicator has already been disputed; dispute is one-shot per market"
     },
     {
       "code": 6041,
-      "name": "MarketAlreadySettled",
+      "name": "marketAlreadySettled",
       "msg": "Market is already settled; dispute can no longer override the outcome"
     },
     {
       "code": 6042,
-      "name": "InvalidOrderId",
+      "name": "invalidOrderId",
       "msg": "Order id is outside the supported composite encoding range"
     },
     {
       "code": 6043,
-      "name": "OrderIdSeedMismatch",
+      "name": "orderIdSeedMismatch",
       "msg": "Decoded order id does not match the requested side or tick"
     },
     {
       "code": 6044,
-      "name": "BookSideFull",
+      "name": "bookSideFull",
       "msg": "Book side is full for this tick"
     },
     {
       "code": 6045,
-      "name": "BookSideNotDrained",
+      "name": "bookSideNotDrained",
       "msg": "Book side is not fully drained"
     },
     {
       "code": 6046,
-      "name": "CompactBoundExceeded",
+      "name": "compactBoundExceeded",
       "msg": "Compaction drop count exceeds the per-call bound"
     },
     {
       "code": 6047,
-      "name": "WrongBaseMint",
+      "name": "wrongBaseMint",
       "msg": "Market vault uses the wrong base mint"
     },
     {
       "code": 6048,
-      "name": "BaseMintDrift",
+      "name": "baseMintDrift",
       "msg": "MarketBook base mint does not match the market vault mint"
     },
     {
       "code": 6049,
-      "name": "AccumulatorNotReset",
+      "name": "accumulatorNotReset",
       "msg": "MarketBook accumulators must be reset before placing an order"
     },
     {
       "code": 6050,
-      "name": "NoCancellableOrder",
+      "name": "noCancellableOrder",
       "msg": "No cancellable order was found"
     },
     {
       "code": 6051,
-      "name": "MissingCrossingBookSide",
+      "name": "missingCrossingBookSide",
       "msg": "Remaining-account bundle does not carry the crossing BookSide"
     },
     {
       "code": 6052,
-      "name": "MakerAccountMismatch",
+      "name": "makerAccountMismatch",
       "msg": "Remaining-account bundle maker does not match the live order maker"
     },
     {
       "code": 6053,
-      "name": "WrongBundleArity",
+      "name": "wrongBundleArity",
       "msg": "Remaining-account bundles must contain exactly three accounts per fill"
     },
     {
       "code": 6054,
-      "name": "ProtocolPaused",
+      "name": "protocolPaused",
       "msg": "Protocol is paused; trading, new liquidity and market creation are disabled"
     },
     {
       "code": 6055,
-      "name": "NotYetAttested",
+      "name": "notYetAttested",
       "msg": "Adjudicator has not yet attested an outcome for this market"
     },
     {
       "code": 6056,
-      "name": "TradingNotClosed",
+      "name": "tradingNotClosed",
       "msg": "Trading window has not closed yet (now < deadline)"
     },
     {
       "code": 6057,
-      "name": "EventTooLarge",
+      "name": "eventTooLarge",
       "msg": "Serialized event payload exceeds the 10 KiB instruction-data limit"
     },
     {
       "code": 6058,
-      "name": "VetoWindowOpen",
+      "name": "vetoWindowOpen",
       "msg": "Veto window is still open; settle is not callable until it closes"
     },
     {
       "code": 6059,
-      "name": "VetoWindowClosed",
+      "name": "vetoWindowClosed",
       "msg": "Veto window has closed; the attested outcome can no longer be disputed"
     },
     {
       "code": 6060,
-      "name": "InvalidVetoPeriod",
+      "name": "invalidVetoPeriod",
       "msg": "veto_period_secs must be > 0 and <= MAX_VETO_PERIOD_SECS"
     },
     {
       "code": 6061,
-      "name": "InsufficientSeedDeposit",
+      "name": "insufficientSeedDeposit",
       "msg": "seed_deposit_wad must cover the LMSR worst-case subsidy b*ln(2)"
     },
     {
       "code": 6062,
-      "name": "InvalidBookAccount",
+      "name": "invalidBookAccount",
       "msg": "Book account is malformed, mis-sized or has the wrong discriminator"
     },
     {
       "code": 6063,
-      "name": "MatchFailed",
+      "name": "matchFailed",
       "msg": "Order placement or matching failed"
     },
     {
       "code": 6064,
-      "name": "BookCapacityTooLarge",
+      "name": "bookCapacityTooLarge",
       "msg": "Requested book capacity exceeds the per-instruction realloc limit"
     },
     {
       "code": 6065,
-      "name": "InvalidQuestion",
+      "name": "invalidQuestion",
       "msg": "Question is empty or exceeds the maximum length"
     },
     {
       "code": 6066,
-      "name": "QuestionHashMismatch",
+      "name": "questionHashMismatch",
       "msg": "question_hash is not the hash of the supplied question"
     },
     {
       "code": 6067,
-      "name": "MarketNotClosable",
+      "name": "marketNotClosable",
       "msg": "Market is not in a closeable state"
     },
     {
       "code": 6068,
-      "name": "VaultNotEmpty",
+      "name": "vaultNotEmpty",
       "msg": "A vault still holds funds — every claim must be paid before close"
     },
     {
       "code": 6069,
-      "name": "FeePoolNotEmpty",
+      "name": "feePoolNotEmpty",
       "msg": "A fee pool still holds funds — distribute before close"
     },
     {
       "code": 6070,
-      "name": "BookNotEmpty",
+      "name": "bookNotEmpty",
       "msg": "The book still has live orders or funded seats"
     },
     {
       "code": 6071,
-      "name": "OutstandingClaims",
+      "name": "outstandingClaims",
       "msg": "Winning shares are still unredeemed — the balance is owed, not residual"
     },
     {
       "code": 6072,
-      "name": "ZkNotEnabled",
+      "name": "zkNotEnabled",
       "msg": "Adjudicator entry is not zk-enabled; use the manual attest path"
     },
     {
       "code": 6073,
-      "name": "ZkAttestationFieldTooLong",
+      "name": "zkAttestationFieldTooLong",
       "msg": "An attestation field exceeds its maximum encoded length"
     },
     {
       "code": 6074,
-      "name": "ZkInvalidSignatureV",
+      "name": "zkInvalidSignatureV",
       "msg": "Signature v byte must be 27 or 28"
     },
     {
       "code": 6075,
-      "name": "ZkMalleableSignature",
+      "name": "zkMalleableSignature",
       "msg": "Signature s value is above secp256k1n/2 and therefore malleable"
     },
     {
       "code": 6076,
-      "name": "ZkSignatureRecoveryFailed",
+      "name": "zkSignatureRecoveryFailed",
       "msg": "secp256k1 public-key recovery failed for this attestation"
     },
     {
       "code": 6077,
-      "name": "ZkAttestorMismatch",
+      "name": "zkAttestorMismatch",
       "msg": "Recovered attestor does not match the address registered for this market"
     },
     {
       "code": 6078,
-      "name": "ZkRuleHashMismatch",
+      "name": "zkRuleHashMismatch",
       "msg": "Attestation url and parsePath do not match the registered rule_hash"
     },
     {
       "code": 6079,
-      "name": "ZkResponseResolveCountInvalid",
+      "name": "zkResponseResolveCountInvalid",
       "msg": "A zk attestation must carry exactly one responseResolve entry"
     },
     {
       "code": 6080,
-      "name": "ZkDataUnparseable",
+      "name": "zkDataUnparseable",
       "msg": "Attested data is not a bare decimal or a single-key object holding one"
     },
     {
       "code": 6081,
-      "name": "ZkValuePrecisionTooHigh",
+      "name": "zkValuePrecisionTooHigh",
       "msg": "Attested value carries more fractional digits than the registered scale"
     },
     {
       "code": 6082,
-      "name": "ZkValueOutOfRange",
+      "name": "zkValueOutOfRange",
       "msg": "Attested value does not fit the fixed-point range"
     },
     {
       "code": 6083,
-      "name": "ZkInvalidComparator",
+      "name": "zkInvalidComparator",
       "msg": "Comparator discriminant is not a known ZkComparator"
     },
     {
       "code": 6084,
-      "name": "ZkInvalidValueScale",
+      "name": "zkInvalidValueScale",
       "msg": "value_scale exceeds MAX_ZK_VALUE_SCALE"
     },
     {
       "code": 6085,
-      "name": "ZkAttestationTimestampInvalid",
+      "name": "zkAttestationTimestampInvalid",
       "msg": "Attestation timestamp is outside the accepted window"
     },
     {
       "code": 6086,
-      "name": "PositionAddressMismatch",
+      "name": "positionAddressMismatch",
       "msg": "Position account is not the PDA for this (market, user) pair"
     },
     {
       "code": 6087,
-      "name": "PositionOwnerMismatch",
+      "name": "positionOwnerMismatch",
       "msg": "Position account is not owned by sooth_core"
     },
     {
       "code": 6088,
-      "name": "PositionMalformed",
+      "name": "positionMalformed",
       "msg": "Position account buffer is shorter than a serialized Position"
     },
     {
       "code": 6089,
-      "name": "PositionUserMismatch",
+      "name": "positionUserMismatch",
       "msg": "Position.user does not match the signer"
     },
     {
       "code": 6090,
-      "name": "PositionMarketMismatch",
+      "name": "positionMarketMismatch",
       "msg": "Position.market does not match the supplied market"
     },
     {
       "code": 6091,
-      "name": "MarketNotSeeded",
+      "name": "marketNotSeeded",
       "msg": "Market has no LMSR seed: seed_lp must run before it can trade"
     },
     {
       "code": 6092,
-      "name": "RefundsOutstanding",
+      "name": "refundsOutstanding",
       "msg": "Dismissed market still owes refunds; the subsidy cannot be reclaimed"
     },
     {
       "code": 6093,
-      "name": "PdaAlreadyInitialized",
+      "name": "pdaAlreadyInitialized",
       "msg": "Target PDA is already initialized and cannot be created again"
     },
     {
       "code": 6094,
-      "name": "LpSupplyNotZero",
+      "name": "lpSupplyNotZero",
       "msg": "LP supply is nonzero: holders can still redeem this yield themselves"
     },
     {
       "code": 6095,
-      "name": "NoPendingAuthority",
+      "name": "noPendingAuthority",
       "msg": "No authority transfer is pending on this protocol config"
     },
     {
       "code": 6096,
-      "name": "AdjudicatorEntryOwnerMismatch",
+      "name": "adjudicatorEntryOwnerMismatch",
       "msg": "Adjudicator entry account is not owned by sooth_core"
     },
     {
       "code": 6097,
-      "name": "ZkEarlyRequiresSatisfied",
+      "name": "zkEarlyRequiresSatisfied",
       "msg": "Early zk attestation must prove the rule SATISFIED — an unmet reading proves nothing before the deadline"
     }
   ],
   "types": [
     {
-      "name": "AdjudicatorEntry",
+      "name": "adjudicatorEntry",
       "type": {
         "kind": "struct",
         "fields": [
@@ -6893,7 +6899,7 @@
             "type": "pubkey"
           },
           {
-            "name": "dispute_authority",
+            "name": "disputeAuthority",
             "docs": [
               "Authority gating the `dispute` veto path. Defaults to `authority` at",
               "register time; can be rotated to a guardian multisig via a future ix.",
@@ -6903,7 +6909,7 @@
             "type": "pubkey"
           },
           {
-            "name": "attested_outcome",
+            "name": "attestedOutcome",
             "docs": [
               "Recorded outcome iff the authority has called `attest_outcome` (or",
               "the `dispute` veto path has overridden it). 0=NO, 1=YES, 2=INVALID."
@@ -6913,7 +6919,7 @@
             }
           },
           {
-            "name": "attested_at",
+            "name": "attestedAt",
             "docs": [
               "Unix-seconds timestamp of the original attestation."
             ],
@@ -6930,7 +6936,7 @@
             "type": "bool"
           },
           {
-            "name": "disputed_at",
+            "name": "disputedAt",
             "docs": [
               "Unix-seconds timestamp of the dispute. `None` if not yet disputed."
             ],
@@ -6946,7 +6952,7 @@
             "type": "u8"
           },
           {
-            "name": "zk_comparator",
+            "name": "zkComparator",
             "docs": [
               "How the attested value is tested against `zk_threshold`, and — because",
               "`ZkComparator::None` is discriminant zero — whether this entry is",
@@ -6957,7 +6963,7 @@
             "type": "u8"
           },
           {
-            "name": "zk_value_scale",
+            "name": "zkValueScale",
             "docs": [
               "Decimal places the attested value and `zk_threshold` share. An",
               "attested value carrying more fractional digits than this is rejected",
@@ -6966,7 +6972,7 @@
             "type": "u8"
           },
           {
-            "name": "zk_attestor_evm",
+            "name": "zkAttestorEvm",
             "docs": [
               "The single EVM address whose signature over a Primus attestation this",
               "market accepts."
@@ -6979,7 +6985,7 @@
             }
           },
           {
-            "name": "zk_rule_hash",
+            "name": "zkRuleHash",
             "docs": [
               "Commitment to the attestation's request url and responseResolve",
               "parsePath. It is what stops an attestation for a different endpoint,",
@@ -6995,14 +7001,14 @@
             }
           },
           {
-            "name": "zk_threshold",
+            "name": "zkThreshold",
             "docs": [
               "Threshold in `10^zk_value_scale` units."
             ],
             "type": "i64"
           },
           {
-            "name": "forced_invalid",
+            "name": "forcedInvalid",
             "docs": [
               "Was this entry's outcome written by the abandonment escape hatch",
               "(`force_invalid_attestation`) rather than by an adjudicator?",
@@ -7020,7 +7026,7 @@
             "type": "bool"
           },
           {
-            "name": "_reserved",
+            "name": "reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
               "instead of changing the account's length, so no migration is needed:",
@@ -7043,7 +7049,7 @@
       }
     },
     {
-      "name": "AdjudicatorEntryForceCreated",
+      "name": "adjudicatorEntryForceCreated",
       "docs": [
         "Emitted by `force_invalid_attestation` when the market had NO",
         "`AdjudicatorEntry` at all and the hatch created one to write into.",
@@ -7062,7 +7068,7 @@
             "type": "pubkey"
           },
           {
-            "name": "adjudicator_entry",
+            "name": "adjudicatorEntry",
             "type": "pubkey"
           },
           {
@@ -7081,7 +7087,7 @@
       }
     },
     {
-      "name": "AdjudicatorRegistered",
+      "name": "adjudicatorRegistered",
       "docs": [
         "Emitted by `register_adjudicator` when a new per-market `AdjudicatorEntry`",
         "PDA is created. Mirrors EVM `AdjudicatorBase.MarketConfigured`."
@@ -7094,7 +7100,7 @@
             "type": "pubkey"
           },
           {
-            "name": "adjudicator_entry",
+            "name": "adjudicatorEntry",
             "type": "pubkey"
           },
           {
@@ -7109,7 +7115,7 @@
       }
     },
     {
-      "name": "AmmState",
+      "name": "ammState",
       "type": {
         "kind": "struct",
         "fields": [
@@ -7121,14 +7127,14 @@
             "type": "pubkey"
           },
           {
-            "name": "q_yes",
+            "name": "qYes",
             "docs": [
               "LMSR q_yes — shares outstanding on the YES side."
             ],
             "type": "i128"
           },
           {
-            "name": "q_no",
+            "name": "qNo",
             "docs": [
               "LMSR q_no — shares outstanding on the NO side."
             ],
@@ -7142,33 +7148,33 @@
             "type": "i128"
           },
           {
-            "name": "seed_q_yes",
+            "name": "seedQYes",
             "type": "i128"
           },
           {
-            "name": "seed_q_no",
+            "name": "seedQNo",
             "type": "i128"
           },
           {
-            "name": "fee_b_base_wad",
+            "name": "feeBBaseWad",
             "docs": [
               "Accumulated fee WAD for graduation threshold tracking."
             ],
             "type": "u128"
           },
           {
-            "name": "trial_end_at",
+            "name": "trialEndAt",
             "docs": [
               "Trial window end timestamp (architecture §9)."
             ],
             "type": "i64"
           },
           {
-            "name": "is_graduated",
+            "name": "isGraduated",
             "type": "bool"
           },
           {
-            "name": "is_dismissed",
+            "name": "isDismissed",
             "type": "bool"
           },
           {
@@ -7179,7 +7185,7 @@
             "type": "u8"
           },
           {
-            "name": "refund_obligation_usdc",
+            "name": "refundObligationUsdc",
             "docs": [
               "Aggregate refund obligation: the sum of `Position.locked_cost_usdc`",
               "over every position of this market, in AMM-token base units.",
@@ -7196,7 +7202,7 @@
             "type": "u64"
           },
           {
-            "name": "tracks_refund_obligation",
+            "name": "tracksRefundObligation",
             "docs": [
               "Has this AMM counted `refund_obligation_usdc` since its first trade?",
               "",
@@ -7211,7 +7217,7 @@
             "type": "bool"
           },
           {
-            "name": "is_seeded",
+            "name": "isSeeded",
             "docs": [
               "Has `seed_lp` posted the LMSR subsidy for this market?",
               "",
@@ -7224,7 +7230,7 @@
             "type": "bool"
           },
           {
-            "name": "_reserved",
+            "name": "reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
               "instead of changing the account's length, so no migration is needed:",
@@ -7246,7 +7252,7 @@
       }
     },
     {
-      "name": "AuthorityTransferAccepted",
+      "name": "authorityTransferAccepted",
       "docs": [
         "Emitted by `accept_authority`: the nominee signed and the seat has moved."
       ],
@@ -7254,7 +7260,7 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "previous_authority",
+            "name": "previousAuthority",
             "type": "pubkey"
           },
           {
@@ -7269,7 +7275,7 @@
       }
     },
     {
-      "name": "AuthorityTransferStarted",
+      "name": "authorityTransferStarted",
       "docs": [
         "Emitted by `transfer_authority`: a handover has been NOMINATED and nothing",
         "has moved yet. `pending_authority` is the default pubkey when the call",
@@ -7286,7 +7292,7 @@
             "type": "pubkey"
           },
           {
-            "name": "pending_authority",
+            "name": "pendingAuthority",
             "type": "pubkey"
           },
           {
@@ -7297,7 +7303,7 @@
       }
     },
     {
-      "name": "BookFill",
+      "name": "bookFill",
       "docs": [
         "One fill inside a [`BookFilled`] batch."
       ],
@@ -7309,11 +7315,11 @@
             "type": "pubkey"
           },
           {
-            "name": "maker_seq",
+            "name": "makerSeq",
             "type": "u64"
           },
           {
-            "name": "price_tick",
+            "name": "priceTick",
             "docs": [
               "Execution price — the MAKER's tick, not the taker's limit. The",
               "difference is the taker's price improvement."
@@ -7328,7 +7334,7 @@
       }
     },
     {
-      "name": "BookFilled",
+      "name": "bookFilled",
       "docs": [
         "All fills from one `book_place`, batched into a single event.",
         "",
@@ -7352,7 +7358,7 @@
             "type": "pubkey"
           },
           {
-            "name": "taker_side",
+            "name": "takerSide",
             "type": "u8"
           },
           {
@@ -7360,7 +7366,7 @@
             "type": {
               "vec": {
                 "defined": {
-                  "name": "BookFill"
+                  "name": "bookFill"
                 }
               }
             }
@@ -7380,7 +7386,7 @@
       }
     },
     {
-      "name": "BookOrderCancelled",
+      "name": "bookOrderCancelled",
       "type": {
         "kind": "struct",
         "fields": [
@@ -7415,7 +7421,7 @@
       }
     },
     {
-      "name": "BookOrderPlaced",
+      "name": "bookOrderPlaced",
       "type": {
         "kind": "struct",
         "fields": [
@@ -7446,7 +7452,7 @@
             "type": "u8"
           },
           {
-            "name": "price_tick",
+            "name": "priceTick",
             "type": "u16"
           },
           {
@@ -7464,12 +7470,12 @@
       }
     },
     {
-      "name": "CreateMarketArgs",
+      "name": "createMarketArgs",
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "market_id",
+            "name": "marketId",
             "type": {
               "array": [
                 "u8",
@@ -7495,7 +7501,7 @@
             "type": "string"
           },
           {
-            "name": "question_hash",
+            "name": "questionHash",
             "type": {
               "array": [
                 "u8",
@@ -7504,7 +7510,7 @@
             }
           },
           {
-            "name": "start_time",
+            "name": "startTime",
             "type": "i64"
           },
           {
@@ -7520,14 +7526,14 @@
             "type": "pubkey"
           },
           {
-            "name": "initial_b",
+            "name": "initialB",
             "type": "u128"
           }
         ]
       }
     },
     {
-      "name": "DisputeRaised",
+      "name": "disputeRaised",
       "docs": [
         "Emitted by `dispute` when the `dispute_authority` overrides an attested",
         "outcome. Mirrors EVM `AdjudicatorBase.MarketDisputed`."
@@ -7540,7 +7546,7 @@
             "type": "pubkey"
           },
           {
-            "name": "adjudicator_entry",
+            "name": "adjudicatorEntry",
             "type": "pubkey"
           },
           {
@@ -7548,11 +7554,11 @@
             "type": "pubkey"
           },
           {
-            "name": "previous_outcome",
+            "name": "previousOutcome",
             "type": "u8"
           },
           {
-            "name": "new_outcome",
+            "name": "newOutcome",
             "type": "u8"
           },
           {
@@ -7563,16 +7569,16 @@
       }
     },
     {
-      "name": "InitializeProtocolArgs",
+      "name": "initializeProtocolArgs",
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "amm_fee_bps",
+            "name": "ammFeeBps",
             "type": "u16"
           },
           {
-            "name": "book_fee_bps",
+            "name": "bookFeeBps",
             "type": "u16"
           },
           {
@@ -7580,31 +7586,31 @@
             "type": "pubkey"
           },
           {
-            "name": "b_base_share_bps",
+            "name": "bBaseShareBps",
             "type": "u16"
           },
           {
-            "name": "lp_yield_share_bps",
+            "name": "lpYieldShareBps",
             "type": "u16"
           },
           {
-            "name": "adjudicator_share_bps",
+            "name": "adjudicatorShareBps",
             "type": "u16"
           },
           {
-            "name": "protocol_share_bps",
+            "name": "protocolShareBps",
             "type": "u16"
           },
           {
-            "name": "default_trial_period",
+            "name": "defaultTrialPeriod",
             "type": "i64"
           },
           {
-            "name": "permissionless_adjudicators",
+            "name": "permissionlessAdjudicators",
             "type": "bool"
           },
           {
-            "name": "veto_period_secs",
+            "name": "vetoPeriodSecs",
             "docs": [
               "Guardian-veto window in seconds. Use `DEFAULT_VETO_PERIOD_SECS` (24h)",
               "for real deployments; localnet fixtures pass a few seconds so the",
@@ -7616,7 +7622,7 @@
       }
     },
     {
-      "name": "InvalidAttestationForced",
+      "name": "invalidAttestationForced",
       "docs": [
         "Emitted by `force_invalid_attestation`: a market whose adjudicator never",
         "attested has had `INVALID` written onto it by a stranger, so that it can",
@@ -7632,7 +7638,7 @@
             "type": "pubkey"
           },
           {
-            "name": "adjudicator_entry",
+            "name": "adjudicatorEntry",
             "type": "pubkey"
           },
           {
@@ -7658,7 +7664,7 @@
       }
     },
     {
-      "name": "LockClaimed",
+      "name": "lockClaimed",
       "docs": [
         "Emitted by `claim_unlocked` after a successful payout. Mirrors the EVM",
         "`LocksProcessed`/`LockEntryRemoved` event family",
@@ -7676,11 +7682,11 @@
             "type": "pubkey"
           },
           {
-            "name": "lock_entry",
+            "name": "lockEntry",
             "type": "pubkey"
           },
           {
-            "name": "amount_usdc",
+            "name": "amountUsdc",
             "type": "u64"
           },
           {
@@ -7691,7 +7697,7 @@
       }
     },
     {
-      "name": "LockEntry",
+      "name": "lockEntry",
       "type": {
         "kind": "struct",
         "fields": [
@@ -7704,14 +7710,14 @@
             "type": "pubkey"
           },
           {
-            "name": "amount_usdc",
+            "name": "amountUsdc",
             "docs": [
               "USDC amount locked (net proceeds after sell fee)."
             ],
             "type": "u64"
           },
           {
-            "name": "unlock_at",
+            "name": "unlockAt",
             "docs": [
               "Unix timestamp when the lock matures and `claim_unlocked` may proceed."
             ],
@@ -7730,7 +7736,7 @@
             "type": "u8"
           },
           {
-            "name": "_reserved",
+            "name": "reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
               "instead of changing the account's length, so no migration is needed:",
@@ -7752,7 +7758,7 @@
       }
     },
     {
-      "name": "LpPosition",
+      "name": "lpPosition",
       "type": {
         "kind": "struct",
         "fields": [
@@ -7765,18 +7771,18 @@
             "type": "pubkey"
           },
           {
-            "name": "lp_mint",
+            "name": "lpMint",
             "type": "pubkey"
           },
           {
-            "name": "seed_deposit_wad",
+            "name": "seedDepositWad",
             "docs": [
               "Creator's seed deposit in WAD (bookkeeping for dismiss/refund flow)."
             ],
             "type": "u128"
           },
           {
-            "name": "graduated_at",
+            "name": "graduatedAt",
             "docs": [
               "Unix seconds at which the market graduated. 0 = not graduated."
             ],
@@ -7787,7 +7793,7 @@
             "type": "u8"
           },
           {
-            "name": "reclaimed_base",
+            "name": "reclaimedBase",
             "docs": [
               "Subsidy already reclaimed after settlement, in USDC base units.",
               "",
@@ -7798,7 +7804,7 @@
             "type": "u64"
           },
           {
-            "name": "_reserved",
+            "name": "reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
               "instead of changing the account's length, so no migration is needed:",
@@ -7820,7 +7826,7 @@
       }
     },
     {
-      "name": "LpRedeemed",
+      "name": "lpRedeemed",
       "type": {
         "kind": "struct",
         "fields": [
@@ -7829,18 +7835,18 @@
             "type": "pubkey"
           },
           {
-            "name": "lp_burned",
+            "name": "lpBurned",
             "type": "u64"
           },
           {
-            "name": "usdc_paid",
+            "name": "usdcPaid",
             "docs": [
               "AMM-venue yield paid, in the AMM token."
             ],
             "type": "u64"
           },
           {
-            "name": "book_paid",
+            "name": "bookPaid",
             "docs": [
               "Book-venue yield paid, in the book's token (USDC)."
             ],
@@ -7850,7 +7856,7 @@
       }
     },
     {
-      "name": "LpSeeded",
+      "name": "lpSeeded",
       "docs": [
         "Emitted by `seed_lp` after the per-market `LpMint` + creator",
         "`LpPosition` PDA + creator's LP ATA are bootstrapped and seeded",
@@ -7868,19 +7874,19 @@
             "type": "pubkey"
           },
           {
-            "name": "lp_mint",
+            "name": "lpMint",
             "type": "pubkey"
           },
           {
-            "name": "creator_lp_ata",
+            "name": "creatorLpAta",
             "type": "pubkey"
           },
           {
-            "name": "lp_amount",
+            "name": "lpAmount",
             "type": "u64"
           },
           {
-            "name": "seed_deposit_wad",
+            "name": "seedDepositWad",
             "type": "u128"
           },
           {
@@ -7891,7 +7897,7 @@
       }
     },
     {
-      "name": "LpYieldSwept",
+      "name": "lpYieldSwept",
       "docs": [
         "Emitted by `sweep_lp_yield`. The LP supply that would have claimed this",
         "yield no longer exists, so the remainder went to the treasury and the",
@@ -7905,7 +7911,7 @@
             "type": "pubkey"
           },
           {
-            "name": "market_id",
+            "name": "marketId",
             "type": {
               "array": [
                 "u8",
@@ -7914,14 +7920,14 @@
             }
           },
           {
-            "name": "amm_amount",
+            "name": "ammAmount",
             "docs": [
               "AMM-token remainder moved out of `lp_yield_amm`."
             ],
             "type": "u64"
           },
           {
-            "name": "book_amount",
+            "name": "bookAmount",
             "docs": [
               "Book-token remainder moved out of `lp_yield_book`."
             ],
@@ -7935,12 +7941,12 @@
       }
     },
     {
-      "name": "Market",
+      "name": "market",
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "market_id",
+            "name": "marketId",
             "docs": [
               "Caller-supplied 16-byte id; the seed of this account's PDA and of",
               "every account derived from it. The SDK defaults it to the first 16",
@@ -7969,7 +7975,7 @@
             "type": "pubkey"
           },
           {
-            "name": "question_hash",
+            "name": "questionHash",
             "type": {
               "array": [
                 "u8",
@@ -7978,7 +7984,7 @@
             }
           },
           {
-            "name": "vault_book",
+            "name": "vaultBook",
             "docs": [
               "Book-venue collateral vault (`BOOK_TOKEN_MINT`).",
               "",
@@ -7989,14 +7995,14 @@
             "type": "pubkey"
           },
           {
-            "name": "vault_amm",
+            "name": "vaultAmm",
             "docs": [
               "AMM-venue collateral vault (`AMM_TOKEN_MINT`)."
             ],
             "type": "pubkey"
           },
           {
-            "name": "lock_vault",
+            "name": "lockVault",
             "docs": [
               "AMM lock-on-sell escrow vault (`AMM_TOKEN_MINT`) — the sell path's",
               "cooldown holds proceeds here, so it follows the AMM's token."
@@ -8004,7 +8010,7 @@
             "type": "pubkey"
           },
           {
-            "name": "start_time",
+            "name": "startTime",
             "type": "i64"
           },
           {
@@ -8015,12 +8021,12 @@
             "name": "lifecycle",
             "type": {
               "defined": {
-                "name": "MarketLifecycle"
+                "name": "marketLifecycle"
               }
             }
           },
           {
-            "name": "winning_outcome",
+            "name": "winningOutcome",
             "docs": [
               "Set by `settle`. 0=NO, 1=YES, 2=INVALID (only meaningful when",
               "lifecycle == Settled)."
@@ -8035,15 +8041,15 @@
             "type": "u8"
           },
           {
-            "name": "vault_authority_bump",
+            "name": "vaultAuthorityBump",
             "type": "u8"
           },
           {
-            "name": "lock_authority_bump",
+            "name": "lockAuthorityBump",
             "type": "u8"
           },
           {
-            "name": "book_enabled",
+            "name": "bookEnabled",
             "docs": [
               "Is the orderbook open for this market?",
               "",
@@ -8060,7 +8066,7 @@
             "type": "bool"
           },
           {
-            "name": "is_dismissed",
+            "name": "isDismissed",
             "docs": [
               "Has this market been dismissed?",
               "",
@@ -8077,7 +8083,7 @@
             "type": "bool"
           },
           {
-            "name": "_reserved",
+            "name": "reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
               "instead of changing the account's length, so no migration is needed:",
@@ -8099,7 +8105,7 @@
       }
     },
     {
-      "name": "MarketClosed",
+      "name": "marketClosed",
       "type": {
         "kind": "struct",
         "fields": [
@@ -8108,7 +8114,7 @@
             "type": "pubkey"
           },
           {
-            "name": "market_id",
+            "name": "marketId",
             "type": {
               "array": [
                 "u8",
@@ -8121,11 +8127,11 @@
             "type": "pubkey"
           },
           {
-            "name": "market_rent_reclaimed",
+            "name": "marketRentReclaimed",
             "type": "u64"
           },
           {
-            "name": "book_rent_reclaimed",
+            "name": "bookRentReclaimed",
             "type": "u64"
           },
           {
@@ -8136,7 +8142,7 @@
       }
     },
     {
-      "name": "MarketCreated",
+      "name": "marketCreated",
       "docs": [
         "Mirror of EVM `LaunchpadEngine.MarketCreated`. Emitted by `create_market`",
         "after the four instruction legs land (architecture §4.1)."
@@ -8169,22 +8175,22 @@
             "type": "pubkey"
           },
           {
-            "name": "vault_book",
+            "name": "vaultBook",
             "type": "pubkey"
           },
           {
-            "name": "vault_amm",
+            "name": "vaultAmm",
             "type": "pubkey"
           },
           {
-            "name": "initial_b",
+            "name": "initialB",
             "docs": [
               "Initial LMSR liquidity `b` in WAD. Stored on `AmmState` after ix4."
             ],
             "type": "u128"
           },
           {
-            "name": "start_time",
+            "name": "startTime",
             "type": "i64"
           },
           {
@@ -8199,7 +8205,7 @@
       }
     },
     {
-      "name": "MarketDismissed",
+      "name": "marketDismissed",
       "type": {
         "kind": "struct",
         "fields": [
@@ -8212,14 +8218,14 @@
             "type": "pubkey"
           },
           {
-            "name": "dismissed_at",
+            "name": "dismissedAt",
             "type": "i64"
           }
         ]
       }
     },
     {
-      "name": "MarketFeesDistributed",
+      "name": "marketFeesDistributed",
       "docs": [
         "Per-market fee distribution event emitted by `distribute_fees(market)`."
       ],
@@ -8231,7 +8237,7 @@
             "type": "pubkey"
           },
           {
-            "name": "market_id",
+            "name": "marketId",
             "type": {
               "array": [
                 "u8",
@@ -8240,23 +8246,23 @@
             }
           },
           {
-            "name": "total_usdc",
+            "name": "totalUsdc",
             "type": "u64"
           },
           {
-            "name": "to_b_base",
+            "name": "toBBase",
             "type": "u64"
           },
           {
-            "name": "to_lp_yield",
+            "name": "toLpYield",
             "type": "u64"
           },
           {
-            "name": "to_adjudicator",
+            "name": "toAdjudicator",
             "type": "u64"
           },
           {
-            "name": "to_protocol",
+            "name": "toProtocol",
             "type": "u64"
           },
           {
@@ -8267,7 +8273,7 @@
       }
     },
     {
-      "name": "MarketGraduated",
+      "name": "marketGraduated",
       "type": {
         "kind": "struct",
         "fields": [
@@ -8276,38 +8282,38 @@
             "type": "pubkey"
           },
           {
-            "name": "fees_accumulated_wad",
+            "name": "feesAccumulatedWad",
             "type": "u128"
           },
           {
-            "name": "threshold_wad",
+            "name": "thresholdWad",
             "type": "u128"
           }
         ]
       }
     },
     {
-      "name": "MarketLifecycle",
+      "name": "marketLifecycle",
       "type": {
         "kind": "enum",
         "variants": [
           {
-            "name": "Initializing"
+            "name": "initializing"
           },
           {
-            "name": "Open"
+            "name": "open"
           },
           {
-            "name": "Locked"
+            "name": "locked"
           },
           {
-            "name": "Settled"
+            "name": "settled"
           }
         ]
       }
     },
     {
-      "name": "MarketLocked",
+      "name": "marketLocked",
       "docs": [
         "Emitted on the LIVE → RESOLVING transition: trading halts pending the",
         "adjudicator outcome. Counterpart of EVM `TruthMarket.MarketResolved`.",
@@ -8328,7 +8334,7 @@
       }
     },
     {
-      "name": "MarketSettled",
+      "name": "marketSettled",
       "docs": [
         "Mirror of EVM `TruthMarket.MarketSettled` (`TruthMarket.sol:130`)."
       ],
@@ -8340,7 +8346,7 @@
             "type": "pubkey"
           },
           {
-            "name": "winning_outcome",
+            "name": "winningOutcome",
             "docs": [
               "0=NO, 1=YES, 2=INVALID per protocol-wide OUTCOME encoding."
             ],
@@ -8354,7 +8360,7 @@
       }
     },
     {
-      "name": "OutcomeAttested",
+      "name": "outcomeAttested",
       "docs": [
         "Emitted by `attest_outcome` when the per-market authority signs the",
         "resolution. Mirrors EVM `AdjudicatorBase.OutcomeAttested`."
@@ -8367,11 +8373,11 @@
             "type": "pubkey"
           },
           {
-            "name": "adjudicator_entry",
+            "name": "adjudicatorEntry",
             "type": "pubkey"
           },
           {
-            "name": "winning_outcome",
+            "name": "winningOutcome",
             "docs": [
               "0=NO, 1=YES, 2=INVALID per protocol-wide OUTCOME encoding."
             ],
@@ -8385,7 +8391,7 @@
       }
     },
     {
-      "name": "Position",
+      "name": "position",
       "type": {
         "kind": "struct",
         "fields": [
@@ -8398,22 +8404,22 @@
             "type": "pubkey"
           },
           {
-            "name": "yes_shares",
+            "name": "yesShares",
             "type": "i128"
           },
           {
-            "name": "no_shares",
+            "name": "noShares",
             "type": "i128"
           },
           {
-            "name": "locked_cost_usdc",
+            "name": "lockedCostUsdc",
             "docs": [
               "Cumulative USDC cost paid by this position (used for refund on dismiss)."
             ],
             "type": "u64"
           },
           {
-            "name": "lock_nonce",
+            "name": "lockNonce",
             "docs": [
               "Per-position nonce used to derive unique `LockEntry` PDAs on each sell."
             ],
@@ -8424,7 +8430,7 @@
             "type": "u8"
           },
           {
-            "name": "_reserved",
+            "name": "reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
               "instead of changing the account's length, so no migration is needed:",
@@ -8446,7 +8452,7 @@
       }
     },
     {
-      "name": "PositionSold",
+      "name": "positionSold",
       "docs": [
         "Emitted on the sell branch of `trade_positions` after the proceeds have",
         "been moved into the per-sell `LockEntry` PDA. Mirrors the EVM",
@@ -8471,14 +8477,14 @@
             "type": "u8"
           },
           {
-            "name": "shares_sold",
+            "name": "sharesSold",
             "docs": [
               "Absolute share count sold (positive). Matches `|delta_shares|`."
             ],
             "type": "u128"
           },
           {
-            "name": "lock_entry",
+            "name": "lockEntry",
             "docs": [
               "Lock account that escrows the USDC proceeds. The corresponding",
               "`claim_unlocked` ix takes this pubkey as input."
@@ -8486,14 +8492,14 @@
             "type": "pubkey"
           },
           {
-            "name": "amount_usdc",
+            "name": "amountUsdc",
             "docs": [
               "USDC base units escrowed (matches `lock_entry.amount_usdc`)."
             ],
             "type": "u64"
           },
           {
-            "name": "unlock_at",
+            "name": "unlockAt",
             "docs": [
               "Unix timestamp at which `claim_unlocked` becomes callable."
             ],
@@ -8503,7 +8509,7 @@
       }
     },
     {
-      "name": "PositionTraded",
+      "name": "positionTraded",
       "type": {
         "kind": "struct",
         "fields": [
@@ -8523,14 +8529,14 @@
             "type": "u8"
           },
           {
-            "name": "delta_shares",
+            "name": "deltaShares",
             "docs": [
               "Signed share delta in WAD. Positive = buy; negative = sell."
             ],
             "type": "i128"
           },
           {
-            "name": "cost_wad",
+            "name": "costWad",
             "docs": [
               "Signed cost in WAD. Positive = paid; negative = proceeds (sell)."
             ],
@@ -8547,7 +8553,7 @@
       }
     },
     {
-      "name": "ProtocolConfig",
+      "name": "protocolConfig",
       "type": {
         "kind": "struct",
         "fields": [
@@ -8566,7 +8572,7 @@
             "type": "pubkey"
           },
           {
-            "name": "amm_fee_bps",
+            "name": "ammFeeBps",
             "docs": [
               "Total per-trade fee in basis points (1 bp = 0.01 %).",
               "Taker fee on the AMM, in bps. The incubation venue.",
@@ -8578,14 +8584,14 @@
             "type": "u16"
           },
           {
-            "name": "book_fee_bps",
+            "name": "bookFeeBps",
             "docs": [
               "Taker fee on the orderbook, in bps. The mature venue."
             ],
             "type": "u16"
           },
           {
-            "name": "graduation_bps",
+            "name": "graduationBps",
             "docs": [
               "Graduation threshold as a fraction of the creator's deposit, in bps.",
               "",
@@ -8599,26 +8605,26 @@
             "type": "u16"
           },
           {
-            "name": "b_base_share_bps",
+            "name": "bBaseShareBps",
             "docs": [
               "4-way fee-destination split bps — must sum to 10_000."
             ],
             "type": "u16"
           },
           {
-            "name": "lp_yield_share_bps",
+            "name": "lpYieldShareBps",
             "type": "u16"
           },
           {
-            "name": "adjudicator_share_bps",
+            "name": "adjudicatorShareBps",
             "type": "u16"
           },
           {
-            "name": "protocol_share_bps",
+            "name": "protocolShareBps",
             "type": "u16"
           },
           {
-            "name": "default_trial_period",
+            "name": "defaultTrialPeriod",
             "docs": [
               "Default trial period in seconds. Architecture §9."
             ],
@@ -8642,7 +8648,7 @@
             "type": "bool"
           },
           {
-            "name": "permissionless_adjudicators",
+            "name": "permissionlessAdjudicators",
             "docs": [
               "When `true`, anyone can register an adjudicator for any market.",
               "When `false`, only `config.authority` may call `register_adjudicator`."
@@ -8650,7 +8656,7 @@
             "type": "bool"
           },
           {
-            "name": "veto_period_secs",
+            "name": "vetoPeriodSecs",
             "docs": [
               "Guardian-veto window in seconds. `dispute` is callable while",
               "`now < attested_at + veto_period_secs`; `settle` only after.",
@@ -8665,7 +8671,7 @@
             "type": "i64"
           },
           {
-            "name": "pending_authority",
+            "name": "pendingAuthority",
             "docs": [
               "Nominee for `authority`, or `Pubkey::default()` when no transfer is",
               "in flight. Written by `transfer_authority`, consumed by",
@@ -8685,7 +8691,7 @@
             "type": "pubkey"
           },
           {
-            "name": "_reserved",
+            "name": "reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
               "instead of changing the account's length, so no migration is needed:",
@@ -8709,7 +8715,7 @@
       }
     },
     {
-      "name": "ProtocolConfigUpdated",
+      "name": "protocolConfigUpdated",
       "docs": [
         "Emitted by `update_protocol_config`. Carries the WHOLE resulting config",
         "rather than the fields that moved: the instruction is sparse, so a log of",
@@ -8728,43 +8734,43 @@
             "type": "pubkey"
           },
           {
-            "name": "amm_fee_bps",
+            "name": "ammFeeBps",
             "type": "u16"
           },
           {
-            "name": "book_fee_bps",
+            "name": "bookFeeBps",
             "type": "u16"
           },
           {
-            "name": "graduation_bps",
+            "name": "graduationBps",
             "type": "u16"
           },
           {
-            "name": "b_base_share_bps",
+            "name": "bBaseShareBps",
             "type": "u16"
           },
           {
-            "name": "lp_yield_share_bps",
+            "name": "lpYieldShareBps",
             "type": "u16"
           },
           {
-            "name": "adjudicator_share_bps",
+            "name": "adjudicatorShareBps",
             "type": "u16"
           },
           {
-            "name": "protocol_share_bps",
+            "name": "protocolShareBps",
             "type": "u16"
           },
           {
-            "name": "default_trial_period",
+            "name": "defaultTrialPeriod",
             "type": "i64"
           },
           {
-            "name": "veto_period_secs",
+            "name": "vetoPeriodSecs",
             "type": "i64"
           },
           {
-            "name": "permissionless_adjudicators",
+            "name": "permissionlessAdjudicators",
             "type": "bool"
           },
           {
@@ -8775,7 +8781,7 @@
       }
     },
     {
-      "name": "ProtocolInitialized",
+      "name": "protocolInitialized",
       "docs": [
         "Emitted once per protocol deploy by `initialize_protocol`. Indexers can",
         "pin the cluster's authority + treasury without re-reading the PDA."
@@ -8792,11 +8798,11 @@
             "type": "pubkey"
           },
           {
-            "name": "amm_fee_bps",
+            "name": "ammFeeBps",
             "type": "u16"
           },
           {
-            "name": "book_fee_bps",
+            "name": "bookFeeBps",
             "type": "u16"
           },
           {
@@ -8807,7 +8813,7 @@
       }
     },
     {
-      "name": "ProtocolPausedEvent",
+      "name": "protocolPausedEvent",
       "docs": [
         "Emitted by `pause` and `unpause`. `paused = true` means the protocol was",
         "just paused; `paused = false` means it was just unpaused."
@@ -8831,12 +8837,12 @@
       }
     },
     {
-      "name": "PublishResolutionCommitmentArgs",
+      "name": "publishResolutionCommitmentArgs",
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "merkle_root",
+            "name": "merkleRoot",
             "docs": [
               "Root of the per-wallet entitlement tree."
             ],
@@ -8848,28 +8854,28 @@
             }
           },
           {
-            "name": "t_star",
+            "name": "tStar",
             "docs": [
               "The moment the market's event became public knowledge."
             ],
             "type": "i64"
           },
           {
-            "name": "leaf_count",
+            "name": "leafCount",
             "docs": [
               "Leaves in the tree. Published so the tree's shape is reproducible."
             ],
             "type": "u32"
           },
           {
-            "name": "total_void_refund_usdc",
+            "name": "totalVoidRefundUsdc",
             "docs": [
               "Ceiling on the USDC the AMM void path may pay out across every leaf."
             ],
             "type": "u64"
           },
           {
-            "name": "total_book_void_refund_usdc",
+            "name": "totalBookVoidRefundUsdc",
             "docs": [
               "The same ceiling for the BOOK venue, whose refunds leave a different",
               "vault. Zero on a market that never graduated — and a market with no",
@@ -8881,7 +8887,7 @@
       }
     },
     {
-      "name": "Redeemed",
+      "name": "redeemed",
       "docs": [
         "Mirror of EVM `OrderEngine.PositionSettled` (`OrderEngine.sol:430`).",
         "Emitted by `redeem` after a successful post-settlement burn-and-pay."
@@ -8906,7 +8912,7 @@
             "type": "u8"
           },
           {
-            "name": "yes_burned",
+            "name": "yesBurned",
             "docs": [
               "YES outcome-token base units burned (0 if user held none, or if",
               "outcome=NO)."
@@ -8914,7 +8920,7 @@
             "type": "u64"
           },
           {
-            "name": "no_burned",
+            "name": "noBurned",
             "docs": [
               "NO outcome-token base units burned (0 if user held none, or if",
               "outcome=YES)."
@@ -8922,7 +8928,7 @@
             "type": "u64"
           },
           {
-            "name": "usdc_paid",
+            "name": "usdcPaid",
             "docs": [
               "USDC base units transferred from vault to user."
             ],
@@ -8936,7 +8942,7 @@
       }
     },
     {
-      "name": "RefundClaimed",
+      "name": "refundClaimed",
       "type": {
         "kind": "struct",
         "fields": [
@@ -8949,14 +8955,14 @@
             "type": "pubkey"
           },
           {
-            "name": "amount_usdc",
+            "name": "amountUsdc",
             "type": "u64"
           }
         ]
       }
     },
     {
-      "name": "RegisterZkAdjudicatorArgs",
+      "name": "registerZkAdjudicatorArgs",
       "type": {
         "kind": "struct",
         "fields": [
@@ -8969,7 +8975,7 @@
             "type": "pubkey"
           },
           {
-            "name": "attestor_evm",
+            "name": "attestorEvm",
             "docs": [
               "The one EVM address whose attestations this market accepts."
             ],
@@ -8981,7 +8987,7 @@
             }
           },
           {
-            "name": "rule_hash",
+            "name": "ruleHash",
             "docs": [
               "`crate::zk::compute_rule_hash(url, parse_path)`, computed off-chain by",
               "whoever picks the endpoint and re-derived on-chain from the submitted",
@@ -9010,14 +9016,14 @@
             "type": "i64"
           },
           {
-            "name": "value_scale",
+            "name": "valueScale",
             "type": "u8"
           }
         ]
       }
     },
     {
-      "name": "ResidualSwept",
+      "name": "residualSwept",
       "type": {
         "kind": "struct",
         "fields": [
@@ -9026,7 +9032,7 @@
             "type": "pubkey"
           },
           {
-            "name": "market_id",
+            "name": "marketId",
             "type": {
               "array": [
                 "u8",
@@ -9046,7 +9052,7 @@
       }
     },
     {
-      "name": "ResolutionCommitment",
+      "name": "resolutionCommitment",
       "type": {
         "kind": "struct",
         "fields": [
@@ -9061,7 +9067,7 @@
             "type": "pubkey"
           },
           {
-            "name": "merkle_root",
+            "name": "merkleRoot",
             "docs": [
               "Root of the per-wallet entitlement tree. Leaves are composed by",
               "[`voided_leaf`]; the shape is in `crate::merkle`."
@@ -9074,7 +9080,7 @@
             }
           },
           {
-            "name": "t_star",
+            "name": "tStar",
             "docs": [
               "The moment the market's event actually became public knowledge. Every",
               "trade at or before this is honest; everything after it is what the",
@@ -9084,7 +9090,7 @@
             "type": "i64"
           },
           {
-            "name": "leaf_count",
+            "name": "leafCount",
             "docs": [
               "Number of leaves in the tree. Not consulted by proof verification —",
               "it is published so a third party can reproduce the tree's exact shape",
@@ -9094,7 +9100,7 @@
             "type": "u32"
           },
           {
-            "name": "total_void_refund_usdc",
+            "name": "totalVoidRefundUsdc",
             "docs": [
               "Total USDC the resolver claims the void path will pay out across all",
               "leaves. A ceiling, not an estimate: see `void_refund_paid_usdc`."
@@ -9102,7 +9108,7 @@
             "type": "u64"
           },
           {
-            "name": "void_refund_paid_usdc",
+            "name": "voidRefundPaidUsdc",
             "docs": [
               "Running total actually paid out by `redeem_amm_position`'s void path.",
               "Together with the field above this caps the cash the whole mechanism",
@@ -9121,7 +9127,7 @@
             "type": "pubkey"
           },
           {
-            "name": "published_at",
+            "name": "publishedAt",
             "docs": [
               "Unix seconds at publication. The veto deadline is derived from the",
               "ATTESTATION, not from this — publishing late must not extend the",
@@ -9137,7 +9143,7 @@
             "type": "u8"
           },
           {
-            "name": "total_book_void_refund_usdc",
+            "name": "totalBookVoidRefundUsdc",
             "docs": [
               "The same ceiling as `total_void_refund_usdc`, for the BOOK venue.",
               "",
@@ -9149,14 +9155,14 @@
             "type": "u64"
           },
           {
-            "name": "book_void_refund_paid_usdc",
+            "name": "bookVoidRefundPaidUsdc",
             "docs": [
               "Running total paid out by `redeem_book_seat`'s void path."
             ],
             "type": "u64"
           },
           {
-            "name": "_reserved",
+            "name": "reserved",
             "docs": [
               "Forward-compat padding. Adding a field consumes bytes from here",
               "instead of changing the account's length, so no migration is needed:",
@@ -9178,7 +9184,7 @@
       }
     },
     {
-      "name": "ResolutionCommitmentPublished",
+      "name": "resolutionCommitmentPublished",
       "docs": [
         "Emitted by `publish_resolution_commitment`. Carries every field an",
         "observer needs to reproduce the commitment from the market's public event",
@@ -9197,7 +9203,7 @@
             "type": "pubkey"
           },
           {
-            "name": "merkle_root",
+            "name": "merkleRoot",
             "docs": [
               "Root over one leaf per wallet."
             ],
@@ -9209,25 +9215,25 @@
             }
           },
           {
-            "name": "t_star",
+            "name": "tStar",
             "docs": [
               "The moment the market's event became public knowledge."
             ],
             "type": "i64"
           },
           {
-            "name": "leaf_count",
+            "name": "leafCount",
             "type": "u32"
           },
           {
-            "name": "total_void_refund_usdc",
+            "name": "totalVoidRefundUsdc",
             "docs": [
               "Ceiling on the USDC the AMM void path may pay across every leaf."
             ],
             "type": "u64"
           },
           {
-            "name": "total_book_void_refund_usdc",
+            "name": "totalBookVoidRefundUsdc",
             "docs": [
               "The same ceiling for the book venue."
             ],
@@ -9241,7 +9247,7 @@
       }
     },
     {
-      "name": "ResolutionCommitmentRevoked",
+      "name": "resolutionCommitmentRevoked",
       "docs": [
         "Emitted by `revoke_resolution_commitment`. The market redeems as if the",
         "commitment had never been published."
@@ -9254,11 +9260,11 @@
             "type": "pubkey"
           },
           {
-            "name": "dispute_authority",
+            "name": "disputeAuthority",
             "type": "pubkey"
           },
           {
-            "name": "merkle_root",
+            "name": "merkleRoot",
             "docs": [
               "The root being withdrawn, so the reason for the veto stays legible in",
               "the log after the account is gone."
@@ -9278,23 +9284,23 @@
       }
     },
     {
-      "name": "SeedLpArgs",
+      "name": "seedLpArgs",
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "lp_amount",
+            "name": "lpAmount",
             "type": "u64"
           },
           {
-            "name": "seed_deposit_wad",
+            "name": "seedDepositWad",
             "type": "u128"
           }
         ]
       }
     },
     {
-      "name": "UpdateProtocolConfigArgs",
+      "name": "updateProtocolConfigArgs",
       "docs": [
         "Sparse update. `None` leaves a field exactly as it is."
       ],
@@ -9302,7 +9308,7 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "permissionless_adjudicators",
+            "name": "permissionlessAdjudicators",
             "type": {
               "option": "bool"
             }
@@ -9314,55 +9320,55 @@
             }
           },
           {
-            "name": "amm_fee_bps",
+            "name": "ammFeeBps",
             "type": {
               "option": "u16"
             }
           },
           {
-            "name": "book_fee_bps",
+            "name": "bookFeeBps",
             "type": {
               "option": "u16"
             }
           },
           {
-            "name": "graduation_bps",
+            "name": "graduationBps",
             "type": {
               "option": "u16"
             }
           },
           {
-            "name": "b_base_share_bps",
+            "name": "bBaseShareBps",
             "type": {
               "option": "u16"
             }
           },
           {
-            "name": "lp_yield_share_bps",
+            "name": "lpYieldShareBps",
             "type": {
               "option": "u16"
             }
           },
           {
-            "name": "adjudicator_share_bps",
+            "name": "adjudicatorShareBps",
             "type": {
               "option": "u16"
             }
           },
           {
-            "name": "protocol_share_bps",
+            "name": "protocolShareBps",
             "type": {
               "option": "u16"
             }
           },
           {
-            "name": "default_trial_period",
+            "name": "defaultTrialPeriod",
             "type": {
               "option": "i64"
             }
           },
           {
-            "name": "veto_period_secs",
+            "name": "vetoPeriodSecs",
             "type": {
               "option": "i64"
             }
@@ -9371,7 +9377,7 @@
       }
     },
     {
-      "name": "VoidedBookClaimArgs",
+      "name": "voidedBookClaimArgs",
       "docs": [
         "A seat's entitlement under a published `ResolutionCommitment`, plus the",
         "proof that it is in the tree.",
@@ -9386,7 +9392,7 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "valid_net",
+            "name": "validNet",
             "docs": [
               "Signed net acquired at or before T* and still held: `> 0` long YES,",
               "`< 0` long NO."
@@ -9394,7 +9400,7 @@
             "type": "i64"
           },
           {
-            "name": "book_void_refund_usdc",
+            "name": "bookVoidRefundUsdc",
             "docs": [
               "USDC paid for post-T* fills, returned at cost."
             ],
@@ -9418,7 +9424,7 @@
       }
     },
     {
-      "name": "VoidedBookRedeem",
+      "name": "voidedBookRedeem",
       "docs": [
         "Emitted by `redeem_book_seat` when the payout came from a published",
         "entitlement rather than from the raw seat. `Redeemed` still fires alongside",
@@ -9436,21 +9442,21 @@
             "type": "pubkey"
           },
           {
-            "name": "valid_net",
+            "name": "validNet",
             "docs": [
               "Signed net acquired at or before T* — the part that settled."
             ],
             "type": "i64"
           },
           {
-            "name": "book_void_refund_usdc",
+            "name": "bookVoidRefundUsdc",
             "docs": [
               "USDC returned at cost for post-T* fills."
             ],
             "type": "u64"
           },
           {
-            "name": "held_net",
+            "name": "heldNet",
             "docs": [
               "The seat's whole net. The difference against `valid_net` is what was",
               "voided."
@@ -9465,7 +9471,7 @@
       }
     },
     {
-      "name": "VoidedClaimArgs",
+      "name": "voidedClaimArgs",
       "docs": [
         "A wallet's entitlement under a published `ResolutionCommitment`, plus the",
         "proof that it is in the tree.",
@@ -9481,21 +9487,21 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "valid_yes_wad",
+            "name": "validYesWad",
             "docs": [
               "YES shares acquired at or before T* and still held, in WAD."
             ],
             "type": "u128"
           },
           {
-            "name": "valid_no_wad",
+            "name": "validNoWad",
             "docs": [
               "NO shares acquired at or before T* and still held, in WAD."
             ],
             "type": "u128"
           },
           {
-            "name": "void_refund_usdc",
+            "name": "voidRefundUsdc",
             "docs": [
               "USDC paid for post-T* acquisitions, returned at cost."
             ],
@@ -9519,7 +9525,7 @@
       }
     },
     {
-      "name": "VoidedRedeem",
+      "name": "voidedRedeem",
       "docs": [
         "Emitted by `redeem_amm_position` when the payout came from a published",
         "entitlement rather than from the raw position. `Redeemed` still fires",
@@ -9538,25 +9544,25 @@
             "type": "pubkey"
           },
           {
-            "name": "valid_yes_wad",
+            "name": "validYesWad",
             "docs": [
               "Shares acquired at or before T* and still held — the part that settled."
             ],
             "type": "u128"
           },
           {
-            "name": "valid_no_wad",
+            "name": "validNoWad",
             "type": "u128"
           },
           {
-            "name": "void_refund_usdc",
+            "name": "voidRefundUsdc",
             "docs": [
               "USDC returned at cost for post-T* acquisitions."
             ],
             "type": "u64"
           },
           {
-            "name": "held_yes_wad",
+            "name": "heldYesWad",
             "docs": [
               "Shares the position held in total. The difference against the two",
               "valid legs is what was voided."
@@ -9564,7 +9570,7 @@
             "type": "u128"
           },
           {
-            "name": "held_no_wad",
+            "name": "heldNoWad",
             "type": "u128"
           },
           {
@@ -9575,7 +9581,7 @@
       }
     },
     {
-      "name": "ZkAdjudicatorRegistered",
+      "name": "zkAdjudicatorRegistered",
       "docs": [
         "Emitted by `register_zk_adjudicator`. Carries the full zk configuration so",
         "an indexer can reproduce the verification off-chain without re-reading the",
@@ -9589,7 +9595,7 @@
             "type": "pubkey"
           },
           {
-            "name": "adjudicator_entry",
+            "name": "adjudicatorEntry",
             "type": "pubkey"
           },
           {
@@ -9597,7 +9603,7 @@
             "type": "pubkey"
           },
           {
-            "name": "attestor_evm",
+            "name": "attestorEvm",
             "type": {
               "array": [
                 "u8",
@@ -9606,7 +9612,7 @@
             }
           },
           {
-            "name": "rule_hash",
+            "name": "ruleHash",
             "type": {
               "array": [
                 "u8",
@@ -9623,7 +9629,7 @@
             "type": "i64"
           },
           {
-            "name": "value_scale",
+            "name": "valueScale",
             "type": "u8"
           },
           {
@@ -9634,7 +9640,7 @@
       }
     },
     {
-      "name": "ZkAttestation",
+      "name": "zkAttestation",
       "docs": [
         "A Primus `Attestation`, carried as structured fields.",
         "",
@@ -9660,16 +9666,16 @@
             "name": "request",
             "type": {
               "defined": {
-                "name": "ZkNetworkRequest"
+                "name": "zkNetworkRequest"
               }
             }
           },
           {
-            "name": "response_resolve",
+            "name": "responseResolve",
             "type": {
               "vec": {
                 "defined": {
-                  "name": "ZkResponseResolve"
+                  "name": "zkResponseResolve"
                 }
               }
             }
@@ -9679,7 +9685,7 @@
             "type": "string"
           },
           {
-            "name": "att_conditions",
+            "name": "attConditions",
             "type": "string"
           },
           {
@@ -9690,11 +9696,11 @@
             "type": "u64"
           },
           {
-            "name": "addition_params",
+            "name": "additionParams",
             "type": "string"
           },
           {
-            "name": "attestor_addr",
+            "name": "attestorAddr",
             "type": {
               "array": [
                 "u8",
@@ -9703,7 +9709,7 @@
             }
           },
           {
-            "name": "attestor_url",
+            "name": "attestorUrl",
             "type": "string"
           },
           {
@@ -9722,7 +9728,7 @@
       }
     },
     {
-      "name": "ZkNetworkRequest",
+      "name": "zkNetworkRequest",
       "docs": [
         "`AttNetworkRequest` from `IPrimusZKTLS.sol`. Field order is load-bearing —",
         "it is the packed-encoding order."
@@ -9750,7 +9756,7 @@
       }
     },
     {
-      "name": "ZkOutcomeAttested",
+      "name": "zkOutcomeAttested",
       "docs": [
         "Emitted by `attest_outcome_zk` alongside `OutcomeAttested`.",
         "",
@@ -9767,11 +9773,11 @@
             "type": "pubkey"
           },
           {
-            "name": "adjudicator_entry",
+            "name": "adjudicatorEntry",
             "type": "pubkey"
           },
           {
-            "name": "attestor_evm",
+            "name": "attestorEvm",
             "docs": [
               "The EVM address recovered from the signature, not the one supplied."
             ],
@@ -9798,14 +9804,14 @@
             "type": "u8"
           },
           {
-            "name": "winning_outcome",
+            "name": "winningOutcome",
             "docs": [
               "0=NO, 1=YES."
             ],
             "type": "u8"
           },
           {
-            "name": "attestation_ts",
+            "name": "attestationTs",
             "docs": [
               "The attestation's own timestamp, normalized to unix seconds."
             ],
@@ -9819,7 +9825,7 @@
       }
     },
     {
-      "name": "ZkResponseResolve",
+      "name": "zkResponseResolve",
       "docs": [
         "`AttNetworkResponseResolve` from `IPrimusZKTLS.sol`. Field order is the",
         "packed-encoding order."
@@ -9828,19 +9834,19 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "key_name",
+            "name": "keyName",
             "type": "string"
           },
           {
-            "name": "parse_type",
+            "name": "parseType",
             "type": "string"
           },
           {
-            "name": "parse_path",
+            "name": "parsePath",
             "type": "string"
           }
         ]
       }
     }
   ]
-}
+};

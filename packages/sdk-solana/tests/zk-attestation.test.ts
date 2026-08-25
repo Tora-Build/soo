@@ -60,6 +60,7 @@ const ERR = {
   ZkValuePrecisionTooHigh: 6081,
   ZkInvalidComparator: 6083,
   ZkAttestationTimestampInvalid: 6085,
+  ZkEarlyRequiresSatisfied: 6097,
 } as const;
 
 /** bootSmoke's market: created at 1_000_000, deadline +7d. */
@@ -889,5 +890,116 @@ describe("zk instruction builders", () => {
         valueScale: 19,
       }),
     ).rejects.toThrow(/valueScale must be an integer/);
+  });
+});
+
+
+// ── Early resolution ─────────────────────────────────────────────────────────
+//
+// The proof is the authority for the lock as well as the verdict: a verified
+// attestation showing the rule SATISFIED may arrive while the market is still
+// Open, performs the Locked transition itself, and attests YES atomically.
+// The other direction is sealed twice over — an unmet reading is rejected
+// outright before the deadline, and the timestamp floor stops a pre-market
+// reading from counting at all.
+
+describe("attest_outcome_zk — early resolution", () => {
+  const START = 1_000_000;
+
+  /** boot → register zk, market left OPEN — the early path's precondition. */
+  async function bootOpenZk(): Promise<{ smoke: SmokeContext; program: any }> {
+    const smoke = await bootSmoke({ skipRegisterAdjudicator: true });
+    const program = anchorProgram(smoke.ctx, smoke.creator);
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await registerZkTx(program, smoke, smoke.creator.publicKey),
+    );
+    return { smoke, program };
+  }
+
+  it("a SATISFIED mid-trading attestation locks and attests YES in one instruction", async () => {
+    const { smoke, program } = await bootOpenZk();
+    const att = sign(
+      attestation("64000.5", { timestamp: BigInt(START + 3600) }),
+      ATTESTOR_KEY,
+    );
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await attestZkTx(program, smoke, smoke.creator.publicKey, att),
+    );
+    const market = await fetchMarket(program, smoke);
+    expect(Object.keys(market.lifecycle)[0]).toBe("locked");
+    const entry = await fetchEntry(program, smoke);
+    expect(entry.attestedOutcome).toBe(OUTCOME_YES);
+  });
+
+  it("an unmet reading proves nothing early and is rejected outright", async () => {
+    const { smoke, program } = await bootOpenZk();
+    const att = sign(
+      attestation("63999.5", { timestamp: BigInt(START + 3600) }),
+      ATTESTOR_KEY,
+    );
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        await attestZkTx(program, smoke, smoke.creator.publicKey, att),
+      ),
+    ).rejects.toThrow(customError(ERR.ZkEarlyRequiresSatisfied));
+    // Nothing moved: still Open, still unattested — NO exists only at the
+    // deadline, from a reading taken at or after it.
+    const market = await fetchMarket(program, smoke);
+    expect(Object.keys(market.lifecycle)[0]).toBe("open");
+    expect((await fetchEntry(program, smoke)).attestedOutcome).toBeNull();
+  });
+
+  it("a satisfied reading from BEFORE the market opened counts for nothing", async () => {
+    const { smoke, program } = await bootOpenZk();
+    const att = sign(
+      attestation("64000.5", { timestamp: BigInt(START - 100) }),
+      ATTESTOR_KEY,
+    );
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        await attestZkTx(program, smoke, smoke.creator.publicKey, att),
+      ),
+    ).rejects.toThrow(customError(ERR.ZkAttestationTimestampInvalid));
+  });
+
+  it("the early verdict walks the ordinary road after: veto window, then settle", async () => {
+    const { smoke, program } = await bootOpenZk();
+    const att = sign(
+      attestation("64000.5", { timestamp: BigInt(START + 3600) }),
+      ATTESTOR_KEY,
+    );
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await attestZkTx(program, smoke, smoke.creator.publicKey, att),
+    );
+    const entry = await fetchEntry(program, smoke);
+    // Past the veto window — the same crank as every other resolution.
+    warpClockTo(smoke.ctx, BigInt(Number(entry.attestedAt) + 24 * 60 * 60 + 1));
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      new Transaction().add(
+        await program.methods
+          .settle()
+          .accounts({
+            market: smoke.marketPda,
+            adjudicatorEntry: entryPda(smoke),
+            protocolConfig: deriveProtocolConfigPda(smoke.programs)[0],
+            cranker: smoke.creator.publicKey,
+          })
+          .instruction(),
+      ),
+    );
+    const market = await fetchMarket(program, smoke);
+    expect(Object.keys(market.lifecycle)[0]).toBe("settled");
   });
 });

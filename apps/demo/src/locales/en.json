@@ -375,7 +375,7 @@
     "questionHint": "Ask about a public number with a threshold — a price, rate, index, or count.",
     "advancedLabel": "Advanced",
     "advancedSummary": "Category: {{category}}",
-    "resolvesEarly": "Automatic markets settle at the deadline: the resolver reads the source then and attests the comparison. If the answer is known sooner, you as adjudicator can resolve early from the Locker.",
+    "resolvesEarly": "Automatic markets resolve the moment the rule is verifiably met — a satisfied zkTLS attestation locks and attests YES on its own, any time. If it is never met, the deadline reading decides. You can also resolve early by hand from the Locker.",
     "liquidityLabel": "Starting liquidity",
     "youDeposit": "you deposit {{symbol}}"
   },

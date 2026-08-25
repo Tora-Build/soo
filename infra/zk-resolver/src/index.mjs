@@ -29,6 +29,7 @@ import {
 import { hex, selfTestEncoding } from "./evm.mjs";
 import { loadRegistry, verifyRule } from "./registry.mjs";
 import { ACTION, decideAction, outcomeName } from "./resolve.mjs";
+import { fetchFeedValue, toFixedPoint } from "./feed.mjs";
 import { startPreviewServer } from "./serve.mjs";
 import { fixtureSource } from "./sources/fixture.mjs";
 import { PADO_ATTESTOR, primusPreflight, primusSource } from "./sources/primus.mjs";
@@ -160,7 +161,36 @@ export async function resolveMarket({ chain, entry, source, now, plan, journal }
     chainState.exists &&
     chainState.entry.authority?.equals?.(chain.payer.publicKey) === true;
 
-  const decision = decideAction({ chainState, ruleCheck, now, canLock });
+  // The cheap early probe: plain HTTPS, no Primus quota. Only meaningful on
+  // an Open market before its deadline with a verified rule — anywhere else
+  // the deadline path decides. `null` means "could not tell", which the
+  // decision treats as not-satisfied: waiting costs a pass, a wasted
+  // attestation costs quota.
+  let probeSatisfied = null;
+  if (
+    chainState.exists &&
+    ruleCheck?.ok &&
+    chainState.market.lifecycle === "open" &&
+    now < chainState.market.deadline
+  ) {
+    try {
+      const probed = await fetchFeedValue(entry);
+      const scaled = toFixedPoint(probed.raw, chainState.entry.valueScale);
+      probeSatisfied =
+        predictOutcome(
+          scaled,
+          chainState.entry.comparator,
+          chainState.entry.threshold,
+        ) === 1;
+      log(
+        `${tag}: probe ${probed.raw} -> rule ${probeSatisfied ? "SATISFIED — early resolution due" : "not yet satisfied"}`,
+      );
+    } catch (err) {
+      log(`${tag}: probe unavailable (${err.message}) — treating as not satisfied`);
+    }
+  }
+
+  const decision = decideAction({ chainState, ruleCheck, now, canLock, probeSatisfied });
 
   if (decision.action === ACTION.REFUSE) {
     errorOut(`${tag}: REFUSED — ${decision.reason}`);
@@ -211,7 +241,8 @@ export async function resolveMarket({ chain, entry, source, now, plan, journal }
   }
 
   if (plan) {
-    log(`${tag}: PLAN would request an attestation from "${source.name}" and submit attest_outcome_zk`);
+    const mode = decision.action === ACTION.ATTEST_EARLY ? " EARLY (pre-deadline, rule satisfied)" : "";
+    log(`${tag}: PLAN would request an attestation from "${source.name}" and submit attest_outcome_zk${mode}`);
     return { market: entry.market, status: "would-attest" };
   }
 
