@@ -375,7 +375,7 @@
     "questionHint": "Ask about a public number with a threshold — a price, rate, index, or count.",
     "advancedLabel": "Advanced",
     "advancedSummary": "Category: {{category}}",
-    "resolvesEarly": "Resolves as soon as the rule is met. The deadline is the latest it can settle, not the wait.",
+    "resolvesEarly": "Automatic markets settle at the deadline: the resolver reads the source then and attests the comparison. If the answer is known sooner, you as adjudicator can resolve early from the Locker.",
     "liquidityLabel": "Starting liquidity",
     "youDeposit": "you deposit {{symbol}}"
   },
