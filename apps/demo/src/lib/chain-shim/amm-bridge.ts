@@ -1092,12 +1092,20 @@ async function dispatchCreateMarket(
   // adjudicator). Future work: surface a Solana-typed adjudicator picker.
   const userRef = `sol:${userBase58}`;
 
+  // Manual markets bundle register_adjudicator into the create transaction,
+  // so the founder is the adjudicator from the first signature — the missing
+  // entry was why three of a founder's markets later needed a "become the
+  // adjudicator" claim nobody understood. Automatic ("zk" in the config
+  // slot) must NOT: register_zk_adjudicator's `init` needs the entry absent.
+  const mode = typeof args[6] === "string" ? args[6] : "";
   const req = await ctx.adapter.buildCreateMarket({
     question,
     deadline,
     initialB: initialB > 0n ? initialB : undefined,
     user: userRef,
     adjudicator: userRef,
+    // @ts-expect-error — Solana-only extension of the umbrella args.
+    autoRegisterAdjudicator: mode !== "zk",
   });
 
   // Stash the market PDA on a global side channel BEFORE submit so the

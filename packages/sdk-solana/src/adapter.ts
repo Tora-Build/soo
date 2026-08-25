@@ -663,9 +663,9 @@ export class SolanaChainAdapter implements ChainAdapter {
    * check whether the connected wallet is the registered authority for a
    * given market (and to surface the attested outcome / dispute state).
    *
-   * Returns null when the PDA hasn't been initialized yet (the
-   * register_adjudicator ix runs as part of create_market, so this should
-   * only be null for malformed deployments).
+   * Returns null when the PDA hasn't been initialized yet — manual creates
+   * bundle `register_adjudicator` when asked to, zk markets register their
+   * entry in a follow-up instruction, and legacy markets may have neither.
    */
   async readAdjudicator(market: MarketRef): Promise<AdjudicatorView | null> {
     const marketPda = decodePubkeyRef(market);
@@ -3412,6 +3412,52 @@ export class SolanaChainAdapter implements ChainAdapter {
     // around 80–100k CU on litesvm — well under the 200k default — but
     // bumping the limit gives headroom for IDL-init overhead on the first
     // call after a redeploy. Same pattern as `buildTrade`.
+
+    // Manual markets bundle `register_adjudicator` into the SAME transaction
+    // — create as a pre-instruction, register as the main one — so a founder
+    // is their market's adjudicator from the first signature, not after a
+    // separate claim they had no way to know about. It stays opt-in because
+    // an Automatic market's `register_zk_adjudicator` uses `init` and MUST
+    // find the entry absent: one PDA, two possible shapes, chosen at birth.
+    const autoRegister = Boolean(
+      (args as { autoRegisterAdjudicator?: boolean }).autoRegisterAdjudicator,
+    );
+    if (autoRegister) {
+      const [adjudicatorEntryPda] = deriveAdjudicatorEntryPda(
+        marketPda,
+        this.programIds,
+      );
+      const [registerConfigPda] = deriveProtocolConfigPda(this.programIds);
+      const registerIx: TransactionInstruction = await (
+        this.program.methods as any
+      )
+        .registerAdjudicator(adjudicator)
+        .accounts({
+          adjudicatorEntry: adjudicatorEntryPda,
+          market: marketPda,
+          protocolConfig: registerConfigPda,
+          signer: userPk,
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction();
+      return {
+        kind: "createMarket",
+        serializedTx: undefined,
+        costEstimateWad: 0n,
+        accounts: ixKeysToShim(registerIx.keys),
+        meta: {
+          marketPda: marketPda.toBase58(),
+          marketIdHex: Buffer.from(marketId).toString("hex"),
+          ...buildIxMeta(registerIx, userPk),
+          preIxs: [serializeIx(ix)],
+          adjudicator: adjudicator.toBase58(),
+          startTimeStr: startTime.toString(),
+          deadlineStr: args.deadline.toString(),
+          initialBStr: initialB.toString(),
+        },
+      };
+    }
+
     const accounts = ixKeysToShim(ix.keys);
 
     return {

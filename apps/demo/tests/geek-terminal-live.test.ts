@@ -67,6 +67,20 @@ test("terminal session: trade → simulate → graduate → book", async () => {
     return { ...r, text };
   };
 
+  // A terminal-created manual market carries its adjudicator entry from the
+  // FIRST transaction — create and register bundled — so the founder never
+  // meets a "become the adjudicator" claim step.
+  const madeMarket = await run("createmarket Will the bundled register land? 50");
+  expect(madeMarket.result.success, madeMarket.text).toBe(true);
+  {
+    const pda = /Active market → (\w+)/.exec(madeMarket.text)?.[1];
+    expect(pda, madeMarket.text).toBeTruthy();
+    const st = await adapter.readResolutionState(`sol:${pda}`);
+    expect(st?.adjudicatorEntry, "entry exists at birth").not.toBeNull();
+    expect(st!.adjudicatorEntry!.isZk).toBe(false);
+    expect(st!.adjudicatorEntry!.authority).toBe(smoke.user.publicKey.toBase58());
+  }
+
   // Discovery: point the terminal at the fixture's market.
   const set = await run(`setmarket ${smoke.marketPda.toBase58()}`);
   expect(set.result.success).toBe(true);

@@ -251,7 +251,11 @@ export const Launchpad = () => {
           userAddress as Address,
           bWei,
           initialProbabilityWad,
-          "0x",
+          // The resolution mode rides the config slot: "zk" tells the bridge
+          // NOT to bundle register_adjudicator — the zk registration that
+          // follows must find the entry absent (`init`). Manual markets get
+          // their entry in the same transaction as creation.
+          effectiveMode,
         ],
       });
 
