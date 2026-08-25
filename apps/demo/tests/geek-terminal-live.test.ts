@@ -146,7 +146,13 @@ test("terminal session: trade → simulate → graduate → book", async () => {
   expect(grad.text).toMatch(/requires ~\d+\.\d+ USDC of balanced volume/);
   expect(grad.text).toMatch(/Graduated in \d+ transaction/);
   const txCount = Number(/Graduated in (\d+) transaction/.exec(grad.text)![1]);
-  expect(txCount, grad.text).toBeLessThanOrEqual(6);
+  expect(txCount, grad.text).toBeLessThanOrEqual(8);
+  // Actors pay before the founder's wallet — the fleet exists to absorb the
+  // popups, so the wallet must appear last in the payer list if at all.
+  const payerLine = /(\d+) payer\(s\).*: (.*)/.exec(grad.text)![2]!;
+  if (payerLine.includes("you")) {
+    expect(payerLine.trim().split(" · ").pop()).toContain("you");
+  }
 
   // First order on a fresh book: the account does not exist until now.
   const place = await run("place bid 450 25");

@@ -116,11 +116,9 @@ function fmtUsdc(baseUnits: bigint): string {
 
 function fmtWadShares(wad: bigint, places = 4): string {
   const whole = wad / WAD;
+  if (places <= 0) return `${whole}`;
   const frac = wad % WAD;
-  return `${whole}.${frac
-    .toString()
-    .padStart(18, "0")
-    .slice(0, Math.max(0, places))}`;
+  return `${whole}.${frac.toString().padStart(18, "0").slice(0, places)}`;
 }
 
 function toUsdcBaseUnits(s: string | undefined): bigint | null {
@@ -450,20 +448,22 @@ export class SoothSDK {
         const m = snap.market;
         const state = m.isSettled ? "settled" : m.isGraduated ? "book" : "amm";
         const p = yesPrice(m.qYes, m.qNo, m.b);
+        // The full PDA, copyable: a truncated prefix cannot be pasted into
+        // setmarket, an explorer, or anything else that wants an address.
         output.push(
           line(
             "plain",
-            `${mark} ${String(i).padStart(2)}  ${pda.slice(0, 8)}…  ${state.padEnd(7)} YES ${p.toFixed(2)}`,
+            `${mark} ${String(i).padStart(2)}  ${state.padEnd(7)} YES ${p.toFixed(2)}  ${pda}`,
           ),
         );
       } else {
         output.push(
-          line("dim", `${mark} ${String(i).padStart(2)}  ${pda.slice(0, 8)}…  (unreadable)`),
+          line("dim", `${mark} ${String(i).padStart(2)}  (unreadable)      ${pda}`),
         );
       }
     });
     this.lastListing = listing;
-    output.push(line("dim", "setmarket <n|pubkey> to switch."));
+    output.push(line("dim", "setmarket <n> or setmarket <full address> to switch; `market` prints the active one."));
     return { result: { success: true, message: "" }, output };
   }
 
@@ -984,9 +984,17 @@ export class SoothSDK {
       }
       payers.push({ label: "you", userBase58: me, usdcWad: usdc * 1_000_000_000_000n });
     }
-    // Largest first; a payer's usable capacity leaves 10% margin for the fee
+    // Actors first — richest actor to poorest — and the connected wallet
+    // strictly last. Sorting purely by balance put the founder's wallet at
+    // the front, so a funded fleet watched its human click through the
+    // popups it existed to remove. Capacity keeps 10% margin for the fee
     // and curve asymmetry (the two legs split X unevenly around the price).
-    payers.sort((a, b) => (a.usdcWad > b.usdcWad ? -1 : 1));
+    payers.sort((a, b) => {
+      const aWallet = a.signer === undefined ? 1 : 0;
+      const bWallet = b.signer === undefined ? 1 : 0;
+      if (aWallet !== bWallet) return aWallet - bWallet;
+      return a.usdcWad > b.usdcWad ? -1 : 1;
+    });
     const capacity = (p: Payer) => (p.usdcWad * 90n) / 100n;
     const assignments: Array<{ payer: Payer; sizeWad: bigint }> = [];
     let remaining = volumeWad;
