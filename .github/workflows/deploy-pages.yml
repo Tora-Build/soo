@@ -33,10 +33,13 @@ jobs:
           VITE_TEST_MODE: "false"
           VITE_SOLANA_RPC_URL: ${{ vars.SOLANA_RPC_URL }}
         run: pnpm build
+      # Plain wrangler via pnpm dlx — wrangler-action installs wrangler with
+      # npm inside the working directory, and npm cannot read the pnpm
+      # workspace's `workspace:*` protocol, so the action dies before it
+      # ever reaches Cloudflare.
       - name: Deploy to Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: a35f6796edc6a6896898c0134c935850
-          workingDirectory: apps/demo
-          command: pages deploy dist --project-name=soo
+        working-directory: apps/demo
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: a35f6796edc6a6896898c0134c935850
+        run: pnpm dlx wrangler@4 pages deploy dist --project-name=soo
