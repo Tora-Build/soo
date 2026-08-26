@@ -179,6 +179,23 @@ const PriceBar = ({
 //      fallback tinted with the LLM's category accent.
 
 // ─── Deadline formatting ──────────────────────────────────────────────────
+/**
+ * "ENDED" beside the stage badge once the deadline passes.
+ *
+ * StageBadge's own "expired" means something else entirely (trial ended,
+ * trading still allowed), and its "live" keeps its green pulse right through
+ * the deadline — so deadline-expiry needs its own chip, not a reused stage.
+ */
+function EndedChip({ deadline }: { deadline?: number }) {
+  if (!deadline || deadline > 4102444800) return null;
+  if (Date.now() / 1000 < deadline) return null;
+  return (
+    <span className="font-mono text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5 border border-amber-500/50 text-amber-400">
+      ENDED
+    </span>
+  );
+}
+
 function formatDeadline(
   deadline: number | undefined,
   locale: string,
@@ -242,6 +259,7 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 min-w-0">
             <StageBadge stage={market.stage} />
+            <EndedChip deadline={market.deadline} />
             {market.stage === "bonding" && gradProgress !== undefined && (
               <span className="font-mono text-[10px] text-accent tabular-nums">
                 {Math.round(gradProgress)}%
@@ -348,6 +366,7 @@ const EventOutcomeRow = ({ market }: { market: MarketCardData }) => {
           <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
             <span className="flex items-center gap-1.5">
               <StageBadge stage={market.stage} />
+              <EndedChip deadline={market.deadline} />
               {market.stage === "bonding" && gradProgress !== undefined && (
                 <span className="text-accent tabular-nums">
                   {Math.round(gradProgress)}%

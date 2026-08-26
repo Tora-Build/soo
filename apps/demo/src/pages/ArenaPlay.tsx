@@ -145,6 +145,14 @@ export const ArenaPlay = () => {
   const markets = useMemo<ArenaMarket[]>(
     () =>
       rawMarkets
+        // A market past its deadline cannot accept a single play — the
+        // program rejects everything with TradingClosed — so dealing it into
+        // the deck spends the player's swipe (and possibly a ticket) on a
+        // guaranteed failure.
+        .filter(
+          (market) =>
+            !market.deadline || Date.now() / 1000 < market.deadline,
+        )
         .map((market) => ({
           ...market,
           arenaCategory: normalizeCategory(

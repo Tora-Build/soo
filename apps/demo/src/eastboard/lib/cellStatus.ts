@@ -24,9 +24,11 @@ export interface CellStatusInput {
 export function deriveCellStatus(input: CellStatusInput): OptionCellStatus {
   if (input.isSettled) return "settled";
   if (!input.hasMarket) return "available";
-  if (!input.isGraduated) return "activating";
-  // Graduated but past its close: trading is frozen while resolution and the
-  // veto window run. It is neither tradeable nor settled.
+  // Past its close: trading is frozen while resolution and the veto window
+  // run, REGARDLESS of graduation — this check used to sit below the
+  // graduation branch, so a bonding market past close read "activating" and
+  // routed to a trade form whose every submission the program rejects.
   if (input.nowSeconds >= input.closeTsSeconds) return "closed";
+  if (!input.isGraduated) return "activating";
   return "live";
 }

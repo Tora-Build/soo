@@ -183,8 +183,9 @@ export function useOnChainMarkets() {
               const isDismissed = false;
               let winningOutcome: number | null = null;
 
+              let deadlineSec: number | undefined;
               try {
-                const [settled, winOutcome] = await Promise.all([
+                const [settled, winOutcome, deadlineRaw] = await Promise.all([
                   readContractSafe<boolean>(client, {
                     address: marketAddress as Address,
                     abi: ABIS.TruthMarket,
@@ -195,7 +196,20 @@ export function useOnChainMarkets() {
                     abi: ABIS.TruthMarket,
                     functionName: "winningOutcome",
                   }).catch(() => null),
+                  // Every listing surface's deadline chip, "ending soon"
+                  // sort and expiry filter hang off this one field — it was
+                  // declared on OnChainMarket and never populated, so all
+                  // three were dead code and an expired market swiped and
+                  // sorted as live.
+                  readContractSafe<bigint>(client, {
+                    address: marketAddress as Address,
+                    abi: ABIS.TruthMarket,
+                    functionName: "deadline",
+                  }).catch(() => null),
                 ]);
+                if (deadlineRaw !== null && deadlineRaw !== undefined && Number(deadlineRaw) > 0) {
+                  deadlineSec = Number(deadlineRaw);
+                }
 
                 // A market whose question cannot be recovered keeps its
                 // shortened address as the name; AMMPageBody renders its own
@@ -252,7 +266,7 @@ export function useOnChainMarkets() {
                 isDismissed,
                 winningOutcome,
                 createdAt: 0n,
-                deadline: undefined,
+                deadline: deadlineSec,
                 trialEndTime: trialEndTimeRaw
                   ? Number(trialEndTimeRaw)
                   : undefined,

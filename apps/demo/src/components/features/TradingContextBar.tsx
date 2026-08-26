@@ -177,7 +177,11 @@ function getTimeRemaining(
 ): string | null {
   if (deadline > 4102444800) return t("marketsPage.noExpiry");
   const remaining = deadline - Date.now() / 1000;
-  if (remaining <= 0) return null;
+  // A past deadline must SAY so — returning null here made the countdown
+  // chip silently disappear at the exact moment it had its most important
+  // thing to report.
+  if (remaining <= 0)
+    return t("marketsPage.ended", { defaultValue: "Ended — trading closed" });
   const days = Math.floor(remaining / 86400);
   const hours = Math.floor((remaining % 86400) / 3600);
   if (days > 0) return t("liquidityPage.time.dayHour", { days, hours });
