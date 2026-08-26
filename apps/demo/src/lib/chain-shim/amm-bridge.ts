@@ -687,12 +687,20 @@ export async function dispatchAmmRead(
       } catch {
         return false;
       }
+      // A market is "registered" if its account exists. One retry: this
+      // gate decides whether the whole trading page renders, so a single
+      // rate-limited RPC response must not be allowed to answer "no".
       try {
-        // A market is "registered" if its account exists.
         const direct = await ctx.connection.getAccountInfo(candidate);
         return direct !== null;
       } catch {
-        return false;
+        await new Promise((r) => setTimeout(r, 800));
+        try {
+          const retry = await ctx.connection.getAccountInfo(candidate);
+          return retry !== null;
+        } catch {
+          throw new Error("isMarketRegistered: RPC unreachable");
+        }
       }
     }
 

@@ -229,7 +229,11 @@ function SoothBookTerminalActive({
   const isMarketActive = useMemo(() => {
     const res = sbMarketData?.[0];
     if (!res) return null; // unknown yet
-    if (res.status !== "success") return false; // call failed = not registered
+    // A FAILED read is unknown, not "no book". This mattered in production:
+    // one 429 from the RPC rendered a graduated market with a live book as
+    // "Market not yet on SooBook" until the next 30s poll — treating a
+    // transient error as a fact about the market.
+    if (res.status !== "success") return null;
     return Boolean(res.result as boolean);
   }, [sbMarketData]);
 
