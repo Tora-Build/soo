@@ -23,6 +23,7 @@ import { SOOTHBOOK_ABI } from "../../../config/abis";
 import { useDeployments } from "../../../hooks/useDeployments";
 import { useOrderbook } from "../../../hooks/useOrderbook";
 import { useOrderbookTrade } from "../../../hooks/useOrderbookTrade";
+import { useTruthMarketDirect } from "../../../hooks/useTruthMarketDirect";
 import { useChainStore } from "../../../store/useChainStore";
 import { shortenAddress } from "../../../utils/format";
 import { LiquidityMap } from "./LiquidityMap";
@@ -182,6 +183,15 @@ function SoothBookTerminalActive({
     availableBalance,
     refetchBalance,
   } = useOrderbookTrade(marketAddress);
+
+  // The program rejects book trades past the market deadline (TradingClosed),
+  // exactly like the AMM. The AMM panel pre-empts that revert; this page did
+  // not, so an expired market offered a working-looking form whose every
+  // submission failed on-chain.
+  const { market: truthForDeadline } = useTruthMarketDirect(marketAddress);
+  const bookDeadlineSec = truthForDeadline?.deadline ?? 0;
+  const isPastDeadline =
+    bookDeadlineSec > 0 && Math.floor(Date.now() / 1000) >= bookDeadlineSec;
 
   const { data: sbBalances } = useReadContracts({
     contracts:
@@ -987,12 +997,22 @@ function SoothBookTerminalActive({
               </div>
             )}
 
+            {isPastDeadline && (
+              <div className="font-mono text-xs text-neg px-3 py-2 border border-neg/40 bg-neg/10 leading-relaxed">
+                {t("orderbook.deadlinePassed", {
+                  defaultValue:
+                    "Trading closed — this market's deadline has passed. It can only be resolved and settled now.",
+                })}
+              </div>
+            )}
+
             {/* CTA */}
             <button
               data-testid="ob-submit-button"
               onClick={handleSubmit}
               disabled={
                 isPending ||
+                isPastDeadline ||
                 sharesNum <= 0 ||
                 insufficientBalance ||
                 insufficientShares ||
@@ -1002,6 +1022,8 @@ function SoothBookTerminalActive({
             >
               {isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
+              ) : isPastDeadline ? (
+                t("orderbook.deadlinePassedCta", { defaultValue: "Deadline passed" })
               ) : (
                 <>
                   {ctaLabel}

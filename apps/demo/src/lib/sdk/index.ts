@@ -434,17 +434,30 @@ export class SoothSDK {
         o === 1 ? "YES" : o === 0 ? "NO" : o === 2 ? "INVALID" : "?";
 
       const entry = res?.adjudicatorEntry ?? null;
+      // "Open" past the deadline is a trap: the account says Open but the
+      // program rejects every trade with TradingClosed. Ten failed burst
+      // transactions taught us that the status line has to say EXPIRED
+      // itself, not leave the reader to subtract two timestamps.
+      const deadlineSec = Number(res?.deadline ?? m.deadline ?? 0n);
+      const expired =
+        (res ? res.lifecycle === "Open" : m.isLive) &&
+        deadlineSec > 0 &&
+        Date.now() / 1000 >= deadlineSec;
       const lifecycle = res
         ? res.lifecycle === "Settled"
           ? `Settled — ${outcomeWord(res.winningOutcome)} won`
           : entry?.attestedOutcome !== null && entry?.attestedOutcome !== undefined
             ? `Locked — attested ${outcomeWord(entry.attestedOutcome)}, veto window running`
-            : res.lifecycle
+            : expired
+              ? "Open — EXPIRED, trading closed (deadline passed; awaiting lock)"
+              : res.lifecycle
         : m.isSettled
           ? `Settled — ${outcomeWord(m.outcome ?? null)} won`
-          : m.isLive
-            ? "Open"
-            : "Initializing";
+          : expired
+            ? "Open — EXPIRED, trading closed"
+            : m.isLive
+              ? "Open"
+              : "Initializing";
       const kind = entry ? (entry.isZk ? "AUTO · zkTLS" : "MANUAL") : "none registered yet";
 
       const lines: OutputLine[] = [
@@ -470,6 +483,14 @@ export class SoothSDK {
           : []),
         ...(entry?.disputed ? [line("warn", "DISPUTED — the veto was used.")] : []),
       ];
+      if (expired) {
+        lines.push(
+          line(
+            "warn",
+            "Deadline passed — every trade now fails with TradingClosed. Pick a live market or create one.",
+          ),
+        );
+      }
       if (!m.isGraduated) {
         try {
           const g = await demo.adapter.readGraduationProgress(ref);
@@ -575,10 +596,22 @@ export class SoothSDK {
       }
     }
     this.activeMarket = `sol:${pda}`;
-    return {
-      result: { success: true, message: pda },
-      output: [line("success", `Active market: ${pda}`)],
-    };
+    const output: OutputLine[] = [line("success", `Active market: ${pda}`)];
+    // Say "expired" at selection time, not at the tenth failed trade.
+    try {
+      const st = await this.demo?.adapter.readResolutionState(`sol:${pda}`);
+      if (st && st.lifecycle === "Open" && Date.now() / 1000 >= Number(st.deadline)) {
+        output.push(
+          line(
+            "warn",
+            "This market's deadline has PASSED — trading is closed on it (TradingClosed). It can still be locked and resolved, but bursts and trades will fail.",
+          ),
+        );
+      }
+    } catch {
+      // Unreadable state: selection still stands; trades will speak for themselves.
+    }
+    return { result: { success: true, message: pda }, output };
   }
 
   /** `book` — top of both sides of the on-chain orderbook. */
@@ -1808,6 +1841,16 @@ export class SoothSDK {
     // An earlier version refused AMM bursts on graduated markets on the
     // opposite belief, which the program does not hold. The book, by
     // contrast, is genuinely gated pre-graduation (`NotGraduated`).
+    const dl = Number(preSnap.market.deadline ?? 0n);
+    // The 1e9 floor (Sept 2001) excludes epoch-relative clocks: a LiteSVM
+    // fixture's deadline is seconds-from-zero, and judging it against wall
+    // time would call every test market expired.
+    if (dl > 1_000_000_000 && Date.now() / 1000 >= dl && !preSnap.market.isSettled) {
+      return fail(
+        "Market expired",
+        `Deadline passed ${new Date(dl * 1000).toISOString().slice(0, 16)} UTC — the program rejects every trade with TradingClosed. Pick a live market (\`markets\`, \`marketstatus\`) or \`create\` one.`,
+      );
+    }
     if (venue === "book" && !preSnap.market.isGraduated) {
       return fail(
         "Not graduated",
