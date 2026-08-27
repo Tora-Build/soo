@@ -340,7 +340,10 @@ export const SimpleTradingPanel = ({
   // button shows "Deadline Passed" instead of producing a noisy decode error.
   const nowSec = Math.floor(Date.now() / 1000);
   const deadlineSec = truth?.deadline ?? 0;
-  const isPastDeadline = deadlineSec > 0 && nowSec >= deadlineSec;
+  // The 1e9 floor (Sept 2001) excludes epoch-relative clocks: LiteSVM
+  // fixtures start near zero, and judging their deadlines against wall time
+  // would gate every test market as expired.
+  const isPastDeadline = deadlineSec > 1_000_000_000 && nowSec >= deadlineSec;
   const canTrade = isMarketCreated && isAmmInitialized && !isPastDeadline;
   const isInitStateLoading =
     isConnected && (isLoadingAmm || isLoadingLaunchpad);

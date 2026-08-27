@@ -417,6 +417,13 @@ function pickMarketRef(
     return undefined;
   }
   if (v.startsWith("sol:")) return known.includes(v) ? v : undefined;
+  // Bare base58 — exactly what a route param carries: /orderbook/<pda> hands
+  // the page an unprefixed address, and this function refusing it meant every
+  // portfolio-bridge read on the AMM and orderbook pages (deadline above all)
+  // silently returned its fallback. The expiry gates never fired because this
+  // line was missing, not because they were wrong.
+  const bare = `sol:${v}`;
+  if (known.includes(bare)) return bare;
   return undefined;
 }
 

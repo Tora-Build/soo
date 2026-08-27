@@ -190,8 +190,11 @@ function SoothBookTerminalActive({
   // submission failed on-chain.
   const { market: truthForDeadline } = useTruthMarketDirect(marketAddress);
   const bookDeadlineSec = truthForDeadline?.deadline ?? 0;
+  // 1e9 floor: see SimpleTradingPanel — epoch-relative test clocks are not
+  // expired markets.
   const isPastDeadline =
-    bookDeadlineSec > 0 && Math.floor(Date.now() / 1000) >= bookDeadlineSec;
+    bookDeadlineSec > 1_000_000_000 &&
+    Math.floor(Date.now() / 1000) >= bookDeadlineSec;
 
   const { data: sbBalances } = useReadContracts({
     contracts:
