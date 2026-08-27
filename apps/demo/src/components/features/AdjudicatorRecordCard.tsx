@@ -7,6 +7,7 @@
  */
 import { useTranslation } from "react-i18next";
 import { ShieldCheck, ShieldAlert, ShieldQuestion, Shield } from "lucide-react";
+import { traitsOf } from "@sooth/sdk-solana";
 import type { AdjudicatorScore, TrustTier } from "@sooth/sdk-solana";
 
 import { useAdjudicatorScore } from "../../features/arena/useAdjudicatorScores";
@@ -96,6 +97,15 @@ export function AdjudicatorRecordCard({
               {score.record.authority.slice(0, 4)}…
               {score.record.authority.slice(-4)}
             </span>
+            {traitsOf(score.record).map((trait) => (
+              <span
+                key={trait.id}
+                title={trait.detail}
+                className="font-mono text-[9px] uppercase tracking-[0.1em] px-1 py-0.5 border border-rule text-muted"
+              >
+                {trait.label}
+              </span>
+            ))}
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px] text-muted">
             <span>{score.record.resolvedRulings} resolved</span>

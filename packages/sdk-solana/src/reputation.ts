@@ -298,3 +298,64 @@ export function scoreAdjudicators(
   }
   return out;
 }
+
+// ── Trait badges — the record's shape, not just its size ──────────────────
+//
+// A single score collapses qualities a creator may weigh differently: one
+// adjudicator is fast, another has never been overturned, a third has run
+// every kind of market. Traits surface those axes; each is as recomputable
+// as the score itself.
+
+export interface AdjudicatorTrait {
+  id: "fast" | "spotless" | "veteran" | "broad" | "guardian";
+  label: string;
+  detail: string;
+}
+
+export function traitsOf(record: AdjudicatorRecord): AdjudicatorTrait[] {
+  const traits: AdjudicatorTrait[] = [];
+  if (
+    record.medianResponseSec !== null &&
+    record.medianResponseSec <= PROMPT_WINDOW_SEC &&
+    record.resolvedRulings >= 2
+  ) {
+    traits.push({
+      id: "fast",
+      label: "FAST",
+      detail: "Rules within hours of a market locking, not days",
+    });
+  }
+  if (
+    record.resolvedRulings >= 3 &&
+    record.overriddenRulings === 0 &&
+    record.forcedInvalids === 0
+  ) {
+    traits.push({
+      id: "spotless",
+      label: "SPOTLESS",
+      detail: "No ruling ever vetoed or abandoned",
+    });
+  }
+  if (record.resolvedRulings >= 5) {
+    traits.push({
+      id: "veteran",
+      label: "VETERAN",
+      detail: "Five or more markets resolved",
+    });
+  }
+  if (record.zkRulings >= 1 && record.manualRulings >= 1) {
+    traits.push({
+      id: "broad",
+      label: "BROAD",
+      detail: "Has resolved both automatic and manual markets",
+    });
+  }
+  if (record.vetoesIssued >= 1) {
+    traits.push({
+      id: "guardian",
+      label: "GUARDIAN",
+      detail: "Has exercised the dispute veto",
+    });
+  }
+  return traits;
+}

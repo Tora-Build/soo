@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  traitsOf,
   buildAdjudicatorRecords,
   scoreAdjudicators,
   scoreRecord,
@@ -159,5 +160,29 @@ describe("scoring and tiers", () => {
     const out = scoreAdjudicators([state({ lifecycle: "Locked", disputed: true, isZk: true })], NOW);
     expect(out.get(ADJ)?.record.overriddenRulings).toBe(1);
     expect(out.get(GUARD)?.record.vetoesOverProof).toBe(1);
+  });
+});
+
+describe("trait badges", () => {
+  it("a fast, spotless, veteran record earns all three", () => {
+    const r = recordOf([state({}), state({}), state({}), state({}), state({})]);
+    const ids = traitsOf(r).map((t) => t.id);
+    expect(ids).toContain("fast");
+    expect(ids).toContain("spotless");
+    expect(ids).toContain("veteran");
+  });
+
+  it("one veto strips SPOTLESS; issuing one grants GUARDIAN", () => {
+    const states = [
+      state({}), state({}), state({}),
+      state({ lifecycle: "Locked", disputed: true }),
+    ];
+    expect(traitsOf(recordOf(states)).map((t) => t.id)).not.toContain("spotless");
+    expect(traitsOf(recordOf(states, GUARD)).map((t) => t.id)).toContain("guardian");
+  });
+
+  it("BROAD needs both zk and manual rulings", () => {
+    const r = recordOf([state({}), state({ isZk: true })]);
+    expect(traitsOf(r).map((t) => t.id)).toContain("broad");
   });
 });

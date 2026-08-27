@@ -1099,12 +1099,22 @@ async function dispatchCreateMarket(
       ? initialBRaw
       : BigInt((initialBRaw as any) ?? 0);
 
-  // EVM `customAdjudicator` is a 0x-prefixed address. We can't decode that
-  // into a Solana pubkey, so the bridge defaults to the connected user as
-  // both creator and adjudicator (matches the localnet seed default — the
-  // creator wallet is the on-chain allowlist authority + per-market
-  // adjudicator). Future work: surface a Solana-typed adjudicator picker.
   const userRef = `sol:${userBase58}`;
+  // args[3] carries the CHOSEN adjudicator in the shim's 0x<base58>
+  // convention. The reputation directory made this real: a creator can name
+  // a ranked adjudicator instead of themselves, and the register bundled
+  // below binds that authority from the first signature. Anything that
+  // doesn't parse as a pubkey falls back to the creator.
+  let adjudicatorRef = userRef;
+  const rawAdj = typeof args[3] === "string" ? args[3] : "";
+  if (rawAdj) {
+    const tail = rawAdj.replace(/^0x/, "").replace(/^sol:/, "");
+    try {
+      adjudicatorRef = `sol:${new PublicKey(tail).toBase58()}`;
+    } catch {
+      // Legacy EVM hex address or garbage — creator adjudicates.
+    }
+  }
 
   // Manual markets bundle register_adjudicator into the create transaction,
   // so the founder is the adjudicator from the first signature — the missing
@@ -1117,7 +1127,7 @@ async function dispatchCreateMarket(
     deadline,
     initialB: initialB > 0n ? initialB : undefined,
     user: userRef,
-    adjudicator: userRef,
+    adjudicator: adjudicatorRef,
     // @ts-expect-error — Solana-only extension of the umbrella args.
     autoRegisterAdjudicator: mode !== "zk",
   });

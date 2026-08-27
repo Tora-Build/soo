@@ -292,8 +292,8 @@
     },
     "zk": {
       "sectionLabel": "Resolution",
-      "manualTitle": "Manual",
-      "manualDesc": "You resolve it.",
+      "manualTitle": "Adjudicated",
+      "manualDesc": "A scored human rules — you, or a ranked adjudicator.",
       "autoTitle": "Automatic (zkTLS)",
       "autoDesc": "Resolved from a data source, proven by Primus, verified on-chain.",
       "presets": {

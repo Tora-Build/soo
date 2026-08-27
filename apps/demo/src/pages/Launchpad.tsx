@@ -125,6 +125,9 @@ export const Launchpad = () => {
 
   const [question, setQuestion] = useState("");
   const [category, setCategory] = useState("others");
+  // null = the creator rules; a base58 pubkey = a delegated, scored
+  // adjudicator picked from the directory.
+  const [chosenAdjudicator, setChosenAdjudicator] = useState<string | null>(null);
   const [expirationMode, setExpirationMode] = useState("7d");
   const [customExpiration, setCustomExpiration] = useState("");
   const [liquidityB, setLiquidityB] = useState<number>(1000);
@@ -249,7 +252,9 @@ export const Launchpad = () => {
           sqfQuestion,
           startTime,
           BigInt(deadline),
-          userAddress as Address,
+          (chosenAdjudicator
+            ? (`0x${chosenAdjudicator}` as Address)
+            : (userAddress as Address)),
           bWei,
           initialProbabilityWad,
           // The resolution mode rides the config slot: "zk" tells the bridge
@@ -603,6 +608,8 @@ export const Launchpad = () => {
               draft={zkDraft}
               onDraftChange={setZkDraft}
               policy={zkPolicy}
+              selectedAdjudicator={chosenAdjudicator}
+              onAdjudicatorChange={setChosenAdjudicator}
             />
           </AdvancedSection>
 

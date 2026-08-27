@@ -44,6 +44,7 @@ jobs:
           VITE_USE_INDEXER: "false"
           VITE_SOOTH_CORE_ID: EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw
           VITE_USDC_MINT: ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX
+          VITE_DEMO_EXTRA_MARKET_REFS: sol:EeADnXC7vto9JCzYxh98RHCZcPTi7fb3gfp2rHiqFGyA,sol:A6CkspesxURvocuXMWHZHLVUZ1sxurnsMFfdA2TSQXMH,sol:C6QwrroKHJt2MvyKSpUZCF1GwfzB1RwbnC9dN2YtAqJW,sol:B68ZZmFKAC7cE8sRYoKejFwbmiFe5CpaQMzq7qybb9X8,sol:GZHRt3CQZpFrGhxvQ5kogeUKtc5LcyM69EJ5YyoGQAop,sol:Ch7CrFj1yTnkbJfB9zLuciJFNx5nfdhyZG1PgVmLzpCo
         run: pnpm build
       # Plain wrangler via pnpm dlx — wrangler-action installs wrangler with
       # npm inside the working directory, and npm cannot read the pnpm

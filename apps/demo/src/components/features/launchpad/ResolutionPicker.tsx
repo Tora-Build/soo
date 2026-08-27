@@ -15,7 +15,12 @@ import { useTranslation } from "react-i18next";
 import { AlertTriangle, Check, Loader2, PenLine, Radio } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { useAccount } from "@/lib/chain-shim";
-import { AdjudicatorRecordCard } from "../AdjudicatorRecordCard";
+import { traitsOf } from "@sooth/sdk-solana";
+import {
+  AdjudicatorRecordCard,
+  AdjudicatorTierChip,
+} from "../AdjudicatorRecordCard";
+import { useAdjudicatorScores } from "../../../features/arena/useAdjudicatorScores";
 import {
   COMPARATORS,
   MAX_SCALE,
@@ -33,6 +38,9 @@ export type ResolutionMode = "manual" | "zk";
 interface Props {
   mode: ResolutionMode;
   onModeChange: (mode: ResolutionMode) => void;
+  /** Chosen adjudicator (base58), or null = the creator rules. */
+  selectedAdjudicator?: string | null;
+  onAdjudicatorChange?: (authority: string | null) => void;
   draft: ZkRuleDraft;
   onDraftChange: (draft: ZkRuleDraft) => void;
   policy: ZkPolicy;
@@ -44,6 +52,8 @@ const PREVIEW_DEBOUNCE_MS = 450;
 export const ResolutionPicker = ({
   mode,
   onModeChange,
+  selectedAdjudicator = null,
+  onAdjudicatorChange,
   draft,
   onDraftChange,
   policy,
@@ -190,9 +200,16 @@ export const ResolutionPicker = ({
         </button>
       </div>
 
-      {/* Manual mode makes the CREATOR the adjudicator — so show them the
-          record traders will judge them by, before they commit to the role. */}
-      {mode === "manual" && <ManualAdjudicatorRecord />}
+      {/* Adjudicated mode: the creator rules by default, but the reputation
+          system makes every scored adjudicator on this chain pickable — the
+          whole point of scoring is that trust can be delegated to a record
+          instead of a stranger. */}
+      {mode === "manual" && (
+        <AdjudicatorDirectory
+          selected={selectedAdjudicator}
+          onSelect={onAdjudicatorChange}
+        />
+      )}
 
       {gateMessage && (
         <p
@@ -401,17 +418,83 @@ export const ResolutionPicker = ({
   );
 };
 
-function ManualAdjudicatorRecord() {
+function AdjudicatorDirectory({
+  selected,
+  onSelect,
+}: {
+  selected: string | null;
+  onSelect?: (authority: string | null) => void;
+}) {
   const { t } = useTranslation();
   const { address } = useAccount();
-  const authority = address ? String(address).replace(/^0x/, "") : null;
+  const { byAuthority } = useAdjudicatorScores();
+  const self = address ? String(address).replace(/^0x/, "") : null;
+
+  // Ranked directory, best record first; the creator is offered separately.
+  const ranked = [...byAuthority.entries()]
+    .filter(([authority]) => authority !== self)
+    .sort((a, b) => b[1].score - a[1].score)
+    .slice(0, 6);
+
   return (
-    <AdjudicatorRecordCard
-      authority={authority}
-      headline={t("adjudicator.youWillAdjudicate", {
-        defaultValue:
-          "You will adjudicate this market. This is the record traders see when deciding whether to trust your rulings:",
-      })}
-    />
+    <div className="space-y-2" data-testid="adjudicator-directory">
+      <button
+        type="button"
+        onClick={() => onSelect?.(null)}
+        className={cn(
+          "w-full text-left border transition-all",
+          selected === null ? "border-accent" : "border-transparent",
+        )}
+        data-testid="adjudicator-pick-self"
+      >
+        <AdjudicatorRecordCard
+          authority={self}
+          headline={t("adjudicator.ruleItYourself", {
+            defaultValue:
+              "Rule it yourself — this is the record traders will judge you by:",
+          })}
+        />
+      </button>
+      {ranked.length > 0 && (
+        <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+          {t("adjudicator.orDelegate", {
+            defaultValue: "…or delegate to a scored adjudicator",
+          })}
+        </p>
+      )}
+      {ranked.map(([authority, score]) => (
+        <button
+          key={authority}
+          type="button"
+          onClick={() => onSelect?.(authority)}
+          className={cn(
+            "w-full text-left border bg-inset px-3 py-2 transition-all hover:bg-raised",
+            selected === authority ? "border-accent" : "border-rule",
+          )}
+          data-testid={`adjudicator-pick-${authority.slice(0, 6)}`}
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <AdjudicatorTierChip score={score} />
+            <span className="font-mono text-[10px] text-faint">
+              {authority.slice(0, 4)}…{authority.slice(-4)}
+            </span>
+            {traitsOf(score.record).map((trait) => (
+              <span
+                key={trait.id}
+                title={trait.detail}
+                className="font-mono text-[9px] uppercase tracking-[0.1em] px-1 py-0.5 border border-rule text-muted"
+              >
+                {trait.label}
+              </span>
+            ))}
+          </div>
+          <p className="mt-0.5 font-mono text-[10px] text-muted">
+            {score.record.resolvedRulings} resolved ·{" "}
+            {score.record.overriddenRulings} vetoed ·{" "}
+            {score.record.vetoesIssued} vetoes issued
+          </p>
+        </button>
+      ))}
+    </div>
   );
 }

@@ -292,8 +292,8 @@
     },
     "zk": {
       "sectionLabel": "结算方式",
-      "manualTitle": "手动",
-      "manualDesc": "由你来结算。",
+      "manualTitle": "仲裁",
+      "manualDesc": "由有信誉评分的仲裁人裁决——你自己，或榜上的仲裁人。",
       "autoTitle": "自动 (zkTLS)",
       "autoDesc": "从数据源读取，由 Primus 出证，链上验证。",
       "presets": {
