@@ -132,3 +132,4 @@ export {
 
 // The vendored cross-chain adapter interface — see `./types.ts`.
 export * from "./types.js";
+export * from "./reputation.js";

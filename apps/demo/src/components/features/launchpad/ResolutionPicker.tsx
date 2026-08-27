@@ -14,6 +14,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Check, Loader2, PenLine, Radio } from "lucide-react";
 import { cn } from "../../../lib/utils";
+import { useAccount } from "@/lib/chain-shim";
+import { AdjudicatorRecordCard } from "../AdjudicatorRecordCard";
 import {
   COMPARATORS,
   MAX_SCALE,
@@ -187,6 +189,10 @@ export const ResolutionPicker = ({
           {mode === "zk" && <Check className="w-4 h-4 ml-auto shrink-0" />}
         </button>
       </div>
+
+      {/* Manual mode makes the CREATOR the adjudicator — so show them the
+          record traders will judge them by, before they commit to the role. */}
+      {mode === "manual" && <ManualAdjudicatorRecord />}
 
       {gateMessage && (
         <p
@@ -394,3 +400,18 @@ export const ResolutionPicker = ({
     </div>
   );
 };
+
+function ManualAdjudicatorRecord() {
+  const { t } = useTranslation();
+  const { address } = useAccount();
+  const authority = address ? String(address).replace(/^0x/, "") : null;
+  return (
+    <AdjudicatorRecordCard
+      authority={authority}
+      headline={t("adjudicator.youWillAdjudicate", {
+        defaultValue:
+          "You will adjudicate this market. This is the record traders see when deciding whether to trust your rulings:",
+      })}
+    />
+  );
+}

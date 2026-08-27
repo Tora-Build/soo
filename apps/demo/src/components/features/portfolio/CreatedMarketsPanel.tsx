@@ -13,6 +13,7 @@
 // registry-less discovery the deck uses (`marketRegistry`), filtered by
 // `Market.creator === connected wallet`.
 
+import { AdjudicatorRecordCard } from "../AdjudicatorRecordCard";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -180,6 +181,19 @@ export function CreatedMarketsPanel() {
             : t("common.loading")}
         </span>
       </div>
+
+      {/* The creator's own adjudication record — the exact card traders see
+          on their markets, so reputation is managed, not discovered. */}
+      {wallet && rows.length > 0 && (
+        <div className="mb-3">
+          <AdjudicatorRecordCard
+            authority={wallet}
+            headline={t("adjudicator.yourRecord", {
+              defaultValue: "Your adjudicator record, as traders see it:",
+            })}
+          />
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div className="border border-rule bg-inset p-6 text-center space-y-3">

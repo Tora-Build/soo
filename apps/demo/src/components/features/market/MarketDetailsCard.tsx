@@ -5,6 +5,8 @@
  * Line 2: market question
  * Line 3: the SQF rule's fields, inline
  */
+import { useAdjudicatorScore } from "../../../features/arena/useAdjudicatorScores";
+import { AdjudicatorTierChip } from "../AdjudicatorRecordCard";
 import { Shield, Calendar, User, Copy } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-hot-toast";
@@ -158,6 +160,7 @@ export const MarketDetailsCard = ({
           >
             <Shield className="w-3 h-3" />
             <span>{truncate(adjudicator)}</span>
+            <AdjudicatorScoreInline authority={adjudicator} />
           </a>
         )}
       </div>
@@ -186,3 +189,11 @@ export const MarketDetailsCard = ({
     </div>
   );
 };
+
+/** The trust tier, inline where the adjudicator is named. Renders nothing
+ *  without history — absence of a record IS the information there. */
+function AdjudicatorScoreInline({ authority }: { authority?: string }) {
+  const score = useAdjudicatorScore(authority ?? null);
+  if (!score) return null;
+  return <AdjudicatorTierChip score={score} />;
+}
