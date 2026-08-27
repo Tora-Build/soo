@@ -34,7 +34,14 @@ import { cn } from "../lib/utils";
 import { Drawer } from "../components/ui/Drawer";
 import { EntityIcon } from "../components/ui/EntityIcon";
 import { StageBadge } from "../components/ui/StageBadge";
-import { VetoWindowBadge } from "../components/features/market/VetoWindow";
+import {
+  VetoWindowBadge,
+  useResolutionView,
+} from "../components/features/market/VetoWindow";
+import {
+  useResolutionStates,
+  normalizeMarketKey,
+} from "../features/arena/useResolutionStates";
 import { useQuickTrade } from "../components/features/market/QuickTradeProvider";
 import { useArenaPlayer } from "../features/arena/ArenaPlayerProvider";
 import {
@@ -142,31 +149,58 @@ export const ArenaPlay = () => {
     }
   }, [chainLevel]);
 
-  const markets = useMemo<ArenaMarket[]>(
-    () =>
-      rawMarkets
-        // A market past its deadline cannot accept a single play — the
-        // program rejects everything with TradingClosed — so dealing it into
-        // the deck spends the player's swipe (and possibly a ticket) on a
-        // guaranteed failure.
-        .filter(
-          (market) =>
-            !market.deadline || Date.now() / 1000 < market.deadline,
-        )
-        .map((market) => ({
-          ...market,
-          arenaCategory: normalizeCategory(
-            market.category?.toLowerCase() || inferCategory(market.question),
-          ),
-        }))
-        .sort((a, b) => {
-          const aLive = a.stage === "live" ? 1 : 0;
-          const bLive = b.stage === "live" ? 1 : 0;
-          if (aLive !== bLive) return bLive - aLive;
-          return Number(b.bCurrent - a.bCurrent);
-        }),
-    [rawMarkets],
-  );
+  const { byMarket: resolutionByMarket } = useResolutionStates();
+  const markets = useMemo<ArenaMarket[]>(() => {
+    const nowSec = Date.now() / 1000;
+    // The deck is for PLAYING, so tradeable markets are the deck. A resolved
+    // market earns a short showcase run — fresh outcomes are content — but
+    // capped and time-boxed, because a wall of settled cards reads as a dead
+    // product. Expired-but-unresolved markets show nothing worth swiping and
+    // are dropped outright.
+    const SHOWCASE_MAX = 3;
+    const SHOWCASE_TTL_SEC = 48 * 3600;
+    const withMeta = rawMarkets.map((market) => {
+      const res = resolutionByMarket[normalizeMarketKey(market.address) ?? ""];
+      const attestedAt = res?.adjudicatorEntry?.attestedAt
+        ? Number(res.adjudicatorEntry.attestedAt)
+        : null;
+      const expired = !!market.deadline && nowSec >= market.deadline;
+      const tradeable =
+        !market.isSettled &&
+        !expired &&
+        res?.lifecycle !== "Locked" &&
+        res?.lifecycle !== "Settled";
+      return { market, attestedAt, expired, tradeable };
+    });
+    const tradeables = withMeta
+      .filter((m) => m.tradeable)
+      .map((m) => m.market)
+      .sort((a, b) => {
+        const aLive = a.stage === "live" ? 1 : 0;
+        const bLive = b.stage === "live" ? 1 : 0;
+        if (aLive !== bLive) return bLive - aLive;
+        return Number(b.bCurrent - a.bCurrent);
+      });
+    const showcase = withMeta
+      .filter((m) => !m.tradeable && (m.attestedAt !== null || m.market.isSettled))
+      .filter((m) => {
+        const anchor = m.attestedAt ?? m.market.deadline ?? 0;
+        return anchor > 0 && nowSec < anchor + SHOWCASE_TTL_SEC;
+      })
+      .sort(
+        (a, b) =>
+          (b.attestedAt ?? b.market.deadline ?? 0) -
+          (a.attestedAt ?? a.market.deadline ?? 0),
+      )
+      .slice(0, SHOWCASE_MAX)
+      .map((m) => m.market);
+    return [...tradeables, ...showcase].map((market) => ({
+      ...market,
+      arenaCategory: normalizeCategory(
+        market.category?.toLowerCase() || inferCategory(market.question),
+      ),
+    }));
+  }, [rawMarkets, resolutionByMarket]);
 
   const deck = useMemo(
     () =>
@@ -500,6 +534,57 @@ export const ArenaPlay = () => {
   );
 };
 
+/**
+ * The card's status, ON the artwork, in a color — the 10px chip below the
+ * fold answered "can I play this?" only to people who already knew the
+ * answer. One solid badge: green plays, everything else explains itself.
+ */
+const DeckStatusBadge = ({
+  market,
+  view,
+}: {
+  market: ArenaMarket;
+  view: ReturnType<typeof useResolutionView>;
+}) => {
+  const outcome =
+    view?.attestedOutcome ?? (market.isSettled ? market.winningOutcome : null);
+  const outcomeWord =
+    outcome === 1 ? "YES" : outcome === 0 ? "NO" : outcome === 2 ? "VOID" : "";
+  const expired =
+    !!market.deadline &&
+    market.deadline > 1_000_000_000 &&
+    Date.now() / 1000 >= market.deadline;
+
+  let label: string;
+  let bg: string;
+  if (market.isSettled || view?.phase === "settled") {
+    label = `SETTLED${outcomeWord ? ` · ${outcomeWord}` : ""}`;
+    bg = "#6b7280";
+  } else if (view?.phase === "veto" || view?.phase === "settleable") {
+    label = `RESOLVED${outcomeWord ? ` · ${outcomeWord}` : ""}`;
+    bg = "#b45309";
+  } else if (expired) {
+    label = "ENDED";
+    bg = "#b91c1c";
+  } else if (market.stage === "live") {
+    label = "LIVE";
+    bg = "#15803d";
+  } else {
+    label = "BONDING";
+    bg = "#0369a1";
+  }
+  const playable = label === "LIVE" || label === "BONDING";
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs font-bold tracking-[0.1em] text-white shadow-md"
+      style={{ backgroundColor: bg }}
+    >
+      {playable && <CircleDot className="h-3.5 w-3.5" />}
+      {label}
+    </span>
+  );
+};
+
 const RealityCard = ({
   market,
   onPlay,
@@ -518,6 +603,18 @@ const RealityCard = ({
   isReacting: boolean;
 }) => {
   const { amm } = useAmmMarketDirect(market.address);
+  const view = useResolutionView(market.address);
+  // Mirrors DeckStatusBadge: only an un-expired, un-resolved market is a play.
+  const playable =
+    !market.isSettled &&
+    view?.phase !== "settled" &&
+    view?.phase !== "veto" &&
+    view?.phase !== "settleable" &&
+    !(
+      !!market.deadline &&
+      market.deadline > 1_000_000_000 &&
+      Date.now() / 1000 >= market.deadline
+    );
   const yes = amm?.yesProbability ?? 0.5;
   const no = 1 - yes;
   const depth = Number(formatUnits(market.bCurrent, 18));
@@ -533,9 +630,7 @@ const RealityCard = ({
       <div className="reality-scene">
         <WorldScene category={market.arenaCategory} />
         <div className="reality-scene-top">
-          <span className="reality-live-tag">
-            <CircleDot className="h-3 w-3" /> Live play
-          </span>
+          <DeckStatusBadge market={market} view={view} />
           <span className="reality-pot">${depth.toFixed(0)} in play</span>
         </div>
         <div className="reality-scene-score">
@@ -596,32 +691,42 @@ const RealityCard = ({
           </span>
         </div>
 
-        <div className="reality-actions">
-          <button
-            type="button"
-            className="reality-choice is-yes"
-            onClick={() => onPlay(market, "yes")}
-          >
-            <span>
-              <small>I believe it</small>
-              <strong>YES</strong>
-            </span>
-            <b>{Math.round(yes * 100)}%</b>
-            <ChevronRight className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            className="reality-choice is-no"
-            onClick={() => onPlay(market, "no")}
-          >
-            <span>
-              <small>No chance</small>
-              <strong>NO</strong>
-            </span>
-            <b>{Math.round(no * 100)}%</b>
-            <ChevronRight className="h-5 w-5" />
-          </button>
-        </div>
+        {playable ? (
+          <div className="reality-actions">
+            <button
+              type="button"
+              className="reality-choice is-yes"
+              onClick={() => onPlay(market, "yes")}
+            >
+              <span>
+                <small>I believe it</small>
+                <strong>YES</strong>
+              </span>
+              <b>{Math.round(yes * 100)}%</b>
+              <ChevronRight className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              className="reality-choice is-no"
+              onClick={() => onPlay(market, "no")}
+            >
+              <span>
+                <small>No chance</small>
+                <strong>NO</strong>
+              </span>
+              <b>{Math.round(no * 100)}%</b>
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </div>
+        ) : (
+          // A showcased outcome, not a play: the buttons would only spend a
+          // ticket on a transaction the program rejects.
+          <div className="reality-actions">
+            <div className="w-full text-center font-mono text-xs uppercase tracking-[0.12em] text-muted py-3 border border-rule rounded-lg">
+              This market has closed — swipe on for live plays
+            </div>
+          </div>
+        )}
       </div>
 
       <aside className="reality-social" aria-label="React to this play">
