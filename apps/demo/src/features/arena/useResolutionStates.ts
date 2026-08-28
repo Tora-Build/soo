@@ -24,6 +24,11 @@ const POLL_MS = 20_000;
 interface ResolutionState {
   /** Keyed by market PDA in base58 (no `sol:` / `0x` prefix). */
   byMarket: Record<string, MarketResolutionState>;
+  /** Bonded optimistic proposals, same keying. */
+  proposalsByMarket: Record<
+    string,
+    NonNullable<Awaited<ReturnType<SolanaChainAdapter["readOptimisticProposal"]>>>
+  >;
   /** Null until the protocol config has been read — "unknown", not zero. */
   vetoPeriodSecs: number | null;
   /** `ProtocolConfig.permissionless_adjudicators` — gates whether a market's
@@ -35,6 +40,7 @@ interface ResolutionState {
 
 const useStore = create<ResolutionState>(() => ({
   byMarket: {},
+  proposalsByMarket: {},
   vetoPeriodSecs: null,
   permissionlessAdjudicators: false,
   hasLoaded: false,
@@ -76,17 +82,30 @@ async function fetchResolutionStates(): Promise<void> {
   useStore.setState({ isFetching: true });
   try {
     const refs = [...new Set([...knownMarketRefs(), ...extraRefs])];
-    const [vetoPeriodSecs, policy, states] = await Promise.all([
+    const [vetoPeriodSecs, policy, states, proposals] = await Promise.all([
       adapter.readVetoPeriodSecs().catch(() => null),
       adapter.readAdjudicatorPolicy().catch(() => null),
       refs.length ? adapter.readResolutionStates(refs) : Promise.resolve([]),
+      // Bonded proposals ride the same poll: reputation needs them, and a
+      // separate cadence would let score and state drift apart on screen.
+      refs.length
+        ? adapter.readOptimisticProposals(refs).catch(() => [])
+        : Promise.resolve([]),
     ]);
     const byMarket: Record<string, MarketResolutionState> = {};
     for (const state of states) {
       if (state) byMarket[state.market] = state;
     }
+    const proposalsByMarket: Record<
+      string,
+      NonNullable<Awaited<ReturnType<SolanaChainAdapter["readOptimisticProposal"]>>>
+    > = {};
+    for (const prop of proposals) {
+      if (prop) proposalsByMarket[prop.market] = prop;
+    }
     useStore.setState({
       byMarket,
+      proposalsByMarket,
       // A failed config read keeps the last known period rather than
       // claiming the window length is unknown mid-countdown.
       vetoPeriodSecs: vetoPeriodSecs ?? useStore.getState().vetoPeriodSecs,

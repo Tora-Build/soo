@@ -144,7 +144,11 @@ export const Launchpad = () => {
   // config read that lands after the first render. Never submit a zk market
   // the deployment would reject.
   const effectiveMode: ResolutionMode =
-    resolutionMode === "zk" && zkPolicy.reason === "ok" ? "zk" : "manual";
+    resolutionMode === "zk"
+      ? zkPolicy.reason === "ok"
+        ? "zk"
+        : "manual"
+      : resolutionMode;
 
   const launchpadEngineAddress = deployments?.contracts[
     "LaunchpadEngine"

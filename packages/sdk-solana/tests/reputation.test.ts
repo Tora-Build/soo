@@ -186,3 +186,58 @@ describe("trait badges", () => {
     expect(traitsOf(r).map((t) => t.id)).toContain("broad");
   });
 });
+
+describe("bonded cases", () => {
+  const PROP = "Proposer111111111111111111111111111111111111";
+  const CHAL = "Challenger1111111111111111111111111111111111";
+  const settledYes = () => state({ lifecycle: "Settled" });
+
+  it("an unchallenged, finalized proposal is upheld (+8)", () => {
+    const st = settledYes();
+    const recs = buildAdjudicatorRecords([st], NOW, [
+      { market: st.market, proposer: PROP, outcome: 1, challenger: null, resolved: true, proposedAt: NOW - 700 },
+    ]);
+    expect(recs.get(PROP)!.proposalsUpheld).toBe(1);
+    expect(recs.get(PROP)!.totalPoints).toBe(8);
+  });
+
+  it("arbitration against the proposer slashes them and rewards the challenger", () => {
+    const st = settledYes(); // settled YES...
+    const recs = buildAdjudicatorRecords([st], NOW, [
+      // ...but the proposal said NO
+      { market: st.market, proposer: PROP, outcome: 0, challenger: CHAL, resolved: true, proposedAt: NOW - 700 },
+    ]);
+    expect(recs.get(PROP)!.proposalsSlashed).toBe(1);
+    expect(recs.get(PROP)!.totalPoints).toBe(-15);
+    expect(recs.get(CHAL)!.challengesWon).toBe(1);
+    expect(recs.get(CHAL)!.totalPoints).toBe(10);
+  });
+
+  it("a failed challenge costs the challenger and upholds the proposer", () => {
+    const st = settledYes();
+    const recs = buildAdjudicatorRecords([st], NOW, [
+      { market: st.market, proposer: PROP, outcome: 1, challenger: CHAL, resolved: true, proposedAt: NOW - 700 },
+    ]);
+    expect(recs.get(PROP)!.proposalsUpheld).toBe(1);
+    expect(recs.get(CHAL)!.challengesLost).toBe(1);
+    expect(recs.get(CHAL)!.totalPoints).toBe(-10);
+  });
+
+  it("an unresolved proposal is not evidence", () => {
+    const st = settledYes();
+    const recs = buildAdjudicatorRecords([st], NOW, [
+      { market: st.market, proposer: PROP, outcome: 1, challenger: null, resolved: false, proposedAt: NOW },
+    ]);
+    expect(recs.get(PROP)).toBeUndefined();
+  });
+
+  it("never losing a bond earns the BONDED trait", () => {
+    const st1 = settledYes();
+    const st2 = settledYes();
+    const recs = buildAdjudicatorRecords([st1, st2], NOW, [
+      { market: st1.market, proposer: PROP, outcome: 1, challenger: null, resolved: true, proposedAt: NOW - 700 },
+      { market: st2.market, proposer: PROP, outcome: 1, challenger: CHAL, resolved: true, proposedAt: NOW - 700 },
+    ]);
+    expect(traitsOf(recs.get(PROP)!).map((t) => t.id)).toContain("bonded");
+  });
+});

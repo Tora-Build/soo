@@ -831,6 +831,19 @@ export async function dispatchAmmWrite(
   if (call.functionName === "settle") {
     return dispatchSettle(call, ctx);
   }
+  // Bonded optimistic resolution — see the program's instructions/optimistic.rs.
+  if (call.functionName === "optPropose") {
+    return dispatchOptPropose(call, ctx);
+  }
+  if (call.functionName === "optChallenge") {
+    return dispatchOptSimple(call, ctx, "buildOptChallenge", "optChallenge");
+  }
+  if (call.functionName === "optFinalize") {
+    return dispatchOptSimple(call, ctx, "buildOptFinalize", "optFinalize");
+  }
+  if (call.functionName === "optArbitrate") {
+    return dispatchOptArbitrate(call, ctx);
+  }
   if (call.functionName === "dismissMarket") {
     return dispatchDismissMarket(call, ctx);
   }
@@ -1122,6 +1135,10 @@ async function dispatchCreateMarket(
   // adjudicator" claim nobody understood. Automatic ("zk" in the config
   // slot) must NOT: register_zk_adjudicator's `init` needs the entry absent.
   const mode = typeof args[6] === "string" ? args[6] : "";
+  // "optimistic" must leave the adjudicator entry ABSENT — its absence is
+  // the program's eligibility gate for bonded proposals. The designated
+  // adjudicator (args[3]) still lands on Market.adjudicator as the arbiter
+  // of challenges; they just hold no entry unless they later claim one.
   const req = await ctx.adapter.buildCreateMarket({
     question,
     deadline,
@@ -1129,7 +1146,7 @@ async function dispatchCreateMarket(
     user: userRef,
     adjudicator: adjudicatorRef,
     // @ts-expect-error — Solana-only extension of the umbrella args.
-    autoRegisterAdjudicator: mode !== "zk",
+    autoRegisterAdjudicator: mode !== "zk" && mode !== "optimistic",
   });
 
   // Stash the market PDA on a global side channel BEFORE submit so the
@@ -1524,6 +1541,66 @@ async function dispatchBookPlace(
   invalidateBookCache(marketRef);
   const realSignature = receipt.txId.replace(/^sol:/, "");
   return synthHashFromSignature(realSignature);
+}
+
+/**
+ * `optPropose(market, outcome, bondBaseUnits)` — the bonded assertion.
+ * The program itself enforces eligibility (no registered adjudicator) and
+ * timing (post-deadline), so this stays a thin builder call.
+ */
+async function dispatchOptPropose(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "optPropose");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) throw new Error("optPropose: invalid market reference");
+  const outcome = Number(args[1] ?? -1);
+  if (![0, 1, 2].includes(outcome)) {
+    throw new Error(`optPropose: outcome must be 0/1/2, got ${args[1]}`);
+  }
+  const bond = BigInt((args[2] ?? 1_000_000) as string | number | bigint);
+  const req = await ctx.adapter.buildOptPropose(marketRef, {
+    user: `sol:${userBase58}`,
+    outcome: outcome as 0 | 1 | 2,
+    bondBaseUnits: bond,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+/** `optChallenge(market)` / `optFinalize(market)` — one market arg, no more. */
+async function dispatchOptSimple(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+  builder: "buildOptChallenge" | "buildOptFinalize",
+  label: string,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, label);
+  const marketRef = toMarketRef((call.args ?? [])[0]);
+  if (!marketRef) throw new Error(`${label}: invalid market reference`);
+  const req = await ctx.adapter[builder](marketRef, { user: `sol:${userBase58}` });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+/** `optArbitrate(market, outcome)` — the designated adjudicator's ruling. */
+async function dispatchOptArbitrate(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "optArbitrate");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) throw new Error("optArbitrate: invalid market reference");
+  const outcome = Number(args[1] ?? -1);
+  if (![0, 1, 2].includes(outcome)) {
+    throw new Error(`optArbitrate: outcome must be 0/1/2, got ${args[1]}`);
+  }
+  const req = await ctx.adapter.buildOptArbitrate(marketRef, {
+    user: `sol:${userBase58}`,
+    outcome: outcome as 0 | 1 | 2,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /** `bookCancel(market, orderSeq)` — a real sequence, not a synthesised id. */

@@ -1682,6 +1682,69 @@ export class SoothSDK {
     return this.writeViaShim("attestOutcome", [market, outcome]);
   }
 
+  /** `propose <yes|no|invalid> [bondUsdc]` — bonded optimistic assertion. */
+  async propose(...args: unknown[]): Promise<Out> {
+    const flat = (Array.isArray(args[0]) ? (args[0] as unknown[]) : args).map(String);
+    const word = (flat[0] ?? "").toLowerCase();
+    const outcome = word === "yes" ? 1 : word === "no" ? 0 : word === "invalid" ? 2 : -1;
+    if (outcome === -1) {
+      return fail("Bad outcome", "Usage: propose <yes|no|invalid> [bondUsdc] — post-deadline, markets with no adjudicator only");
+    }
+    const bondUsdc = /^\d+(\.\d+)?$/.test(flat[1] ?? "") ? Number(flat[1]) : 1;
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("optPropose", [market, outcome, BigInt(Math.round(bondUsdc * 1_000_000))]);
+  }
+
+  /** `challenge` — matching counter-bond on the active market's proposal. */
+  async challenge(): Promise<Out> {
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("optChallenge", [market]);
+  }
+
+  /** `finalizeprop` — permissionless crank after the challenge window. */
+  async finalizeProp(): Promise<Out> {
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("optFinalize", [market]);
+  }
+
+  /** `arbitrate <yes|no|invalid>` — the designated adjudicator rules. */
+  async arbitrate(...args: unknown[]): Promise<Out> {
+    const flat = (Array.isArray(args[0]) ? (args[0] as unknown[]) : args).map(String);
+    const word = (flat[0] ?? "").toLowerCase();
+    const outcome = word === "yes" ? 1 : word === "no" ? 0 : word === "invalid" ? 2 : -1;
+    if (outcome === -1) {
+      return fail("Bad outcome", "Usage: arbitrate <yes|no|invalid> — loser's bond pays the winner");
+    }
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("optArbitrate", [market, outcome]);
+  }
+
+  /** `proposal` — the active market's bonded proposal, if any. */
+  async proposalStatus(): Promise<Out> {
+    const demo = this.demo;
+    const market = this.marketRef();
+    if (!demo || !market) return fail("No active market");
+    const p = await demo.adapter.readOptimisticProposal(market);
+    if (!p) {
+      return { result: { success: true, message: "none" }, output: [line("dim", "No optimistic proposal on this market.")] };
+    }
+    const word = p.outcome === 1 ? "YES" : p.outcome === 0 ? "NO" : "INVALID";
+    const out: OutputLine[] = [
+      line("bold", `Proposal: ${word} · bond ${(Number(p.bond) / 1e6).toFixed(2)} USDC`),
+      line("plain", `Proposer:   ${p.proposer}`),
+      line("plain", `Proposed:   ${new Date(Number(p.proposedAt) * 1000).toISOString().slice(0, 16)} UTC`),
+      p.challenger
+        ? line("warn", `CHALLENGED by ${p.challenger} — awaiting arbitration`)
+        : line("dim", "Unchallenged — finalizable once the 600s window runs out"),
+      line("plain", `Resolved:   ${p.resolved}`),
+    ];
+    return { result: { success: true, message: word }, output: out };
+  }
+
   async register(...args: unknown[]): Promise<Out> {
     const flat = (Array.isArray(args[0]) ? (args[0] as unknown[]) : args).map(String);
     const market = this.marketRef();
@@ -2551,6 +2614,8 @@ export class SoothSDK {
             line("bold", "Discovery"),
             line("plain", "  markets | m            list markets     setmarket <n|pubkey>"),
             line("plain", "  marketstatus | status  active-market snapshot + price"),
+            line("plain", "  propose <o> [bond]     bonded outcome assertion (optimistic markets)"),
+            line("plain", "  challenge | arbitrate <o> | finalizeprop | proposal"),
             line("bold", "Wallet"),
             line("plain", "  balance   whoami   mint <usdc>  — test-USDC faucet"),
             line("plain", "  history [00..ff|me] [count]  — recent txs with explorer links"),
@@ -2640,6 +2705,16 @@ export class SoothSDK {
         return this.resolutionCmd();
       case "lock":
         return this.lock();
+      case "propose":
+        return this.propose(rest);
+      case "challenge":
+        return this.challenge();
+      case "finalizeprop":
+        return this.finalizeProp();
+      case "arbitrate":
+        return this.arbitrate(rest);
+      case "proposal":
+        return this.proposalStatus();
       case "attest":
         return this.attest(rest);
       case "register":

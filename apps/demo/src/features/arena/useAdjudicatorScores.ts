@@ -18,11 +18,18 @@ export function useAdjudicatorScores(): {
   byAuthority: Map<string, AdjudicatorScore>;
   hasLoaded: boolean;
 } {
-  const { byMarket, hasLoaded } = useResolutionStates();
+  const { byMarket, proposalsByMarket, hasLoaded } = useResolutionStates();
   const byAuthority = useMemo(
     () =>
-      scoreAdjudicators(Object.values(byMarket), Math.floor(Date.now() / 1000)),
-    [byMarket],
+      scoreAdjudicators(
+        Object.values(byMarket),
+        Math.floor(Date.now() / 1000),
+        Object.values(proposalsByMarket).map((p) => ({
+          ...p,
+          proposedAt: Number(p.proposedAt),
+        })),
+      ),
+    [byMarket, proposalsByMarket],
   );
   return { byAuthority, hasLoaded };
 }

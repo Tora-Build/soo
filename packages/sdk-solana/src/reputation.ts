@@ -77,6 +77,16 @@ export const VETO_POINTS = {
   vetoManual: 0,
 } as const;
 
+// Bonded cases outrank everything above in evidentiary weight: each one was
+// paid for. A slashed proposal is the chain SAYING someone asserted a
+// falsehood with money behind it — no unbonded ruling carries that.
+export const BOND_POINTS = {
+  proposalUpheld: 8,
+  proposalSlashed: -15,
+  challengeWon: 10,
+  challengeLost: -10,
+} as const;
+
 export type RulingKind =
   | "clean"
   | "pending"
@@ -86,10 +96,26 @@ export type RulingKind =
 
 export type VetoKind = "vetoOverProof" | "vetoManual";
 
+export type BondKind =
+  | "proposalUpheld"
+  | "proposalSlashed"
+  | "challengeWon"
+  | "challengeLost";
+
+/** A market's optimistic proposal, as the fold consumes it. */
+export interface OptimisticProposalState {
+  market: string;
+  proposer: string;
+  outcome: number;
+  challenger: string | null;
+  resolved: boolean;
+  proposedAt: number | null;
+}
+
 export interface AdjudicationCase {
   market: string;
-  role: "ruling" | "veto";
-  kind: RulingKind | VetoKind;
+  role: "ruling" | "veto" | "bond";
+  kind: RulingKind | VetoKind | BondKind;
   points: number;
   /** Prompt bonus applied on top of `points` (rulings only). */
   promptBonus: boolean;
@@ -110,6 +136,10 @@ export interface AdjudicatorRecord {
   pendingRulings: number;
   vetoesIssued: number;
   vetoesOverProof: number;
+  proposalsUpheld: number;
+  proposalsSlashed: number;
+  challengesWon: number;
+  challengesLost: number;
   zkRulings: number;
   manualRulings: number;
   /** Median seconds from deadline to ruling across resolved rulings; 0 = early/instant. */
@@ -138,6 +168,10 @@ function emptyRecord(authority: string): AdjudicatorRecord {
     pendingRulings: 0,
     vetoesIssued: 0,
     vetoesOverProof: 0,
+    proposalsUpheld: 0,
+    proposalsSlashed: 0,
+    challengesWon: 0,
+    challengesLost: 0,
     zkRulings: 0,
     manualRulings: 0,
     medianResponseSec: null,
@@ -155,6 +189,7 @@ function emptyRecord(authority: string): AdjudicatorRecord {
 export function buildAdjudicatorRecords(
   states: Array<MarketResolutionState | null | undefined>,
   nowSec: number,
+  proposals: Array<OptimisticProposalState | null | undefined> = [],
 ): Map<string, AdjudicatorRecord> {
   const records = new Map<string, AdjudicatorRecord>();
   const get = (authority: string): AdjudicatorRecord => {
@@ -261,6 +296,47 @@ export function buildAdjudicatorRecords(
     }
   }
 
+  // ── Bonded cases — resolved proposals only; a pending bond is not yet
+  //    evidence, exactly like a pending ruling. The outcome that decides
+  //    upheld-vs-slashed is the MARKET's final word, which arbitration and
+  //    finalization both wrote. ──
+  const finalOutcome = new Map<string, number>();
+  for (const st of states) {
+    if (st && st.lifecycle === "Settled") {
+      finalOutcome.set(st.market, st.winningOutcome);
+    }
+  }
+  for (const prop of proposals) {
+    if (!prop?.resolved) continue;
+    const settled = finalOutcome.get(prop.market);
+    const pushBond = (authority: string, kind: BondKind) => {
+      const rec = get(authority);
+      const points = BOND_POINTS[kind];
+      rec.cases.push({
+        market: prop.market,
+        role: "bond",
+        kind,
+        points,
+        promptBonus: false,
+        at: prop.proposedAt,
+        isZk: false,
+      });
+      rec.totalPoints += points;
+      if (kind === "proposalUpheld") rec.proposalsUpheld += 1;
+      if (kind === "proposalSlashed") rec.proposalsSlashed += 1;
+      if (kind === "challengeWon") rec.challengesWon += 1;
+      if (kind === "challengeLost") rec.challengesLost += 1;
+    };
+    if (!prop.challenger) {
+      // Unchallenged through the window: the assertion stood.
+      pushBond(prop.proposer, "proposalUpheld");
+    } else if (settled !== undefined) {
+      const proposerWon = settled === prop.outcome;
+      pushBond(prop.proposer, proposerWon ? "proposalUpheld" : "proposalSlashed");
+      pushBond(prop.challenger, proposerWon ? "challengeLost" : "challengeWon");
+    }
+  }
+
   for (const [authority, samples] of responseSamples) {
     const rec = records.get(authority);
     if (!rec || samples.length === 0) continue;
@@ -291,9 +367,10 @@ export function scoreRecord(record: AdjudicatorRecord): AdjudicatorScore {
 export function scoreAdjudicators(
   states: Array<MarketResolutionState | null | undefined>,
   nowSec: number,
+  proposals: Array<OptimisticProposalState | null | undefined> = [],
 ): Map<string, AdjudicatorScore> {
   const out = new Map<string, AdjudicatorScore>();
-  for (const [authority, record] of buildAdjudicatorRecords(states, nowSec)) {
+  for (const [authority, record] of buildAdjudicatorRecords(states, nowSec, proposals)) {
     out.set(authority, scoreRecord(record));
   }
   return out;
@@ -307,7 +384,7 @@ export function scoreAdjudicators(
 // as the score itself.
 
 export interface AdjudicatorTrait {
-  id: "fast" | "spotless" | "veteran" | "broad" | "guardian";
+  id: "fast" | "spotless" | "veteran" | "broad" | "guardian" | "bonded";
   label: string;
   detail: string;
 }
@@ -348,6 +425,13 @@ export function traitsOf(record: AdjudicatorRecord): AdjudicatorTrait[] {
       id: "broad",
       label: "BROAD",
       detail: "Has resolved both automatic and manual markets",
+    });
+  }
+  if (record.proposalsUpheld + record.challengesWon >= 2 && record.proposalsSlashed + record.challengesLost === 0) {
+    traits.push({
+      id: "bonded",
+      label: "BONDED",
+      detail: "Has staked money on outcomes and never lost a bond",
     });
   }
   if (record.vetoesIssued >= 1) {

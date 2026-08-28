@@ -1693,6 +1693,34 @@ export class SolanaChainAdapter implements ChainAdapter {
     };
   }
 
+  /** Batched proposals for many markets — one getMultipleAccounts per 100. */
+  async readOptimisticProposals(
+    markets: MarketRef[],
+  ): Promise<Array<Awaited<ReturnType<SolanaChainAdapter["readOptimisticProposal"]>>>> {
+    if (markets.length === 0) return [];
+    const pdas = markets.map(
+      (m) => deriveOptProposalPda(decodePubkeyRef(m), this.programIds)[0],
+    );
+    const raws = (await (this.program.account as any).optimisticProposal.fetchMultiple(
+      pdas,
+    )) as Array<any | null>;
+    const none = PublicKey.default.toBase58();
+    return raws.map((raw) => {
+      if (!raw) return null;
+      const challenger = (raw.challenger as PublicKey).toBase58();
+      return {
+        market: (raw.market as PublicKey).toBase58(),
+        proposer: (raw.proposer as PublicKey).toBase58(),
+        outcome: Number(raw.outcome),
+        bond: bnToBigInt(raw.bond),
+        proposedAt: bnToBigInt(raw.proposedAt),
+        challenger: challenger === none ? null : challenger,
+        challengedAt: challenger === none ? null : bnToBigInt(raw.challengedAt),
+        resolved: Boolean(raw.resolved),
+      };
+    });
+  }
+
   /**
    * `opt_propose` — assert the outcome with a bond, post-deadline, on a
    * market with NO registered adjudicator (the entry's absence is the

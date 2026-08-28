@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Check, Loader2, PenLine, Radio } from "lucide-react";
+import { AlertTriangle, Check, Loader2, PenLine, Radio, Scale } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { useAccount } from "@/lib/chain-shim";
 import { traitsOf } from "@sooth/sdk-solana";
@@ -33,7 +33,7 @@ import {
 } from "./zk-rule";
 import type { ZkPolicy } from "./useZkAdjudicatorPolicy";
 
-export type ResolutionMode = "manual" | "zk";
+export type ResolutionMode = "manual" | "zk" | "optimistic";
 
 interface Props {
   mode: ResolutionMode;
@@ -152,7 +152,7 @@ export const ResolutionPicker = ({
         {t("launchpad.zk.sectionLabel")}
       </label>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <button
           data-testid="launchpad-resolution-manual"
           onClick={() => onModeChange("manual")}
@@ -198,17 +198,52 @@ export const ResolutionPicker = ({
           </span>
           {mode === "zk" && <Check className="w-4 h-4 ml-auto shrink-0" />}
         </button>
+
+        <button
+          data-testid="launchpad-resolution-optimistic"
+          onClick={() => onModeChange("optimistic")}
+          className={cn(
+            "p-3 border border-transparent transition-all flex items-start gap-2 text-left",
+            mode === "optimistic"
+              ? "bg-accent-muted text-accent"
+              : "bg-inset text-muted hover:bg-raised",
+          )}
+        >
+          <Scale className="w-4 h-4 mt-0.5 shrink-0" />
+          <span className="min-w-0">
+            <span className="block text-sm font-bold">
+              {t("launchpad.zk.optimisticTitle", { defaultValue: "Optimistic" })}
+            </span>
+            <span className="block text-xs opacity-80">
+              {t("launchpad.zk.optimisticDesc", {
+                defaultValue:
+                  "Anyone asserts the outcome with a bond; a counter-bond escalates to your named arbiter. Being wrong costs money.",
+              })}
+            </span>
+          </span>
+          {mode === "optimistic" && <Check className="w-4 h-4 ml-auto shrink-0" />}
+        </button>
       </div>
 
       {/* Adjudicated mode: the creator rules by default, but the reputation
           system makes every scored adjudicator on this chain pickable — the
           whole point of scoring is that trust can be delegated to a record
           instead of a stranger. */}
-      {mode === "manual" && (
-        <AdjudicatorDirectory
-          selected={selectedAdjudicator}
-          onSelect={onAdjudicatorChange}
-        />
+      {(mode === "manual" || mode === "optimistic") && (
+        <>
+          {mode === "optimistic" && (
+            <p className="text-xs text-faint leading-relaxed">
+              {t("launchpad.zk.optimisticArbiterNote", {
+                defaultValue:
+                  "The adjudicator you pick below never rules unless someone challenges a bonded assertion — they are the court of appeal, not the oracle.",
+              })}
+            </p>
+          )}
+          <AdjudicatorDirectory
+            selected={selectedAdjudicator}
+            onSelect={onAdjudicatorChange}
+          />
+        </>
       )}
 
       {gateMessage && (
