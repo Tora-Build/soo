@@ -161,7 +161,55 @@ export async function dispatchPortfolioRead(
       // the list shaped as `0x<base58>` strings so the EVM-typed
       // `useOnChainMarkets` pipeline accepts them. The amm-bridge's
       // `toMarketRef` accepts the `0x` prefix and unwraps it correctly.
-      return allKnownMarketRefs(ctx).map((ref) => marketRefToEvmAddr(ref));
+      //
+      // Ghost purge: creates persisted before their transaction confirmed
+      // (the pre-fix behaviour) left PDAs in localStorage that no account
+      // backs, and each rendered as a forever-"pending initialization"
+      // market. Snapshot reads are memoized, so verifying existence here
+      // costs one batched pass; a PDA that resolves to nothing is dropped
+      // from the durable stores so it stops haunting the list.
+      const refs = allKnownMarketRefs(ctx);
+      const alive: string[] = [];
+      const dead: string[] = [];
+      await Promise.all(
+        refs.map(async (ref) => {
+          try {
+            await ctx.adapter.readSnapshot(ref);
+            alive.push(ref);
+          } catch (e) {
+            const msg = String((e as Error).message ?? e);
+            if (/AccountNotFound|not found/i.test(msg)) dead.push(ref);
+            // Any other failure (RPC hiccup) keeps the market listed — a
+            // flaky node must not delete real markets from the stores.
+            else alive.push(ref);
+          }
+        }),
+      );
+      if (dead.length > 0) {
+        const deadPdas = new Set(dead.map((r) => r.replace(/^sol:/, "")));
+        const g = globalThis as unknown as { __soothCreatedMarketPdas?: string[] };
+        g.__soothCreatedMarketPdas = (g.__soothCreatedMarketPdas ?? []).filter(
+          (pda) => !deadPdas.has(pda),
+        );
+        for (const store of ["sessionStorage", "localStorage"] as const) {
+          try {
+            const st = globalThis[store as "localStorage"];
+            const raw = st?.getItem("__soothCreatedMarketPdas");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                st.setItem(
+                  "__soothCreatedMarketPdas",
+                  JSON.stringify(parsed.filter((pda) => !deadPdas.has(pda))),
+                );
+              }
+            }
+          } catch {
+            // Storage unavailable — the in-memory filter above still holds.
+          }
+        }
+      }
+      return alive.map((ref) => marketRefToEvmAddr(ref));
     }
 
     case "getMarketCount": {

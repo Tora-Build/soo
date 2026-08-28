@@ -1158,6 +1158,17 @@ async function dispatchCreateMarket(
     (
       globalThis as unknown as { __lastCreatedMarketPda?: string }
     ).__lastCreatedMarketPda = meta.marketPda;
+  }
+
+  // PERSISTENCE WAITS FOR THE CHAIN. This used to run before submit, so a
+  // create the wallet rejected — or that failed preflight — still wrote its
+  // PDA into localStorage, and a ghost market haunted the list forever,
+  // rendering as "pending initialization" for an account that never existed.
+  // Only `__lastCreatedMarketPda` (the same-flow pickup slot) is set early;
+  // everything durable happens after the transaction is confirmed.
+  const sig = await submitAndSynth(ctx.adapter, req, signer);
+
+  if (meta?.marketPda) {
     const g = globalThis as unknown as { __soothCreatedMarketPdas?: string[] };
     const merged = [
       ...new Set([...(g.__soothCreatedMarketPdas ?? []), meta.marketPda]),
@@ -1192,7 +1203,7 @@ async function dispatchCreateMarket(
     }
   }
 
-  return submitAndSynth(ctx.adapter, req, signer);
+  return sig;
 }
 
 /**
