@@ -491,11 +491,21 @@ function AdjudicatorDirectory({
         />
       </button>
       {ranked.length > 0 && (
-        <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-          {t("adjudicator.orDelegate", {
-            defaultValue: "…or delegate to a scored adjudicator",
-          })}
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+            {t("adjudicator.orDelegate", {
+              defaultValue: "…or delegate to a scored adjudicator",
+            })}
+          </p>
+          <a
+            href="/adjudicators"
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono text-[10px] uppercase tracking-[0.12em] text-accent hover:underline"
+          >
+            {t("adjudicator.fullBoard", { defaultValue: "full leaderboard →" })}
+          </a>
+        </div>
       )}
       {ranked.map(([authority, score]) => (
         <button

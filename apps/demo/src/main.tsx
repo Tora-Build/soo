@@ -68,6 +68,7 @@ import { Learn } from "./pages/Learn";
 import { Markets } from "./pages/Markets";
 import { Liquidity } from "./pages/Liquidity";
 import { LPForecast } from "./pages/LPForecast";
+import Adjudicators from "./pages/Adjudicators";
 import { Geek } from "./pages/Geek";
 import HealthCheckPage from "./pages/HealthCheckPage";
 import { QuickTradeProvider } from "./components/features/market/QuickTradeProvider";
@@ -192,6 +193,7 @@ function Root() {
                         <Route path="/learn" element={<Learn />} />
                         <Route path="/operator" element={<Operator />} />
                         <Route path="/play" element={<ArenaPlay />} />
+                        <Route path="/adjudicators" element={<Adjudicators />} />
                         <Route path="/lp-forecast" element={<LPForecast />} />
                         <Route path="/geek" element={<Geek />} />
                         {/* Arena-native paths for the shared pages: the same

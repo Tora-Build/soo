@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   BarChart3,
+  Scale,
   BookOpen,
   Droplets,
   Gamepad2,
@@ -27,6 +28,7 @@ const PRIMARY_LINKS = [
 const MORE_LINKS = [
   { to: "/vault", label: "Vault", icon: Droplets },
   { to: "/explore", label: "Explore", icon: Grid2X2 },
+  { to: "/adjudicators", label: "Adjudicators", icon: Scale },
   { to: "/lp-forecast", label: "Sim lab", icon: BarChart3 },
   { to: "/operator", label: "Oracle", icon: Shield },
   { to: "/learn", label: "Tutorial", icon: BookOpen },
