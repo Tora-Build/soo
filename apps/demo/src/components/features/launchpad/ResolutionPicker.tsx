@@ -16,10 +16,7 @@ import { AlertTriangle, Check, Loader2, PenLine, Radio, Scale } from "lucide-rea
 import { cn } from "../../../lib/utils";
 import { useAccount } from "@/lib/chain-shim";
 import { traitsOf } from "@sooth/sdk-solana";
-import {
-  AdjudicatorRecordCard,
-  AdjudicatorTierChip,
-} from "../AdjudicatorRecordCard";
+import { AdjudicatorTierChip } from "../AdjudicatorRecordCard";
 import { useAdjudicatorScores } from "../../../features/arena/useAdjudicatorScores";
 import {
   COMPARATORS,
@@ -464,82 +461,117 @@ function AdjudicatorDirectory({
   const { address } = useAccount();
   const { byAuthority } = useAdjudicatorScores();
   const self = address ? String(address).replace(/^0x/, "") : null;
+  const selfScore = self ? byAuthority.get(self) ?? null : null;
 
-  // Ranked directory, best record first; the creator is offered separately.
   const ranked = [...byAuthority.entries()]
     .filter(([authority]) => authority !== self)
     .sort((a, b) => b[1].score - a[1].score)
     .slice(0, 6);
 
   return (
-    <div className="space-y-2" data-testid="adjudicator-directory">
-      <button
-        type="button"
+    <div className="space-y-1.5" data-testid="adjudicator-directory">
+      <DirectoryRow
+        authority={null}
+        label={t("adjudicator.self", { defaultValue: "Rule it yourself" })}
+        score={selfScore}
+        isSelected={selected === null}
         onClick={() => onSelect?.(null)}
-        className={cn(
-          "w-full text-left border transition-all",
-          selected === null ? "border-accent" : "border-transparent",
-        )}
-        data-testid="adjudicator-pick-self"
-      >
-        <AdjudicatorRecordCard
-          authority={self}
-          headline={t("adjudicator.ruleItYourself", {
-            defaultValue:
-              "Rule it yourself — this is the record traders will judge you by:",
-          })}
-        />
-      </button>
-      {ranked.length > 0 && (
-        <div className="flex items-center justify-between">
-          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-            {t("adjudicator.orDelegate", {
-              defaultValue: "…or delegate to a scored adjudicator",
-            })}
-          </p>
-          <a
-            href="/adjudicators"
-            target="_blank"
-            rel="noreferrer"
-            className="font-mono text-[10px] uppercase tracking-[0.12em] text-accent hover:underline"
-          >
-            {t("adjudicator.fullBoard", { defaultValue: "full leaderboard →" })}
-          </a>
-        </div>
-      )}
+        testId="adjudicator-pick-self"
+      />
       {ranked.map(([authority, score]) => (
-        <button
+        <DirectoryRow
           key={authority}
-          type="button"
+          authority={authority}
+          label={
+            traitsOf(score.record)
+              .slice(0, 2)
+              .map((trait) => trait.label)
+              .join(" · ") ||
+            t("adjudicator.scored", { defaultValue: "Scored adjudicator" })
+          }
+          score={score}
+          isSelected={selected === authority}
           onClick={() => onSelect?.(authority)}
-          className={cn(
-            "w-full text-left border bg-inset px-3 py-2 transition-all hover:bg-raised",
-            selected === authority ? "border-accent" : "border-rule",
-          )}
-          data-testid={`adjudicator-pick-${authority.slice(0, 6)}`}
-        >
-          <div className="flex items-center gap-2 flex-wrap">
-            <AdjudicatorTierChip score={score} />
-            <span className="font-mono text-[10px] text-faint">
-              {authority.slice(0, 4)}…{authority.slice(-4)}
-            </span>
-            {traitsOf(score.record).map((trait) => (
-              <span
-                key={trait.id}
-                title={trait.detail}
-                className="font-mono text-[9px] uppercase tracking-[0.1em] px-1 py-0.5 border border-rule text-muted"
-              >
-                {trait.label}
-              </span>
-            ))}
-          </div>
-          <p className="mt-0.5 font-mono text-[10px] text-muted">
-            {score.record.resolvedRulings} resolved ·{" "}
-            {score.record.overriddenRulings} vetoed ·{" "}
-            {score.record.vetoesIssued} vetoes issued
-          </p>
-        </button>
+          testId={`adjudicator-pick-${authority.slice(0, 6)}`}
+        />
       ))}
+      <a
+        href="/adjudicators"
+        target="_blank"
+        rel="noreferrer"
+        className="inline-block font-mono text-[10px] uppercase tracking-[0.12em] text-accent hover:underline"
+      >
+        {t("adjudicator.fullBoard", { defaultValue: "full leaderboard →" })}
+      </a>
     </div>
+  );
+}
+
+/**
+ * One compact, radio-style row per option. Choosing is this component's whole
+ * job — the evidence lives on the leaderboard, one click away — so a row is a
+ * radio dot, a name, an address, and the tier chip. Selection reads at a
+ * glance: filled dot, accent border, tinted ground.
+ */
+function DirectoryRow({
+  authority,
+  label,
+  score,
+  isSelected,
+  onClick,
+  testId,
+}: {
+  authority: string | null;
+  label: string;
+  score: import("@sooth/sdk-solana").AdjudicatorScore | null;
+  isSelected: boolean;
+  onClick: () => void;
+  testId: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testId}
+      aria-pressed={isSelected}
+      className={cn(
+        "w-full flex items-center gap-2.5 px-3 py-2.5 border text-left transition-all",
+        isSelected
+          ? "border-accent bg-accent-muted"
+          : "border-rule bg-inset hover:bg-raised",
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+          isSelected ? "border-accent bg-accent" : "border-faint",
+        )}
+      >
+        {isSelected && <Check className="h-3 w-3 text-canvas" />}
+      </span>
+      <span className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+        <span
+          className={cn(
+            "text-sm font-medium",
+            isSelected ? "text-ink" : "text-muted",
+          )}
+        >
+          {label}
+        </span>
+        {authority && (
+          <span className="font-mono text-[10px] text-faint">
+            {authority.slice(0, 4)}…{authority.slice(-4)}
+          </span>
+        )}
+      </span>
+      {score ? (
+        <AdjudicatorTierChip score={score} />
+      ) : (
+        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
+          {t("adjudicator.noHistory", { defaultValue: "no history" })}
+        </span>
+      )}
+    </button>
   );
 }
