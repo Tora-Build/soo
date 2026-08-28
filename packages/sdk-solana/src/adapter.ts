@@ -66,6 +66,7 @@ import {
   deriveOptBondVaultPda,
   deriveOptBondAuthorityPda,
   deriveGuardianSetPda,
+  deriveAttestorSetPda,
   deriveFeePoolAuthorityPda,
   deriveLockAuthorityPda,
   deriveLockEntryPda,
@@ -1748,6 +1749,99 @@ export class SolanaChainAdapter implements ChainAdapter {
     return (raw.guardians as PublicKey[])
       .slice(0, count)
       .map((g) => g.toBase58());
+  }
+
+  // ── Committee attestation (M-of-N quorum) ─────────────────────────────
+
+  /** The roster, votes and threshold — or null where never configured. */
+  async readAttestorSet(market: MarketRef): Promise<{
+    attestors: string[];
+    votes: Array<number | null>;
+    threshold: number;
+  } | null> {
+    const marketPda = decodePubkeyRef(market);
+    const [pda] = deriveAttestorSetPda(marketPda, this.programIds);
+    const raw = await (this.program.account as any).attestorSet.fetchNullable(pda);
+    if (!raw) return null;
+    const count = Number(raw.count);
+    return {
+      attestors: (raw.attestors as PublicKey[]).slice(0, count).map((a) => a.toBase58()),
+      votes: (raw.votes as number[]).slice(0, count).map((v) => (v === 255 ? null : v)),
+      threshold: Number(raw.threshold),
+    };
+  }
+
+  /**
+   * `attestor_update` — the entry authority's committee management.
+   * action: "add" | "remove" | "threshold".
+   */
+  async buildAttestorUpdate(
+    market: MarketRef,
+    args: {
+      user: AddressRef;
+      action: "add" | "remove" | "threshold";
+      key?: string;
+      threshold?: number;
+    },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const [entryPda] = deriveAdjudicatorEntryPda(marketPda, this.programIds);
+    const [setPda] = deriveAttestorSetPda(marketPda, this.programIds);
+    const action = args.action === "add" ? 0 : args.action === "remove" ? 1 : 2;
+    const key = args.key
+      ? new PublicKey(args.key.replace(/^sol:/, "").replace(/^0x/, ""))
+      : PublicKey.default;
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .attestorUpdate(action, key, args.threshold ?? 0)
+      .accounts({
+        adjudicatorEntry: entryPda,
+        attestorSet: setPda,
+        authority: userPk,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "attestorUpdate",
+      },
+    };
+  }
+
+  /** `attest_vote` — one committee member's ballot. */
+  async buildAttestVote(
+    market: MarketRef,
+    args: { user: AddressRef; outcome: 0 | 1 | 2 },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const [entryPda] = deriveAdjudicatorEntryPda(marketPda, this.programIds);
+    const [setPda] = deriveAttestorSetPda(marketPda, this.programIds);
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .attestVote(args.outcome)
+      .accounts({
+        market: marketPda,
+        adjudicatorEntry: entryPda,
+        attestorSet: setPda,
+        voter: userPk,
+      })
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "attestVote",
+        winningOutcome: args.outcome,
+      },
+    };
   }
 
   // ── Bonded optimistic resolution ──────────────────────────────────────

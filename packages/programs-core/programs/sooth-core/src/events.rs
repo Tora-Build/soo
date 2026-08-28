@@ -578,3 +578,25 @@ pub struct GuardianRemoved {
     pub count: u8,
     pub ts: i64,
 }
+
+/// Emitted by `attestor_update` — the committee roster or threshold moved.
+#[event]
+pub struct AttestorRosterChanged {
+    pub market: Pubkey,
+    pub count: u8,
+    pub threshold: u8,
+    pub ts: i64,
+}
+
+/// Emitted by every `attest_vote`. The ballot that reaches threshold ALSO
+/// emits the ordinary `OutcomeAttested`, so downstream readers of the
+/// attestation never need to know a committee ruled.
+#[event]
+pub struct QuorumVoteCast {
+    pub market: Pubkey,
+    pub voter: Pubkey,
+    pub outcome: u8,
+    pub agreeing: u8,
+    pub threshold: u8,
+    pub ts: i64,
+}

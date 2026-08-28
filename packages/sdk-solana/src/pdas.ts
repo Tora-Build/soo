@@ -444,3 +444,14 @@ export function deriveGuardianSetPda(
     programs.soothCore,
   );
 }
+
+/** Seeds: [b"attestors", market] — the committee roster + votes. */
+export function deriveAttestorSetPda(
+  market: PublicKey,
+  programs: ProgramIds,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [enc.encode("attestors"), market.toBuffer()],
+    programs.soothCore,
+  );
+}

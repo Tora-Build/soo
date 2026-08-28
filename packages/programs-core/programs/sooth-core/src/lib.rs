@@ -291,12 +291,25 @@ pub mod sooth_core {
     /// closed; the outcome comes from the `AdjudicatorEntry`, not the caller.
     // ── Bonded optimistic resolution — see instructions/optimistic.rs ──
 
+    pub fn attestor_update(
+        ctx: Context<AttestorUpdate>,
+        action: u8,
+        key: Pubkey,
+        value: u8,
+    ) -> Result<()> {
+        instructions::attest_vote::handle_update(ctx, action, key, value)
+    }
+
+    pub fn attest_vote(ctx: Context<AttestVote>, outcome: u8) -> Result<()> {
+        instructions::attest_vote::handle_vote(ctx, outcome)
+    }
+
     pub fn guardian_add(ctx: Context<GuardianAdd>, guardian: Pubkey) -> Result<()> {
-        instructions::guardians::guardian_add(ctx, guardian)
+        instructions::guardians::handle_add(ctx, guardian)
     }
 
     pub fn guardian_remove(ctx: Context<GuardianRemove>, guardian: Pubkey) -> Result<()> {
-        instructions::guardians::guardian_remove(ctx, guardian)
+        instructions::guardians::handle_remove(ctx, guardian)
     }
 
     pub fn opt_propose(ctx: Context<OptPropose>, outcome: u8, bond: u64) -> Result<()> {

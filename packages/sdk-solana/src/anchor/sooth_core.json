@@ -240,6 +240,205 @@
       ]
     },
     {
+      "name": "attest_vote",
+      "discriminator": [
+        6,
+        17,
+        18,
+        130,
+        4,
+        233,
+        60,
+        78
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "adjudicator_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "attestor_set",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  116,
+                  116,
+                  101,
+                  115,
+                  116,
+                  111,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "voter",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "attestor_update",
+      "docs": [
+        "Finalize an attested market. Permissionless once the veto window has",
+        "closed; the outcome comes from the `AdjudicatorEntry`, not the caller."
+      ],
+      "discriminator": [
+        213,
+        61,
+        199,
+        242,
+        114,
+        232,
+        170,
+        110
+      ],
+      "accounts": [
+        {
+          "name": "adjudicator_entry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "adjudicator_entry.market",
+                "account": "AdjudicatorEntry"
+              }
+            ]
+          }
+        },
+        {
+          "name": "attestor_set",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  116,
+                  116,
+                  101,
+                  115,
+                  116,
+                  111,
+                  114,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "adjudicator_entry.market",
+                "account": "AdjudicatorEntry"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "action",
+          "type": "u8"
+        },
+        {
+          "name": "key",
+          "type": "pubkey"
+        },
+        {
+          "name": "value",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "book_cancel",
       "docs": [
         "Cancel a resting book order; the escrow lands in the owner's seat",
@@ -2460,10 +2659,6 @@
     },
     {
       "name": "guardian_add",
-      "docs": [
-        "Finalize an attested market. Permissionless once the veto window has",
-        "closed; the outcome comes from the `AdjudicatorEntry`, not the caller."
-      ],
       "discriminator": [
         223,
         236,
@@ -6583,6 +6778,19 @@
       ]
     },
     {
+      "name": "AttestorSet",
+      "discriminator": [
+        202,
+        26,
+        217,
+        84,
+        207,
+        111,
+        64,
+        117
+      ]
+    },
+    {
       "name": "GuardianSet",
       "discriminator": [
         120,
@@ -6712,6 +6920,19 @@
         17,
         20,
         25
+      ]
+    },
+    {
+      "name": "AttestorRosterChanged",
+      "discriminator": [
+        210,
+        223,
+        226,
+        79,
+        175,
+        219,
+        11,
+        68
       ]
     },
     {
@@ -7102,6 +7323,19 @@
         198,
         0,
         66
+      ]
+    },
+    {
+      "name": "QuorumVoteCast",
+      "discriminator": [
+        102,
+        60,
+        79,
+        169,
+        52,
+        132,
+        255,
+        227
       ]
     },
     {
@@ -7792,6 +8026,11 @@
       "code": 6113,
       "name": "GuardianAlreadyPresent",
       "msg": "Already a guardian of this market"
+    },
+    {
+      "code": 6114,
+      "name": "QuorumThresholdInvalid",
+      "msg": "Quorum threshold must be between 1 and the roster size"
     }
   ],
   "types": [
@@ -8169,6 +8408,84 @@
                 54
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "AttestorRosterChanged",
+      "docs": [
+        "Emitted by `attestor_update` — the committee roster or threshold moved."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "count",
+            "type": "u8"
+          },
+          {
+            "name": "threshold",
+            "type": "u8"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AttestorSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "attestors",
+            "type": {
+              "array": [
+                "pubkey",
+                5
+              ]
+            }
+          },
+          {
+            "name": "votes",
+            "docs": [
+              "Parallel to `attestors`: each member's current vote (0/1/2), or",
+              "`NO_VOTE`. Slot i belongs to attestors[i]; swap-remove moves the vote",
+              "with the key."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                5
+              ]
+            }
+          },
+          {
+            "name": "count",
+            "type": "u8"
+          },
+          {
+            "name": "threshold",
+            "docs": [
+              "Agreeing votes required to register an attestation. 0 = unconfigured",
+              "(the set exists but cannot rule)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
@@ -10079,6 +10396,43 @@
               "book account may publish nothing else."
             ],
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "QuorumVoteCast",
+      "docs": [
+        "Emitted by every `attest_vote`. The ballot that reaches threshold ALSO",
+        "emits the ordinary `OutcomeAttested`, so downstream readers of the",
+        "attestation never need to know a committee ruled."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "voter",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": "u8"
+          },
+          {
+            "name": "agreeing",
+            "type": "u8"
+          },
+          {
+            "name": "threshold",
+            "type": "u8"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
           }
         ]
       }

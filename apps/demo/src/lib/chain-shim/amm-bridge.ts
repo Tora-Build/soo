@@ -837,6 +837,12 @@ export async function dispatchAmmWrite(
   if (call.functionName === "guardianUpdate") {
     return dispatchGuardianUpdate(call, ctx);
   }
+  if (call.functionName === "attestorUpdate") {
+    return dispatchAttestorUpdate(call, ctx);
+  }
+  if (call.functionName === "attestVote") {
+    return dispatchAttestVote(call, ctx);
+  }
   // Bonded optimistic resolution — see the program's instructions/optimistic.rs.
   if (call.functionName === "optPropose") {
     return dispatchOptPropose(call, ctx);
@@ -1558,6 +1564,48 @@ async function dispatchBookPlace(
   invalidateBookCache(marketRef);
   const realSignature = receipt.txId.replace(/^sol:/, "");
   return synthHashFromSignature(realSignature);
+}
+
+/** `attestorUpdate(market, action, key?, threshold?)` — committee management. */
+async function dispatchAttestorUpdate(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "attestorUpdate");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) throw new Error("attestorUpdate: invalid market reference");
+  const action = String(args[1] ?? "");
+  if (!["add", "remove", "threshold"].includes(action)) {
+    throw new Error(`attestorUpdate: action must be add/remove/threshold, got ${args[1]}`);
+  }
+  const req = await ctx.adapter.buildAttestorUpdate(marketRef, {
+    user: `sol:${userBase58}`,
+    action: action as "add" | "remove" | "threshold",
+    key: args[2] ? String(args[2]) : undefined,
+    threshold: args[3] !== undefined ? Number(args[3]) : undefined,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+/** `attestVote(market, outcome)` — one committee member's ballot. */
+async function dispatchAttestVote(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "attestVote");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) throw new Error("attestVote: invalid market reference");
+  const outcome = Number(args[1] ?? -1);
+  if (![0, 1, 2].includes(outcome)) {
+    throw new Error(`attestVote: outcome must be 0/1/2, got ${args[1]}`);
+  }
+  const req = await ctx.adapter.buildAttestVote(marketRef, {
+    user: `sol:${userBase58}`,
+    outcome: outcome as 0 | 1 | 2,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /** `dispute(market, claimedOutcome)` — the guardian veto: rejects, never decides. */

@@ -2576,6 +2576,50 @@ export class SoothSDK {
     return this.writeViaShim("dispute", [market, outcome]);
   }
 
+  /** `attestors [add|remove <pubkey> | threshold <n>]` — the committee. */
+  async attestors(...args: unknown[]): Promise<Out> {
+    const flat = (Array.isArray(args[0]) ? (args[0] as unknown[]) : args).map(String);
+    const market = this.marketRef();
+    const demo = this.demo;
+    if (!demo || !market) return fail("No active market");
+    const verb = (flat[0] ?? "").toLowerCase();
+    if (verb === "add" || verb === "remove") {
+      if (!flat[1]) return fail("Usage: attestors add|remove <pubkey>");
+      return this.writeViaShim("attestorUpdate", [market, verb, flat[1]]);
+    }
+    if (verb === "threshold") {
+      const n = Number(flat[1] ?? 0);
+      if (!Number.isInteger(n) || n < 1) return fail("Usage: attestors threshold <n>");
+      return this.writeViaShim("attestorUpdate", [market, "threshold", "", n]);
+    }
+    const set = await demo.adapter.readAttestorSet(market);
+    if (!set || set.attestors.length === 0) {
+      return {
+        result: { success: true, message: "none" },
+        output: [line("dim", "No committee — the single adjudicator rules alone. `attestors add <pubkey>` then `attestors threshold <n>`.")],
+      };
+    }
+    const word = (v: number | null) => (v === 1 ? "YES" : v === 0 ? "NO" : v === 2 ? "INVALID" : "—");
+    return {
+      result: { success: true, message: String(set.attestors.length) },
+      output: [
+        line("bold", `Committee — ${set.threshold}-of-${set.attestors.length} required`),
+        ...set.attestors.map((a, i) => line("plain", `  ${a}  vote: ${word(set.votes[i])}`)),
+      ],
+    };
+  }
+
+  /** `vote <yes|no|invalid>` — cast a committee ballot on the active market. */
+  async attestVoteCmd(...args: unknown[]): Promise<Out> {
+    const flat = (Array.isArray(args[0]) ? (args[0] as unknown[]) : args).map(String);
+    const word = (flat[0] ?? "").toLowerCase();
+    const outcome = word === "yes" ? 1 : word === "no" ? 0 : word === "invalid" ? 2 : -1;
+    if (outcome === -1) return fail("Usage: vote <yes|no|invalid>");
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("attestVote", [market, outcome]);
+  }
+
   /** `guardians [add|remove <pubkey>]` — the veto roster. */
   async guardians(...args: unknown[]): Promise<Out> {
     const flat = (Array.isArray(args[0]) ? (args[0] as unknown[]) : args).map(String);
@@ -2750,6 +2794,10 @@ export class SoothSDK {
         return this.proposalStatus();
       case "guardians":
         return this.guardians(rest);
+      case "attestors":
+        return this.attestors(rest);
+      case "vote":
+        return this.attestVoteCmd(rest);
       case "attest":
         return this.attest(rest);
       case "register":

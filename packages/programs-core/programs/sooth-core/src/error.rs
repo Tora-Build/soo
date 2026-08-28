@@ -384,6 +384,9 @@ pub enum SoothCoreError {
 
     #[msg("Already a guardian of this market")]
     GuardianAlreadyPresent,
+
+    #[msg("Quorum threshold must be between 1 and the roster size")]
+    QuorumThresholdInvalid,
 }
 
 #[cfg(test)]

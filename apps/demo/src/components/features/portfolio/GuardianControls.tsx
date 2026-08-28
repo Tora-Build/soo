@@ -212,3 +212,204 @@ export function GuardianManager({ market }: { market: string }) {
     </div>
   );
 }
+
+function useAttestorSet(market: string): {
+  set: { attestors: string[]; votes: Array<number | null>; threshold: number } | null;
+  loaded: boolean;
+  reload: () => void;
+} {
+  const demo = useDemo();
+  const [set, setSet] = useState<{
+    attestors: string[];
+    votes: Array<number | null>;
+    threshold: number;
+  } | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [nonce, setNonce] = useState(0);
+  useEffect(() => {
+    let live = true;
+    demo?.adapter
+      .readAttestorSet(`sol:${market}`)
+      .then((r) => {
+        if (live) {
+          setSet(r);
+          setLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (live) setLoaded(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [demo, market, nonce]);
+  return { set, loaded, reload: () => setNonce((n) => n + 1) };
+}
+
+/**
+ * Committee controls: the entry authority's roster/threshold editor, and —
+ * on a LOCKED, unattested market — ballot buttons for any wallet on the
+ * roster. Votes are public and mutable until quorum fires; the tally is
+ * shown per member so a stalled committee is visibly stalled.
+ */
+export function CommitteeControls({
+  market,
+  isEntryAuthority,
+  canVoteNow,
+}: {
+  market: string;
+  isEntryAuthority: boolean;
+  /** Market is Locked and unattested — ballots are actionable. */
+  canVoteNow: boolean;
+}) {
+  const { t } = useTranslation();
+  const { address } = useAccount();
+  const wallet = address ? String(address).replace(/^0x/, "") : null;
+  const { writeContractAsync } = useWriteContract();
+  const { set, loaded, reload } = useAttestorSet(market);
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState("");
+  const [threshold, setThreshold] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const isMember = wallet !== null && (set?.attestors ?? []).includes(wallet);
+  if (!loaded) return null;
+  if (!set && !isEntryAuthority) return null;
+
+  const write = async (args: unknown[], done: string) => {
+    setBusy(true);
+    try {
+      await writeContractAsync({
+        functionName: args[0] === "vote" ? "attestVote" : "attestorUpdate",
+        args: args[0] === "vote" ? [`sol:${market}`, args[1]] : [`sol:${market}`, ...args],
+      } as never);
+      toast.success(done);
+      setInput("");
+      reload();
+    } catch (e) {
+      toast.error((e as Error).message?.slice(0, 120) ?? "Failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const word = (v: number | null) =>
+    v === 1 ? "YES" : v === 0 ? "NO" : v === 2 ? "INVALID" : "—";
+
+  return (
+    <div className="mt-1.5" data-testid="committee-controls">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted hover:text-ink"
+      >
+        <ShieldPlus className="h-3 w-3" />
+        {set
+          ? t("committee.toggle", {
+              defaultValue: "Committee ({{threshold}}-of-{{count}})",
+              threshold: set.threshold,
+              count: set.attestors.length,
+            })
+          : t("committee.create", { defaultValue: "Convene a committee" })}
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1.5 border border-rule bg-inset p-2.5">
+          <p className="text-[11px] text-muted leading-relaxed">
+            {t("committee.hint", {
+              defaultValue:
+                "M-of-N attestation: the ballot that reaches the threshold writes the ruling — same veto window and settlement as a single key. Your unilateral attest stays available.",
+            })}
+          </p>
+          {(set?.attestors ?? []).map((a, i) => (
+            <div key={a} className="flex items-center gap-2">
+              <span className="font-mono text-[10px] text-muted truncate flex-1">
+                {a}
+              </span>
+              <span className="font-mono text-[10px] text-faint">
+                {word(set!.votes[i])}
+              </span>
+              {isEntryAuthority && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => write(["remove", a], "Attestor removed")}
+                  className="text-faint hover:text-red-400 disabled:opacity-50"
+                  aria-label={`Remove attestor ${a}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          ))}
+          {isEntryAuthority && (
+            <>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={t("committee.addPlaceholder", {
+                    defaultValue: "attestor pubkey",
+                  })}
+                  className="flex-1 bg-canvas border border-rule px-2 py-1 font-mono text-[10px] text-ink focus:outline-none focus:border-accent"
+                  data-testid="attestor-add-input"
+                />
+                <button
+                  type="button"
+                  disabled={busy || !input.trim()}
+                  onClick={() => write(["add", input.trim()], "Attestor added")}
+                  className="px-2 py-1 font-mono text-[10px] font-bold uppercase border border-rule text-ink hover:bg-raised disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min="1"
+                  max={set?.attestors.length ?? 5}
+                  value={threshold}
+                  onChange={(e) => setThreshold(e.target.value)}
+                  placeholder="M"
+                  className="w-16 bg-canvas border border-rule px-2 py-1 font-mono text-[10px] text-ink focus:outline-none focus:border-accent"
+                  data-testid="attestor-threshold-input"
+                />
+                <button
+                  type="button"
+                  disabled={busy || !threshold}
+                  onClick={() =>
+                    write(["threshold", "", Number(threshold)], "Threshold set")
+                  }
+                  className="px-2 py-1 font-mono text-[10px] font-bold uppercase border border-rule text-ink hover:bg-raised disabled:opacity-50"
+                >
+                  {t("committee.setThreshold", { defaultValue: "Set threshold" })}
+                </button>
+              </div>
+            </>
+          )}
+          {isMember && canVoteNow && (set?.threshold ?? 0) >= 1 && (
+            <div className="flex items-center gap-1.5 pt-1 border-t border-rule">
+              <span className="font-mono text-[10px] text-accent uppercase tracking-[0.12em]">
+                {t("committee.yourBallot", { defaultValue: "your ballot:" })}
+              </span>
+              {([1, 0, 2] as const).map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    write(["vote", o], "Ballot cast — quorum writes the ruling")
+                  }
+                  className="px-2.5 py-1 font-mono text-[10px] font-bold uppercase border border-accent/60 text-accent hover:bg-accent hover:text-canvas disabled:opacity-50"
+                  data-testid={`ballot-${o}`}
+                >
+                  {word(o)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

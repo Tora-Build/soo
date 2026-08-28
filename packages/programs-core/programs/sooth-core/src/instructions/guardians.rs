@@ -48,7 +48,7 @@ pub struct GuardianAdd<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn guardian_add(ctx: Context<GuardianAdd>, guardian: Pubkey) -> Result<()> {
+pub fn handle_add(ctx: Context<GuardianAdd>, guardian: Pubkey) -> Result<()> {
     require!(
         guardian != Pubkey::default(),
         SoothCoreError::InvalidOutcome
@@ -90,7 +90,7 @@ pub struct GuardianRemove<'info> {
     pub authority: Signer<'info>,
 }
 
-pub fn guardian_remove(ctx: Context<GuardianRemove>, guardian: Pubkey) -> Result<()> {
+pub fn handle_remove(ctx: Context<GuardianRemove>, guardian: Pubkey) -> Result<()> {
     let set = &mut ctx.accounts.guardian_set;
     set.remove(&guardian).map_err(map_set_err)?;
     emit!(GuardianRemoved {

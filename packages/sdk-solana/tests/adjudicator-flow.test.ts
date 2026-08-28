@@ -18,7 +18,7 @@
 // there is nothing to dispatch on.
 import { describe, expect, it } from "vitest";
 import { PublicKey, Transaction } from "@solana/web3.js";
-import { SystemProgram } from "@solana/web3.js";
+import { Keypair, SystemProgram } from "@solana/web3.js";
 
 import {
   deriveAdjudicatorEntryPda,
@@ -44,6 +44,7 @@ const ERR = {
   AlreadyAttested: 6038,
   AlreadyDisputed: 6040,
   TooManyDisputes: 6110,
+  GuardianNotFound: 6112,
   MarketAlreadySettled: 6041,
   NotYetAttested: 6055,
   TradingNotClosed: 6056,
@@ -788,5 +789,154 @@ describe("dispute — the veto branch, now reachable", () => {
         ),
       ),
     ).rejects.toThrow(customError(ERR.NotYetAttested));
+  }, 60_000);
+});
+
+describe("attest_vote — M-of-N committee ruling", () => {
+  it("two of three agreeing ballots write the attestation; the market settles on it", async () => {
+    const smoke = await bootSmoke();
+    const program = anchorProgram(smoke.ctx, smoke.creator);
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await lockTx(program, smoke, smoke.creator.publicKey),
+    );
+
+    // Convene the committee: creator (entry authority) + user + a third key.
+    const third = Keypair.generate();
+    smoke.ctx.setAccount(third.publicKey, {
+      lamports: 1_000_000_000,
+      data: new Uint8Array(0),
+      owner: SystemProgram.programId,
+      executable: false,
+    });
+    const attestorSetPda = PublicKey.findProgramAddressSync(
+      [Buffer.from("attestors"), smoke.marketPda.toBuffer()],
+      smoke.programs.soothCore,
+    )[0];
+    const update = async (action: number, key: PublicKey, value = 0) =>
+      sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        new Transaction().add(
+          await program.methods
+            .attestorUpdate(action, key, value)
+            .accounts({
+              adjudicatorEntry: entryPda(smoke),
+              attestorSet: attestorSetPda,
+              authority: smoke.creator.publicKey,
+              systemProgram: SystemProgram.programId,
+            })
+            .instruction(),
+        ),
+      );
+    await update(0, smoke.creator.publicKey);
+    await update(0, smoke.user.publicKey);
+    await update(0, third.publicKey);
+    await update(2, PublicKey.default, 2); // threshold 2-of-3
+
+    const vote = async (signer: Keypair, outcome: number) =>
+      sendTx(
+        smoke.ctx,
+        [signer],
+        new Transaction().add(
+          await anchorProgram(smoke.ctx, signer)
+            .methods.attestVote(outcome)
+            .accounts({
+              market: smoke.marketPda,
+              adjudicatorEntry: entryPda(smoke),
+              attestorSet: attestorSetPda,
+              voter: signer.publicKey,
+            })
+            .instruction(),
+        ),
+      );
+
+    // One ballot: not attested yet.
+    await vote(smoke.creator, OUTCOME_YES);
+    expect((await fetchEntry(program, smoke)).attestedOutcome).toBeNull();
+    // A disagreeing ballot doesn't help.
+    await vote(smoke.user, OUTCOME_NO);
+    expect((await fetchEntry(program, smoke)).attestedOutcome).toBeNull();
+    // The second agreeing ballot writes the attestation.
+    await vote(third, OUTCOME_YES);
+    const entry = await fetchEntry(program, smoke);
+    expect(entry.attestedOutcome).toBe(OUTCOME_YES);
+    expect(entry.attestedAt).not.toBeNull();
+
+    // Downstream is indistinguishable from a single-key ruling: settle works.
+    const attestedAt = BigInt(entry.attestedAt.toString());
+    warpClockTo(smoke.ctx, attestedAt + VETO_PERIOD_SECS);
+    await sendTx(
+      smoke.ctx,
+      [smoke.user],
+      await settleTx(
+        anchorProgram(smoke.ctx, smoke.user),
+        smoke,
+        smoke.user.publicKey,
+      ),
+    );
+    expect((await fetchMarket(program, smoke)).winningOutcome).toBe(OUTCOME_YES);
+  }, 60_000);
+
+  it("a non-member ballot is refused", async () => {
+    const smoke = await bootSmoke();
+    const program = anchorProgram(smoke.ctx, smoke.creator);
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await lockTx(program, smoke, smoke.creator.publicKey),
+    );
+    const attestorSetPda = PublicKey.findProgramAddressSync(
+      [Buffer.from("attestors"), smoke.marketPda.toBuffer()],
+      smoke.programs.soothCore,
+    )[0];
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      new Transaction().add(
+        await program.methods
+          .attestorUpdate(0, smoke.creator.publicKey, 0)
+          .accounts({
+            adjudicatorEntry: entryPda(smoke),
+            attestorSet: attestorSetPda,
+            authority: smoke.creator.publicKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .instruction(),
+      ),
+    );
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      new Transaction().add(
+        await program.methods
+          .attestorUpdate(2, PublicKey.default, 1)
+          .accounts({
+            adjudicatorEntry: entryPda(smoke),
+            attestorSet: attestorSetPda,
+            authority: smoke.creator.publicKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .instruction(),
+      ),
+    );
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.user],
+        new Transaction().add(
+          await anchorProgram(smoke.ctx, smoke.user)
+            .methods.attestVote(OUTCOME_YES)
+            .accounts({
+              market: smoke.marketPda,
+              adjudicatorEntry: entryPda(smoke),
+              attestorSet: attestorSetPda,
+              voter: smoke.user.publicKey,
+            })
+            .instruction(),
+        ),
+      ),
+    ).rejects.toThrow(customError(ERR.GuardianNotFound));
   }, 60_000);
 });
