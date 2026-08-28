@@ -41,7 +41,10 @@ export function OptimisticConsole({ marketAddress }: { marketAddress: string }) 
   const nowSec = Math.floor(Date.now() / 1000);
   const pastDeadline =
     Number(state.deadline) > 1_000_000_000 && nowSec >= Number(state.deadline);
-  const eligible = !state.adjudicatorEntry && state.lifecycle === "Open";
+  const eligible =
+    !state.adjudicatorEntry &&
+    state.lifecycle === "Open" &&
+    !state.isDismissed;
 
   // Nothing optimistic can ever happen here — stay out of the way.
   if (!proposal && !(eligible && pastDeadline)) return null;

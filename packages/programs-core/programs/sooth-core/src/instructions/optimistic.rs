@@ -47,10 +47,12 @@ fn settle_market(
     outcome: u8,
     now: i64,
 ) -> Result<bool> {
-    if matches!(market.lifecycle, MarketLifecycle::Settled) {
+    // Settled AND dismissed are both terminal no-ops here, not errors: the
+    // bond payout that follows this call must complete regardless of how the
+    // market ended, or a dismissal would strand every escrowed bond forever.
+    if matches!(market.lifecycle, MarketLifecycle::Settled) || market.is_dismissed {
         return Ok(false);
     }
-    require!(!market.is_dismissed, SoothCoreError::MarketDismissed);
     if matches!(market.lifecycle, MarketLifecycle::Open) {
         market.lifecycle = MarketLifecycle::Locked;
         emit!(MarketLocked {
@@ -504,9 +506,11 @@ mod tests {
     }
 
     #[test]
-    fn settle_market_refuses_a_dismissed_market() {
+    fn settle_market_noops_on_a_dismissed_market_so_bonds_still_flow() {
         let mut m = market_with(MarketLifecycle::Open);
         m.is_dismissed = true;
-        assert!(settle_market(&mut m, Pubkey::new_unique(), OUTCOME_YES, 2_000).is_err());
+        let did = settle_market(&mut m, Pubkey::new_unique(), OUTCOME_YES, 2_000).unwrap();
+        assert!(!did, "dismissal is terminal; the bond payout must not be");
+        assert!(matches!(m.lifecycle, MarketLifecycle::Open));
     }
 }

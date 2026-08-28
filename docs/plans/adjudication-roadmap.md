@@ -6,7 +6,7 @@ demo value per hackathon week, one program change per week maximum (each
 means redeploy + vendored-IDL refresh + VPS SDK rebuild, all append-only),
 and composability with the reputation system shipped in week 3.
 
-## Phase 1 — Bonded optimistic adjudication (first)
+## Phase 1 — Bonded optimistic adjudication — ✅ SHIPPED (devnet, with UI + reputation integration)
 
 The biggest missing trust model, and the one whose design already exists
 (EVM spec: round ids, pull-based bond withdrawal, conservation invariant
@@ -24,7 +24,7 @@ The biggest missing trust model, and the one whose design already exists
   +10, challengeLost -10.
 - Cut-line under time pressure: fixed bond, single round, no re-proposals.
 
-## Phase 2 — Guardian hardening (one deploy, two changes)
+## Phase 2 — Guardian hardening — ✅ SHIPPED (veto rejects + guardian sets, with Locker UI)
 
 - Guardian SET instead of the single `dispute_authority` (single point of
   capture today).
@@ -34,7 +34,7 @@ The biggest missing trust model, and the one whose design already exists
   giving manual markets the correct/wrong veto grading zk markets already
   have.
 
-## Phase 3 — mainnet runway, in order
+## Phase 3 — mainnet runway, in order (item 1 ✅ shipped as committee quorum)
 
 1. M-of-N attestation quorum (committee precondition; multi-attestor zkTLS)
 2. Per-market frozen timeout buffers (no retroactive governance)
@@ -47,3 +47,7 @@ The biggest missing trust model, and the one whose design already exists
 EVM's pluggable adjudicator-CONTRACT architecture. Cross-program adjudicator
 plugins would cost CPI complexity the modes-in-one-program design does not
 need: every mechanism above fits as a mode.
+
+
+See `docs/adjudication.md` for the as-built description of all four
+modes, the guardian layer, and the UI map.

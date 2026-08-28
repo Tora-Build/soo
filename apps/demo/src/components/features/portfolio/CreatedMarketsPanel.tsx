@@ -153,7 +153,19 @@ export function CreatedMarketsPanel() {
   const rows = useMemo(() => {
     if (!wallet) return [];
     return Object.values(byMarket)
-      .filter((state) => state.creator === wallet)
+      // Creations AND duties. Filtering on creator alone meant a delegated
+      // adjudicator, a dispute authority, or an optimistic arbiter had no
+      // page to act from — the delegation features existed and their users
+      // were blind. Guardian/committee rosters live in side PDAs the poll
+      // doesn't carry, so those members still reach their controls through
+      // the market page or Geek; roles the store CAN see, it shows.
+      .filter(
+        (state) =>
+          state.creator === wallet ||
+          state.adjudicator === wallet ||
+          state.adjudicatorEntry?.authority === wallet ||
+          state.adjudicatorEntry?.disputeAuthority === wallet,
+      )
       .map((state) => ({
         state,
         view: resolveMarketView({
@@ -174,7 +186,7 @@ export function CreatedMarketsPanel() {
       <div className="flex items-center justify-between mb-3 gap-3">
         <h3 className="text-base font-semibold text-ink flex items-center gap-2">
           <Hammer className="w-4 h-4 text-accent" />
-          {t("createdMarkets.title", { defaultValue: "Markets You Created" })}
+          {t("createdMarkets.title", { defaultValue: "Your Markets & Duties" })}
         </h3>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
           {hasLoaded
@@ -223,6 +235,7 @@ export function CreatedMarketsPanel() {
               key={state.market}
               market={state.market}
               view={view}
+              isDelegated={state.creator !== wallet}
               isZk={state.adjudicatorEntry?.isZk ?? false}
               hasEntry={state.adjudicatorEntry !== null}
               locale={i18n.language === "zh" ? "zh-CN" : "en-US"}
@@ -235,12 +248,14 @@ export function CreatedMarketsPanel() {
 }
 
 function CreatedMarketRow({
+  isDelegated,
   market,
   view,
   isZk,
   hasEntry,
   locale,
 }: {
+  isDelegated: boolean;
   market: string;
   view: ResolutionView;
   isZk: boolean;
@@ -401,6 +416,14 @@ function CreatedMarketRow({
             <span className="font-mono text-[10px] text-faint">
               {shortenAddress(market, 4)}
             </span>
+            {isDelegated && (
+              <span
+                className="font-mono text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5 border border-sky-500/50 text-sky-400"
+                title="You did not create this market — you hold a resolution role on it"
+              >
+                {view.isAdjudicator ? "YOUR RULING" : "YOUR DUTY"}
+              </span>
+            )}
             {/* Same countdown as the deck and /explore, so the row a founder
                 acts from and the row a trader sees carry one clock. */}
             <VetoWindowBadge address={market} />
