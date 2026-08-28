@@ -469,6 +469,36 @@ function AdjudicatorDirectory({
     .sort((a, b) => b[1].score - a[1].score)
     .slice(0, 6);
 
+  // Paste-an-address path: the directory can only list authorities this
+  // build has SEEN, and delegation must not be capped by our discovery —
+  // any valid pubkey is selectable, scored or not.
+  const [customInput, setCustomInput] = useState("");
+  const [customError, setCustomError] = useState<string | null>(null);
+  const rankedKeys = new Set(ranked.map(([authority]) => authority));
+  const customSelected =
+    selected !== null && selected !== self && !rankedKeys.has(selected)
+      ? selected
+      : null;
+  const applyCustom = (raw: string) => {
+    const text = raw.trim().replace(/^sol:/, "").replace(/^0x/, "");
+    setCustomInput(raw);
+    if (!text) {
+      setCustomError(null);
+      return;
+    }
+    try {
+      const pk = new PublicKey(text).toBase58();
+      setCustomError(null);
+      onSelect?.(pk);
+    } catch {
+      setCustomError(
+        t("adjudicator.badAddress", {
+          defaultValue: "Not a valid Solana address",
+        }),
+      );
+    }
+  };
+
   return (
     <div className="space-y-1.5" data-testid="adjudicator-directory">
       <DirectoryRow
@@ -496,6 +526,34 @@ function AdjudicatorDirectory({
           testId={`adjudicator-pick-${authority.slice(0, 6)}`}
         />
       ))}
+      {customSelected && (
+        <DirectoryRow
+          authority={customSelected}
+          label={t("adjudicator.custom", { defaultValue: "Pasted address" })}
+          score={byAuthority.get(customSelected) ?? null}
+          isSelected
+          onClick={() => {}}
+          testId="adjudicator-pick-custom"
+        />
+      )}
+      <div className="space-y-1">
+        <input
+          type="text"
+          value={customInput}
+          onChange={(event) => applyCustom(event.target.value)}
+          placeholder={t("adjudicator.pastePlaceholder", {
+            defaultValue: "…or paste an adjudicator address",
+          })}
+          data-testid="adjudicator-custom-input"
+          className={cn(
+            "w-full bg-inset border px-3 py-2 font-mono text-xs text-ink placeholder:text-faint focus:outline-none",
+            customError ? "border-red-500/60" : "border-rule focus:border-accent",
+          )}
+        />
+        {customError && (
+          <p className="font-mono text-[10px] text-red-400">{customError}</p>
+        )}
+      </div>
       <a
         href="/adjudicators"
         target="_blank"
