@@ -17,6 +17,7 @@ import { cn } from "../../../lib/utils";
 import { useAccount } from "@/lib/chain-shim";
 import { traitsOf } from "@sooth/sdk-solana";
 import { AdjudicatorTierChip } from "../AdjudicatorRecordCard";
+import { CopyableAddress } from "../../../pages/Adjudicators";
 import { useAdjudicatorScores } from "../../../features/arena/useAdjudicatorScores";
 import {
   COMPARATORS,
@@ -559,11 +560,7 @@ function DirectoryRow({
         >
           {label}
         </span>
-        {authority && (
-          <span className="font-mono text-[10px] text-faint">
-            {authority.slice(0, 4)}…{authority.slice(-4)}
-          </span>
-        )}
+        {authority && <CopyableAddress address={authority} />}
       </span>
       {score ? (
         <AdjudicatorTierChip score={score} />

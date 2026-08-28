@@ -1,20 +1,28 @@
 /**
  * The adjudicator leaderboard — every scored authority on this chain, ranked.
  *
- * This is the reputation system's public face: the Forge's directory shows a
- * top slice inline, but trust shopping deserves a full page — the whole
- * field, every trait, every count, and the methodology said out loud. The
- * scores are a pure fold over public resolution states; nothing here is
- * granted by the platform, so nothing here needs to be taken on faith.
+ * This is the reputation system's public face. The SCORE is the biggest
+ * thing on every row, because it is the number decisions get made on; the
+ * evidence sits under it, the methodology at the bottom, and the full
+ * address is always one click from the clipboard — an identity you cannot
+ * copy is an identity you cannot use.
  */
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Scale, ArrowRight } from "lucide-react";
-import { traitsOf, RULING_POINTS, BOND_POINTS } from "@sooth/sdk-solana";
+import { Scale, ArrowRight, Copy } from "lucide-react";
+import toast from "react-hot-toast";
+import {
+  traitsOf,
+  RULING_POINTS,
+  BOND_POINTS,
+  type TrustTier,
+} from "@sooth/sdk-solana";
 
 import { useAdjudicatorScores } from "../features/arena/useAdjudicatorScores";
 import { AdjudicatorTierChip } from "../components/features/AdjudicatorRecordCard";
 import { useAccount } from "@/lib/chain-shim";
+import { cn } from "../lib/utils";
 
 function fmtResponse(sec: number | null): string {
   if (sec === null) return "—";
@@ -24,20 +32,69 @@ function fmtResponse(sec: number | null): string {
   return `${Math.round(sec / 86400)}d`;
 }
 
+const TIER_FILTERS: Array<{ id: TrustTier | "all"; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "trusted", label: "Trusted" },
+  { id: "standing", label: "In standing" },
+  { id: "caution", label: "Caution" },
+  { id: "unproven", label: "Unproven" },
+];
+
+const TRAIT_FILTERS = [
+  { id: "fast", label: "Fast" },
+  { id: "spotless", label: "Spotless" },
+  { id: "veteran", label: "Veteran" },
+  { id: "bonded", label: "Bonded" },
+  { id: "guardian", label: "Guardian" },
+] as const;
+
+export function CopyableAddress({ address }: { address: string }) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        navigator.clipboard.writeText(address);
+        toast.success("Address copied");
+      }}
+      title={address}
+      className="inline-flex items-center gap-1.5 font-mono text-xs text-muted hover:text-ink transition-colors"
+    >
+      <span>
+        {address.slice(0, 8)}…{address.slice(-8)}
+      </span>
+      <Copy className="h-3 w-3 shrink-0" />
+    </button>
+  );
+}
+
 export default function Adjudicators() {
   const { t } = useTranslation();
   const { address } = useAccount();
   const self = address ? String(address).replace(/^0x/, "") : null;
   const { byAuthority, hasLoaded } = useAdjudicatorScores();
+  const [tierFilter, setTierFilter] = useState<TrustTier | "all">("all");
+  const [traitFilter, setTraitFilter] = useState<string | null>(null);
 
-  const ranked = [...byAuthority.entries()].sort(
-    (a, b) =>
-      b[1].score - a[1].score ||
-      b[1].record.resolvedRulings - a[1].record.resolvedRulings,
+  const ranked = useMemo(
+    () =>
+      [...byAuthority.entries()]
+        .filter(([, score]) => tierFilter === "all" || score.tier === tierFilter)
+        .filter(
+          ([, score]) =>
+            !traitFilter ||
+            traitsOf(score.record).some((trait) => trait.id === traitFilter),
+        )
+        .sort(
+          (a, b) =>
+            b[1].score - a[1].score ||
+            b[1].record.resolvedRulings - a[1].record.resolvedRulings,
+        ),
+    [byAuthority, tierFilter, traitFilter],
   );
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 space-y-6">
+    <div className="mx-auto max-w-3xl px-4 py-8 space-y-5">
       <header className="space-y-2">
         <h1 className="flex items-center gap-2 text-xl font-semibold text-ink">
           <Scale className="h-5 w-5 text-accent" />
@@ -60,14 +117,56 @@ export default function Adjudicators() {
         </Link>
       </header>
 
+      {/* Filters: tier is the primary axis, traits the secondary. */}
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap gap-1.5" data-testid="tier-filters">
+          {TIER_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setTierFilter(f.id)}
+              aria-pressed={tierFilter === f.id}
+              className={cn(
+                "px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] border transition-all",
+                tierFilter === f.id
+                  ? "border-accent bg-accent-muted text-accent"
+                  : "border-rule text-muted hover:text-ink",
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1.5" data-testid="trait-filters">
+          {TRAIT_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() =>
+                setTraitFilter(traitFilter === f.id ? null : f.id)
+              }
+              aria-pressed={traitFilter === f.id}
+              className={cn(
+                "px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] border transition-all",
+                traitFilter === f.id
+                  ? "border-accent bg-accent-muted text-accent"
+                  : "border-rule text-faint hover:text-ink",
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {!hasLoaded ? (
         <p className="font-mono text-xs text-muted">
           {t("common.loading", { defaultValue: "Loading…" })}
         </p>
       ) : ranked.length === 0 ? (
         <p className="font-mono text-xs text-muted">
-          {t("adjudicators.empty", {
-            defaultValue: "No adjudication history on this chain yet.",
+          {t("adjudicators.emptyFiltered", {
+            defaultValue: "Nobody matches these filters.",
           })}
         </p>
       ) : (
@@ -75,63 +174,85 @@ export default function Adjudicators() {
           {ranked.map(([authority, score], index) => (
             <li
               key={authority}
-              className="border border-rule bg-inset px-4 py-3"
+              className="border border-rule bg-inset px-4 py-3 flex items-center gap-4"
             >
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono text-xs text-faint w-6 tabular-nums">
+              {/* THE number. Everything else on the row explains it. */}
+              <div className="shrink-0 w-16 text-center">
+                <div
+                  className={cn(
+                    "text-3xl font-bold tabular-nums leading-none",
+                    score.tier === "trusted"
+                      ? "text-emerald-400"
+                      : score.tier === "caution"
+                        ? "text-red-400"
+                        : score.tier === "standing"
+                          ? "text-sky-400"
+                          : "text-muted",
+                  )}
+                >
+                  {score.score}
+                </div>
+                <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-faint">
                   #{index + 1}
-                </span>
-                <AdjudicatorTierChip score={score} />
-                <span className="font-mono text-[11px] text-muted">
-                  {authority.slice(0, 6)}…{authority.slice(-6)}
-                </span>
-                {authority === self && (
-                  <span className="font-mono text-[9px] uppercase tracking-[0.1em] px-1 py-0.5 border border-accent/60 text-accent">
-                    {t("adjudicators.you", { defaultValue: "YOU" })}
-                  </span>
-                )}
-                {traitsOf(score.record).map((trait) => (
-                  <span
-                    key={trait.id}
-                    title={trait.detail}
-                    className="font-mono text-[9px] uppercase tracking-[0.1em] px-1 py-0.5 border border-rule text-muted"
-                  >
-                    {trait.label}
-                  </span>
-                ))}
+                </div>
               </div>
-              <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px] text-muted pl-8">
-                <span>{score.record.resolvedRulings} resolved</span>
-                <span className="text-emerald-400">
-                  {score.record.cleanRulings} clean
-                </span>
-                {score.record.overriddenRulings > 0 && (
-                  <span className="text-red-400">
-                    {score.record.overriddenRulings} vetoed
+
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <AdjudicatorTierChip score={score} />
+                  {authority === self && (
+                    <span className="font-mono text-[9px] uppercase tracking-[0.1em] px-1 py-0.5 border border-accent/60 text-accent">
+                      {t("adjudicators.you", { defaultValue: "YOU" })}
+                    </span>
+                  )}
+                  {traitsOf(score.record).map((trait) => (
+                    <span
+                      key={trait.id}
+                      title={trait.detail}
+                      className="font-mono text-[9px] uppercase tracking-[0.1em] px-1 py-0.5 border border-rule text-muted"
+                    >
+                      {trait.label}
+                    </span>
+                  ))}
+                </div>
+                <CopyableAddress address={authority} />
+                <div className="flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px] text-muted">
+                  <span>{score.record.resolvedRulings} resolved</span>
+                  <span className="text-emerald-400">
+                    {score.record.cleanRulings} clean
                   </span>
-                )}
-                {score.record.forcedInvalids > 0 && (
-                  <span className="text-amber-400">
-                    {score.record.forcedInvalids} forced invalid
-                  </span>
-                )}
-                <span>rules in {fmtResponse(score.record.medianResponseSec)}</span>
-                {score.record.vetoesIssued > 0 && (
-                  <span>{score.record.vetoesIssued} vetoes issued</span>
-                )}
-                {score.record.proposalsUpheld + score.record.proposalsSlashed > 0 && (
+                  {score.record.overriddenRulings > 0 && (
+                    <span className="text-red-400">
+                      {score.record.overriddenRulings} vetoed
+                    </span>
+                  )}
+                  {score.record.forcedInvalids > 0 && (
+                    <span className="text-amber-400">
+                      {score.record.forcedInvalids} forced invalid
+                    </span>
+                  )}
                   <span>
-                    bonds: {score.record.proposalsUpheld} upheld
-                    {score.record.proposalsSlashed > 0 &&
-                      ` · ${score.record.proposalsSlashed} slashed`}
+                    rules in {fmtResponse(score.record.medianResponseSec)}
                   </span>
-                )}
-                {score.record.challengesWon + score.record.challengesLost > 0 && (
-                  <span>
-                    challenges: {score.record.challengesWon}W /{" "}
-                    {score.record.challengesLost}L
-                  </span>
-                )}
+                  {score.record.vetoesIssued > 0 && (
+                    <span>{score.record.vetoesIssued} vetoes issued</span>
+                  )}
+                  {score.record.proposalsUpheld + score.record.proposalsSlashed >
+                    0 && (
+                    <span>
+                      bonds: {score.record.proposalsUpheld} upheld
+                      {score.record.proposalsSlashed > 0 &&
+                        ` · ${score.record.proposalsSlashed} slashed`}
+                    </span>
+                  )}
+                  {score.record.challengesWon + score.record.challengesLost >
+                    0 && (
+                    <span>
+                      challenges: {score.record.challengesWon}W /{" "}
+                      {score.record.challengesLost}L
+                    </span>
+                  )}
+                </div>
               </div>
             </li>
           ))}
@@ -146,11 +267,12 @@ export default function Adjudicators() {
           Rulings: clean {`+${RULING_POINTS.clean}`} (prompt{" "}
           {`+${RULING_POINTS.promptBonus}`}) · vetoed {RULING_POINTS.overridden} ·
           forced invalid {RULING_POINTS.forcedInvalid} · unresponsive{" "}
-          {RULING_POINTS.unresponsive}. Bonds: upheld {`+${BOND_POINTS.proposalUpheld}`} ·
-          slashed {BOND_POINTS.proposalSlashed} · challenge won{" "}
-          {`+${BOND_POINTS.challengeWon}`} · lost {BOND_POINTS.challengeLost}. Score
-          starts at 50; tiers need at least 3 resolved rulings. Every number is
-          recomputable from public chain state.
+          {RULING_POINTS.unresponsive}. Bonds: upheld{" "}
+          {`+${BOND_POINTS.proposalUpheld}`} · slashed{" "}
+          {BOND_POINTS.proposalSlashed} · challenge won{" "}
+          {`+${BOND_POINTS.challengeWon}`} · lost {BOND_POINTS.challengeLost}.
+          Score starts at 50; tiers need at least 3 resolved rulings. Every
+          number is recomputable from public chain state.
         </p>
       </footer>
     </div>
