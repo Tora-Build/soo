@@ -22,6 +22,7 @@ import { GraduationProgress, AMMSettlementCard } from "..";
 import { SimpleTradingPanel } from "../SimpleTradingPanel";
 import { MegaEthTradingPanel } from "../megaeth/MegaEthTradingPanel";
 import { MarketDetailsCard } from "./MarketDetailsCard";
+import { OptimisticConsole } from "./OptimisticConsole";
 import { TradingContextBar } from "../TradingContextBar";
 import { EventChartCard } from "./EventChartCard";
 import {
@@ -247,6 +248,7 @@ export const AMMPageBody = ({
       )}
 
       {/* Full-width market details under the title bar */}
+      <OptimisticConsole marketAddress={marketAddress} />
       <MarketDetailsCard
         address={marketAddress}
         symbol={sqfMeta?.symbol}

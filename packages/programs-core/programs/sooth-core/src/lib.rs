@@ -291,6 +291,14 @@ pub mod sooth_core {
     /// closed; the outcome comes from the `AdjudicatorEntry`, not the caller.
     // ── Bonded optimistic resolution — see instructions/optimistic.rs ──
 
+    pub fn guardian_add(ctx: Context<GuardianAdd>, guardian: Pubkey) -> Result<()> {
+        instructions::guardians::guardian_add(ctx, guardian)
+    }
+
+    pub fn guardian_remove(ctx: Context<GuardianRemove>, guardian: Pubkey) -> Result<()> {
+        instructions::guardians::guardian_remove(ctx, guardian)
+    }
+
     pub fn opt_propose(ctx: Context<OptPropose>, outcome: u8, bond: u64) -> Result<()> {
         instructions::optimistic::propose(ctx, outcome, bond)
     }

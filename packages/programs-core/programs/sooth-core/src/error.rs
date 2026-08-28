@@ -371,6 +371,19 @@ pub enum SoothCoreError {
 
     #[msg("A proposer cannot challenge their own assertion")]
     OptSelfChallenge,
+
+    // ── Guardian hardening. Appended, never reordered. ──
+    #[msg("The veto has fired its maximum number of times on this market — the ruling stands")]
+    TooManyDisputes,
+
+    #[msg("Guardian set is full")]
+    GuardianSetFull,
+
+    #[msg("Not a guardian of this market")]
+    GuardianNotFound,
+
+    #[msg("Already a guardian of this market")]
+    GuardianAlreadyPresent,
 }
 
 #[cfg(test)]

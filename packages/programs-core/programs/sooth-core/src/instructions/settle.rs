@@ -430,7 +430,7 @@ pub(crate) fn orphan_entry(market: Pubkey, bump: u8) -> AdjudicatorEntry {
         zk_rule_hash: [0; 32],
         zk_threshold: 0,
         forced_invalid: false,
-        _reserved: [0; 1],
+        dispute_count: 0,
     }
 }
 
@@ -458,7 +458,7 @@ pub(crate) mod tests {
             zk_rule_hash: [0; 32],
             zk_threshold: 0,
             forced_invalid: false,
-            _reserved: [0; 1],
+            dispute_count: 0,
         }
     }
 

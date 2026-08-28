@@ -673,7 +673,10 @@ describe("the veto window still governs a zk-attested market", () => {
     return { smoke, program };
   }
 
-  it("dispute can override a zk verdict inside the window", async () => {
+  it("dispute REJECTS a zk verdict inside the window — cleared, not replaced", async () => {
+    // Even against a cryptographic attestation the guardian's power is only
+    // rejection: the proof's verdict is thrown out and a fresh attestation
+    // (zk or manual override) must land before settlement.
     const { smoke, program } = await attested();
     expect((await fetchEntry(program, smoke)).attestedOutcome).toBe(OUTCOME_YES);
 
@@ -687,6 +690,7 @@ describe("the veto window still governs a zk-attested market", () => {
             adjudicatorEntry: entryPda(smoke),
             market: smoke.marketPda,
             protocolConfig: deriveProtocolConfigPda(smoke.programs)[0],
+            guardianSet: null,
             disputer: smoke.creator.publicKey,
           })
           .instruction(),
@@ -694,8 +698,10 @@ describe("the veto window still governs a zk-attested market", () => {
     );
 
     const entry = await fetchEntry(program, smoke);
-    expect(entry.attestedOutcome).toBe(OUTCOME_INVALID);
+    expect(entry.attestedOutcome).toBeNull();
+    expect(entry.attestedAt).toBeNull();
     expect(entry.disputed).toBe(true);
+    expect(entry.disputeCount).toBe(1);
   });
 
   it("settle is blocked until the window closes, then finalizes the zk verdict", async () => {

@@ -2560,11 +2560,44 @@ export class SoothSDK {
   async trialstatus(..._args: unknown[]): Promise<Out> {
     return this.notPorted("trialstatus");
   }
-  async dispute(..._args: unknown[]): Promise<Out> {
-    return fail(
-      "Not wired",
-      "The guardian veto (sooth_core::dispute) exists on-chain but has no client path yet; it is the dispute authority's tool, not a terminal flow.",
-    );
+  /** `veto <yes|no|invalid>` — reject the current ruling; your claim rides the event. */
+  async dispute(...args: unknown[]): Promise<Out> {
+    const flat = (Array.isArray(args[0]) ? (args[0] as unknown[]) : args).map(String);
+    const word = (flat[0] ?? "").toLowerCase();
+    const outcome = word === "yes" ? 1 : word === "no" ? 0 : word === "invalid" ? 2 : -1;
+    if (outcome === -1) {
+      return fail(
+        "Bad claim",
+        "Usage: veto <yes|no|invalid> — rejects the ruling (adjudicator must re-rule); your claim is recorded, not enacted",
+      );
+    }
+    const market = this.marketRef();
+    if (!market) return fail("No active market");
+    return this.writeViaShim("dispute", [market, outcome]);
+  }
+
+  /** `guardians [add|remove <pubkey>]` — the veto roster. */
+  async guardians(...args: unknown[]): Promise<Out> {
+    const flat = (Array.isArray(args[0]) ? (args[0] as unknown[]) : args).map(String);
+    const market = this.marketRef();
+    const demo = this.demo;
+    if (!demo || !market) return fail("No active market");
+    const verb = (flat[0] ?? "").toLowerCase();
+    if (verb === "add" || verb === "remove") {
+      if (!flat[1]) return fail("Usage: guardians add|remove <pubkey>");
+      return this.writeViaShim("guardianUpdate", [market, flat[1], verb === "remove"]);
+    }
+    const roster = await demo.adapter.readGuardianSet(market);
+    if (!roster || roster.length === 0) {
+      return {
+        result: { success: true, message: "none" },
+        output: [line("dim", "No deputized guardians — only the dispute authority may veto. `guardians add <pubkey>`.")],
+      };
+    }
+    return {
+      result: { success: true, message: String(roster.length) },
+      output: [line("bold", `Guardians (${roster.length}/5)`), ...roster.map((g) => line("plain", `  ${g}`))],
+    };
   }
   async transferlp(..._args: unknown[]): Promise<Out> {
     return this.notPorted("transferlp");
@@ -2715,12 +2748,15 @@ export class SoothSDK {
         return this.arbitrate(rest);
       case "proposal":
         return this.proposalStatus();
+      case "guardians":
+        return this.guardians(rest);
       case "attest":
         return this.attest(rest);
       case "register":
         return this.register(rest);
+      case "veto":
       case "dispute":
-        return this.dispute();
+        return this.dispute(rest);
       case "settle":
       case "finalize":
         return this.settle();

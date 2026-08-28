@@ -12,6 +12,7 @@ import { useContext, useMemo } from "react";
 
 import { TradingContextBar } from "../TradingContextBar";
 import { MarketDetailsCard } from "./MarketDetailsCard";
+import { OptimisticConsole } from "./OptimisticConsole";
 import { useTruthMarketDirect, useLaunchpadMarketDirect } from "../../../hooks";
 import { useOnChainMarkets } from "../../../hooks/useOnChainMarkets";
 import { SoothBookTerminal } from "../pro";
@@ -143,6 +144,7 @@ export const OrderbookPageBody = ({
       />
       )}
 
+      <OptimisticConsole marketAddress={marketAddress} />
       <MarketDetailsCard
         address={marketAddress}
         symbol={sqfMeta?.symbol}

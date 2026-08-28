@@ -107,11 +107,18 @@ pub struct AdjudicatorEntry {
     /// that outgrows its buffer fails to deserialize on every instruction
     /// that loads it. (Unlike EVM, where appending a storage slot is free.)
     ///
-    /// When you add a field, shrink this by exactly its serialized size and
-    /// leave `SPACE` unchanged. ONE byte is left, so the next field larger
-    /// than a bool needs a separate PDA rather than this region.
-    pub _reserved: [u8; 1],
+    /// How many times the veto has fired on this entry. Occupies the last
+    /// reserved byte: every entry already on chain reads zero here, which is
+    /// the truth — none of them had been disputed under the re-resolution
+    /// model. The region is now FULL; the next field needs a side PDA
+    /// (see `GuardianSet` for the pattern).
+    pub dispute_count: u8,
 }
+
+/// A veto rejects; it does not decide. After this many rejections the
+/// guardian has had their say and the ruling stands — an unbounded loop
+/// would let a guardian filibuster a market forever.
+pub const MAX_DISPUTES: u8 = 3;
 
 impl AdjudicatorEntry {
     /// Borsh-serialized size for rent calculation.
@@ -230,7 +237,7 @@ mod tests {
             zk_rule_hash: [0; 32],
             zk_threshold: 0,
             forced_invalid: false,
-            _reserved: [0; 1],
+            dispute_count: 0,
         }
     }
 

@@ -831,6 +831,12 @@ export async function dispatchAmmWrite(
   if (call.functionName === "settle") {
     return dispatchSettle(call, ctx);
   }
+  if (call.functionName === "dispute") {
+    return dispatchDispute(call, ctx);
+  }
+  if (call.functionName === "guardianUpdate") {
+    return dispatchGuardianUpdate(call, ctx);
+  }
   // Bonded optimistic resolution — see the program's instructions/optimistic.rs.
   if (call.functionName === "optPropose") {
     return dispatchOptPropose(call, ctx);
@@ -1552,6 +1558,45 @@ async function dispatchBookPlace(
   invalidateBookCache(marketRef);
   const realSignature = receipt.txId.replace(/^sol:/, "");
   return synthHashFromSignature(realSignature);
+}
+
+/** `dispute(market, claimedOutcome)` — the guardian veto: rejects, never decides. */
+async function dispatchDispute(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "dispute");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) throw new Error("dispute: invalid market reference");
+  const outcome = Number(args[1] ?? -1);
+  if (![0, 1, 2].includes(outcome)) {
+    throw new Error(`dispute: claimed outcome must be 0/1/2, got ${args[1]}`);
+  }
+  const req = await ctx.adapter.buildDispute(marketRef, {
+    user: `sol:${userBase58}`,
+    claimedOutcome: outcome as 0 | 1 | 2,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
+}
+
+/** `guardianUpdate(market, guardian, remove?)` — roster management. */
+async function dispatchGuardianUpdate(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "guardianUpdate");
+  const args = call.args ?? [];
+  const marketRef = toMarketRef(args[0]);
+  if (!marketRef) throw new Error("guardianUpdate: invalid market reference");
+  const guardian = String(args[1] ?? "");
+  if (!guardian) throw new Error("guardianUpdate: guardian pubkey required");
+  const req = await ctx.adapter.buildGuardianUpdate(marketRef, {
+    user: `sol:${userBase58}`,
+    guardian,
+    remove: Boolean(args[2]),
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /**

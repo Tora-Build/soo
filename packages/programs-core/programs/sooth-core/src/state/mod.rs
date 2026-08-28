@@ -7,6 +7,7 @@ pub mod lock_entry;
 pub mod lp_position;
 pub mod market;
 pub mod market_fee_pool;
+mod guardians;
 mod optimistic;
 pub mod position;
 pub mod protocol_config;
@@ -21,6 +22,7 @@ pub use market::Market;
 pub use market::OUTCOME_INVALID;
 pub use market::OUTCOME_NO;
 pub use market::OUTCOME_YES;
+pub use guardians::{GuardianSet, GuardianSetError, GUARDIAN_SET_SEED, MAX_GUARDIANS};
 pub use optimistic::{
     OptimisticProposal, OPT_BOND_AUTHORITY_SEED, OPT_BOND_VAULT_SEED,
     OPT_CHALLENGE_WINDOW_SECS, OPT_MIN_BOND, OPT_PROPOSAL_SEED,

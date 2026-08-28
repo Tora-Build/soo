@@ -43,6 +43,7 @@ const ERR = {
   NotAuthority: 6037,
   AlreadyAttested: 6038,
   AlreadyDisputed: 6040,
+  TooManyDisputes: 6110,
   MarketAlreadySettled: 6041,
   NotYetAttested: 6055,
   TradingNotClosed: 6056,
@@ -112,6 +113,7 @@ async function disputeTx(
         adjudicatorEntry: entryPda(smoke),
         market: smoke.marketPda,
         protocolConfig: deriveProtocolConfigPda(smoke.programs)[0],
+        guardianSet: null,
         disputer,
       })
       .instruction(),
@@ -612,7 +614,9 @@ describe("dispute — the veto branch, now reachable", () => {
     return { smoke, program, vetoEndsAt: attestedAt + VETO_PERIOD_SECS };
   }
 
-  it("overrides the attested outcome inside the window", async () => {
+  it("REJECTS the ruling: attestation cleared, market handed back", async () => {
+    // The veto is a court of appeal, not a court: it can throw a ruling out,
+    // never write its own. The guardian's claim rides the event only.
     const { smoke, program } = await attested(OUTCOME_YES);
     await sendTx(
       smoke.ctx,
@@ -621,30 +625,48 @@ describe("dispute — the veto branch, now reachable", () => {
     );
 
     const entry = await fetchEntry(program, smoke);
-    expect(entry.attestedOutcome).toBe(OUTCOME_INVALID);
+    expect(entry.attestedOutcome).toBeNull();
+    expect(entry.attestedAt).toBeNull();
     expect(entry.disputed).toBe(true);
     expect(entry.disputedAt).not.toBeNull();
-    // The original attestation timestamp is preserved — the veto window is
-    // measured from the attestation, not restarted by the veto.
-    expect(entry.attestedAt).not.toBeNull();
+    expect(entry.disputeCount).toBe(1);
 
     // A veto changes the outcome, not the lifecycle.
-    expect(await fetchMarket(program, smoke)).toHaveProperty("lifecycle");
     expect((await fetchMarket(program, smoke)).lifecycle).toHaveProperty(
       "locked",
     );
   }, 60_000);
 
-  it("the disputed outcome is what settle finalizes", async () => {
-    // The point of the whole mechanism. If settle still took a caller-supplied
-    // outcome this would silently pass with the pre-veto value.
-    const { smoke, program, vetoEndsAt } = await attested(OUTCOME_YES);
+  it("after a veto, settle waits for a fresh ruling — and finalizes THAT", async () => {
+    // The whole re-resolution loop: rule YES, veto, rule NO, settle NO. The
+    // second ruling gets its own veto window, measured from itself.
+    const { smoke, program } = await attested(OUTCOME_YES);
     await sendTx(
       smoke.ctx,
       [smoke.creator],
       await disputeTx(program, smoke, smoke.creator.publicKey, OUTCOME_NO),
     );
-    warpClockTo(smoke.ctx, vetoEndsAt);
+    // Cleared: settle must refuse right now.
+    await expect(
+      sendTx(
+        smoke.ctx,
+        [smoke.user],
+        await settleTx(
+          anchorProgram(smoke.ctx, smoke.user),
+          smoke,
+          smoke.user.publicKey,
+        ),
+      ),
+    ).rejects.toThrow(customError(ERR.NotYetAttested));
+    // Re-rule NO.
+    await sendTx(
+      smoke.ctx,
+      [smoke.creator],
+      await attestTx(program, smoke, smoke.creator.publicKey, OUTCOME_NO),
+    );
+    const entry = await fetchEntry(program, smoke);
+    const reAttestedAt = BigInt(entry.attestedAt.toString());
+    warpClockTo(smoke.ctx, reAttestedAt + VETO_PERIOD_SECS);
     await sendTx(
       smoke.ctx,
       [smoke.user],
@@ -687,20 +709,28 @@ describe("dispute — the veto branch, now reachable", () => {
     expect((await fetchEntry(program, smoke)).disputed).toBe(true);
   }, 60_000);
 
-  it("is one-shot — AlreadyDisputed is live code now", async () => {
+  it("caps at MAX_DISPUTES — the guardian cannot filibuster forever", async () => {
     const { smoke, program } = await attested();
-    await sendTx(
-      smoke.ctx,
-      [smoke.creator],
-      await disputeTx(program, smoke, smoke.creator.publicKey, OUTCOME_INVALID),
-    );
+    for (let round = 0; round < 3; round += 1) {
+      await sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        await disputeTx(program, smoke, smoke.creator.publicKey, OUTCOME_INVALID),
+      );
+      await sendTx(
+        smoke.ctx,
+        [smoke.creator],
+        await attestTx(program, smoke, smoke.creator.publicKey, OUTCOME_YES),
+      );
+    }
+    expect((await fetchEntry(program, smoke)).disputeCount).toBe(3);
     await expect(
       sendTx(
         smoke.ctx,
         [smoke.creator],
         await disputeTx(program, smoke, smoke.creator.publicKey, OUTCOME_NO),
       ),
-    ).rejects.toThrow(customError(ERR.AlreadyDisputed));
+    ).rejects.toThrow(customError(ERR.TooManyDisputes));
   }, 60_000);
 
   it("rejects a signer that is not the dispute_authority", async () => {

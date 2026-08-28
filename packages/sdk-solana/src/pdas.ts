@@ -433,3 +433,14 @@ export function deriveOptBondAuthorityPda(
     programs.soothCore,
   );
 }
+
+/** Seeds: [b"guardians", market] — the deputized veto roster. */
+export function deriveGuardianSetPda(
+  market: PublicKey,
+  programs: ProgramIds,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [enc.encode("guardians"), market.toBuffer()],
+    programs.soothCore,
+  );
+}

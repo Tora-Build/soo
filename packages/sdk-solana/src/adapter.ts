@@ -65,6 +65,7 @@ import {
   deriveOptProposalPda,
   deriveOptBondVaultPda,
   deriveOptBondAuthorityPda,
+  deriveGuardianSetPda,
   deriveFeePoolAuthorityPda,
   deriveLockAuthorityPda,
   deriveLockEntryPda,
@@ -1660,6 +1661,93 @@ export class SolanaChainAdapter implements ChainAdapter {
         operation: "lockForResolution",
       },
     };
+  }
+
+  // ── Guardian veto ─────────────────────────────────────────────────────
+
+  /**
+   * `dispute` — REJECT the current attestation. The ruling is cleared, the
+   * adjudicator must rule again, and settlement waits on the fresh ruling's
+   * own veto window. `claimedOutcome` is the guardian's on-record statement
+   * (it rides the event); it is never written as the outcome.
+   */
+  async buildDispute(
+    market: MarketRef,
+    args: { user: AddressRef; claimedOutcome: 0 | 1 | 2 },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const [entryPda] = deriveAdjudicatorEntryPda(marketPda, this.programIds);
+    const [configPda] = deriveProtocolConfigPda(this.programIds);
+    const [guardianSetPda] = deriveGuardianSetPda(marketPda, this.programIds);
+    // The optional roster: pass it when it exists so a deputized guardian's
+    // signature verifies; pass null so authority-only markets stay lean.
+    const setInfo = await this.connection.getAccountInfo(guardianSetPda);
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .dispute(args.claimedOutcome)
+      .accounts({
+        adjudicatorEntry: entryPda,
+        market: marketPda,
+        protocolConfig: configPda,
+        guardianSet: setInfo ? guardianSetPda : null,
+        disputer: userPk,
+      })
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "dispute",
+      },
+    };
+  }
+
+  /** `guardian_add` / `guardian_remove` — the dispute authority's roster. */
+  async buildGuardianUpdate(
+    market: MarketRef,
+    args: { user: AddressRef; guardian: string; remove?: boolean },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const [entryPda] = deriveAdjudicatorEntryPda(marketPda, this.programIds);
+    const [guardianSetPda] = deriveGuardianSetPda(marketPda, this.programIds);
+    const guardianPk = new PublicKey(args.guardian.replace(/^sol:/, "").replace(/^0x/, ""));
+    const method = args.remove ? "guardianRemove" : "guardianAdd";
+    const accounts: Record<string, unknown> = {
+      adjudicatorEntry: entryPda,
+      guardianSet: guardianSetPda,
+      authority: userPk,
+    };
+    if (!args.remove) accounts.systemProgram = SystemProgram.programId;
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      [method](guardianPk)
+      .accounts(accounts)
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: method,
+      },
+    };
+  }
+
+  /** The roster, or null where none was ever created. */
+  async readGuardianSet(market: MarketRef): Promise<string[] | null> {
+    const marketPda = decodePubkeyRef(market);
+    const [pda] = deriveGuardianSetPda(marketPda, this.programIds);
+    const raw = await (this.program.account as any).guardianSet.fetchNullable(pda);
+    if (!raw) return null;
+    const count = Number(raw.count);
+    return (raw.guardians as PublicKey[])
+      .slice(0, count)
+      .map((g) => g.toBase58());
   }
 
   // ── Bonded optimistic resolution ──────────────────────────────────────

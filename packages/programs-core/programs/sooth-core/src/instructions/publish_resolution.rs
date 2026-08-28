@@ -481,7 +481,7 @@ mod tests {
             zk_rule_hash: [0; 32],
             zk_threshold: 0,
             forced_invalid: false,
-            _reserved: [0; 1],
+            dispute_count: 0,
         }
     }
 

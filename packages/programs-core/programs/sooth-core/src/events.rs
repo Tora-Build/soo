@@ -560,3 +560,21 @@ pub struct ChallengeArbitrated {
     pub pot: u64,
     pub ts: i64,
 }
+
+/// Emitted by `guardian_add`.
+#[event]
+pub struct GuardianAdded {
+    pub market: Pubkey,
+    pub guardian: Pubkey,
+    pub count: u8,
+    pub ts: i64,
+}
+
+/// Emitted by `guardian_remove`.
+#[event]
+pub struct GuardianRemoved {
+    pub market: Pubkey,
+    pub guardian: Pubkey,
+    pub count: u8,
+    pub ts: i64,
+}
