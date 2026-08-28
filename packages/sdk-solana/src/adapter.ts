@@ -62,6 +62,9 @@ import {
 import {
   deriveAmmStatePda,
   deriveAdjudicatorEntryPda,
+  deriveOptProposalPda,
+  deriveOptBondVaultPda,
+  deriveOptBondAuthorityPda,
   deriveFeePoolAuthorityPda,
   deriveLockAuthorityPda,
   deriveLockEntryPda,
@@ -1655,6 +1658,206 @@ export class SolanaChainAdapter implements ChainAdapter {
         marketPda: marketPda.toBase58(),
         ...buildIxMeta(ix, userPk),
         operation: "lockForResolution",
+      },
+    };
+  }
+
+  // ── Bonded optimistic resolution ──────────────────────────────────────
+
+  /** The proposal account, decoded — or null where none exists. */
+  async readOptimisticProposal(market: MarketRef): Promise<{
+    market: string;
+    proposer: string;
+    outcome: number;
+    bond: bigint;
+    proposedAt: bigint;
+    challenger: string | null;
+    challengedAt: bigint | null;
+    resolved: boolean;
+  } | null> {
+    const marketPda = decodePubkeyRef(market);
+    const [pda] = deriveOptProposalPda(marketPda, this.programIds);
+    const raw = await (this.program.account as any).optimisticProposal.fetchNullable(pda);
+    if (!raw) return null;
+    const challenger = (raw.challenger as PublicKey).toBase58();
+    const none = PublicKey.default.toBase58();
+    return {
+      market: (raw.market as PublicKey).toBase58(),
+      proposer: (raw.proposer as PublicKey).toBase58(),
+      outcome: Number(raw.outcome),
+      bond: bnToBigInt(raw.bond),
+      proposedAt: bnToBigInt(raw.proposedAt),
+      challenger: challenger === none ? null : challenger,
+      challengedAt: challenger === none ? null : bnToBigInt(raw.challengedAt),
+      resolved: Boolean(raw.resolved),
+    };
+  }
+
+  /**
+   * `opt_propose` — assert the outcome with a bond, post-deadline, on a
+   * market with NO registered adjudicator (the entry's absence is the
+   * eligibility gate, checked by the program).
+   */
+  async buildOptPropose(
+    market: MarketRef,
+    args: { user: AddressRef; outcome: 0 | 1 | 2; bondBaseUnits: bigint },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const [entryPda] = deriveAdjudicatorEntryPda(marketPda, this.programIds);
+    const [proposalPda] = deriveOptProposalPda(marketPda, this.programIds);
+    const [vaultPda] = deriveOptBondVaultPda(marketPda, this.programIds);
+    const [authPda] = deriveOptBondAuthorityPda(marketPda, this.programIds);
+    const proposerAta = getAssociatedTokenAddressSync(this.bookMint, userPk, true);
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .optPropose(args.outcome, bigIntToBn(args.bondBaseUnits))
+      .accounts({
+        market: marketPda,
+        adjudicatorEntry: entryPda,
+        proposal: proposalPda,
+        bondMint: this.bookMint,
+        vaultBook: resolved.vaultBook,
+        bondAuthority: authPda,
+        bondVault: vaultPda,
+        proposerAta,
+        proposer: userPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "optPropose",
+      },
+    };
+  }
+
+  /** `opt_challenge` — post the matching counter-bond inside the window. */
+  async buildOptChallenge(
+    market: MarketRef,
+    args: { user: AddressRef },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const [proposalPda] = deriveOptProposalPda(marketPda, this.programIds);
+    const [vaultPda] = deriveOptBondVaultPda(marketPda, this.programIds);
+    const challengerAta = getAssociatedTokenAddressSync(this.bookMint, userPk, true);
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .optChallenge()
+      .accounts({
+        proposal: proposalPda,
+        bondVault: vaultPda,
+        challengerAta,
+        challenger: userPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "optChallenge",
+      },
+    };
+  }
+
+  /** `opt_finalize` — permissionless crank once the window has run out. */
+  async buildOptFinalize(
+    market: MarketRef,
+    args: { user: AddressRef },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const proposal = await this.readOptimisticProposal(market);
+    if (!proposal) {
+      throw new SoothError({ kind: "AccountNotFound", msg: "no optimistic proposal on this market" });
+    }
+    const [proposalPda] = deriveOptProposalPda(marketPda, this.programIds);
+    const [vaultPda] = deriveOptBondVaultPda(marketPda, this.programIds);
+    const [authPda] = deriveOptBondAuthorityPda(marketPda, this.programIds);
+    const proposerAta = getAssociatedTokenAddressSync(
+      this.bookMint,
+      new PublicKey(proposal.proposer),
+      true,
+    );
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .optFinalize()
+      .accounts({
+        market: marketPda,
+        proposal: proposalPda,
+        bondVault: vaultPda,
+        bondAuthority: authPda,
+        proposerAta,
+        cranker: userPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "optFinalize",
+      },
+    };
+  }
+
+  /**
+   * `opt_arbitrate` — the market's designated adjudicator rules on a
+   * challenged proposal; the pot goes to whichever side the ruling favors.
+   */
+  async buildOptArbitrate(
+    market: MarketRef,
+    args: { user: AddressRef; outcome: 0 | 1 | 2 },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const proposal = await this.readOptimisticProposal(market);
+    if (!proposal?.challenger) {
+      throw new SoothError({ kind: "AccountNotFound", msg: "no challenged proposal to arbitrate" });
+    }
+    const winner =
+      args.outcome === proposal.outcome ? proposal.proposer : proposal.challenger;
+    const [proposalPda] = deriveOptProposalPda(marketPda, this.programIds);
+    const [vaultPda] = deriveOptBondVaultPda(marketPda, this.programIds);
+    const [authPda] = deriveOptBondAuthorityPda(marketPda, this.programIds);
+    const winnerAta = getAssociatedTokenAddressSync(
+      this.bookMint,
+      new PublicKey(winner),
+      true,
+    );
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .optArbitrate(args.outcome)
+      .accounts({
+        market: marketPda,
+        proposal: proposalPda,
+        bondVault: vaultPda,
+        bondAuthority: authPda,
+        winnerAta,
+        arbiter: userPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        operation: "optArbitrate",
+        winningOutcome: args.outcome,
       },
     };
   }

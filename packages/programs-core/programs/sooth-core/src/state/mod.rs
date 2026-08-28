@@ -7,6 +7,7 @@ pub mod lock_entry;
 pub mod lp_position;
 pub mod market;
 pub mod market_fee_pool;
+mod optimistic;
 pub mod position;
 pub mod protocol_config;
 pub mod resolution;
@@ -20,6 +21,10 @@ pub use market::Market;
 pub use market::OUTCOME_INVALID;
 pub use market::OUTCOME_NO;
 pub use market::OUTCOME_YES;
+pub use optimistic::{
+    OptimisticProposal, OPT_BOND_AUTHORITY_SEED, OPT_BOND_VAULT_SEED,
+    OPT_CHALLENGE_WINDOW_SECS, OPT_MIN_BOND, OPT_PROPOSAL_SEED,
+};
 pub use position::Position;
 pub use protocol_config::{require_not_paused, ProtocolConfig, MAX_FEE_BPS, PROTOCOL_CONFIG_SEED};
 pub use resolution::{voided_leaf, ResolutionCommitment, RESOLUTION_COMMITMENT_SEED};

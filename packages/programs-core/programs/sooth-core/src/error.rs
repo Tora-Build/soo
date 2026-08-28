@@ -334,6 +334,43 @@ pub enum SoothCoreError {
 
     #[msg("Early zk attestation must prove the rule SATISFIED — an unmet reading proves nothing before the deadline")]
     ZkEarlyRequiresSatisfied,
+
+    // ── Bonded optimistic resolution. Appended, never reordered. ──
+    #[msg("Market has a registered adjudicator — optimistic proposals only run where no one owns the truth")]
+    OptNotEligible,
+
+    #[msg("Optimistic proposals open at the deadline, not before")]
+    OptTooEarly,
+
+    #[msg("Bond is below the minimum")]
+    OptBondTooSmall,
+
+    #[msg("Bond token account does not match the market's collateral mint")]
+    OptBondMintMismatch,
+
+    #[msg("Challenge window has closed — the assertion can only be finalized now")]
+    OptChallengeWindowClosed,
+
+    #[msg("Challenge window is still open — a finalize must outwait it")]
+    OptChallengeWindowOpen,
+
+    #[msg("Proposal is already challenged")]
+    OptAlreadyChallenged,
+
+    #[msg("Proposal has no challenge to arbitrate")]
+    OptNotChallenged,
+
+    #[msg("Proposal already paid out")]
+    OptAlreadyResolved,
+
+    #[msg("Only the market's designated adjudicator arbitrates a challenge")]
+    OptNotArbiter,
+
+    #[msg("Payout account does not belong to the party owed")]
+    OptWrongRecipient,
+
+    #[msg("A proposer cannot challenge their own assertion")]
+    OptSelfChallenge,
 }
 
 #[cfg(test)]

@@ -394,3 +394,42 @@ export function feePoolAmmPda(
     orderbookProgramId(programs),
   );
 }
+
+// ── Bonded optimistic resolution ──────────────────────────────────────────
+
+const SEED_OPT_PROPOSAL = enc.encode("opt_proposal");
+const SEED_OPT_VAULT = enc.encode("opt_vault");
+const SEED_OPT_AUTH = enc.encode("opt_auth");
+
+/** Seeds: [b"opt_proposal", market]. One proposal per market, by design. */
+export function deriveOptProposalPda(
+  market: PublicKey,
+  programs: ProgramIds,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [SEED_OPT_PROPOSAL, market.toBuffer()],
+    programs.soothCore,
+  );
+}
+
+/** Seeds: [b"opt_vault", market] — the bond escrow token account. */
+export function deriveOptBondVaultPda(
+  market: PublicKey,
+  programs: ProgramIds,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [SEED_OPT_VAULT, market.toBuffer()],
+    programs.soothCore,
+  );
+}
+
+/** Seeds: [b"opt_auth", market] — signs bond payouts. */
+export function deriveOptBondAuthorityPda(
+  market: PublicKey,
+  programs: ProgramIds,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [SEED_OPT_AUTH, market.toBuffer()],
+    programs.soothCore,
+  );
+}

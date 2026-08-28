@@ -289,6 +289,24 @@ pub mod sooth_core {
 
     /// Finalize an attested market. Permissionless once the veto window has
     /// closed; the outcome comes from the `AdjudicatorEntry`, not the caller.
+    // ── Bonded optimistic resolution — see instructions/optimistic.rs ──
+
+    pub fn opt_propose(ctx: Context<OptPropose>, outcome: u8, bond: u64) -> Result<()> {
+        instructions::optimistic::propose(ctx, outcome, bond)
+    }
+
+    pub fn opt_challenge(ctx: Context<OptChallenge>) -> Result<()> {
+        instructions::optimistic::challenge(ctx)
+    }
+
+    pub fn opt_finalize(ctx: Context<OptFinalize>) -> Result<()> {
+        instructions::optimistic::finalize(ctx)
+    }
+
+    pub fn opt_arbitrate(ctx: Context<OptArbitrate>, outcome: u8) -> Result<()> {
+        instructions::optimistic::arbitrate(ctx, outcome)
+    }
+
     pub fn settle(ctx: Context<Settle>) -> Result<()> {
         settle::handler(ctx)
     }

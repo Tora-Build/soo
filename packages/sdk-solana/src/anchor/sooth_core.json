@@ -2814,6 +2814,562 @@
       "args": []
     },
     {
+      "name": "opt_arbitrate",
+      "discriminator": [
+        113,
+        203,
+        29,
+        16,
+        24,
+        171,
+        233,
+        12
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "proposal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  116,
+                  95,
+                  112,
+                  114,
+                  111,
+                  112,
+                  111,
+                  115,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  116,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "winner_ata",
+          "docs": [
+            "Both bonds land here; the handler proves it belongs to the winner."
+          ],
+          "writable": true
+        },
+        {
+          "name": "arbiter",
+          "docs": [
+            "The arbiter is the adjudicator DESIGNATED AT CREATION",
+            "(`Market.adjudicator`) — the fallback court every market names before",
+            "it opens, which is what makes it unowned by either bonded side."
+          ],
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "opt_challenge",
+      "discriminator": [
+        175,
+        242,
+        62,
+        178,
+        57,
+        120,
+        0,
+        119
+      ],
+      "accounts": [
+        {
+          "name": "proposal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  116,
+                  95,
+                  112,
+                  114,
+                  111,
+                  112,
+                  111,
+                  115,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "proposal.market",
+                "account": "OptimisticProposal"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  116,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "proposal.market",
+                "account": "OptimisticProposal"
+              }
+            ]
+          }
+        },
+        {
+          "name": "challenger_ata",
+          "writable": true
+        },
+        {
+          "name": "challenger",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "opt_finalize",
+      "discriminator": [
+        102,
+        128,
+        77,
+        4,
+        103,
+        164,
+        96,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "proposal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  116,
+                  95,
+                  112,
+                  114,
+                  111,
+                  112,
+                  111,
+                  115,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  116,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "proposer_ata",
+          "docs": [
+            "The bond goes home and nowhere else."
+          ],
+          "writable": true
+        },
+        {
+          "name": "cranker",
+          "docs": [
+            "Permissionless crank, exactly like `settle`."
+          ],
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "opt_propose",
+      "docs": [
+        "Finalize an attested market. Permissionless once the veto window has",
+        "closed; the outcome comes from the `AdjudicatorEntry`, not the caller."
+      ],
+      "discriminator": [
+        227,
+        121,
+        152,
+        170,
+        31,
+        19,
+        0,
+        224
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "adjudicator_entry",
+          "docs": [
+            "PDA and must be EMPTY — a market with a registered adjudicator",
+            "(manual or zk) owns its resolution path and cannot be raced by a",
+            "proposer. Verified by seeds; emptiness checked in the handler."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  106,
+                  117,
+                  100,
+                  105,
+                  99,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "proposal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  116,
+                  95,
+                  112,
+                  114,
+                  111,
+                  112,
+                  111,
+                  115,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_mint",
+          "docs": [
+            "The bond currency is the book venue's collateral — the market's own",
+            "settlement token, so a slashed bond is immediately meaningful money."
+          ]
+        },
+        {
+          "name": "vault_book"
+        },
+        {
+          "name": "bond_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  116,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "proposer_ata",
+          "writable": true
+        },
+        {
+          "name": "proposer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": "u8"
+        },
+        {
+          "name": "bond",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "pause",
       "discriminator": [
         211,
@@ -4828,10 +5384,6 @@
     },
     {
       "name": "settle",
-      "docs": [
-        "Finalize an attested market. Permissionless once the veto window has",
-        "closed; the outcome comes from the `AdjudicatorEntry`, not the caller."
-      ],
       "discriminator": [
         175,
         42,
@@ -5875,6 +6427,19 @@
       ]
     },
     {
+      "name": "OptimisticProposal",
+      "discriminator": [
+        85,
+        187,
+        185,
+        44,
+        180,
+        224,
+        118,
+        178
+      ]
+    },
+    {
       "name": "Position",
       "discriminator": [
         170,
@@ -6004,6 +6569,19 @@
         209,
         179,
         21
+      ]
+    },
+    {
+      "name": "ChallengeArbitrated",
+      "discriminator": [
+        93,
+        47,
+        136,
+        6,
+        24,
+        170,
+        25,
+        94
       ]
     },
     {
@@ -6189,6 +6767,19 @@
       ]
     },
     {
+      "name": "OutcomeProposed",
+      "discriminator": [
+        100,
+        79,
+        89,
+        60,
+        234,
+        81,
+        68,
+        43
+      ]
+    },
+    {
       "name": "PositionSold",
       "discriminator": [
         117,
@@ -6212,6 +6803,32 @@
         85,
         215,
         178
+      ]
+    },
+    {
+      "name": "ProposalChallenged",
+      "discriminator": [
+        96,
+        25,
+        112,
+        63,
+        55,
+        222,
+        239,
+        40
+      ]
+    },
+    {
+      "name": "ProposalFinalized",
+      "discriminator": [
+        159,
+        104,
+        210,
+        220,
+        86,
+        209,
+        61,
+        51
       ]
     },
     {
@@ -6861,6 +7478,66 @@
       "code": 6097,
       "name": "ZkEarlyRequiresSatisfied",
       "msg": "Early zk attestation must prove the rule SATISFIED — an unmet reading proves nothing before the deadline"
+    },
+    {
+      "code": 6098,
+      "name": "OptNotEligible",
+      "msg": "Market has a registered adjudicator — optimistic proposals only run where no one owns the truth"
+    },
+    {
+      "code": 6099,
+      "name": "OptTooEarly",
+      "msg": "Optimistic proposals open at the deadline, not before"
+    },
+    {
+      "code": 6100,
+      "name": "OptBondTooSmall",
+      "msg": "Bond is below the minimum"
+    },
+    {
+      "code": 6101,
+      "name": "OptBondMintMismatch",
+      "msg": "Bond token account does not match the market's collateral mint"
+    },
+    {
+      "code": 6102,
+      "name": "OptChallengeWindowClosed",
+      "msg": "Challenge window has closed — the assertion can only be finalized now"
+    },
+    {
+      "code": 6103,
+      "name": "OptChallengeWindowOpen",
+      "msg": "Challenge window is still open — a finalize must outwait it"
+    },
+    {
+      "code": 6104,
+      "name": "OptAlreadyChallenged",
+      "msg": "Proposal is already challenged"
+    },
+    {
+      "code": 6105,
+      "name": "OptNotChallenged",
+      "msg": "Proposal has no challenge to arbitrate"
+    },
+    {
+      "code": 6106,
+      "name": "OptAlreadyResolved",
+      "msg": "Proposal already paid out"
+    },
+    {
+      "code": 6107,
+      "name": "OptNotArbiter",
+      "msg": "Only the market's designated adjudicator arbitrates a challenge"
+    },
+    {
+      "code": 6108,
+      "name": "OptWrongRecipient",
+      "msg": "Payout account does not belong to the party owed"
+    },
+    {
+      "code": 6109,
+      "name": "OptSelfChallenge",
+      "msg": "A proposer cannot challenge their own assertion"
     }
   ],
   "types": [
@@ -7454,6 +8131,43 @@
             "docs": [
               "Resting size in USDC base units."
             ],
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChallengeArbitrated",
+      "docs": [
+        "Emitted by `opt_arbitrate` — the ruling, and who took the pot. The loser",
+        "is recoverable from the proposal account; the WINNER is what reputation",
+        "and history readers need without a second fetch."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "arbiter",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": "u8"
+          },
+          {
+            "name": "winner",
+            "type": "pubkey"
+          },
+          {
+            "name": "pot",
             "type": "u64"
           },
           {
@@ -8354,6 +9068,75 @@
       }
     },
     {
+      "name": "OptimisticProposal",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposer",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "docs": [
+              "0=NO, 1=YES, 2=INVALID — same vocabulary as `Market.winning_outcome`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bond",
+            "docs": [
+              "Per-side bond in base units. The challenger must match it exactly:",
+              "equal stakes make the arbiter's ruling zero-sum and keep the payout",
+              "arithmetic below overflow-trivial."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "proposed_at",
+            "type": "i64"
+          },
+          {
+            "name": "challenger",
+            "docs": [
+              "`Pubkey::default()` until a challenge lands."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "challenged_at",
+            "type": "i64"
+          },
+          {
+            "name": "resolved",
+            "docs": [
+              "Set once bonds have left the vault (finalized or arbitrated). The",
+              "terminal flag is on the PROPOSAL, not inferred from the market,",
+              "because a market can settle through another path while a bond is",
+              "still owed back."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "vault_bump",
+            "type": "u8"
+          },
+          {
+            "name": "auth_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "OutcomeAttested",
       "docs": [
         "Emitted by `attest_outcome` when the per-market authority signs the",
@@ -8376,6 +9159,37 @@
               "0=NO, 1=YES, 2=INVALID per protocol-wide OUTCOME encoding."
             ],
             "type": "u8"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OutcomeProposed",
+      "docs": [
+        "Emitted by `opt_propose` — a bonded assertion of the outcome."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposer",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": "u8"
+          },
+          {
+            "name": "bond",
+            "type": "u64"
           },
           {
             "name": "ts",
@@ -8541,6 +9355,58 @@
             "docs": [
               "Unix timestamp from `Clock`."
             ],
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProposalChallenged",
+      "docs": [
+        "Emitted by `opt_challenge` — a matching counter-bond, escalating to the",
+        "market's designated adjudicator."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "challenger",
+            "type": "pubkey"
+          },
+          {
+            "name": "bond",
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProposalFinalized",
+      "docs": [
+        "Emitted by `opt_finalize` — the unchallenged assertion settled the market",
+        "and the bond went home."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": "u8"
+          },
+          {
+            "name": "ts",
             "type": "i64"
           }
         ]

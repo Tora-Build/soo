@@ -518,3 +518,45 @@ pub struct AdjudicatorEntryForceCreated {
     pub cranker: Pubkey,
     pub ts: i64,
 }
+
+/// Emitted by `opt_propose` — a bonded assertion of the outcome.
+#[event]
+pub struct OutcomeProposed {
+    pub market: Pubkey,
+    pub proposer: Pubkey,
+    pub outcome: u8,
+    pub bond: u64,
+    pub ts: i64,
+}
+
+/// Emitted by `opt_challenge` — a matching counter-bond, escalating to the
+/// market's designated adjudicator.
+#[event]
+pub struct ProposalChallenged {
+    pub market: Pubkey,
+    pub challenger: Pubkey,
+    pub bond: u64,
+    pub ts: i64,
+}
+
+/// Emitted by `opt_finalize` — the unchallenged assertion settled the market
+/// and the bond went home.
+#[event]
+pub struct ProposalFinalized {
+    pub market: Pubkey,
+    pub outcome: u8,
+    pub ts: i64,
+}
+
+/// Emitted by `opt_arbitrate` — the ruling, and who took the pot. The loser
+/// is recoverable from the proposal account; the WINNER is what reputation
+/// and history readers need without a second fetch.
+#[event]
+pub struct ChallengeArbitrated {
+    pub market: Pubkey,
+    pub arbiter: Pubkey,
+    pub outcome: u8,
+    pub winner: Pubkey,
+    pub pot: u64,
+    pub ts: i64,
+}
