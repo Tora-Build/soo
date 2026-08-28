@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { AlertTriangle, Check, Loader2, PenLine, Radio, Scale } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { useAccount } from "@/lib/chain-shim";
+import { PublicKey } from "@solana/web3.js";
 import { traitsOf } from "@sooth/sdk-solana";
 import { AdjudicatorTierChip } from "../AdjudicatorRecordCard";
 import { CopyableAddress } from "../../../pages/Adjudicators";
