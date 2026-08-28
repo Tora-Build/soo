@@ -128,6 +128,9 @@ export const Launchpad = () => {
   // null = the creator rules; a base58 pubkey = a delegated, scored
   // adjudicator picked from the directory.
   const [chosenAdjudicator, setChosenAdjudicator] = useState<string | null>(null);
+  // Comma/space-separated guardian pubkeys to deputize right after creation.
+  // Only meaningful when the creator rules (they hold the dispute authority).
+  const [guardianInput, setGuardianInput] = useState("");
   const [expirationMode, setExpirationMode] = useState("7d");
   const [customExpiration, setCustomExpiration] = useState("");
   const [liquidityB, setLiquidityB] = useState<number>(1000);
@@ -290,6 +293,36 @@ export const Launchpad = () => {
           creator: demo.userRef,
         });
         await demo.adapter.submit(seedReq, demo.signer as never);
+      }
+
+      // Guardians, when the creator listed any at creation. Best-effort and
+      // per-key: each add is its own signature, and one bad pubkey must not
+      // sink the launch — the market is already alive.
+      if (
+        effectiveMode === "manual" &&
+        chosenAdjudicator === null &&
+        guardianInput.trim()
+      ) {
+        const keys = guardianInput
+          .split(/[\s,]+/)
+          .map((k) => k.trim())
+          .filter(Boolean)
+          .slice(0, 5);
+        for (const key of keys) {
+          try {
+            toast.loading(`Deputizing guardian ${key.slice(0, 6)}…`, { id: toastId });
+            await writeContractAsync({
+              abi: ABIS.LaunchpadEngine,
+              address: launchpadEngineAddress,
+              functionName: "guardianUpdate",
+              args: [`0x${pda}`, key, false],
+            } as never);
+          } catch (e) {
+            toast.error(
+              `Guardian ${key.slice(0, 6)}… not added: ${(e as Error).message?.slice(0, 60)}`,
+            );
+          }
+        }
       }
 
       // Third signature, Automatic only: bind the market to Primus' attestor
@@ -615,6 +648,30 @@ export const Launchpad = () => {
               selectedAdjudicator={chosenAdjudicator}
               onAdjudicatorChange={setChosenAdjudicator}
             />
+
+            {/* Guardians field: only when the creator rules — the dispute
+                authority is the adjudicator's key, so a delegated market's
+                roster belongs to the delegate, not to us. */}
+            {effectiveMode === "manual" && chosenAdjudicator === null && (
+              <div className="space-y-1">
+                <label className="font-mono text-xs uppercase tracking-[0.12em] text-muted">
+                  {t("launchpad.guardiansLabel", {
+                    defaultValue: "Guardians (optional)",
+                  })}
+                </label>
+                <input
+                  type="text"
+                  value={guardianInput}
+                  onChange={(event) => setGuardianInput(event.target.value)}
+                  placeholder={t("launchpad.guardiansPlaceholder", {
+                    defaultValue:
+                      "Up to 5 pubkeys, comma-separated — each may veto your rulings",
+                  })}
+                  data-testid="launchpad-guardians-input"
+                  className="w-full bg-inset border border-rule px-3 py-2 font-mono text-xs text-ink placeholder:text-faint focus:outline-none focus:border-accent"
+                />
+              </div>
+            )}
           </AdvancedSection>
 
           <div className="pt-4 space-y-3">

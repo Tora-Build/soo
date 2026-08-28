@@ -13,6 +13,7 @@
 // registry-less discovery the deck uses (`marketRegistry`), filtered by
 // `Market.creator === connected wallet`.
 
+import { VetoControl, GuardianManager } from "./GuardianControls";
 import { AdjudicatorRecordCard } from "../AdjudicatorRecordCard";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -417,6 +418,15 @@ function CreatedMarketRow({
             <RowExplainer view={view} locale={locale} />
           </p>
           <StepTimeline view={view} />
+          {view.phase === "veto" && (
+            <VetoControl
+              market={market}
+              isDisputeAuthority={view.isDisputeAuthority}
+            />
+          )}
+          {view.isDisputeAuthority &&
+            view.phase !== "settled" &&
+            view.phase !== "dismissed" && <GuardianManager market={market} />}
           {isZk && view.phase !== "settled" && (
             <p className="mt-1 text-[10px] text-muted">
               Automatic: after the deadline the resolver attests from the
