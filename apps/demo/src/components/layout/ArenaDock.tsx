@@ -29,8 +29,11 @@ const MORE_LINKS = [
   { to: "/vault", label: "Vault", icon: Droplets },
   { to: "/explore", label: "Explore", icon: Grid2X2 },
   { to: "/adjudicators", label: "Adjudicators", icon: Scale },
-  { to: "/lp-forecast", label: "Sim lab", icon: BarChart3 },
-  { to: "/operator", label: "Oracle", icon: Shield },
+  // Sim lab (/lp-forecast) and Oracle (/operator) still exist as routes but
+  // earn no nav slot: the simulator is a niche LP tool that read as core
+  // product, and the operator console's every daily flow (attest, veto,
+  // settle, committees) now lives in the Locker's duties view. A drawer
+  // entry is a claim that a page is part of the product's story.
   { to: "/learn", label: "Tutorial", icon: BookOpen },
   { to: "/power", label: "Power up", icon: Droplets },
 ] as const;

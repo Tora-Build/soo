@@ -228,21 +228,22 @@ export const ResolutionPicker = ({
           system makes every scored adjudicator on this chain pickable — the
           whole point of scoring is that trust can be delegated to a record
           instead of a stranger. */}
-      {(mode === "manual" || mode === "optimistic") && (
-        <>
-          {mode === "optimistic" && (
-            <p className="text-xs text-faint leading-relaxed">
-              {t("launchpad.zk.optimisticArbiterNote", {
-                defaultValue:
-                  "The adjudicator you pick below never rules unless someone challenges a bonded assertion — they are the court of appeal, not the oracle.",
-              })}
-            </p>
-          )}
-          <AdjudicatorDirectory
-            selected={selectedAdjudicator}
-            onSelect={onAdjudicatorChange}
-          />
-        </>
+      {mode === "manual" && (
+        <AdjudicatorDirectory
+          selected={selectedAdjudicator}
+          onSelect={onAdjudicatorChange}
+        />
+      )}
+
+      {/* Optimistic mode needs no adjudicator on the happy path — anyone's
+          bond resolves the market. The arbiter exists ONLY for challenges,
+          so the picker hides behind a one-line default instead of asking a
+          question most creators never need answered. */}
+      {mode === "optimistic" && (
+        <OptimisticArbiterPicker
+          selected={selectedAdjudicator}
+          onSelect={onAdjudicatorChange}
+        />
       )}
 
       {gateMessage && (
@@ -629,5 +630,45 @@ function DirectoryRow({
         </span>
       )}
     </button>
+  );
+}
+
+function OptimisticArbiterPicker({
+  selected,
+  onSelect,
+}: {
+  selected: string | null;
+  onSelect?: (authority: string | null) => void;
+}) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs text-muted leading-relaxed">
+        {t("launchpad.zk.optimisticDefault", {
+          defaultValue:
+            "No adjudicator needed — anyone resolves this market by posting a bond. Only a CHALLENGED assertion needs a tiebreaker, and that arbiter is",
+        })}{" "}
+        <span className="font-mono text-ink">
+          {selected
+            ? `${selected.slice(0, 4)}…${selected.slice(-4)}`
+            : t("launchpad.zk.arbiterYou", { defaultValue: "you (the creator)" })}
+        </span>
+        {". "}
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="text-accent hover:underline"
+          data-testid="launchpad-arbiter-toggle"
+        >
+          {expanded
+            ? t("launchpad.zk.arbiterHide", { defaultValue: "hide options" })
+            : t("launchpad.zk.arbiterChange", { defaultValue: "change arbiter" })}
+        </button>
+      </p>
+      {expanded && (
+        <AdjudicatorDirectory selected={selected} onSelect={onSelect} />
+      )}
+    </div>
   );
 }
