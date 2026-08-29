@@ -20,7 +20,8 @@ const RING_TRACK = "rgba(255, 255, 255, 0.08)";
 
 export interface EntityIconProps {
   question: string;
-  /** Creator-chosen emoji (SQF §icon). Outranks every inference. */
+  /** Creator-supplied §icon: an https image URL, or a legacy emoji from a
+   *  market created before URLs were supported. Outranks every inference. */
   explicitIcon?: string;
   size?: "sm" | "md" | "lg";
   market?: {
@@ -43,8 +44,14 @@ export const EntityIcon = ({
   const [failed, setFailed] = useState(false);
   const [localImgFailed, setLocalImgFailed] = useState(false);
   const chosen = explicitIcon?.trim() || null;
-  const local = chosen
-    ? { emoji: chosen, accentColor: "#8a7bd5" }
+  const chosenUrl = chosen && /^https:\/\//i.test(chosen) ? chosen : null;
+  const chosenEmoji = chosen && !chosenUrl ? chosen : null;
+  const [chosenFailed, setChosenFailed] = useState(false);
+  // The creator's own image wins; a broken link falls through the same
+  // chain as a market that never set one, rather than showing a torn tile.
+  const useChosenUrl = !!chosenUrl && !chosenFailed;
+  const local = chosenEmoji
+    ? { emoji: chosenEmoji, accentColor: "#8a7bd5", imageUrl: undefined }
     : localIconFor(question);
 
   const dim =
@@ -92,8 +99,19 @@ export const EntityIcon = ({
 
   const accentColor = icon?.accentColor ?? local?.accentColor ?? "#888888";
   const showLocalImage =
-    !chosen && !showImage && !!local?.imageUrl && !localImgFailed;
-  const tileBody = showImage ? (
+    !useChosenUrl && !chosenEmoji && !showImage && !!local?.imageUrl && !localImgFailed;
+  const tileBody = useChosenUrl ? (
+    <img
+      src={chosenUrl!}
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      // The creator's host never learns which viewer opened which market.
+      referrerPolicy="no-referrer"
+      onError={() => setChosenFailed(true)}
+      className="h-full w-full object-cover"
+    />
+  ) : showImage ? (
     <img
       src={icon!.url!}
       alt=""
@@ -108,6 +126,7 @@ export const EntityIcon = ({
       alt=""
       aria-hidden="true"
       loading="lazy"
+      referrerPolicy="no-referrer"
       onError={() => setLocalImgFailed(true)}
       className="h-full w-full object-cover"
     />

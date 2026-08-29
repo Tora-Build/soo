@@ -12,7 +12,9 @@ export interface SQFRule {
 
 export interface SQFData {
   question: string;
-  /** Creator-chosen icon: a single emoji grapheme (validated at write). */
+  /** Creator-supplied icon: an https image URL (or a legacy emoji from
+   *  earlier markets). Capped hard — it shares the question's 300-byte
+   *  on-chain budget. */
   icon?: string;
   rule: SQFRule;
   event?: string;
@@ -89,12 +91,14 @@ export function parseSQF(raw: string): SQFData {
         break;
 
       case "icon": {
-        // One emoji, hard-capped: the section rides the on-chain question
-        // string, and an icon field that accepts arbitrary text is a second
-        // question field. 16 bytes covers every emoji + ZWJ sequence worth
-        // having; anything longer is discarded, not truncated.
+        // An https image URL, or a short emoji from markets created before
+        // URLs were supported. Capped at 200 bytes: the section shares the
+        // question's 300-byte on-chain budget, and a field that accepts
+        // arbitrary text is a second question field. Over-long values are
+        // DISCARDED, never truncated — half a URL is not an icon.
         const raw = (section.lines[0] || "").trim();
-        if (raw && new TextEncoder().encode(raw).length <= 16) {
+        if (!raw || new TextEncoder().encode(raw).length > 200) break;
+        if (/^https:\/\//i.test(raw) || !raw.includes("://")) {
           result.icon = raw;
         }
         break;

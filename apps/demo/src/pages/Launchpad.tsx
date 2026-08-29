@@ -48,6 +48,11 @@ import { useNavigate } from "react-router-dom";
 import { ABIS, ERC20_ABI } from "../config/abis";
 import { generateSQF } from "../lib/sqf";
 import { IconPicker } from "../components/features/launchpad/IconPicker";
+import {
+  iconUrlIssue,
+  sqfByteLength,
+  MAX_QUESTION_BYTES,
+} from "../lib/iconUrl";
 import { useDeployments } from "../hooks/useDeployments";
 import { cn } from "../lib/utils";
 import { tokenSymbols } from "../lib/config";
@@ -214,6 +219,20 @@ export const Launchpad = () => {
     }
     if (!question.trim() || question.length < 10) {
       toast.error("Question must be at least 10 characters");
+      return false;
+    }
+    // The icon rides the question's 300-byte on-chain budget, so both
+    // checks belong HERE — a link the program would reject must not reach a
+    // wallet prompt and fail at the signature.
+    const iconIssue = iconUrlIssue(marketIcon);
+    if (iconIssue) {
+      toast.error(iconIssue);
+      return false;
+    }
+    if (sqfByteLength(question, marketIcon) > MAX_QUESTION_BYTES) {
+      toast.error(
+        "Question plus icon link exceed the 300-byte on-chain limit — shorten one",
+      );
       return false;
     }
     const deadline = getDeadline();
