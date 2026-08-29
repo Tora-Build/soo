@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { useMarketIcon } from "../../hooks/useMarketIcon";
-import { localIconFor } from "../../lib/localIcon";
 import { useGraduationRing } from "../../hooks/useGraduationRing";
 
 function getInitials(name: string): string {
@@ -42,17 +41,14 @@ export const EntityIcon = ({
     stage: market?.stage,
   });
   const [failed, setFailed] = useState(false);
-  const [localImgFailed, setLocalImgFailed] = useState(false);
   const chosen = explicitIcon?.trim() || null;
   const chosenUrl = chosen && /^https:\/\//i.test(chosen) ? chosen : null;
+  // Legacy: markets created while §icon carried an emoji instead of a link.
   const chosenEmoji = chosen && !chosenUrl ? chosen : null;
   const [chosenFailed, setChosenFailed] = useState(false);
-  // The creator's own image wins; a broken link falls through the same
-  // chain as a market that never set one, rather than showing a torn tile.
+  // The creator's own image, or nothing. A market whose creator supplied no
+  // icon shows its initials — the product does not invent a face for it.
   const useChosenUrl = !!chosenUrl && !chosenFailed;
-  const local = chosenEmoji
-    ? { emoji: chosenEmoji, accentColor: "#8a7bd5", imageUrl: undefined }
-    : localIconFor(question);
 
   const dim =
     size === "sm" ? "w-9 h-9" : size === "lg" ? "w-14 h-14" : "w-11 h-11";
@@ -97,9 +93,7 @@ export const EntityIcon = ({
     "h-full w-full rounded-full overflow-hidden bg-inset",
   );
 
-  const accentColor = icon?.accentColor ?? local?.accentColor ?? "#888888";
-  const showLocalImage =
-    !useChosenUrl && !chosenEmoji && !showImage && !!local?.imageUrl && !localImgFailed;
+  const accentColor = icon?.accentColor ?? "#888888";
   const tileBody = useChosenUrl ? (
     <img
       src={chosenUrl!}
@@ -120,28 +114,15 @@ export const EntityIcon = ({
       onError={() => setFailed(true)}
       className="h-full w-full object-cover"
     />
-  ) : showLocalImage ? (
-    <img
-      src={local!.imageUrl!}
-      alt=""
-      aria-hidden="true"
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setLocalImgFailed(true)}
-      className="h-full w-full object-cover"
-    />
-  ) : local ? (
-    // The local keyword resolver: an emoji tile with the entity's accent.
-    // Not a brand logo, but it carries meaning; initials carry none.
+  ) : chosenEmoji ? (
     <div
       className={cn(
         "h-full w-full flex items-center justify-center",
         size === "sm" ? "text-base" : size === "lg" ? "text-2xl" : "text-xl",
       )}
-      style={{ backgroundColor: `${local.accentColor}26` }}
       aria-hidden="true"
     >
-      {local.emoji}
+      {chosenEmoji}
     </div>
   ) : (
     <div

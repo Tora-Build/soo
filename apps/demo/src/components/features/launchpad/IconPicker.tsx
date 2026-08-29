@@ -8,17 +8,17 @@
  * string's 300-byte budget, so the meter below is not decoration: without
  * it the failure lands at the final signature.
  *
- * No palette of pre-chosen icons: the icon is the creator's identity for
- * their market, and offering ours would make every market look like ours.
- * A market with no link falls back to the automatic chain (a known entity's
- * logo, else the question's initials).
+ * No palette of pre-chosen icons and no inferred ones: the icon is the
+ * creator's identity for their market, and anything the product picks on
+ * their behalf is the product's identity wearing their name. A market with
+ * no link shows the question's initials — which the preview draws, so the
+ * empty state is never a surprise.
  */
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ImageIcon, AlertTriangle } from "lucide-react";
 
 import { iconUrlIssue, sqfByteLength, MAX_QUESTION_BYTES } from "../../../lib/iconUrl";
-import { localIconFor } from "../../../lib/localIcon";
 import { cn } from "../../../lib/utils";
 
 /** Matches EntityIcon's `md` tile — the size every card renders. */
@@ -56,8 +56,6 @@ export function IconPicker({
     setLoadFailed(false);
   }, [value]);
 
-  // What the card will actually draw if this creator supplies nothing.
-  const auto = localIconFor(question);
   const showUrl = !!value.trim() && !issue && !loadFailed;
 
   return (
@@ -89,17 +87,8 @@ export function IconPicker({
                 onError={() => setLoadFailed(true)}
                 className="h-full w-full object-cover"
               />
-            ) : auto?.imageUrl ? (
-              <img
-                src={auto.imageUrl}
-                alt=""
-                aria-hidden="true"
-                referrerPolicy="no-referrer"
-                className="h-full w-full object-cover opacity-70"
-              />
-            ) : auto ? (
-              <span className="text-xl leading-none opacity-70">{auto.emoji}</span>
             ) : (
+              // No link, no invention: this is exactly what cards will draw.
               <span className="font-mono text-sm font-bold text-muted">
                 {initialsOf(question || "?")}
               </span>
@@ -152,7 +141,7 @@ export function IconPicker({
                   })
                 : t("launchpad.iconEmptyHint", {
                     defaultValue:
-                      "Optional. Left empty, this market uses the icon on the left.",
+                      "Optional. Left empty, cards show the question's initials.",
                   })}
             </p>
           )}
