@@ -47,7 +47,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ABIS, ERC20_ABI } from "../config/abis";
 import { generateSQF } from "../lib/sqf";
-import { IconPicker } from "../components/features/launchpad/IconPicker";
+import { IconPicker, IconPreviewTile } from "../components/features/launchpad/IconPicker";
 import {
   iconUrlIssue,
   sqfByteLength,
@@ -479,17 +479,25 @@ export const Launchpad = () => {
             <label className="font-mono text-xs uppercase tracking-[0.12em] text-muted">
               {t("launchpad.questionLabel")}
             </label>
-            <input
-              data-testid="launchpad-question-input"
-              type="text"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Will Bitcoin exceed $100k by 2026?"
-              className="input-field px-4 py-3"
-            />
-            <p className="text-sm text-faint leading-relaxed">
-              {t("launchpad.questionHint")}
-            </p>
+            {/* Icon beside the question, not below it: the tile and the
+                sentence are one object on every card, so composing them
+                apart is composing something the product never shows. */}
+            <div className="flex items-start gap-3">
+              <IconPreviewTile question={question} value={marketIcon} />
+              <div className="min-w-0 flex-1">
+                <input
+                  data-testid="launchpad-question-input"
+                  type="text"
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  placeholder="Will Bitcoin exceed $100k by 2026?"
+                  className="input-field px-4 py-3 w-full"
+                />
+                <p className="mt-2 text-sm text-faint leading-relaxed">
+                  {t("launchpad.questionHint")}
+                </p>
+              </div>
+            </div>
 
             <IconPicker
               question={question}

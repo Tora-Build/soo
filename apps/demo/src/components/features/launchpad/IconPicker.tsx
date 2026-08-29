@@ -19,6 +19,7 @@ import { useTranslation } from "react-i18next";
 import { ImageIcon, AlertTriangle } from "lucide-react";
 
 import { iconUrlIssue, sqfByteLength, MAX_QUESTION_BYTES } from "../../../lib/iconUrl";
+import { localIconFor } from "../../../lib/localIcon";
 import { cn } from "../../../lib/utils";
 
 /** Matches EntityIcon's `md` tile — the size every card renders. */
@@ -33,6 +34,61 @@ function initialsOf(text: string): string {
   if (words.length === 0) return "?";
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+/**
+ * The tile as cards draw it — beside the question field, where the pairing
+ * the product actually ships is visible while it is being composed.
+ */
+export function IconPreviewTile({
+  question,
+  value,
+}: {
+  question: string;
+  value: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [value]);
+  const url = value.trim();
+  const usable = !!url && !iconUrlIssue(url) && !failed;
+  const auto = usable ? null : localIconFor(question);
+  return (
+    <div
+      className="shrink-0 rounded-full flex items-center justify-center ring-1 ring-rule overflow-hidden bg-inset"
+      style={{ width: PREVIEW_PX, height: PREVIEW_PX }}
+      data-testid="icon-preview"
+      title={
+        usable
+          ? "Your icon"
+          : auto
+            ? "Automatic icon — set a link to replace it"
+            : "No icon — cards show these initials"
+      }
+    >
+      {usable ? (
+        <img
+          src={url}
+          alt=""
+          aria-hidden="true"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+          className="h-full w-full object-cover"
+        />
+      ) : auto?.imageUrl ? (
+        <img
+          src={auto.imageUrl}
+          alt=""
+          aria-hidden="true"
+          referrerPolicy="no-referrer"
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <span className="font-mono text-sm font-bold text-muted">
+          {initialsOf(question || "?")}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export function IconPicker({
@@ -50,13 +106,25 @@ export function IconPicker({
   const bytes = sqfByteLength(question, value);
   const overBudget = bytes > MAX_QUESTION_BYTES;
 
-  // A new link deserves a fresh verdict; without this a single broken URL
-  // poisons the preview for every later one.
+  // The link is PROBED, not assumed. The preview tile moved next to the
+  // question, so without this the "did not load" message could never fire —
+  // and a creator would learn their icon is broken from the empty card,
+  // after signing. Each new value gets a fresh verdict.
   useEffect(() => {
     setLoadFailed(false);
+    const url = value.trim();
+    if (!url || iconUrlIssue(url)) return;
+    let live = true;
+    const probe = new Image();
+    probe.referrerPolicy = "no-referrer";
+    probe.onerror = () => {
+      if (live) setLoadFailed(true);
+    };
+    probe.src = url;
+    return () => {
+      live = false;
+    };
   }, [value]);
-
-  const showUrl = !!value.trim() && !issue && !loadFailed;
 
   return (
     <div className="space-y-2">
@@ -68,37 +136,6 @@ export function IconPicker({
       </label>
 
       <div className="flex items-start gap-3">
-        {/* Preview at the exact diameter cards draw, so what is approved
-            here is what ships. */}
-        <div className="shrink-0 text-center">
-          <div
-            className="rounded-full flex items-center justify-center ring-1 ring-rule overflow-hidden bg-inset"
-            style={{ width: PREVIEW_PX, height: PREVIEW_PX }}
-            data-testid="icon-preview"
-          >
-            {showUrl ? (
-              <img
-                src={value.trim()}
-                alt=""
-                aria-hidden="true"
-                // The creator's server never learns which market page a
-                // viewer came from.
-                referrerPolicy="no-referrer"
-                onError={() => setLoadFailed(true)}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              // No link, no invention: this is exactly what cards will draw.
-              <span className="font-mono text-sm font-bold text-muted">
-                {initialsOf(question || "?")}
-              </span>
-            )}
-          </div>
-          <span className="mt-1 block font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
-            {PREVIEW_PX}px
-          </span>
-        </div>
-
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="relative">
             <ImageIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-faint" />
@@ -141,7 +178,7 @@ export function IconPicker({
                   })
                 : t("launchpad.iconEmptyHint", {
                     defaultValue:
-                      "Optional. Left empty, cards show the question's initials.",
+                      "Optional — the tile beside your question shows what cards will draw.",
                   })}
             </p>
           )}

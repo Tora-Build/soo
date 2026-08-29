@@ -33,6 +33,9 @@ export interface OnChainMarket {
   stage: "bonding" | "live" | "settled" | "finalized" | "dismissed" | "expired";
   // Parsed SQF fields (populated from name)
   question: string; // extracted from §question or raw name
+  /** Market.lifecycle === Open. False while Locked/resolving — a market that
+   *  looks ordinary but rejects every trade. */
+  isLive?: boolean;
   /** Creator-chosen §icon emoji, when one was set at creation. */
   icon?: string;
   event?: string; // from §event
@@ -186,8 +189,9 @@ export function useOnChainMarkets() {
               let winningOutcome: number | null = null;
 
               let deadlineSec: number | undefined;
+              let isLive: boolean | undefined;
               try {
-                const [settled, winOutcome, deadlineRaw] = await Promise.all([
+                const [settled, winOutcome, deadlineRaw, liveRaw] = await Promise.all([
                   readContractSafe<boolean>(client, {
                     address: marketAddress as Address,
                     abi: ABIS.TruthMarket,
@@ -208,7 +212,19 @@ export function useOnChainMarkets() {
                     abi: ABIS.TruthMarket,
                     functionName: "deadline",
                   }).catch(() => null),
+                  // Lifecycle, which nothing here read: a Locked market —
+                  // deadline reached, adjudicator ruling, veto window running
+                  // — presented as an ordinary bonding market with Buy
+                  // buttons the program rejects.
+                  readContractSafe<boolean>(client, {
+                    address: marketAddress as Address,
+                    abi: ABIS.TruthMarket,
+                    functionName: "isLive",
+                  }).catch(() => null),
                 ]);
+                if (liveRaw !== null && liveRaw !== undefined) {
+                  isLive = Boolean(liveRaw);
+                }
                 if (deadlineRaw !== null && deadlineRaw !== undefined && Number(deadlineRaw) > 0) {
                   deadlineSec = Number(deadlineRaw);
                 }
@@ -269,6 +285,7 @@ export function useOnChainMarkets() {
                 winningOutcome,
                 createdAt: 0n,
                 deadline: deadlineSec,
+                isLive,
                 trialEndTime: trialEndTimeRaw
                   ? Number(trialEndTimeRaw)
                   : undefined,

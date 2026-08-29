@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { useMarketIcon } from "../../hooks/useMarketIcon";
+import { localIconFor } from "../../lib/localIcon";
 import { useGraduationRing } from "../../hooks/useGraduationRing";
 
 function getInitials(name: string): string {
@@ -46,9 +47,13 @@ export const EntityIcon = ({
   // Legacy: markets created while §icon carried an emoji instead of a link.
   const chosenEmoji = chosen && !chosenUrl ? chosen : null;
   const [chosenFailed, setChosenFailed] = useState(false);
-  // The creator's own image, or nothing. A market whose creator supplied no
-  // icon shows its initials — the product does not invent a face for it.
+  const [localImgFailed, setLocalImgFailed] = useState(false);
   const useChosenUrl = !!chosenUrl && !chosenFailed;
+  // Under the creator's own link: a real image for markets whose subject we
+  // recognise. Existing markets predate the icon field entirely — without
+  // this they would all wear letters forever, which is a worse answer than
+  // a correct Bitcoin logo on a Bitcoin market.
+  const local = chosenEmoji || useChosenUrl ? null : localIconFor(question);
 
   const dim =
     size === "sm" ? "w-9 h-9" : size === "lg" ? "w-14 h-14" : "w-11 h-11";
@@ -93,7 +98,7 @@ export const EntityIcon = ({
     "h-full w-full rounded-full overflow-hidden bg-inset",
   );
 
-  const accentColor = icon?.accentColor ?? "#888888";
+  const accentColor = icon?.accentColor ?? local?.accentColor ?? "#888888";
   const tileBody = useChosenUrl ? (
     <img
       src={chosenUrl!}
@@ -124,6 +129,16 @@ export const EntityIcon = ({
     >
       {chosenEmoji}
     </div>
+  ) : local?.imageUrl && !localImgFailed ? (
+    <img
+      src={local.imageUrl}
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setLocalImgFailed(true)}
+      className="h-full w-full object-cover"
+    />
   ) : (
     <div
       className={cn(

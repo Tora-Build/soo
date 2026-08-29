@@ -93,13 +93,19 @@ const STAGE_IDS = [
  * trial ended without graduation, still tradeable — folds into bonding here;
  * as a filter bucket it answered a question nobody was asking.)
  */
-function displayStage(m: { stage: string; deadline?: number }): string {
+function displayStage(m: {
+  stage: string;
+  deadline?: number;
+  isLive?: boolean;
+}): string {
   if (["settled", "finalized", "dismissed"].includes(m.stage)) return m.stage;
   const ended =
     !!m.deadline &&
     m.deadline > 1_000_000_000 &&
     Date.now() / 1000 >= m.deadline;
-  if (ended) return "ended";
+  // `isLive === false` means Locked: the deadline may still be days away,
+  // but an adjudicator is ruling and the program rejects every trade.
+  if (ended || m.isLive === false) return "ended";
   return m.stage === "expired" ? "bonding" : m.stage;
 }
 
@@ -149,6 +155,7 @@ interface MarketCardData {
   address: string;
   question: string;
   icon?: string;
+  isLive?: boolean;
   winningOutcome?: number | null;
   event?: string;
   category: string;
@@ -293,6 +300,7 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
   // mirrors the program's TradingClosed gate (1e9 floor excludes epoch-
   // relative test clocks).
   const isTradeable =
+    market.isLive !== false &&
     !["settled", "finalized", "dismissed"].includes(market.stage) &&
     !(
       market.deadline &&
@@ -653,6 +661,7 @@ const MarketsInner = () => {
             inferCategory(m.question),
         ),
         icon: m.icon,
+        isLive: m.isLive,
         winningOutcome: m.winningOutcome,
         stage: m.stage,
         isGraduated: m.isGraduated,
