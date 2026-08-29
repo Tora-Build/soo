@@ -20,6 +20,8 @@ const RING_TRACK = "rgba(255, 255, 255, 0.08)";
 
 export interface EntityIconProps {
   question: string;
+  /** Creator-chosen emoji (SQF §icon). Outranks every inference. */
+  explicitIcon?: string;
   size?: "sm" | "md" | "lg";
   market?: {
     address: `0x${string}`;
@@ -29,6 +31,7 @@ export interface EntityIconProps {
 
 export const EntityIcon = ({
   question,
+  explicitIcon,
   size = "md",
   market,
 }: EntityIconProps) => {
@@ -38,6 +41,10 @@ export const EntityIcon = ({
     stage: market?.stage,
   });
   const [failed, setFailed] = useState(false);
+  const chosen = explicitIcon?.trim() || null;
+  const local = chosen
+    ? { emoji: chosen, accentColor: "#8a7bd5" }
+    : localIconFor(question);
 
   const dim =
     size === "sm" ? "w-9 h-9" : size === "lg" ? "w-14 h-14" : "w-11 h-11";
@@ -45,7 +52,7 @@ export const EntityIcon = ({
     size === "sm" ? "text-xs" : size === "lg" ? "text-base" : "text-sm";
 
   const showImage =
-    !!icon?.url && icon.source !== "category_fallback" && !failed;
+    !chosen && !!icon?.url && icon.source !== "category_fallback" && !failed;
 
   const ringMode: "bonding" | "graduated" | "plain" | "dismissed" = !market
     ? "plain"
@@ -82,7 +89,6 @@ export const EntityIcon = ({
     "h-full w-full rounded-full overflow-hidden bg-inset",
   );
 
-  const local = localIconFor(question);
   const accentColor = icon?.accentColor ?? local?.accentColor ?? "#888888";
   const tileBody = showImage ? (
     <img

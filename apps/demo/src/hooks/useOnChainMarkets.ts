@@ -33,6 +33,8 @@ export interface OnChainMarket {
   stage: "bonding" | "live" | "settled" | "finalized" | "dismissed" | "expired";
   // Parsed SQF fields (populated from name)
   question: string; // extracted from §question or raw name
+  /** Creator-chosen §icon emoji, when one was set at creation. */
+  icon?: string;
   event?: string; // from §event
   category?: string; // from §category
   ruleDescription?: string; // from §rule description
@@ -276,6 +278,7 @@ export function useOnChainMarkets() {
                 stage,
                 // Parsed SQF fields:
                 question: sqf.question,
+                icon: sqf.icon,
                 event: sqf.event,
                 category: sqf.category,
                 ruleDescription: sqf.rule.description,

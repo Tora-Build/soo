@@ -47,6 +47,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ABIS, ERC20_ABI } from "../config/abis";
 import { generateSQF } from "../lib/sqf";
+import { IconPicker } from "../components/features/launchpad/IconPicker";
 import { useDeployments } from "../hooks/useDeployments";
 import { cn } from "../lib/utils";
 import { tokenSymbols } from "../lib/config";
@@ -131,6 +132,8 @@ export const Launchpad = () => {
   // Comma/space-separated guardian pubkeys to deputize right after creation.
   // Only meaningful when the creator rules (they hold the dispute authority).
   const [guardianInput, setGuardianInput] = useState("");
+  // One emoji, chosen by the creator; empty = the keyword resolver decides.
+  const [marketIcon, setMarketIcon] = useState("");
   const [expirationMode, setExpirationMode] = useState("7d");
   const [customExpiration, setCustomExpiration] = useState("");
   const [liquidityB, setLiquidityB] = useState<number>(1000);
@@ -243,6 +246,7 @@ export const Launchpad = () => {
       // deck and market lists parse it back out for grouping and art.
       const sqfQuestion = generateSQF({
         question,
+        icon: marketIcon.trim() || undefined,
         rule: {},
         category,
       });
@@ -467,6 +471,12 @@ export const Launchpad = () => {
             <p className="text-sm text-faint leading-relaxed">
               {t("launchpad.questionHint")}
             </p>
+
+            <IconPicker
+              question={question}
+              value={marketIcon}
+              onChange={setMarketIcon}
+            />
 
             {effectiveMode === "zk" && (
               <RuleDrafter

@@ -12,6 +12,8 @@ export interface SQFRule {
 
 export interface SQFData {
   question: string;
+  /** Creator-chosen icon: a single emoji grapheme (validated at write). */
+  icon?: string;
   rule: SQFRule;
   event?: string;
   category?: string;
@@ -70,6 +72,17 @@ export function parseSQF(raw: string): SQFData {
         result.event = section.lines[0] || "";
         break;
 
+      case "icon": {
+        // One emoji, hard-capped: the section rides the on-chain question
+        // string, and an icon field that accepts arbitrary text is a second
+        // question field. 16 bytes covers every emoji + ZWJ sequence worth
+        // having; anything longer is discarded, not truncated.
+        const raw = (section.lines[0] || "").trim();
+        if (raw && new TextEncoder().encode(raw).length <= 16) {
+          result.icon = raw;
+        }
+        break;
+      }
       case "category":
         result.category = section.lines[0] || "";
         break;
@@ -119,6 +132,12 @@ export function generateSQF(data: SQFData): string {
   if (data.event) {
     lines.push("§event");
     lines.push(data.event);
+  }
+
+  // §icon
+  if (data.icon?.trim()) {
+    lines.push("§icon");
+    lines.push(data.icon.trim());
   }
 
   // §category
