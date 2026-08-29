@@ -7,10 +7,10 @@
  * address is always one click from the clipboard — an identity you cannot
  * copy is an identity you cannot use.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Scale, ArrowRight, Copy } from "lucide-react";
+import { Scale, ArrowRight, Copy, Search } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   traitsOf,
@@ -75,6 +75,11 @@ export default function Adjudicators() {
   const { byAuthority, hasLoaded } = useAdjudicatorScores();
   const [tierFilter, setTierFilter] = useState<TrustTier | "all">("all");
   const [traitFilter, setTraitFilter] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(20);
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [tierFilter, traitFilter, search]);
 
   const ranked = useMemo(
     () =>
@@ -85,12 +90,24 @@ export default function Adjudicators() {
             !traitFilter ||
             traitsOf(score.record).some((trait) => trait.id === traitFilter),
         )
+        // Free-text: address substring, or a tier/trait word ("trusted",
+        // "fast") typed instead of clicked. Adjudicators have no display
+        // names on-chain — the address IS the name, so it must be findable.
+        .filter(([authority, score]) => {
+          const q = search.trim().toLowerCase();
+          if (!q) return true;
+          if (authority.toLowerCase().includes(q)) return true;
+          if (score.tier.includes(q)) return true;
+          return traitsOf(score.record).some((trait) =>
+            trait.label.toLowerCase().includes(q),
+          );
+        })
         .sort(
           (a, b) =>
             b[1].score - a[1].score ||
             b[1].record.resolvedRulings - a[1].record.resolvedRulings,
         ),
-    [byAuthority, tierFilter, traitFilter],
+    [byAuthority, tierFilter, traitFilter, search],
   );
 
   return (
@@ -116,6 +133,20 @@ export default function Adjudicators() {
           <ArrowRight className="w-3 h-3" />
         </Link>
       </header>
+
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-faint" />
+        <input
+          type="text"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={t("adjudicators.searchPlaceholder", {
+            defaultValue: "Search by address, tier or trait…",
+          })}
+          data-testid="adjudicators-search"
+          className="w-full bg-inset border border-rule pl-8 pr-3 py-2 font-mono text-xs text-ink placeholder:text-faint focus:outline-none focus:border-accent"
+        />
+      </div>
 
       {/* Filters: tier is the primary axis, traits the secondary. */}
       <div className="space-y-1.5">
@@ -171,7 +202,7 @@ export default function Adjudicators() {
         </p>
       ) : (
         <ol className="space-y-2" data-testid="adjudicator-leaderboard">
-          {ranked.map(([authority, score], index) => (
+          {ranked.slice(0, visibleCount).map(([authority, score], index) => (
             <li
               key={authority}
               className="border border-rule bg-inset px-4 py-3 flex items-center gap-4"
@@ -257,6 +288,22 @@ export default function Adjudicators() {
             </li>
           ))}
         </ol>
+      )}
+      {ranked.length > visibleCount && (
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={() => setVisibleCount((n) => n + 20)}
+            className="px-6 py-2 font-mono text-xs uppercase tracking-[0.12em] border border-rule text-muted hover:text-ink hover:border-accent transition-all"
+            data-testid="adjudicators-load-more"
+          >
+            {t("adjudicators.loadMore", {
+              defaultValue: "Show more ({{shown}} of {{total}})",
+              shown: visibleCount,
+              total: ranked.length,
+            })}
+          </button>
+        </div>
       )}
 
       <footer className="border-t border-rule pt-4 space-y-1.5">

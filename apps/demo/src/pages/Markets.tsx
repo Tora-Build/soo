@@ -10,7 +10,7 @@
  * - Sort: Trending / Newest / Ending Soon / Graduated
  * - Search + category tabs + stage filter
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -137,24 +137,47 @@ const PriceBar = ({
   const yesPrice = amm?.yesProbability ?? 0.5;
   const noPrice = 1 - yesPrice;
 
+  // The probability IS the market — it deserves to be the card's visual
+  // center, not a bare number floating over dead space. Both sides get a
+  // labeled, colored reading; the bar is thick enough to read at a glance.
   return (
-    <div className="space-y-1">
-      <div className="flex items-baseline justify-between font-mono tabular-nums">
-        <span
-          className={cn(
-            "font-bold text-accent",
-            size === "sm" ? "text-base" : "text-2xl",
-          )}
-        >
-          {(yesPrice * 100).toFixed(0)}%
-        </span>
-        <span
-          className={cn("text-muted", size === "sm" ? "text-xs" : "text-sm")}
-        >
-          {(noPrice * 100).toFixed(0)}%
-        </span>
+    <div className="space-y-1.5">
+      <div className="flex items-end justify-between font-mono tabular-nums">
+        <div className="leading-none">
+          <div className="text-[9px] uppercase tracking-[0.14em] text-accent/70 mb-0.5">
+            Yes
+          </div>
+          <span
+            className={cn(
+              "font-bold text-accent",
+              size === "sm" ? "text-base" : "text-2xl",
+            )}
+          >
+            {(yesPrice * 100).toFixed(0)}
+            <span className="text-sm font-medium">%</span>
+          </span>
+        </div>
+        <div className="leading-none text-right">
+          <div className="text-[9px] uppercase tracking-[0.14em] text-error/70 mb-0.5">
+            No
+          </div>
+          <span
+            className={cn(
+              "font-bold text-error/90",
+              size === "sm" ? "text-sm" : "text-lg",
+            )}
+          >
+            {(noPrice * 100).toFixed(0)}
+            <span className="text-xs font-medium">%</span>
+          </span>
+        </div>
       </div>
-      <div className="h-1 bg-inset overflow-hidden flex">
+      <div
+        className={cn(
+          "bg-inset overflow-hidden flex rounded-sm",
+          size === "sm" ? "h-1" : "h-1.5",
+        )}
+      >
         <div
           className="h-full bg-accent transition-all duration-700"
           style={{ width: `${yesPrice * 100}%` }}
@@ -307,8 +330,10 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
           </div>
         )}
 
-        {/* Bottom block: price bar (pinned to card bottom) */}
-        <div className="mt-auto pt-2">
+        {/* Bottom block: price bar (pinned to card bottom). The hairline
+            claims the stretch gap as intentional structure instead of
+            leaving it reading as missing content. */}
+        <div className="mt-auto pt-2 border-t border-rule/60">
           <PriceBar address={market.address} />
         </div>
       </div>
@@ -507,6 +532,10 @@ const MarketsInner = () => {
       const matchSearch =
         !search ||
         m.question.toLowerCase().includes(q) ||
+        // Addresses too: pasting a PDA or creator key into search must find
+        // the market — an explorer that can't look up by address isn't one.
+        m.address.toLowerCase().includes(q) ||
+        m.creator.toLowerCase().includes(q) ||
         m.event?.toLowerCase().includes(q) ||
         m.ruleDescription?.toLowerCase().includes(q) ||
         m.ruleSource?.toLowerCase().includes(q) ||
@@ -525,7 +554,11 @@ const MarketsInner = () => {
     const copy = [...filtered];
     switch (sort) {
       case "newest":
-        return copy.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+        // createdAt is never populated by the listing (always 0), which made
+        // this sort a silent no-op. Deadline descending is the working proxy:
+        // markets are created with fixed-length windows, so later deadlines
+        // are newer markets.
+        return copy.sort((a, b) => (b.deadline ?? 0) - (a.deadline ?? 0));
       case "ending":
         return copy.sort((a, b) => {
           const aDead = a.deadline ?? Infinity;
@@ -545,6 +578,12 @@ const MarketsInner = () => {
   }, [filtered, sort]);
 
   // Group by event
+  const [visibleCount, setVisibleCount] = useState(24);
+  // New filters mean a new list; showing page 3 of the old one is a lie.
+  useEffect(() => {
+    setVisibleCount(24);
+  }, [search, category, stage, sort]);
+
   const groupedDisplay = useMemo(() => {
     const eventMap = new Map<string, MarketCardData[]>();
     const ungrouped: MarketCardData[] = [];
@@ -732,7 +771,7 @@ const MarketsInner = () => {
       {/* Card grid */}
       {!isLoading && sorted.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {groupedDisplay.map((group) =>
+          {groupedDisplay.slice(0, visibleCount).map((group) =>
             group.event ? (
               <EventGroupCard
                 key={group.key}
@@ -743,6 +782,22 @@ const MarketsInner = () => {
               <MarketCard key={group.key} market={group.markets[0]} />
             ),
           )}
+        </div>
+      )}
+      {groupedDisplay.length > visibleCount && (
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => setVisibleCount((n) => n + 24)}
+            className="px-6 py-2 font-mono text-xs uppercase tracking-[0.12em] border border-rule text-muted hover:text-ink hover:border-accent transition-all"
+            data-testid="markets-load-more"
+          >
+            {t("marketsPage.loadMore", {
+              defaultValue: "Show more ({{shown}} of {{total}})",
+              shown: visibleCount,
+              total: groupedDisplay.length,
+            })}
+          </button>
         </div>
       )}
     </div>
