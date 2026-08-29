@@ -37,3 +37,33 @@ describe("localIconFor picks the question's SUBJECT", () => {
     expect(localIconFor("")).toBeNull();
   });
 });
+
+describe("every automatic icon is a real image", () => {
+  it("resolves a picture for every rule it matches — emoji is only a fallback", () => {
+    const questions = [
+      "Will BTC pass 100k?",
+      "Will Solana flip Ethereum?",
+      "Will Tesla deliver 2m cars?",
+      "Will it rain in Berlin?",
+      "Who wins the championship?",
+      "Will the election be close?",
+      "Will SpaceX launch Starship?",
+      "Will inflation fall below 2%?",
+    ];
+    for (const q of questions) {
+      const icon = localIconFor(q);
+      expect(icon, q).not.toBeNull();
+      expect(icon!.imageUrl, q).toMatch(/^https:\/\//);
+    }
+  });
+
+  it("uses coin logos for coins and brand marks for brands", () => {
+    expect(localIconFor("Will SOL reach $500?")!.imageUrl).toContain("coingecko");
+    expect(localIconFor("Will Tesla deliver 2m cars?")!.imageUrl).toContain("simpleicons");
+  });
+
+  it("renders concepts through Twemoji rather than the OS font", () => {
+    // ⚽ is U+26BD — the filename Twemoji publishes.
+    expect(localIconFor("Who wins the soccer final?")!.imageUrl).toContain("26bd");
+  });
+});
