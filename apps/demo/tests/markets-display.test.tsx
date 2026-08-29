@@ -73,7 +73,7 @@ afterEach(() => {
 test("Markets page renders the seeded market with bridged metadata", async () => {
   const t0 = Date.now();
   // bWad chosen to make the rendered "$<liquidity>" cell visibly non-zero
-  // (1000 → "$1000" after `formatUnits(b, 18) → toFixed(0)`).
+  // (1000 → "$1.0k" after `formatUnits(b, 18) → compactNumber`).
   const smoke = await bootSmoke({
     bWad: 1_000n * WAD,
     userUsdcBaseUnits: 100_000_000n,
@@ -172,12 +172,12 @@ test("Markets page renders the seeded market with bridged metadata", async () =>
   );
 
   // Liquidity cell is `${liquidity.toFixed(0)}` against `b = 1000·WAD`,
-  // i.e. "$1000". Wait for the bridged value to land.
+  // i.e. "$1.0k". Wait for the bridged value to land.
   await waitFor(
     () => {
       // Surface ≥1 cell whose text matches the bridged liquidity. The
       // string appears under <Zap …/>${liquidity.toFixed(0)} in MarketCard.
-      expect(screen.getAllByText(/\$1000/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/\$1\.0k/).length).toBeGreaterThan(0);
     },
     { timeout: 20_000 },
   );
