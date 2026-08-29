@@ -147,7 +147,8 @@
     },
     "stage": {
       "expired": "已过期",
-      "resolved": "已裁决"
+      "resolved": "已裁决",
+      "ended": "已截止"
     },
     "sort": {
       "trending": "热门",

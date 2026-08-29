@@ -147,7 +147,8 @@
     },
     "stage": {
       "expired": "Expired",
-      "resolved": "Resolved"
+      "resolved": "Resolved",
+      "ended": "Ended"
     },
     "sort": {
       "trending": "Trending",

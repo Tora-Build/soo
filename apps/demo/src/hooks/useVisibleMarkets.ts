@@ -12,6 +12,9 @@ const E2E_QUESTION_PATTERNS: RegExp[] = [
   /^e2e\s+\d+\s+\d+/i, // "e2e <chainId> <timestamp>"
   /^e2e\s+\w+\s+\d+/i, // "e2e <method> <chainId>" variants
   /^v\d+(\.\d+)*\s+(e2e|smoke|test)\b/i, // "v02 E2E …", "v0.2.0 smoke …"
+  // Playwright fixtures stamp a run id into the question ("… run=1787388084").
+  // These leaked into the explorer whenever the listing recovered the text.
+  /\brun=\d{9,}/i,
 ];
 
 // Sooth-core version marker, e.g. "v0.2.0" or "v02"

@@ -67,8 +67,8 @@ const CATEGORY_CONFIG: Record<
 // canonical color/label map.
 const STAGE_CONFIG: Record<string, { labelKey: string }> = {
   bonding: { labelKey: "stage.bonding" },
-  expired: { labelKey: "marketsPage.stage.expired" },
   live: { labelKey: "stage.live" },
+  ended: { labelKey: "marketsPage.stage.ended" },
   settled: { labelKey: "marketsPage.stage.resolved" },
   finalized: { labelKey: "stage.settled" },
   dismissed: { labelKey: "stage.dismissed" },
@@ -77,12 +77,31 @@ const STAGE_CONFIG: Record<string, { labelKey: string }> = {
 const STAGE_IDS = [
   "all",
   "bonding",
-  "expired",
   "live",
+  "ended",
   "settled",
   "finalized",
   "dismissed",
 ] as const;
+
+/**
+ * The stage a TRADER cares about, which is not the account's lifecycle
+ * vocabulary. On-chain "live" means graduated and "bonding" means on the
+ * curve — both keep meaning that after the deadline passes, though no trade
+ * can land. The filter that says LIVE must mean tradeable, so a past-deadline
+ * market maps to "ended" regardless of venue. (The legacy "expired" stage —
+ * trial ended without graduation, still tradeable — folds into bonding here;
+ * as a filter bucket it answered a question nobody was asking.)
+ */
+function displayStage(m: { stage: string; deadline?: number }): string {
+  if (["settled", "finalized", "dismissed"].includes(m.stage)) return m.stage;
+  const ended =
+    !!m.deadline &&
+    m.deadline > 1_000_000_000 &&
+    Date.now() / 1000 >= m.deadline;
+  if (ended) return "ended";
+  return m.stage === "expired" ? "bonding" : m.stage;
+}
 
 // ─── Resolution one-liner from §rule ─────────────────────────────────────
 // Produces "binance-price > 200000" or "binance-price" depending on what's set
@@ -299,8 +318,16 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
               }}
             />
           </div>
-          <h3 className="flex-1 min-w-0 text-sm font-medium text-ink leading-snug line-clamp-2 group-hover:text-accent transition-colors">
-            {market.question}
+          <h3
+            className={cn(
+              "flex-1 min-w-0 text-sm leading-snug line-clamp-2 group-hover:text-accent transition-colors",
+              market.question && market.question.trim().length > 0
+                ? "font-medium text-ink"
+                : "font-mono text-muted",
+            )}
+          >
+            {market.question?.trim() ||
+              `${market.address.slice(0, 8)}…${market.address.slice(-6)}`}
           </h3>
           <ChanceGauge address={market.address} />
         </div>
@@ -622,7 +649,7 @@ const MarketsInner = () => {
             (kw) => kw.includes(q) || q.includes(kw),
           ));
       const matchCat = category === "all" || m.category === category;
-      const matchStage = stage === "all" || m.stage === stage;
+      const matchStage = stage === "all" || displayStage(m) === stage;
       return matchSearch && matchCat && matchStage;
     });
   }, [markets, search, category, stage]);
@@ -701,7 +728,9 @@ const MarketsInner = () => {
   // Category counts
   const categoryCounts = useMemo(() => {
     const stageFiltered =
-      stage === "all" ? markets : markets.filter((m) => m.stage === stage);
+      stage === "all"
+        ? markets
+        : markets.filter((m) => displayStage(m) === stage);
     const counts: Record<string, number> = { all: stageFiltered.length };
     for (const m of stageFiltered) {
       counts[m.category] = (counts[m.category] || 0) + 1;
