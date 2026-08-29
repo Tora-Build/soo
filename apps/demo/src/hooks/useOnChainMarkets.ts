@@ -30,7 +30,9 @@ export interface OnChainMarket {
   creatorDeposit: bigint;
   deadline?: number;
   trialEndTime?: number; // unix seconds; undefined = no trial data
-  stage: "bonding" | "live" | "settled" | "finalized" | "dismissed" | "expired";
+  /** Venue + terminal state. "orderbook" = graduated; see displayStage in
+   *  Markets.tsx for the trader-facing vocabulary layered on top. */
+  stage: "bonding" | "orderbook" | "settled" | "finalized" | "dismissed" | "expired";
   // Parsed SQF fields (populated from name)
   question: string; // extracted from §question or raw name
   /** Market.lifecycle === Open. False while Locked/resolving — a market that
@@ -251,9 +253,17 @@ export function useOnChainMarkets() {
               const trialEnded =
                 (trialEndTimeRaw ?? 0n) > 0n &&
                 nowSec >= (trialEndTimeRaw ?? 0n);
+              // The stage is a VENUE, not a health check: "orderbook" says
+              // where this market trades, and "bonding" says the same for
+              // the curve. Neither claims the market is tradeable — that is
+              // lifecycle plus deadline, which `displayStage` decides. This
+              // used to be called "live", a word that promised tradeability
+              // it could not deliver: a graduated market whose deadline had
+              // passed matched the LIVE filter while its own card said
+              // trading was closed.
               let stage:
                 | "bonding"
-                | "live"
+                | "orderbook"
                 | "settled"
                 | "finalized"
                 | "dismissed"
@@ -265,7 +275,7 @@ export function useOnChainMarkets() {
               } else if (isSettled) {
                 stage = "settled";
               } else if (isGraduated) {
-                stage = "live";
+                stage = "orderbook";
               } else if (trialEnded) {
                 stage = "expired";
               } else {

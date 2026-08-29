@@ -176,8 +176,8 @@ export const ArenaPlay = () => {
       .filter((m) => m.tradeable)
       .map((m) => m.market)
       .sort((a, b) => {
-        const aLive = a.stage === "live" ? 1 : 0;
-        const bLive = b.stage === "live" ? 1 : 0;
+        const aLive = a.stage === "orderbook" ? 1 : 0;
+        const bLive = b.stage === "orderbook" ? 1 : 0;
         if (aLive !== bLive) return bLive - aLive;
         return Number(b.bCurrent - a.bCurrent);
       });
@@ -297,7 +297,7 @@ export const ArenaPlay = () => {
     // otherwise the persisted local ledger keeps XP flowing for guests.
     openQuickTrade(
       market.address,
-      market.stage === "live" ? "orderbook" : "amm",
+      market.stage === "orderbook" ? "orderbook" : "amm",
       "megaeth",
       {
         coverImageSrc: worldCoverArt(market.arenaCategory),
@@ -566,14 +566,17 @@ const DeckStatusBadge = ({
   } else if (expired) {
     label = "ENDED";
     bg = "#b91c1c";
-  } else if (market.stage === "live") {
-    label = "LIVE";
+  } else if (market.stage === "orderbook") {
+    // Live says you can trade it; the venue says where. Both, because the
+    // deck is where a player decides, and "orderbook" is the reason the
+    // price moves differently.
+    label = "LIVE · BOOK";
     bg = "#15803d";
   } else {
-    label = "BONDING";
+    label = "LIVE · AMM";
     bg = "#0369a1";
   }
-  const playable = label === "LIVE" || label === "BONDING";
+  const playable = label.startsWith("LIVE");
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs font-bold tracking-[0.1em] text-white shadow-md"

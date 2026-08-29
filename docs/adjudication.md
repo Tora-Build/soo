@@ -90,3 +90,27 @@ challenge) — as a pure fold over public chain state. `/adjudicators` ranks
 everyone; the Forge's picker reads from the same fold. Bonded cases are the
 strongest signals in the system because they are the only ones paid for in
 money.
+
+## Market stages — the shared vocabulary
+
+Resolution decides *what happened*; these words decide *what a market is
+doing right now*, and every surface uses them identically.
+
+| Word | Means | Tradeable |
+|---|---|---|
+| **Live** | accepting trades on either venue — the union below | yes |
+| **Bonding** | trading on the AMM bonding curve; fees accumulate toward graduation | yes |
+| **Orderbook** | graduated; trades on the on-chain book (the AMM stays open too) | yes |
+| **Ended** | deadline passed, or Locked mid-resolution: adjudicator ruling, veto window, awaiting settle | no |
+| **Settled / Finalized** | outcome final; redeem | no |
+| **Dismissed** | cancelled; refunds only | no |
+
+"Live" is deliberately a SUPERSET of Bonding and Orderbook: it answers
+"can I trade this", while the venue words answer "where". The earlier
+vocabulary used "live" to mean *graduated*, which let a graduated market
+whose deadline had passed match the LIVE filter while its own card said
+trading was closed — a filter and a card describing different worlds.
+
+Tradeability is never inferred from the venue: it is lifecycle (Open) AND
+deadline (ahead), mirroring the program's `TradingClosed` gate, so a Locked
+market with a week left on its clock reads as Ended everywhere.

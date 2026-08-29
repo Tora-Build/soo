@@ -20,7 +20,7 @@ interface MarketDetailsCardProps {
   creator?: string;
   adjudicator?: string;
   deadline?: number;
-  stage: "bonding" | "live" | "settled" | "finalized" | "dismissed" | string;
+  stage: "bonding" | "orderbook" | "settled" | "finalized" | "dismissed" | string;
   isGraduated?: boolean;
   /** Taker fee for this market's ACTIVE venue, in bps, read from the chain. */
   currentFeeBps?: bigint | number;

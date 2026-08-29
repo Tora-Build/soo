@@ -35,7 +35,7 @@ interface AMMSettlementCardProps {
   stage?:
     | "bonding"
     | "expired"
-    | "live"
+    | "orderbook"
     | "settled"
     | "finalized"
     | "dismissed";

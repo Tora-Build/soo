@@ -89,7 +89,7 @@ export const OrderbookPageBody = ({
         : truth?.isSettled
           ? "settled"
           : launchpad?.isGraduated
-            ? "live"
+            ? "orderbook"
             : trialEnded
               ? "expired"
               : "bonding");

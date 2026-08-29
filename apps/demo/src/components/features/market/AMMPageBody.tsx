@@ -156,7 +156,7 @@ export const AMMPageBody = ({
         : truth?.isSettled
           ? "settled"
           : launchpad?.isGraduated
-            ? "live"
+            ? "orderbook"
             : trialEnded
               ? "expired"
               : "bonding");

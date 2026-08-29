@@ -174,9 +174,10 @@
     "graduated": "已毕业",
     "bonding": "绑定期",
     "expired": "已过期",
-    "live": "进行中",
+    "live": "可交易",
     "graduation": "毕业",
-    "allStages": "全部阶段"
+    "allStages": "全部阶段",
+    "orderbook": "订单簿"
   },
   "stageBadge": {
     "bonding": {

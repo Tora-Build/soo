@@ -66,8 +66,9 @@ const CATEGORY_CONFIG: Record<
 // data-display rendering goes through `<StageBadge>` which owns the
 // canonical color/label map.
 const STAGE_CONFIG: Record<string, { labelKey: string }> = {
-  bonding: { labelKey: "stage.bonding" },
   live: { labelKey: "stage.live" },
+  bonding: { labelKey: "stage.bonding" },
+  orderbook: { labelKey: "stage.orderbook" },
   ended: { labelKey: "marketsPage.stage.ended" },
   settled: { labelKey: "marketsPage.stage.resolved" },
   finalized: { labelKey: "stage.settled" },
@@ -76,8 +77,11 @@ const STAGE_CONFIG: Record<string, { labelKey: string }> = {
 
 const STAGE_IDS = [
   "all",
-  "bonding",
+  // LIVE is the union of the two trading venues — what a trader means by
+  // the word. The venue tabs below it answer "where", not "whether".
   "live",
+  "bonding",
+  "orderbook",
   "ended",
   "settled",
   "finalized",
@@ -93,7 +97,7 @@ const STAGE_IDS = [
  * trial ended without graduation, still tradeable — folds into bonding here;
  * as a filter bucket it answered a question nobody was asking.)
  */
-function displayStage(m: {
+export function displayStage(m: {
   stage: string;
   deadline?: number;
   isLive?: boolean;
@@ -106,7 +110,17 @@ function displayStage(m: {
   // `isLive === false` means Locked: the deadline may still be days away,
   // but an adjudicator is ruling and the program rejects every trade.
   if (ended || m.isLive === false) return "ended";
-  return m.stage === "expired" ? "bonding" : m.stage;
+  // Venue, for a market that can trade: the curve, or the book.
+  return m.stage === "orderbook" ? "orderbook" : "bonding";
+}
+
+/** Both trading venues. "Live" asks whether, the venue tabs ask where. */
+const TRADEABLE_STAGES = ["bonding", "orderbook"];
+
+export function matchesStageFilter(m: Parameters<typeof displayStage>[0], filter: string) {
+  if (filter === "all") return true;
+  const ds = displayStage(m);
+  return filter === "live" ? TRADEABLE_STAGES.includes(ds) : ds === filter;
 }
 
 /** 1234 → "1.2k", 1200000 → "1.2m" — footer digits must never wrap a card. */
@@ -315,7 +329,7 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
   const openMarket = () =>
     openQuickTrade(
       market.address,
-      market.stage === "live" ? "orderbook" : "amm",
+      market.stage === "orderbook" ? "orderbook" : "amm",
     );
   return (
     <div
@@ -508,7 +522,7 @@ const EventOutcomeRow = ({ market }: { market: MarketCardData }) => {
   const openMarket = () =>
     openQuickTrade(
       market.address,
-      market.stage === "live" ? "orderbook" : "amm",
+      market.stage === "orderbook" ? "orderbook" : "amm",
     );
   return (
     <div
@@ -696,7 +710,7 @@ const MarketsInner = () => {
             (kw) => kw.includes(q) || q.includes(kw),
           ));
       const matchCat = category === "all" || m.category === category;
-      const matchStage = stage === "all" || displayStage(m) === stage;
+      const matchStage = matchesStageFilter(m, stage);
       return matchSearch && matchCat && matchStage;
     });
   }, [markets, search, category, stage]);
@@ -774,10 +788,7 @@ const MarketsInner = () => {
 
   // Category counts
   const categoryCounts = useMemo(() => {
-    const stageFiltered =
-      stage === "all"
-        ? markets
-        : markets.filter((m) => displayStage(m) === stage);
+    const stageFiltered = markets.filter((m) => matchesStageFilter(m, stage));
     const counts: Record<string, number> = { all: stageFiltered.length };
     for (const m of stageFiltered) {
       counts[m.category] = (counts[m.category] || 0) + 1;
@@ -800,10 +811,14 @@ const MarketsInner = () => {
       const matchCat = category === "all" || m.category === category;
       return matchSearch && matchCat;
     });
-    const counts: Record<string, number> = { all: preStage.length };
+    const counts: Record<string, number> = { all: preStage.length, live: 0 };
     for (const m of preStage) {
       const ds = displayStage(m);
       counts[ds] = (counts[ds] || 0) + 1;
+      // Live deliberately double-counts its two venues: it is a superset
+      // filter, and a tab whose number excluded half its own results would
+      // be the same lie the old vocabulary told.
+      if (TRADEABLE_STAGES.includes(ds)) counts.live += 1;
     }
     return counts;
   }, [markets, search, category]);

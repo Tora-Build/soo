@@ -176,7 +176,8 @@
     "expired": "Expired",
     "live": "Live",
     "graduation": "Graduation",
-    "allStages": "ALL STAGES"
+    "allStages": "ALL STAGES",
+    "orderbook": "Orderbook"
   },
   "stageBadge": {
     "bonding": {

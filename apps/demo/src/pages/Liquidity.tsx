@@ -26,7 +26,7 @@ type StageFilter =
   | "all"
   | "bonding"
   | "expired"
-  | "live"
+  | "orderbook"
   | "settled"
   | "finalized"
   | "dismissed";
@@ -84,7 +84,7 @@ interface MarketSummary {
   category?: string;
   event?: string;
   creator: `0x${string}`;
-  stage: "bonding" | "expired" | "live" | "settled" | "finalized" | "dismissed";
+  stage: "bonding" | "expired" | "orderbook" | "settled" | "finalized" | "dismissed";
   bBase: bigint;
   bCurrent: bigint;
   createdAt: bigint;
@@ -126,9 +126,9 @@ const LiquidityCard = ({
 
   // Graduation progress: bonding markets use the live ring read, graduated
   // markets always show 100%, settled/finalized/dismissed render no bar.
-  const showProgressBar = market.stage === "bonding" || market.stage === "live";
+  const showProgressBar = market.stage === "bonding" || market.stage === "orderbook";
   const progressPct =
-    market.stage === "live" ? 100 : progress !== undefined ? progress : 0;
+    market.stage === "orderbook" ? 100 : progress !== undefined ? progress : 0;
 
   return (
     <div
@@ -251,7 +251,7 @@ const LiquidityInner = () => {
     { id: "all", label: t("liquidityPage.filters.all") },
     { id: "bonding", label: t("stage.bonding") },
     { id: "expired", label: t("liquidityPage.filters.expired") },
-    { id: "live", label: t("stage.live") },
+    { id: "orderbook", label: t("stage.orderbook", { defaultValue: "Orderbook" }) },
     { id: "settled", label: t("stage.settled") },
     { id: "finalized", label: t("stage.finalized") },
     { id: "dismissed", label: t("stage.dismissed") },

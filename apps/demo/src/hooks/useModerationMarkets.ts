@@ -34,7 +34,7 @@ export interface ModerationMarketRow {
   createdAtMs: number | null;
   visibility: "showing" | "hidden";
   creator: `0x${string}`;
-  stage: "bonding" | "expired" | "live" | "settled" | "finalized" | "dismissed";
+  stage: "bonding" | "expired" | "orderbook" | "settled" | "finalized" | "dismissed";
 }
 
 export function useModerationMarkets() {

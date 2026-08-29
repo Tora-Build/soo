@@ -36,11 +36,21 @@ const STAGE_CONFIG: Record<
     icon: Hourglass,
     tip: "Trial period ended without graduation. Trading still allowed via the AMM — a late rush of fees can still graduate the market.",
   },
-  live: {
-    label: "Live",
+  orderbook: {
+    label: "Orderbook",
     color: "text-accent",
     icon: Radio,
-    tip: "Graduated — active trading with 1% fees",
+    tip: "Graduated — trades on the on-chain order book (the AMM stays open too)",
+  },
+  // "Live" is the UNION: any market accepting trades, on either venue. It is
+  // what a trader means by the word, and what the explorer's LIVE filter
+  // selects — the venue-specific labels above answer "where", this answers
+  // "can I trade it".
+  live: {
+    label: "Live",
+    color: "text-pos",
+    icon: Radio,
+    tip: "Accepting trades — on the bonding curve, the order book, or both",
   },
   settled: {
     label: "Resolved",
@@ -82,7 +92,7 @@ export const StageBadge = ({ stage, className }: StageBadgeProps) => {
           className,
         )}
       >
-        {stage === "live"
+        {stage === "orderbook"
           ? <span className="stage-live-dot" aria-hidden="true" />
           : <Icon className="w-3 h-3" />}
         {t(labelKey, { defaultValue: config.label })}
