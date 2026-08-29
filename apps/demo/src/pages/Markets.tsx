@@ -242,11 +242,6 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
     i18n.language === "zh" ? "zh-CN" : "en-US",
     t("marketsPage.noExpiry"),
   );
-  const resolutionLine = formatResolutionLine(
-    market.ruleSource,
-    market.ruleOp,
-    market.ruleTarget,
-  );
   const { open: openQuickTrade } = useQuickTrade();
   // Graduation progress number — cached by React Query so this is free
   // when EntityIcon below also reads it via the same hook+key.
@@ -266,7 +261,7 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
     );
   return (
     <div
-      className="group flex flex-col bg-raised border border-rule hover:border-accent/50 focus-within:border-accent/50 transition-all cursor-pointer aspect-[4/3]"
+      className="group flex flex-col bg-raised border border-rule hover:border-accent/50 focus-within:border-accent/50 transition-all cursor-pointer"
       role="link"
       tabIndex={0}
       onClick={openMarket}
@@ -276,26 +271,15 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
           openMarket();
         }
       }}
+      data-testid="market-card"
+      data-market={market.address}
     >
-      <div className="flex-1 flex flex-col p-3 gap-2">
-        {/* Top row: stage (+ graduation %) + category */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <StageBadge stage={market.stage} />
-            <EndedChip deadline={market.deadline} />
-            {market.stage === "bonding" && gradProgress !== undefined && (
-              <span className="font-mono text-[10px] text-accent tabular-nums">
-                {Math.round(gradProgress)}%
-              </span>
-            )}
-            <VetoWindowBadge address={market.address} />
-          </div>
-          <CategoryBadge category={market.category} />
-        </div>
-
-        {/* Question — hero (with entity icon + graduation ring) */}
-        <div className="flex items-start gap-2">
-          <div className="pt-0.5">
+      <div className="flex flex-col p-3 gap-2.5">
+        {/* Identity row: icon + question, chance on the right — the
+            Polymarket grammar: the question and its probability are the
+            card; everything else is a footnote. */}
+        <div className="flex items-start gap-2.5">
+          <div className="pt-0.5 shrink-0">
             <EntityIcon
               question={market.question}
               market={{
@@ -304,42 +288,112 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
               }}
             />
           </div>
-          <h3 className="text-sm font-medium text-ink leading-snug line-clamp-2 group-hover:text-accent transition-colors">
+          <h3 className="flex-1 min-w-0 text-sm font-medium text-ink leading-snug line-clamp-2 group-hover:text-accent transition-colors">
             {market.question}
           </h3>
+          <ChanceGauge address={market.address} />
         </div>
 
-        {/* Liquidity + deadline (right under question) */}
-        <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-          <span className="flex items-center gap-1">
+        {/* Actions: the two sides, as buttons. They open the same trade
+            drawer as the card itself — the point is the affordance: a
+            market you can ACT on reads as alive. */}
+        <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={openMarket}
+            className="flex-1 py-1.5 font-mono text-xs font-bold uppercase tracking-[0.08em] bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/25 transition-colors rounded-sm"
+            data-testid="card-buy-yes"
+          >
+            {t("marketsPage.buyYes", { defaultValue: "Buy Yes" })}
+          </button>
+          <button
+            type="button"
+            onClick={openMarket}
+            className="flex-1 py-1.5 font-mono text-xs font-bold uppercase tracking-[0.08em] bg-error/10 text-error hover:bg-error/25 transition-colors rounded-sm"
+            data-testid="card-buy-no"
+          >
+            {t("marketsPage.buyNo", { defaultValue: "Buy No" })}
+          </button>
+        </div>
+
+        {/* Footnote row: volume, clock, category — and only NOTEWORTHY
+            states get a badge. "Live" is the default condition of a market,
+            and a badge that is always present labels nothing. */}
+        <div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-faint min-w-0">
+          <span className="flex items-center gap-1 shrink-0">
             <Zap className="w-2.5 h-2.5" />${liquidity.toFixed(0)}
           </span>
           {deadlineStr && (
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 shrink-0">
               <Clock className="w-2.5 h-2.5" />
               {deadlineStr}
             </span>
           )}
-        </div>
-
-        {/* Resolution source one-liner (from §rule) */}
-        {resolutionLine && (
-          <div className="flex items-center gap-1.5 font-mono text-[10px] text-muted truncate">
-            <Database className="w-2.5 h-2.5 shrink-0" />
-            <span className="truncate">{resolutionLine}</span>
-          </div>
-        )}
-
-        {/* Bottom block: price bar (pinned to card bottom). The hairline
-            claims the stretch gap as intentional structure instead of
-            leaving it reading as missing content. */}
-        <div className="mt-auto pt-2 border-t border-rule/60">
-          <PriceBar address={market.address} />
+          {market.stage === "bonding" && gradProgress !== undefined && (
+            <span className="text-accent tabular-nums shrink-0">
+              {Math.round(gradProgress)}%
+            </span>
+          )}
+          <span className="flex-1" />
+          <EndedChip deadline={market.deadline} />
+          <VetoWindowBadge address={market.address} />
+          {["settled", "finalized", "dismissed", "expired"].includes(
+            market.stage,
+          ) && <StageBadge stage={market.stage} />}
+          <CategoryBadge category={market.category} />
         </div>
       </div>
     </div>
   );
 };
+
+/**
+ * The Polymarket-style "chance" block: one number, a hemisphere gauge, the
+ * word underneath. One number, because a binary market has one price and
+ * showing both sides twice (numbers AND bar AND buttons) was the clutter.
+ */
+const ChanceGauge = ({ address }: { address: string }) => {
+  const { amm } = useAmmMarketDirect(address as `0x${string}`);
+  const yes = amm?.yesProbability ?? 0.5;
+  const pct = Math.round(yes * 100);
+  // Semicircle arc: radius 16, circumference of the half = PI * r.
+  const r = 15;
+  const half = Math.PI * r;
+  return (
+    <div className="shrink-0 flex flex-col items-center leading-none pt-0.5">
+      <svg width="40" height="24" viewBox="0 0 40 24" aria-hidden>
+        <path
+          d="M 4 22 A 16 16 0 0 1 36 22"
+          fill="none"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          className="text-muted/20"
+          stroke="currentColor"
+        />
+        <path
+          d="M 4 22 A 16 16 0 0 1 36 22"
+          fill="none"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeDasharray={`${half * yes} ${half}`}
+          className={yes >= 0.5 ? "stroke-emerald-500" : "stroke-error"}
+        />
+      </svg>
+      <span
+        className={cn(
+          "font-mono font-bold tabular-nums text-base -mt-2.5",
+          yes >= 0.5 ? "text-emerald-500" : "text-error",
+        )}
+      >
+        {pct}%
+      </span>
+      <span className="font-mono text-[8px] uppercase tracking-[0.14em] text-faint mt-0.5">
+        chance
+      </span>
+    </div>
+  );
+};
+
 
 // ─── Event outcome row (one sibling market inside an event card) ──────────
 const EventOutcomeRow = ({ market }: { market: MarketCardData }) => {
