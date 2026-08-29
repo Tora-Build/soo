@@ -103,6 +103,24 @@ function displayStage(m: { stage: string; deadline?: number }): string {
   return m.stage === "expired" ? "bonding" : m.stage;
 }
 
+/** 1234 → "1.2k", 1200000 → "1.2m" — footer digits must never wrap a card. */
+function compactNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return n.toFixed(0);
+}
+
+/** "3d", "5h", "ended", "∞" — the card wants distance, not a calendar date. */
+function relativeDeadline(deadline?: number): string {
+  if (!deadline) return "∞";
+  if (deadline > 4102444800) return "∞";
+  const remaining = deadline - Date.now() / 1000;
+  if (remaining <= 0) return "ended";
+  if (remaining >= 86400) return `${Math.round(remaining / 86400)}d`;
+  if (remaining >= 3600) return `${Math.round(remaining / 3600)}h`;
+  return `${Math.max(1, Math.round(remaining / 60))}m`;
+}
+
 // ─── Resolution one-liner from §rule ─────────────────────────────────────
 // Produces "binance-price > 200000" or "binance-price" depending on what's set
 function formatResolutionLine(
@@ -131,6 +149,7 @@ interface MarketCardData {
   address: string;
   question: string;
   icon?: string;
+  winningOutcome?: number | null;
   event?: string;
   category: string;
   stage: string;
@@ -358,42 +377,57 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
               {t("marketsPage.buyNo", { defaultValue: "Buy No" })}
             </button>
           </div>
-        ) : (
+        ) : market.stage === "settled" || market.stage === "finalized" ? (
+          // A settled market's card leads with the VERDICT — the one fact a
+          // browser wants from a finished market — in the outcome's color.
           <div
-            className="py-1.5 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-faint bg-inset rounded-sm"
+            className={cn(
+              "py-1.5 flex items-center justify-center gap-1.5 font-mono text-xs font-bold uppercase tracking-[0.12em] rounded-sm",
+              market.winningOutcome === 1
+                ? "bg-emerald-500/10 text-emerald-500"
+                : market.winningOutcome === 0
+                  ? "bg-error/10 text-error"
+                  : "bg-inset text-muted",
+            )}
             data-testid="card-closed"
           >
-            {market.stage === "settled" || market.stage === "finalized"
-              ? t("marketsPage.cardSettled", { defaultValue: "Settled — view results" })
-              : t("marketsPage.cardClosed", { defaultValue: "Trading closed — resolution pending" })}
+            {market.winningOutcome === 1
+              ? "✓ YES"
+              : market.winningOutcome === 0
+                ? "✗ NO"
+                : "∅ INVALID"}
+          </div>
+        ) : (
+          <div
+            className="py-1.5 flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-amber-400/90 bg-amber-500/5 rounded-sm"
+            data-testid="card-closed"
+          >
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+            {t("marketsPage.cardResolving", { defaultValue: "Resolving" })}
           </div>
         )}
 
         {/* Footnote row: volume, clock, category — and only NOTEWORTHY
             states get a badge. "Live" is the default condition of a market,
             and a badge that is always present labels nothing. */}
-        <div className="flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-faint min-w-0">
-          <span className="flex items-center gap-1 shrink-0">
-            <Zap className="w-2.5 h-2.5" />${liquidity.toFixed(0)}
+        <div className="flex items-center gap-2 font-mono text-[10px] text-faint min-w-0 overflow-hidden">
+          <span className="flex items-center gap-1 shrink-0 tabular-nums">
+            <Zap className="w-2.5 h-2.5" />${compactNumber(liquidity)}
           </span>
-          {deadlineStr && (
-            <span className="flex items-center gap-1 shrink-0">
-              <Clock className="w-2.5 h-2.5" />
-              {deadlineStr}
-            </span>
-          )}
+          <span className="flex items-center gap-1 shrink-0">
+            <Clock className="w-2.5 h-2.5" />
+            {relativeDeadline(market.deadline)}
+          </span>
           {market.stage === "bonding" && gradProgress !== undefined && (
             <span className="text-accent tabular-nums shrink-0">
               {Math.round(gradProgress)}%
             </span>
           )}
           <span className="flex-1" />
-          <EndedChip deadline={market.deadline} />
           <VetoWindowBadge address={market.address} />
-          {["settled", "finalized", "dismissed", "expired"].includes(
-            market.stage,
-          ) && <StageBadge stage={market.stage} />}
-          <CategoryBadge category={market.category} />
+          <span className="uppercase tracking-[0.1em] truncate">
+            {market.category}
+          </span>
         </div>
       </div>
     </div>
@@ -619,6 +653,7 @@ const MarketsInner = () => {
             inferCategory(m.question),
         ),
         icon: m.icon,
+        winningOutcome: m.winningOutcome,
         stage: m.stage,
         isGraduated: m.isGraduated,
         bCurrent: m.bCurrent,
@@ -741,14 +776,28 @@ const MarketsInner = () => {
     return counts;
   }, [markets, stage]);
 
-  // Stage counts
+  // Stage counts — MUST use the same displayStage vocabulary as the filter
+  // (counting raw stages advertised 'Live 2' whose click then showed zero),
+  // and must count the set BEFORE the stage filter, or selecting one stage
+  // zeroes every other tab's number.
   const stageCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: filtered.length };
-    for (const m of filtered) {
-      counts[m.stage] = (counts[m.stage] || 0) + 1;
+    const preStage = markets.filter((m) => {
+      const q = search.toLowerCase();
+      const matchSearch =
+        !search ||
+        m.question.toLowerCase().includes(q) ||
+        m.address.toLowerCase().includes(q) ||
+        m.event?.toLowerCase().includes(q);
+      const matchCat = category === "all" || m.category === category;
+      return matchSearch && matchCat;
+    });
+    const counts: Record<string, number> = { all: preStage.length };
+    for (const m of preStage) {
+      const ds = displayStage(m);
+      counts[ds] = (counts[ds] || 0) + 1;
     }
     return counts;
-  }, [filtered]);
+  }, [markets, search, category]);
 
   return (
     <div className="space-y-5">

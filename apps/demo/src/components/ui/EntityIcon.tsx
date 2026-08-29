@@ -41,6 +41,7 @@ export const EntityIcon = ({
     stage: market?.stage,
   });
   const [failed, setFailed] = useState(false);
+  const [localImgFailed, setLocalImgFailed] = useState(false);
   const chosen = explicitIcon?.trim() || null;
   const local = chosen
     ? { emoji: chosen, accentColor: "#8a7bd5" }
@@ -90,6 +91,8 @@ export const EntityIcon = ({
   );
 
   const accentColor = icon?.accentColor ?? local?.accentColor ?? "#888888";
+  const showLocalImage =
+    !chosen && !showImage && !!local?.imageUrl && !localImgFailed;
   const tileBody = showImage ? (
     <img
       src={icon!.url!}
@@ -97,6 +100,15 @@ export const EntityIcon = ({
       aria-hidden="true"
       loading="lazy"
       onError={() => setFailed(true)}
+      className="h-full w-full object-cover"
+    />
+  ) : showLocalImage ? (
+    <img
+      src={local!.imageUrl!}
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      onError={() => setLocalImgFailed(true)}
       className="h-full w-full object-cover"
     />
   ) : local ? (
