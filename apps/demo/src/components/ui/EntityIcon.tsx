@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { useMarketIcon } from "../../hooks/useMarketIcon";
+import { localIconFor } from "../../lib/localIcon";
 import { useGraduationRing } from "../../hooks/useGraduationRing";
 
 function getInitials(name: string): string {
@@ -81,7 +82,8 @@ export const EntityIcon = ({
     "h-full w-full rounded-full overflow-hidden bg-inset",
   );
 
-  const accentColor = icon?.accentColor ?? "#888888";
+  const local = localIconFor(question);
+  const accentColor = icon?.accentColor ?? local?.accentColor ?? "#888888";
   const tileBody = showImage ? (
     <img
       src={icon!.url!}
@@ -91,6 +93,19 @@ export const EntityIcon = ({
       onError={() => setFailed(true)}
       className="h-full w-full object-cover"
     />
+  ) : local ? (
+    // The local keyword resolver: an emoji tile with the entity's accent.
+    // Not a brand logo, but it carries meaning; initials carry none.
+    <div
+      className={cn(
+        "h-full w-full flex items-center justify-center",
+        size === "sm" ? "text-base" : size === "lg" ? "text-2xl" : "text-xl",
+      )}
+      style={{ backgroundColor: `${local.accentColor}26` }}
+      aria-hidden="true"
+    >
+      {local.emoji}
+    </div>
   ) : (
     <div
       className={cn(
