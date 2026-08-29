@@ -250,6 +250,17 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
     stage: market.stage,
   });
 
+  // A market can take an order only while open AND inside its deadline —
+  // mirrors the program's TradingClosed gate (1e9 floor excludes epoch-
+  // relative test clocks).
+  const isTradeable =
+    !["settled", "finalized", "dismissed"].includes(market.stage) &&
+    !(
+      market.deadline &&
+      market.deadline > 1_000_000_000 &&
+      Date.now() / 1000 >= market.deadline
+    );
+
   // Card click opens the wide MarketDrawer (full AMM/Orderbook surface)
   // instead of navigating to /amm/:addr. The /amm/:addr and /orderbook/:addr
   // routes still work as deep links from elsewhere — Portfolio rows, direct
@@ -294,27 +305,40 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
           <ChanceGauge address={market.address} />
         </div>
 
-        {/* Actions: the two sides, as buttons. They open the same trade
-            drawer as the card itself — the point is the affordance: a
-            market you can ACT on reads as alive. */}
-        <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={openMarket}
-            className="flex-1 py-1.5 font-mono text-xs font-bold uppercase tracking-[0.08em] bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/25 transition-colors rounded-sm"
-            data-testid="card-buy-yes"
+        {/* Actions: the two sides, as buttons — but ONLY on a market that
+            can take an order. The program rejects every trade past the
+            deadline or after settlement, and a Buy button on a dead market
+            is the affordance lying. Closed markets state their status in
+            the same slot instead, so cards keep one rhythm. */}
+        {isTradeable ? (
+          <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={openMarket}
+              className="flex-1 py-1.5 font-mono text-xs font-bold uppercase tracking-[0.08em] bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/25 transition-colors rounded-sm"
+              data-testid="card-buy-yes"
+            >
+              {t("marketsPage.buyYes", { defaultValue: "Buy Yes" })}
+            </button>
+            <button
+              type="button"
+              onClick={openMarket}
+              className="flex-1 py-1.5 font-mono text-xs font-bold uppercase tracking-[0.08em] bg-error/10 text-error hover:bg-error/25 transition-colors rounded-sm"
+              data-testid="card-buy-no"
+            >
+              {t("marketsPage.buyNo", { defaultValue: "Buy No" })}
+            </button>
+          </div>
+        ) : (
+          <div
+            className="py-1.5 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-faint bg-inset rounded-sm"
+            data-testid="card-closed"
           >
-            {t("marketsPage.buyYes", { defaultValue: "Buy Yes" })}
-          </button>
-          <button
-            type="button"
-            onClick={openMarket}
-            className="flex-1 py-1.5 font-mono text-xs font-bold uppercase tracking-[0.08em] bg-error/10 text-error hover:bg-error/25 transition-colors rounded-sm"
-            data-testid="card-buy-no"
-          >
-            {t("marketsPage.buyNo", { defaultValue: "Buy No" })}
-          </button>
-        </div>
+            {market.stage === "settled" || market.stage === "finalized"
+              ? t("marketsPage.cardSettled", { defaultValue: "Settled — view results" })
+              : t("marketsPage.cardClosed", { defaultValue: "Trading closed — resolution pending" })}
+          </div>
+        )}
 
         {/* Footnote row: volume, clock, category — and only NOTEWORTHY
             states get a badge. "Live" is the default condition of a market,
