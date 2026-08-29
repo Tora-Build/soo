@@ -26,18 +26,34 @@ export interface SQFData {
 export function parseSQF(raw: string): SQFData {
   const result: SQFData = { question: "", rule: {} };
 
+  // Sections are delimited by § markers, NOT by newlines. The line-based
+  // reader treated a single-line envelope — "§question Will X? §category
+  // others", which is what several on-chain markets actually carry — as one
+  // enormous tag, so the question parsed as empty and its card rendered
+  // blank. Splitting on the marker reads both shapes: the tag is the word
+  // after §, the body is everything up to the next §.
   const sections: { tag: string; lines: string[] }[] = [];
-  let current: { tag: string; lines: string[] } | null = null;
-
-  for (const line of raw.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("§") && !trimmed.startsWith("§§")) {
-      const tag = trimmed.slice(1).toLowerCase();
-      current = { tag, lines: [] };
-      sections.push(current);
-    } else if (current && trimmed) {
-      current.lines.push(trimmed);
-    }
+  const SECTION_RE = /§(?!§)([a-zA-Z]+)/g;
+  const marks: Array<{ tag: string; start: number; end: number }> = [];
+  for (let m = SECTION_RE.exec(raw); m; m = SECTION_RE.exec(raw)) {
+    marks.push({
+      tag: m[1].toLowerCase(),
+      start: m.index,
+      end: m.index + m[0].length,
+    });
+  }
+  for (let i = 0; i < marks.length; i += 1) {
+    const body = raw.slice(
+      marks[i].end,
+      i + 1 < marks.length ? marks[i + 1].start : undefined,
+    );
+    sections.push({
+      tag: marks[i].tag,
+      lines: body
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+    });
   }
 
   for (const section of sections) {
