@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { formatUnits } from "@/lib/chain-shim";
 import { useVisibleMarkets } from "../hooks";
+import { useMarketHeat } from "../hooks/useMarketHeat";
 import { useAmmMarketDirect } from "../hooks/useAmmMarketDirect";
 import { useGraduationRing } from "../hooks/useGraduationRing";
 import { cn } from "../lib/utils";
@@ -691,6 +692,8 @@ const MarketsInner = () => {
     });
   }, [onChainMarkets]);
 
+  const { heatByAddress } = useMarketHeat(markets.map((m) => m.address));
+
   // Filter
   const filtered = useMemo(() => {
     return markets.filter((m) => {
@@ -735,13 +738,19 @@ const MarketsInner = () => {
         return copy.sort((a, b) => Number(b.bCurrent - a.bCurrent));
       case "trending":
       default:
-        // Trending = graduated first, then by depth
+        // Trending = hottest first: accumulated fees, which are volume in
+        // different units. Venue and depth break ties — the old
+        // graduated-first ordering survives only as the tiebreak, because a
+        // busy bonding market IS more trending than a dead graduated one.
         return copy.sort((a, b) => {
+          const heat = (m: MarketCardData) =>
+            heatByAddress[m.address.toLowerCase()] ?? 0;
+          if (heat(a) !== heat(b)) return heat(b) - heat(a);
           if (a.isGraduated !== b.isGraduated) return a.isGraduated ? -1 : 1;
           return Number(b.bCurrent - a.bCurrent);
         });
     }
-  }, [filtered, sort]);
+  }, [filtered, sort, heatByAddress]);
 
   // Group by event
   const [visibleCount, setVisibleCount] = useState(24);

@@ -22,6 +22,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useVisibleMarkets } from "../hooks";
+import { useMarketHeat } from "../hooks/useMarketHeat";
 import { useAmmMarketDirect } from "../hooks/useAmmMarketDirect";
 import type { OnChainMarket } from "../hooks/useOnChainMarkets";
 import {
@@ -151,6 +152,7 @@ export const ArenaPlay = () => {
   }, [chainLevel]);
 
   const { byMarket: resolutionByMarket } = useResolutionStates();
+  const { heatByAddress } = useMarketHeat(rawMarkets.map((m) => m.address));
   const markets = useMemo<ArenaMarket[]>(() => {
     const nowSec = Date.now() / 1000;
     // The deck is for PLAYING, so tradeable markets are the deck. A resolved
@@ -177,6 +179,12 @@ export const ArenaPlay = () => {
       .filter((m) => m.tradeable)
       .map((m) => m.market)
       .sort((a, b) => {
+        // Hottest first: accumulated fees are volume in different units, so
+        // the deck opens on the market people are actually trading. Venue
+        // and depth only break ties between equally quiet markets.
+        const heat = (m: { address: string }) =>
+          heatByAddress[m.address.toLowerCase()] ?? 0;
+        if (heat(a) !== heat(b)) return heat(b) - heat(a);
         const aLive = a.stage === "orderbook" ? 1 : 0;
         const bLive = b.stage === "orderbook" ? 1 : 0;
         if (aLive !== bLive) return bLive - aLive;
@@ -199,7 +207,7 @@ export const ArenaPlay = () => {
       ...market,
       arenaCategory: effectiveCategory(market.category, market.question),
     }));
-  }, [rawMarkets, resolutionByMarket]);
+  }, [rawMarkets, resolutionByMarket, heatByAddress]);
 
   const deck = useMemo(
     () =>
