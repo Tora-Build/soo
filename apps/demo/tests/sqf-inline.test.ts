@@ -22,12 +22,21 @@ describe("parseSQF reads single-line envelopes", () => {
     expect(parsed.category).toBe("crypto");
   });
 
-  it("round-trips what generateSQF writes, icon included", () => {
+  it("round-trips what generateSQF writes", () => {
     const parsed = parseSQF(
-      generateSQF({ question: "Will SOL flip ETH?", icon: "◎", category: "crypto", rule: {} }),
+      generateSQF({ question: "Will SOL flip ETH?", category: "crypto", rule: {} }),
     );
     expect(parsed.question).toBe("Will SOL flip ETH?");
-    expect(parsed.icon).toBe("◎");
     expect(parsed.category).toBe("crypto");
+  });
+
+  it("ignores the retired §icon section on markets that carry one", () => {
+    // Markets created while icons rode the envelope still parse cleanly —
+    // the section is simply unread, and those markets render through the
+    // same fallback chain as everyone else.
+    const parsed = parseSQF("§question\nQ?\n§icon\nhttps://e.com/x.png\n§category\ncrypto");
+    expect(parsed.question).toBe("Q?");
+    expect(parsed.category).toBe("crypto");
+    expect((parsed as { icon?: string }).icon).toBeUndefined();
   });
 });

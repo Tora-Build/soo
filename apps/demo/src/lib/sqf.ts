@@ -12,10 +12,6 @@ export interface SQFRule {
 
 export interface SQFData {
   question: string;
-  /** Creator-supplied icon: an https image URL (or a legacy emoji from
-   *  earlier markets). Capped hard — it shares the question's 300-byte
-   *  on-chain budget. */
-  icon?: string;
   rule: SQFRule;
   event?: string;
   category?: string;
@@ -90,19 +86,6 @@ export function parseSQF(raw: string): SQFData {
         result.event = section.lines[0] || "";
         break;
 
-      case "icon": {
-        // An https image URL, or a short emoji from markets created before
-        // URLs were supported. Capped at 200 bytes: the section shares the
-        // question's 300-byte on-chain budget, and a field that accepts
-        // arbitrary text is a second question field. Over-long values are
-        // DISCARDED, never truncated — half a URL is not an icon.
-        const raw = (section.lines[0] || "").trim();
-        if (!raw || new TextEncoder().encode(raw).length > 200) break;
-        if (/^https:\/\//i.test(raw) || !raw.includes("://")) {
-          result.icon = raw;
-        }
-        break;
-      }
       case "category":
         result.category = section.lines[0] || "";
         break;
@@ -152,12 +135,6 @@ export function generateSQF(data: SQFData): string {
   if (data.event) {
     lines.push("§event");
     lines.push(data.event);
-  }
-
-  // §icon
-  if (data.icon?.trim()) {
-    lines.push("§icon");
-    lines.push(data.icon.trim());
   }
 
   // §category

@@ -20,9 +20,6 @@ const RING_TRACK = "rgba(255, 255, 255, 0.08)";
 
 export interface EntityIconProps {
   question: string;
-  /** Creator-supplied §icon: an https image URL, or a legacy emoji from a
-   *  market created before URLs were supported. Outranks every inference. */
-  explicitIcon?: string;
   size?: "sm" | "md" | "lg";
   market?: {
     address: `0x${string}`;
@@ -32,7 +29,6 @@ export interface EntityIconProps {
 
 export const EntityIcon = ({
   question,
-  explicitIcon,
   size = "md",
   market,
 }: EntityIconProps) => {
@@ -42,18 +38,11 @@ export const EntityIcon = ({
     stage: market?.stage,
   });
   const [failed, setFailed] = useState(false);
-  const chosen = explicitIcon?.trim() || null;
-  const chosenUrl = chosen && /^https:\/\//i.test(chosen) ? chosen : null;
-  // Legacy: markets created while §icon carried an emoji instead of a link.
-  const chosenEmoji = chosen && !chosenUrl ? chosen : null;
-  const [chosenFailed, setChosenFailed] = useState(false);
   const [localImgFailed, setLocalImgFailed] = useState(false);
-  const useChosenUrl = !!chosenUrl && !chosenFailed;
-  // Under the creator's own link: a real image for markets whose subject we
-  // recognise. Existing markets predate the icon field entirely — without
-  // this they would all wear letters forever, which is a worse answer than
-  // a correct Bitcoin logo on a Bitcoin market.
-  const local = chosenEmoji || useChosenUrl ? null : localIconFor(question);
+  // A real image for markets whose subject we recognise; initials for the
+  // rest. Icons left on-chain storage entirely — a hash over an https link
+  // pinned a mutable target — so this inference chain IS the icon system.
+  const local = localIconFor(question);
 
   const dim =
     size === "sm" ? "w-9 h-9" : size === "lg" ? "w-14 h-14" : "w-11 h-11";
@@ -61,7 +50,7 @@ export const EntityIcon = ({
     size === "sm" ? "text-xs" : size === "lg" ? "text-base" : "text-sm";
 
   const showImage =
-    !chosen && !!icon?.url && icon.source !== "category_fallback" && !failed;
+    !!icon?.url && icon.source !== "category_fallback" && !failed;
 
   const ringMode: "bonding" | "graduated" | "plain" | "dismissed" = !market
     ? "plain"
@@ -99,18 +88,7 @@ export const EntityIcon = ({
   );
 
   const accentColor = icon?.accentColor ?? local?.accentColor ?? "#888888";
-  const tileBody = useChosenUrl ? (
-    <img
-      src={chosenUrl!}
-      alt=""
-      aria-hidden="true"
-      loading="lazy"
-      // The creator's host never learns which viewer opened which market.
-      referrerPolicy="no-referrer"
-      onError={() => setChosenFailed(true)}
-      className="h-full w-full object-cover"
-    />
-  ) : showImage ? (
+  const tileBody = showImage ? (
     <img
       src={icon!.url!}
       alt=""
@@ -119,16 +97,6 @@ export const EntityIcon = ({
       onError={() => setFailed(true)}
       className="h-full w-full object-cover"
     />
-  ) : chosenEmoji ? (
-    <div
-      className={cn(
-        "h-full w-full flex items-center justify-center",
-        size === "sm" ? "text-base" : size === "lg" ? "text-2xl" : "text-xl",
-      )}
-      aria-hidden="true"
-    >
-      {chosenEmoji}
-    </div>
   ) : local?.imageUrl && !localImgFailed ? (
     <img
       src={local.imageUrl}

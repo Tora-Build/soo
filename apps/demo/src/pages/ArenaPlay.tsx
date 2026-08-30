@@ -655,7 +655,6 @@ const RealityCard = ({
           <div className="reality-entity">
             <EntityIcon
               question={market.question}
-              explicitIcon={market.icon}
               size="lg"
               market={{ address: market.address, stage: market.stage }}
             />

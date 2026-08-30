@@ -47,17 +47,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ABIS, ERC20_ABI } from "../config/abis";
 import { generateSQF } from "../lib/sqf";
-import { IconPicker, IconPreviewTile } from "../components/features/launchpad/IconPicker";
-import {
-  iconUrlIssue,
-  sqfByteLength,
-  MAX_QUESTION_BYTES,
-} from "../lib/iconUrl";
 import { useDeployments } from "../hooks/useDeployments";
 import { cn } from "../lib/utils";
 import { tokenSymbols } from "../lib/config";
 import { useTranslation } from "react-i18next";
 import { LaunchpadHeader } from "../components/features/launchpad/LaunchpadHeader";
+import { EntityIcon } from "../components/ui/EntityIcon";
 import {
   ResolutionPicker,
   type ResolutionMode,
@@ -137,8 +132,6 @@ export const Launchpad = () => {
   // Comma/space-separated guardian pubkeys to deputize right after creation.
   // Only meaningful when the creator rules (they hold the dispute authority).
   const [guardianInput, setGuardianInput] = useState("");
-  // One emoji, chosen by the creator; empty = the keyword resolver decides.
-  const [marketIcon, setMarketIcon] = useState("");
   const [expirationMode, setExpirationMode] = useState("7d");
   const [customExpiration, setCustomExpiration] = useState("");
   const [liquidityB, setLiquidityB] = useState<number>(1000);
@@ -221,20 +214,6 @@ export const Launchpad = () => {
       toast.error("Question must be at least 10 characters");
       return false;
     }
-    // The icon rides the question's 300-byte on-chain budget, so both
-    // checks belong HERE — a link the program would reject must not reach a
-    // wallet prompt and fail at the signature.
-    const iconIssue = iconUrlIssue(marketIcon);
-    if (iconIssue) {
-      toast.error(iconIssue);
-      return false;
-    }
-    if (sqfByteLength(question, marketIcon) > MAX_QUESTION_BYTES) {
-      toast.error(
-        "Question plus icon link exceed the 300-byte on-chain limit — shorten one",
-      );
-      return false;
-    }
     const deadline = getDeadline();
     const now = Math.floor(Date.now() / 1000);
     if (deadline !== NO_EXPIRY_DEADLINE && deadline <= now + 30) {
@@ -265,7 +244,6 @@ export const Launchpad = () => {
       // deck and market lists parse it back out for grouping and art.
       const sqfQuestion = generateSQF({
         question,
-        icon: marketIcon.trim() || undefined,
         rule: {},
         category,
       });
@@ -479,11 +457,15 @@ export const Launchpad = () => {
             <label className="font-mono text-xs uppercase tracking-[0.12em] text-muted">
               {t("launchpad.questionLabel")}
             </label>
-            {/* Icon beside the question, not below it: the tile and the
-                sentence are one object on every card, so composing them
-                apart is composing something the product never shows. */}
+            {/* The tile beside the question is a PREVIEW, not an input:
+                icons are a client-side rendering concern now (an https link
+                in the hash pinned a mutable target — integrity theater for
+                the pixels, at up to 200 of the question's 300 bytes). This
+                shows exactly what cards will draw for this question. */}
             <div className="flex items-start gap-3">
-              <IconPreviewTile question={question} value={marketIcon} />
+              <div className="pt-1 shrink-0">
+                <EntityIcon question={question || "?"} />
+              </div>
               <div className="min-w-0 flex-1">
                 <input
                   data-testid="launchpad-question-input"
@@ -498,12 +480,6 @@ export const Launchpad = () => {
                 </p>
               </div>
             </div>
-
-            <IconPicker
-              question={question}
-              value={marketIcon}
-              onChange={setMarketIcon}
-            />
 
             {effectiveMode === "zk" && (
               <RuleDrafter

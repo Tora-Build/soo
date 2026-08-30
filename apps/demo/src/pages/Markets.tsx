@@ -170,7 +170,6 @@ type SortId = (typeof SORT_OPTIONS)[number]["id"];
 interface MarketCardData {
   address: string;
   question: string;
-  icon?: string;
   isLive?: boolean;
   winningOutcome?: number | null;
   event?: string;
@@ -356,7 +355,6 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
           <div className="pt-0.5 shrink-0">
             <EntityIcon
               question={market.question}
-              explicitIcon={market.icon}
               market={{
                 address: market.address as `0x${string}`,
                 stage: market.stage,
@@ -675,7 +673,6 @@ const MarketsInner = () => {
           m.category ?? localMeta?.category,
           m.question,
         ),
-        icon: m.icon,
         isLive: m.isLive,
         winningOutcome: m.winningOutcome,
         stage: m.stage,

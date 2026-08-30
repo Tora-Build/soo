@@ -38,8 +38,6 @@ export interface OnChainMarket {
   /** Market.lifecycle === Open. False while Locked/resolving — a market that
    *  looks ordinary but rejects every trade. */
   isLive?: boolean;
-  /** Creator-chosen §icon emoji, when one was set at creation. */
-  icon?: string;
   event?: string; // from §event
   category?: string; // from §category
   ruleDescription?: string; // from §rule description
@@ -305,7 +303,6 @@ export function useOnChainMarkets() {
                 stage,
                 // Parsed SQF fields:
                 question: sqf.question,
-                icon: sqf.icon,
                 event: sqf.event,
                 category: sqf.category,
                 ruleDescription: sqf.rule.description,
