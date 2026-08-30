@@ -615,6 +615,79 @@ async function handlePlay(ctx) {
   );
 }
 
+// ─── market icons ────────────────────────────────────────────────────────────
+//
+// Creator-supplied icons live HERE, not on-chain: a URL in the question hash
+// pinned a mutable target (see migration 0003). GET is a batch lookup the
+// market lists make once per page; POST is first-writer-wins per market, and
+// only the original setter may replace their link.
+
+const MARKET_ICON_MAX_URL = 512;
+
+function validIconUrl(raw) {
+  if (typeof raw !== "string") return null;
+  const url = raw.trim();
+  if (!url || url.length > MARKET_ICON_MAX_URL) return null;
+  if (!/^https:\/\//i.test(url)) return null;
+  try {
+    void new URL(url);
+  } catch {
+    return null;
+  }
+  return url;
+}
+
+async function handleMarketIcons(ctx) {
+  const url = new URL(ctx.request.url);
+  const markets = (url.searchParams.get("markets") ?? "")
+    .split(",")
+    .map((m) => m.trim())
+    .filter((m) => BASE58_RE.test(m))
+    .slice(0, 100);
+  if (markets.length === 0) return json({ icons: {} });
+  const placeholders = markets.map(() => "?").join(",");
+  const rows = await ctx.env.ARENA_DB.prepare(
+    `SELECT market, url FROM market_icons WHERE market IN (${placeholders})`,
+  )
+    .bind(...markets)
+    .all();
+  const icons = {};
+  for (const row of rows.results ?? []) icons[row.market] = row.url;
+  return json({ icons });
+}
+
+async function handleSetMarketIcon(ctx) {
+  const body = await ctx.request.json().catch(() => null);
+  const market = typeof body?.market === "string" ? body.market.trim() : "";
+  const wallet = typeof body?.wallet === "string" ? body.wallet.trim() : "";
+  const iconUrl = validIconUrl(body?.url);
+  if (!BASE58_RE.test(market)) {
+    throw new ApiError(422, "market must be a base58 pubkey", "BAD_MARKET");
+  }
+  if (!BASE58_RE.test(wallet)) {
+    throw new ApiError(422, "wallet must be a base58 pubkey", "BAD_WALLET");
+  }
+  if (!iconUrl) {
+    throw new ApiError(422, "url must be a valid https link", "BAD_URL");
+  }
+  const existing = await ctx.env.ARENA_DB.prepare(
+    "SELECT creator FROM market_icons WHERE market = ?",
+  )
+    .bind(market)
+    .first();
+  if (existing && existing.creator !== wallet) {
+    throw new ApiError(403, "Only the wallet that set this icon may change it", "NOT_OWNER");
+  }
+  await ctx.env.ARENA_DB.prepare(
+    `INSERT INTO market_icons (market, url, creator, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(market) DO UPDATE SET url = excluded.url, updated_at = excluded.updated_at`,
+  )
+    .bind(market, iconUrl, wallet, Math.floor(Date.now() / 1000))
+    .run();
+  return json({ ok: true, market, url: iconUrl });
+}
+
 // ─── router ─────────────────────────────────────────────────────────────────
 
 async function dispatch(ctx) {
@@ -635,6 +708,8 @@ async function dispatch(ctx) {
   if (method === "POST" && path === "comments") return handleComment(ctx);
   if (method === "PATCH" && path === "profile") return handleProfile(ctx);
   if (method === "POST" && path === "plays") return handlePlay(ctx);
+  if (method === "GET" && path === "market-icons") return handleMarketIcons(ctx);
+  if (method === "POST" && path === "market-icon") return handleSetMarketIcon(ctx);
   throw new ApiError(404, "Arena route not found", "NOT_FOUND");
 }
 

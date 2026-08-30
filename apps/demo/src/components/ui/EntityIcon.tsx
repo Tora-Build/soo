@@ -2,6 +2,7 @@ import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { useMarketIcon } from "../../hooks/useMarketIcon";
 import { localIconFor } from "../../lib/localIcon";
+import { useRemoteMarketIcon } from "../../hooks/useRemoteMarketIcon";
 import { useGraduationRing } from "../../hooks/useGraduationRing";
 
 function getInitials(name: string): string {
@@ -39,9 +40,12 @@ export const EntityIcon = ({
   });
   const [failed, setFailed] = useState(false);
   const [localImgFailed, setLocalImgFailed] = useState(false);
-  // A real image for markets whose subject we recognise; initials for the
-  // rest. Icons left on-chain storage entirely — a hash over an https link
-  // pinned a mutable target — so this inference chain IS the icon system.
+  const [remoteFailed, setRemoteFailed] = useState(false);
+  // Precedence: the creator's own link (arena backend — off-chain by design,
+  // a hash over an https link pinned a mutable target), then a real image
+  // for recognised subjects, then initials.
+  const remote = useRemoteMarketIcon(market?.address);
+  const useRemote = !!remote && !remoteFailed;
   const local = localIconFor(question);
 
   const dim =
@@ -88,7 +92,18 @@ export const EntityIcon = ({
   );
 
   const accentColor = icon?.accentColor ?? local?.accentColor ?? "#888888";
-  const tileBody = showImage ? (
+  const tileBody = useRemote ? (
+    <img
+      src={remote!}
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      // The creator's host never learns which viewer opened which market.
+      referrerPolicy="no-referrer"
+      onError={() => setRemoteFailed(true)}
+      className="h-full w-full object-cover"
+    />
+  ) : showImage ? (
     <img
       src={icon!.url!}
       alt=""

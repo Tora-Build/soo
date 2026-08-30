@@ -52,7 +52,11 @@ import { cn } from "../lib/utils";
 import { tokenSymbols } from "../lib/config";
 import { useTranslation } from "react-i18next";
 import { LaunchpadHeader } from "../components/features/launchpad/LaunchpadHeader";
-import { EntityIcon } from "../components/ui/EntityIcon";
+import { MarketIconButton } from "../components/features/launchpad/MarketIconButton";
+import {
+  iconLinkIssue,
+  setRemoteMarketIcon,
+} from "../hooks/useRemoteMarketIcon";
 import {
   ResolutionPicker,
   type ResolutionMode,
@@ -129,6 +133,8 @@ export const Launchpad = () => {
   // null = the creator rules; a base58 pubkey = a delegated, scored
   // adjudicator picked from the directory.
   const [chosenAdjudicator, setChosenAdjudicator] = useState<string | null>(null);
+  // Optional icon link, saved to the arena backend after the market lands.
+  const [iconLink, setIconLink] = useState("");
   // Comma/space-separated guardian pubkeys to deputize right after creation.
   // Only meaningful when the creator rules (they hold the dispute authority).
   const [guardianInput, setGuardianInput] = useState("");
@@ -214,6 +220,11 @@ export const Launchpad = () => {
       toast.error("Question must be at least 10 characters");
       return false;
     }
+    const iconIssue = iconLinkIssue(iconLink);
+    if (iconIssue) {
+      toast.error(iconIssue);
+      return false;
+    }
     const deadline = getDeadline();
     const now = Math.floor(Date.now() / 1000);
     if (deadline !== NO_EXPIRY_DEADLINE && deadline <= now + 30) {
@@ -284,6 +295,15 @@ export const Launchpad = () => {
       }
       delete g.__lastCreatedMarketPda;
       const marketAddress = pda as Address;
+
+      // The icon link, saved off-chain once the market exists. Best-effort:
+      // a down arena service must not sink a launch, and the icon can be
+      // re-set later from the same wallet.
+      if (iconLink.trim() && userAddress) {
+        void setRemoteMarketIcon(pda, String(userAddress), iconLink.trim()).catch(
+          () => toast.error("Icon not saved — the arena service did not respond"),
+        );
+      }
 
       // Second signature: fund the curve. Without seed_lp the market LOOKS
       // alive but cannot trade — trade_positions mints LP to every buyer and
@@ -457,14 +477,13 @@ export const Launchpad = () => {
             <label className="font-mono text-xs uppercase tracking-[0.12em] text-muted">
               {t("launchpad.questionLabel")}
             </label>
-            {/* The tile beside the question is a PREVIEW, not an input:
-                icons are a client-side rendering concern now (an https link
-                in the hash pinned a mutable target — integrity theater for
-                the pixels, at up to 200 of the question's 300 bytes). This
-                shows exactly what cards will draw for this question. */}
             <div className="flex items-start gap-3">
-              <div className="pt-1 shrink-0">
-                <EntityIcon question={question || "?"} />
+              <div className="pt-1">
+                <MarketIconButton
+                  question={question}
+                  value={iconLink}
+                  onChange={setIconLink}
+                />
               </div>
               <div className="min-w-0 flex-1">
                 <input
