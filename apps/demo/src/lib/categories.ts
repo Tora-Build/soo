@@ -208,3 +208,23 @@ export function normalizeCategory(raw: string | undefined | null): string {
   }
   return "others";
 }
+
+/**
+ * The category a market should DISPLAY under.
+ *
+ * "others" is both a real choice and the default that unlabelled (or
+ * lazily-labelled) markets land in — several on-chain markets carry
+ * `§category others` above a question that plainly says "Bitcoin" or
+ * "rain". The stored value wins whenever it is specific; only the default
+ * bucket gets a second opinion from the question text, and only when that
+ * opinion is itself specific. A market that genuinely belongs in Others
+ * stays there, because inference returns "others" for it too.
+ */
+export function effectiveCategory(
+  stored: string | undefined | null,
+  question: string,
+): string {
+  const normalized = normalizeCategory(stored);
+  if (normalized !== "others") return normalized;
+  return normalizeCategory(inferCategory(question));
+}

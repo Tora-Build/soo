@@ -44,7 +44,7 @@ jobs:
           VITE_USE_INDEXER: "false"
           VITE_SOOTH_CORE_ID: EwiENXxrU3PEdmzCttJp9viCR6JZaFnFs3aW9n9a3EWw
           VITE_USDC_MINT: ByF1KoXgDS4hyLmqYh28Gm9s2HoxouAA1VStuKC4hErX
-          VITE_DEMO_EXTRA_MARKET_REFS: sol:EeADnXC7vto9JCzYxh98RHCZcPTi7fb3gfp2rHiqFGyA,sol:A6CkspesxURvocuXMWHZHLVUZ1sxurnsMFfdA2TSQXMH,sol:C6QwrroKHJt2MvyKSpUZCF1GwfzB1RwbnC9dN2YtAqJW,sol:B68ZZmFKAC7cE8sRYoKejFwbmiFe5CpaQMzq7qybb9X8,sol:GZHRt3CQZpFrGhxvQ5kogeUKtc5LcyM69EJ5YyoGQAop,sol:Ch7CrFj1yTnkbJfB9zLuciJFNx5nfdhyZG1PgVmLzpCo,sol:4ZiCmm5LcRqsQQiU4yY8UpNbLY6mHD61wQaDgrnYyaes,sol:8ZLH1Z74mmnegiw7VdGqscPZhA65MSX7wKeHfpoEZDLW,sol:6wujVVKwW9tUemyKoKcycVgyEk9rArZkJmWrUCkGj4rE
+          VITE_DEMO_EXTRA_MARKET_REFS: sol:EeADnXC7vto9JCzYxh98RHCZcPTi7fb3gfp2rHiqFGyA,sol:A6CkspesxURvocuXMWHZHLVUZ1sxurnsMFfdA2TSQXMH,sol:C6QwrroKHJt2MvyKSpUZCF1GwfzB1RwbnC9dN2YtAqJW,sol:B68ZZmFKAC7cE8sRYoKejFwbmiFe5CpaQMzq7qybb9X8,sol:GZHRt3CQZpFrGhxvQ5kogeUKtc5LcyM69EJ5YyoGQAop,sol:Ch7CrFj1yTnkbJfB9zLuciJFNx5nfdhyZG1PgVmLzpCo,sol:4ZiCmm5LcRqsQQiU4yY8UpNbLY6mHD61wQaDgrnYyaes,sol:8ZLH1Z74mmnegiw7VdGqscPZhA65MSX7wKeHfpoEZDLW,sol:6wujVVKwW9tUemyKoKcycVgyEk9rArZkJmWrUCkGj4rE,sol:8VvouwFQ9BNfgKgsb6MV23YGpLtAZYtQPZFMi5C6wqgv,sol:Ewn9t4AbZhFPETVd7r7gNNmnv5RGBmb8QCHtv2RbrcRq,sol:2yv6XLBSkMq8hZNn8oug9R9FmUEoh9eKPi4CieRiwNsS,sol:J8pFcq6xoSas1jbhh3ynRG9UP3V6VgTaq3XuAFB5J61v,sol:EfBhp7LuaadeVEAWZnLk2Zkm7S26ESqUbf8A8Yqfj6em
         run: pnpm build
       # Plain wrangler via pnpm dlx — wrangler-action installs wrangler with
       # npm inside the working directory, and npm cannot read the pnpm

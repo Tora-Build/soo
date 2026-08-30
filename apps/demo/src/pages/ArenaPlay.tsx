@@ -27,6 +27,7 @@ import type { OnChainMarket } from "../hooks/useOnChainMarkets";
 import {
   CATEGORY_IDS,
   CATEGORY_LABELS,
+  effectiveCategory,
   inferCategory,
   normalizeCategory,
 } from "../lib/categories";
@@ -196,9 +197,7 @@ export const ArenaPlay = () => {
       .map((m) => m.market);
     return [...tradeables, ...showcase].map((market) => ({
       ...market,
-      arenaCategory: normalizeCategory(
-        market.category?.toLowerCase() || inferCategory(market.question),
-      ),
+      arenaCategory: effectiveCategory(market.category, market.question),
     }));
   }, [rawMarkets, resolutionByMarket]);
 

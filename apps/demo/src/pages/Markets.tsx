@@ -35,6 +35,7 @@ import { cn } from "../lib/utils";
 import {
   CATEGORY_IDS,
   CATEGORY_KEYWORDS,
+  effectiveCategory,
   inferCategory,
   normalizeCategory,
 } from "../lib/categories";
@@ -669,10 +670,9 @@ const MarketsInner = () => {
         address: m.address,
         question: m.question,
         event: m.event,
-        category: normalizeCategory(
-          m.category?.toLowerCase() ||
-            localMeta?.category ||
-            inferCategory(m.question),
+        category: effectiveCategory(
+          m.category ?? localMeta?.category,
+          m.question,
         ),
         icon: m.icon,
         isLive: m.isLive,
