@@ -1162,20 +1162,13 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
               handle={handleFor(entry.wallet)}
             />
           ))}
-          {/* The house trades for real, so it is shown — but it does not
-              compete, so it sits under the field without a rank. */}
-          {board.house.map((entry, index) => (
-            <LeaderRow
-              key={entry.wallet}
-              entry={entry}
-              position={0}
-              positionLabel="—"
-              index={index}
-              isYou={isYou(entry)}
-              handle={handleFor(entry.wallet)}
-              tag="House"
-            />
-          ))}
+          {/* House wallets (seeders, burst bots) trade for real but do not
+              compete — and showing them unranked under the field read as a
+              broken sort to every fresh pair of eyes: entries with triple
+              the leader's XP sitting below rank 22. A leaderboard is a
+              competition, and non-competitors are not on it. Their volume
+              still counts in the season stats above, which is where the
+              house's activity belongs. */}
           {board.leaders.length === 0 && board.house.length === 0 && (
             <div className="play-leader-empty">
               No scored plays yet this season.
