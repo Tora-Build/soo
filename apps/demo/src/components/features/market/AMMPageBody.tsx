@@ -22,6 +22,7 @@ import { GraduationProgress, AMMSettlementCard } from "..";
 import { SimpleTradingPanel } from "../SimpleTradingPanel";
 import { MegaEthTradingPanel } from "../megaeth/MegaEthTradingPanel";
 import { MarketDetailsCard } from "./MarketDetailsCard";
+import { LPHolders } from "../LPHolders";
 import { OptimisticConsole } from "./OptimisticConsole";
 import { TradingContextBar } from "../TradingContextBar";
 import { EventChartCard } from "./EventChartCard";
@@ -249,6 +250,9 @@ export const AMMPageBody = ({
 
       {/* Full-width market details under the title bar */}
       <OptimisticConsole marketAddress={marketAddress} />
+      {/* Who backs this market — the one artifact worth saving from the
+          retired Vault page, shown where the question is actually asked. */}
+      <LPHolders marketAddress={marketAddress as `0x${string}`} />
       <MarketDetailsCard
         address={marketAddress}
         symbol={sqfMeta?.symbol}

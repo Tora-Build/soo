@@ -26,7 +26,13 @@ const PRIMARY_LINKS = [
 ] as const;
 
 const MORE_LINKS = [
-  { to: "/vault", label: "Vault", icon: Droplets },
+  // Vault (/vault) keeps its route but loses its slot: the name promised a
+  // deposit product ("vault" = put money in, earn) while the page was a
+  // read-only LP dashboard — LP tokens are minted to every AMM buyer as a
+  // side effect of trading, and there is no add-liquidity primitive to
+  // build a real vault on. Its one action (redeemLp) already lives in the
+  // Locker; its one unique asset (the LP-holders leaderboard) now renders
+  // on the market pages, where "who backs this market" is actually asked.
   { to: "/explore", label: "Explore", icon: Grid2X2 },
   { to: "/adjudicators", label: "Adjudicators", icon: Scale },
   // Sim lab (/lp-forecast) and Oracle (/operator) still exist as routes but

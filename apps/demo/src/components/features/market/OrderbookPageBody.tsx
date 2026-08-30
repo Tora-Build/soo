@@ -12,6 +12,7 @@ import { useContext, useMemo } from "react";
 
 import { TradingContextBar } from "../TradingContextBar";
 import { MarketDetailsCard } from "./MarketDetailsCard";
+import { LPHolders } from "../LPHolders";
 import { OptimisticConsole } from "./OptimisticConsole";
 import { useTruthMarketDirect, useLaunchpadMarketDirect } from "../../../hooks";
 import { useOnChainMarkets } from "../../../hooks/useOnChainMarkets";
@@ -145,6 +146,9 @@ export const OrderbookPageBody = ({
       )}
 
       <OptimisticConsole marketAddress={marketAddress} />
+      {/* Who backs this market — the one artifact worth saving from the
+          retired Vault page, shown where the question is actually asked. */}
+      <LPHolders marketAddress={marketAddress as `0x${string}`} />
       <MarketDetailsCard
         address={marketAddress}
         symbol={sqfMeta?.symbol}
