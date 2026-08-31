@@ -28,6 +28,7 @@ import {
   Swords,
   Info,
   RefreshCw,
+  CircleDollarSign,
 } from "lucide-react";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -437,6 +438,54 @@ export const Learn = () => {
                       description={t("uc.learn.pillars.soothBook.description")}
                       innovation={t("uc.learn.pillars.soothBook.innovation")}
                     />
+                  </div>
+
+                  {/* The LP mechanism, explained where someone reading ABOUT
+                      the product will look for it — the market page links
+                      here rather than carrying four sentences of theory
+                      above its own trade form. */}
+                  <div
+                    id="liquidity"
+                    className="bg-raised p-6 border border-rule scroll-mt-24"
+                  >
+                    <h4 className="text-sm font-bold text-ink mb-3 flex items-center gap-2">
+                      <CircleDollarSign className="w-4 h-4 text-accent" />
+                      Liquidity, and why nobody deposits it
+                    </h4>
+                    <div className="space-y-3 text-sm text-muted leading-relaxed">
+                      <p>
+                        Most venues ask liquidity providers to deposit capital
+                        up front. Soo never does — a market's liquidity comes
+                        from two places, and neither is a deposit form.
+                      </p>
+                      <p>
+                        <strong className="text-ink">The creator's seed.</strong>{" "}
+                        Launching a market funds its bonding curve, and the
+                        creator receives LP tokens for it. That seed is what
+                        makes the first trade possible.
+                      </p>
+                      <p>
+                        <strong className="text-ink">Fee rebates.</strong> Every
+                        pre-graduation trade mints the trader LP equal to the
+                        fee they just paid. Trading the curve makes you a
+                        liquidity provider as a side effect — you are paid back
+                        in claims on the pool rather than in cash.
+                      </p>
+                      <p>
+                        <strong className="text-ink">What LP is worth.</strong>{" "}
+                        LP redeems against whatever the vault holds after the
+                        outcome is paid — a range, because that depends on
+                        which side wins. The market page shows the pool's floor
+                        (worst case) and ceiling (best case), and your share of
+                        it. After graduation, order-book fees add to an LP
+                        yield pool on top.
+                      </p>
+                      <p>
+                        <strong className="text-ink">When you can redeem.</strong>{" "}
+                        LP unlocks the moment a market graduates, settles, or is
+                        dismissed — whichever happens first.
+                      </p>
+                    </div>
                   </div>
 
                   <div className="bg-raised p-6 border border-rule">
