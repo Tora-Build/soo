@@ -1,0 +1,7 @@
+name = "soo-resolver"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+# The resolver's shared bearer token lives in a secret, never in the browser
+# bundle. `VITE_RESOLVER_TOKEN` would have been compiled into the public JS:
+#   wrangler secret put RESOLVER_API_TOKEN

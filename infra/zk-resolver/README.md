@@ -289,6 +289,25 @@ The demo's Forge calls this at `VITE_RESOLVER_URL`. It is an accelerator: with
 the URL unset the manual path is untouched, and a rule that was never proven
 can still be committed — loudly labelled as unproven.
 
+**The Forge reaches it through a Worker, not directly.** `rule-services.ts`
+can attach `VITE_RESOLVER_TOKEN`, but anything named `VITE_` is compiled into
+the public JS bundle, so shipping the shared token that way would publish the
+credential to anyone who opens devtools — the guard would then only stop
+callers who had not looked. `infra/resolver-proxy` (`soo-resolver`) holds the
+token as a Worker secret and attaches it server-side, the same shape as
+`rpc-proxy` for the RPC key. It proxies only `POST /attest-preview` and
+`POST /register`; an open path forwarder would let a caller reach any upstream
+route with our credentials attached.
+
+    cd infra/resolver-proxy
+    pnpm dlx wrangler@4 deploy
+    pnpm dlx wrangler@4 secret put RESOLVER_API_TOKEN   # must equal the VPS .env value
+    pnpm dlx wrangler@4 secret put UPSTREAM_RESOLVER    # https://resolver.sooth.market
+
+Then point `VITE_RESOLVER_URL` at the Worker and leave `VITE_RESOLVER_TOKEN`
+unset. Rotating the token means updating both sides: the resolver's `.env` on
+the host and the Worker secret.
+
 ### Proving the endpoint itself
 
 `npm test` covers the route with a **stubbed** attestation source, deliberately:
