@@ -66,7 +66,11 @@ export function LiquidityDetailPanel({
           },
         ],
         functionName: "redeemLp",
-        args: [marketAddress, launchpad.userLpBalance],
+        // Same 18dp→6dp rescale as the Locker's panel: `userLpBalance` is a
+        // display figure, and the program's u64 is base units. This call was
+        // unreachable while markets() reported the wrong LP token, so fixing
+        // that turned a dead button into an always-failing one.
+        args: [marketAddress, launchpad.userLpBalance / 1_000_000_000_000n],
       });
       toast.success(t("liquidityDetail.redeemedSuccess"));
       invalidateQueries();

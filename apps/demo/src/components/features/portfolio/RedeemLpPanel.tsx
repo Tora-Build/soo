@@ -22,6 +22,9 @@ import { useLPPositions } from "../../../hooks";
 import { Card } from "../../ui/Card";
 import { cn } from "../../../lib/utils";
 
+/** 18dp display units → the LP mint's 6dp base units (10^12). */
+const LP_DISPLAY_SCALE = 1_000_000_000_000n;
+
 export function RedeemLpPanel() {
   const { t } = useTranslation();
   const { positions, isLoading, refetch } = useLPPositions();
@@ -33,7 +36,6 @@ export function RedeemLpPanel() {
     [positions],
   );
 
-  if (isLoading && held.length === 0) return null;
   if (held.length === 0) return null;
 
   const redeem = async (marketAddress: string, lpBalance: bigint) => {
@@ -41,10 +43,15 @@ export function RedeemLpPanel() {
     try {
       await writeContractAsync({
         functionName: "redeemLp",
-        // Whole balance: partial redemption is a slider nobody asked for,
-        // and LP has no reason to be held back — its claim is a share of a
-        // pot, not a position with upside.
-        args: [`sol:${marketAddress.replace(/^0x/, "")}`, lpBalance],
+        // Whole balance, in the MINT's base units. The shim reports LP
+        // balances scaled to 18dp because every formatter assumes that, but
+        // the program takes a u64 of 6dp base units — so passing the display
+        // figure straight through overflowed u64 on any balance above ~18 LP
+        // and burned 10^12x too much below it. Every Redeem click failed.
+        args: [
+          `sol:${marketAddress.replace(/^0x/, "")}`,
+          lpBalance / LP_DISPLAY_SCALE,
+        ],
       } as never);
       toast.success(
         t("lp.redeemed", { defaultValue: "LP redeemed — USDC is in your wallet" }),
@@ -76,6 +83,9 @@ export function RedeemLpPanel() {
         {held.map((position) => (
           <div
             key={position.marketAddress}
+            // The FULL address, so a test (or anything else) can find one
+            // market's row without reconstructing a sliced testid.
+            data-market={position.marketAddress.replace(/^(0x|sol:)/, "")}
             className="border border-rule bg-inset px-3 py-2.5 flex items-center gap-3"
           >
             <div className="min-w-0 flex-1">

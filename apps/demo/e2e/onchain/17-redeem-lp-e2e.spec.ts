@@ -49,7 +49,7 @@ function keypairBytes(filename: string): number[] {
 }
 
 test.describe("redeem LP (UI-driven)", () => {
-  test("creator redeems half LP balance for pro-rata USDC yield", async ({
+  test("creator redeems full LP balance for pro-rata USDC yield", async ({
     page,
   }) => {
     test.setTimeout(300_000);
@@ -99,7 +99,9 @@ test.describe("redeem LP (UI-driven)", () => {
     const lpBefore = (await getAccount(conn, fresh.creatorLpAta)).amount;
     expect(lpBefore).toBeGreaterThan(0n);
     const lpMintSupplyBefore = (await getMint(conn, fresh.lpMint)).supply;
-    const burnAmount = lpBefore / 2n;
+    // The panel redeems the WHOLE position — partial redemption was removed
+    // because LP has no upside to hold back, its claim is a share of a pot.
+    const burnAmount = lpBefore;
 
     const lpYieldAuthority = deriveLpYieldAuthorityPda();
     const lpYieldVault = getAssociatedTokenAddressSync(
@@ -176,10 +178,16 @@ test.describe("redeem LP (UI-driven)", () => {
       await w._connectTestWalletAs(bytes);
     }, keypairBytes("creator-keypair.json"));
 
-    const amountInput = page.getByTestId("redeem-lp-amount");
-    await expect(amountInput).toBeVisible({ timeout: 30_000 });
-    await amountInput.fill((Number(burnAmount) / 1_000_000).toString());
-    const redeemButton = page.getByTestId("redeem-lp-button");
+    // Drive the panel exactly as a holder does: find THIS market's row in
+    // the list of every position the wallet holds, and click its button.
+    // The spec used to fill a `redeem-lp-amount` input that no longer
+    // exists, so it failed at locator resolution — which is why a redeem
+    // that could not build a transaction at all shipped unnoticed.
+    const row = page.locator(
+      `[data-market="${fresh.marketPda.toBase58()}"]`,
+    );
+    await expect(row).toBeVisible({ timeout: 60_000 });
+    const redeemButton = row.getByRole("button");
     await expect(redeemButton).toBeEnabled({ timeout: 30_000 });
     await redeemButton.click();
 
@@ -187,7 +195,7 @@ test.describe("redeem LP (UI-driven)", () => {
       .poll(async () => (await getAccount(conn, fresh.creatorLpAta)).amount, {
         timeout: 60_000,
       })
-      .toBe(lpBefore - burnAmount);
+      .toBe(0n);
     // Use poll for the vault and creator USDC too — the redeem ix lands
     // in a single tx alongside the LP burn, but RPC commitment can lag a
     // beat between those two reads.
@@ -203,6 +211,10 @@ test.describe("redeem LP (UI-driven)", () => {
         { timeout: 30_000 },
       )
       .toBe(expectedPayout);
+
+    // The row disappears once the position is empty: the panel lists only
+    // balances above zero, so its absence IS the UI-side confirmation.
+    await expect(row).toHaveCount(0, { timeout: 30_000 });
 
     // UI health invariants — see PR #3 + memory feedback_e2e_must_assert_ui_health.
     await expect(

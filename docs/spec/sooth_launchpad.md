@@ -93,6 +93,19 @@ not on graduation alone: a market that settles without graduating would
 otherwise strand its LP yield in a vault nothing can open, which in turn blocks
 `close_market`, since unclaimed yield is a claim the close refuses to destroy.
 
+`lp_amount` is a `u64` in the LP mint's own base units — **6 decimals**, per
+§3. This matters at the boundary: the demo's EVM-shaped chain shim reports LP
+balances scaled to 18 decimals, because every formatter upstream of it assumes
+an ERC-20. Handing that display figure to this instruction is wrong twice
+over — it overflows `u64` above ~18.4 LP, and below that it asks to burn
+10^12 times the intended amount. Callers converting from the shim divide by
+10^12 first.
+
+Redemption pays from `lp_yield_amm` / `lp_yield_book` and from nothing else.
+The AMM's floor and ceiling collateral figures bound what the MARKET owes its
+traders after the outcome is paid; they are not an LP claim and must never be
+presented as the value of an LP position.
+
 ### 4.4 `reclaim_subsidy`
 
 Returns the creator's *unspent* subsidy after settlement, bounded both by the
