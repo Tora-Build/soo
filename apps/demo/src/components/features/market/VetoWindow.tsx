@@ -113,7 +113,7 @@ export const VetoWindowBadge = ({
           "inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] cursor-help tabular-nums",
           elapsed ? "text-accent" : "text-warn",
           variant === "bar" &&
-            "border border-current/40 bg-inset px-2 py-1 rounded-none",
+            "border border-rule bg-inset px-2 py-1 rounded-none",
           className,
         )}
       >

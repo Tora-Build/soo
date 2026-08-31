@@ -98,7 +98,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
       {showIcon && (
         <button
           type="button"
-          className="inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+          className="inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
           aria-label="Help"
           onMouseEnter={show}
           onMouseLeave={hide}

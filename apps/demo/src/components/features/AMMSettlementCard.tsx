@@ -288,7 +288,7 @@ export const AMMSettlementCard = ({
 
         {/* Position Details (Collapsed/Small) */}
         {(yesShares > 0n || noShares > 0n) && (
-          <div className="bg-inset p-3 text-sm/30">
+          <div className="bg-inset p-3 text-sm leading-relaxed">
             <div className="flex justify-between items-center text-muted font-mono text-xs mb-2 uppercase tracking-[0.12em]">
               <span>{t("settlement.yourPosition")}</span>
               <span>{t("common.shares")}</span>

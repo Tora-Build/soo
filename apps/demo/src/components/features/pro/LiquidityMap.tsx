@@ -323,7 +323,7 @@ export const LiquidityMap = ({
                               % of Depth
                             </div>
                           </div>
-                          <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-border" />
+                          <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-rule" />
                         </div>
                       );
                     })()}

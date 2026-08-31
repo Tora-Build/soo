@@ -4,12 +4,35 @@
 // `src/lib/chain-shim/`; the design system stays the same.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * A themed colour that still accepts Tailwind's `/alpha` modifier.
+ *
+ * Tailwind can only inject an alpha channel into colours it can parse. A
+ * `var(--accent)` is opaque to it, so `bg-accent/10` compiled to nothing at
+ * all — no warning, no output, just a class that does not exist. Returning a
+ * function lets the config answer differently depending on whether a modifier
+ * was used: the raw variable when it was not, a `color-mix` when it was.
+ */
+const alphaVar = (name) => ({ opacityValue }) => {
+  // Tailwind does NOT pass `undefined` when a utility carries no `/alpha`:
+  // it passes the opacity CSS variable as a string ("var(--tw-border-opacity)").
+  // Treating that as a number yielded `color-mix(… NaN%, transparent)`, an
+  // invalid declaration browsers drop on the floor — so the colour vanished
+  // exactly as before, just for a new reason. Only a finite number means a
+  // real modifier was written.
+  const alpha = Number(opacityValue);
+  return Number.isFinite(alpha)
+    ? `color-mix(in srgb, var(${name}) ${alpha * 100}%, transparent)`
+    : `var(${name})`;
+};
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     colors: {
       transparent: "transparent",
+      current: "currentColor",
       white: "#ffffff",
 
       canvas: "#0d0d0c",
@@ -25,17 +48,24 @@ export default {
       muted: "#8a8378",
       faint: "#504e48",
 
+      // Themed colours come from CSS variables so the light/dark palettes can
+      // swap at runtime — but a bare `var(--x)` cannot take Tailwind's alpha
+      // modifier, so every `bg-accent/10`, `border-warn/40` and `text-accent/70`
+      // in the app silently produced NO CSS. Forty-odd of them, across pages
+      // written long before this week. `alphaVar` keeps the runtime swap and
+      // makes the modifier work by mixing in sRGB when one is supplied.
       accent: {
-        DEFAULT: "var(--accent)",
-        muted: "var(--accent-muted)",
-        soft: "var(--accent-soft)",
+        DEFAULT: alphaVar("--accent"),
+        muted: alphaVar("--accent-muted"),
+        soft: alphaVar("--accent-soft"),
       },
 
-      pos: { DEFAULT: "var(--pos)", soft: "var(--pos-soft)" },
-      neg: { DEFAULT: "var(--neg)", soft: "var(--neg-soft)" },
-      warn: { DEFAULT: "var(--warn)", soft: "var(--warn-soft)" },
-      info: "var(--info)",
-      error: "var(--neg)",
+      pos: { DEFAULT: alphaVar("--pos"), soft: alphaVar("--pos-soft") },
+      neg: { DEFAULT: alphaVar("--neg"), soft: alphaVar("--neg-soft") },
+      warn: { DEFAULT: alphaVar("--warn"), soft: alphaVar("--warn-soft") },
+      info: alphaVar("--info"),
+      error: alphaVar("--neg"),
+      black: "#000000",
     },
     // `border` with no colour stays transparent — the design system's
     // deliberate default, so a bare `border` never draws a stray hairline.
