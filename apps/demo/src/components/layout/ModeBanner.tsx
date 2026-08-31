@@ -54,13 +54,14 @@ const MODES = [
   },
   {
     match: ["/learn"],
-    eyebrow: "Tutorial",
-    // The tutorial is a protocol explainer, not an arena mode, and this
-    // banner is its ONLY heading — the page used to print a second title of
-    // its own directly underneath, so the reader met two competing names for
-    // the same page before any content.
-    title: "How Soo works.",
-    detail: "Six short chapters, from your first trade to how a market settles.",
+    eyebrow: "Tutorial island",
+    // This banner is the page's ONLY heading: /learn used to print a second
+    // title of its own directly underneath, so a reader met two competing
+    // names for the same page before any content. Same arcade voice as every
+    // other mode — the detail line just names what the chapters actually
+    // cover, since the page no longer says it anywhere else.
+    title: "Learn the meta. Level up fast.",
+    detail: "Master the curve, the book, your LP, and how a result gets called.",
     tone: "cyan",
     icon: BookOpenCheck,
   },
