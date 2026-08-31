@@ -694,8 +694,8 @@
     },
     "lp": {
       "showHint": "Show hint",
-      "graduatedHint": "In graduated mode, trading fees are split three ways: (1) b-growth increases liquidity depth, (2) LP yield accrues to existing LP holders, and (3) protocol fee. No new LP tokens are minted from trades — your LP share only changes if you bond more LP or redeem.",
-      "bondingHint": "In bonding mode, every trade you make earns you LP tokens as a reward. The more you trade during bonding, the larger your LP position becomes. Once the market graduates, LP minting stops and your position is locked in. Early traders get the biggest LP allocation."
+      "graduatedHint": "Graduated: LP is redeemable now, and post-graduation book fees accrue to the LP yield pool.",
+      "bondingHint": "Bonding: each trade mints the trader LP equal to their fee. Redemption unlocks at graduation, settlement, or dismissal."
     },
     "pro": {
       "visuals": {

@@ -69,7 +69,7 @@ export function LPBackersButton({
           <p className="text-sm text-muted leading-relaxed border border-rule bg-inset p-3">
             {t("lp.backersExplainer", {
               defaultValue:
-                "LP here is not deposited — it is minted to every AMM buyer as they trade, plus the creator's seed at launch. It earns a share of fees and redeems against the market's floor and ceiling once the outcome settles.",
+                "LP here is never deposited. The creator seeds it at launch, and every pre-graduation AMM trade mints the trader LP equal to the fee they just paid — a rebate, not a purchase. It unlocks for redemption once the market graduates, settles, or is dismissed, and pays out against the vault between its floor and ceiling.",
             })}
           </p>
           <LPHolders marketAddress={marketAddress} />
