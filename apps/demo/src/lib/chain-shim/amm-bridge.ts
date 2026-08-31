@@ -352,9 +352,29 @@ export async function dispatchAmmRead(
         // AMM's 5% fee rate while its orderbook tab was open next to it —
         // the page contradicted itself, and the fee shown was not the fee
         // being charged.
+        // Slot 1 is the LP TOKEN, and it carried the creator's address —
+        // so every LP read in the app (creator balance, user balance, total
+        // supply) queried a wallet instead of a mint. Creator and holder
+        // balances came back zero, and totalSupply fell through to the
+        // synthetic b·ln2 anchor, which is why a market's "LP supply" and
+        // its USDC seed were the same number wearing two labels. The real
+        // mint is a PDA of the market id.
+        // `Market.market_id` is [u8; 16], the first field after the
+        // discriminator — the same decode readAmmFinance uses.
+        const marketAccount = await ctx.adapter.connection.getAccountInfo(
+          new PublicKey(marketRef.replace(/^sol:/, "")),
+        );
+        const lpMintPda = marketAccount
+          ? PublicKey.findProgramAddressSync(
+              [Buffer.from("lp"), marketAccount.data.subarray(8, 8 + 16)],
+              ctx.adapter.programIds.soothCore,
+            )[0]
+          : null;
         return [
           synthCreator,
-          synthCreator,
+          (lpMintPda
+            ? `0x${lpMintPda.toBase58()}`
+            : "0x0000000000000000000000000000000000000000") as `0x${string}`,
           snap.market.b,
           creatorDeposit,
           snap.market.isGraduated ? 1n : 0n,

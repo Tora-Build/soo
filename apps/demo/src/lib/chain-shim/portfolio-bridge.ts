@@ -328,7 +328,10 @@ export async function dispatchPortfolioRead(
     // market address to a venue mint and report the holder's USDC as "LP".
     case "balanceOf": {
       const marketRef = toMarketRef(call.address);
-      if (!marketRef) return PORTFOLIO_NOT_HANDLED;
+      // Called with the LP MINT itself (what `markets()` now reports in its
+      // lpToken slot): read the holder's ATA on that mint directly. No
+      // market lookup needed — the mint is the whole question.
+      if (!marketRef) return balanceOfMint(call, ctx);
       const fin = await readAmmFinance(ctx, marketRef);
       if (!fin) return PORTFOLIO_NOT_HANDLED;
       const holder = String(call.args?.[0] ?? "").replace(/^(0x|sol:)/, "");
@@ -350,7 +353,7 @@ export async function dispatchPortfolioRead(
     // anchor in markets-bridge remains only for calls that name no market.
     case "totalSupply": {
       const marketRef = toMarketRef(call.address);
-      if (!marketRef) return PORTFOLIO_NOT_HANDLED;
+      if (!marketRef) return supplyOfMint(call, ctx);
       const fin = await readAmmFinance(ctx, marketRef);
       if (!fin) return PORTFOLIO_NOT_HANDLED;
       return fin.lpSupplyRaw * 1_000_000_000_000n;
@@ -434,6 +437,57 @@ async function readMarketField<T>(
  * `toMarketRef` strips the `0x` and re-prepends `sol:`, so this is the
  * inverse round-trip.
  */
+/**
+ * `balanceOf`/`totalSupply` when the address is a token MINT rather than a
+ * market — the shape every LP read takes now that `markets()` reports the
+ * real LP mint. Returns NOT_HANDLED for anything that is not a mint, so
+ * unrelated balanceOf calls still reach their own handlers.
+ *
+ * Scaled to 18 decimals because every consumer formats with
+ * `formatUnits(x, 18)`; the LP mint itself is 6dp.
+ */
+async function balanceOfMint(
+  call: ReadCallShape,
+  ctx: PortfolioBridgeCtx,
+): Promise<unknown> {
+  const mintStr = String(call.address ?? "").replace(/^(0x|sol:)/, "");
+  const holderStr = String(call.args?.[0] ?? "").replace(/^(0x|sol:)/, "");
+  if (!mintStr || !holderStr) return PORTFOLIO_NOT_HANDLED;
+  try {
+    const mint = new PublicKey(mintStr);
+    const holder = new PublicKey(holderStr);
+    const { getAssociatedTokenAddressSync } = await import("@solana/spl-token");
+    const info = await ctx.adapter.connection.getAccountInfo(mint);
+    if (!info) return PORTFOLIO_NOT_HANDLED;
+    const { decimals } = await getMint(ctx.adapter.connection, mint);
+    const ata = getAssociatedTokenAddressSync(mint, holder, true);
+    try {
+      const amount = (await getAccount(ctx.adapter.connection, ata)).amount;
+      return amount * 10n ** BigInt(18 - decimals);
+    } catch {
+      // No ATA — a holder with none genuinely holds zero.
+      return 0n;
+    }
+  } catch {
+    return PORTFOLIO_NOT_HANDLED;
+  }
+}
+
+async function supplyOfMint(
+  call: ReadCallShape,
+  ctx: PortfolioBridgeCtx,
+): Promise<unknown> {
+  const mintStr = String(call.address ?? "").replace(/^(0x|sol:)/, "");
+  if (!mintStr) return PORTFOLIO_NOT_HANDLED;
+  try {
+    const mint = new PublicKey(mintStr);
+    const { supply, decimals } = await getMint(ctx.adapter.connection, mint);
+    return supply * 10n ** BigInt(18 - decimals);
+  } catch {
+    return PORTFOLIO_NOT_HANDLED;
+  }
+}
+
 function marketRefToEvmAddr(ref: string): `0x${string}` {
   const tail = ref.replace(/^sol:/, "");
   return ("0x" + tail) as `0x${string}`;

@@ -223,10 +223,17 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
       <div className="border border-rule bg-inset px-3 py-2 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-            {t("lp.poolTotal", { defaultValue: "Pool total" })}
+            {t("lp.poolTotal", { defaultValue: "Pool backing" })}
           </div>
+          {/* Money first, LP count second. LP is a real token with a real
+              supply, but nobody asks "how many LP" — they ask what it is
+              worth, and the two numbers were previously so alike (both
+              derived from b·ln2) that the units read as interchangeable. */}
           <div className="font-mono text-sm text-ink tabular-nums">
-            {fmtLp(totalLpNum)} LP
+            {stats ? fmtUsd(marketFloorVal) : "—"}
+          </div>
+          <div className="font-mono text-[10px] text-faint tabular-nums">
+            {fmtLp(totalLpNum)} LP total
           </div>
         </div>
         <div className="text-right min-w-0">
@@ -299,19 +306,21 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
 
         <div className="flex justify-between items-center text-xs">
           <div className="flex items-center gap-2 text-muted">
-            <span>{fmtLp(creatorLpNum)} LP</span>
-            <span className="text-faint">•</span>
             <span className="text-ink font-bold">
               {creatorSharePct.toFixed(0)}%
             </span>
-            {creatorYieldShare > 0 && (
-              <>
-                <span className="text-faint">•</span>
-                <span className="text-muted">
-                  +{fmtUsd(creatorYieldShare)} yield
-                </span>
-              </>
-            )}
+            <span className="text-faint">•</span>
+            <span className="text-faint">{fmtLp(creatorLpNum)} LP</span>
+            <span className="text-faint">•</span>
+            <span className={creatorYieldShare > 0 ? "text-pos" : "text-faint"}>
+              {creatorYieldShare > 0
+                ? `+${fmtUsd(creatorYieldShare)} yield`
+                : isGraduated
+                  ? t("lp.yieldNoneYet", { defaultValue: "no yield yet" })
+                  : t("lp.yieldAfterGraduation", {
+                      defaultValue: "yield starts at graduation",
+                    })}
+            </span>
           </div>
           <div className="text-muted font-mono">
             {stats ? fmtUsd(creatorCeilingVal) : "-"}
@@ -356,11 +365,11 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
 
           <div className="flex justify-between items-center text-xs">
             <div className="flex items-center gap-2 text-muted">
-              <span>{fmtLp(userLpNum)} LP</span>
-              <span className="text-faint">•</span>
               <span className="text-ink font-bold">
                 {userSharePct.toFixed(0)}%
               </span>
+              <span className="text-faint">•</span>
+              <span className="text-faint">{fmtLp(userLpNum)} LP</span>
               {userYieldShare > 0 && (
                 <>
                   <span className="text-faint">•</span>
