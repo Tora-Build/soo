@@ -13,6 +13,7 @@ import { Coins, ExternalLink, Info, Wallet } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
+import { useHasModeBanner } from "../components/layout/ModeBanner";
 
 // Simple ABIs for faucet
 const MOCK_ERC20_ABI = parseAbi([
@@ -59,6 +60,7 @@ function faucetErrorMessage(err: unknown): string {
  * everything a wallet needs to trade.
  */
 export const Faucet = () => {
+  const hasModeBanner = useHasModeBanner();
   const { t } = useTranslation();
   const { address, isConnected } = useAccount();
 
@@ -122,10 +124,16 @@ export const Faucet = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 py-8">
-      <div className="space-y-2 text-center">
-        <h1 className="text-lg font-bold text-ink">{t("faucet.title")}</h1>
-        <p className="text-muted text-sm">{t("faucet.subtitle")}</p>
-      </div>
+      {/* On /power the arcade banner already reads "Fuel your next run —
+          collect test assets and jump back into the arena", so this block
+          repeated the page's name underneath it. Under /eastboard/faucet
+          there is no banner and this is the page's only title. */}
+      {!hasModeBanner && (
+        <div className="space-y-2 text-center">
+          <h1 className="text-lg font-bold text-ink">{t("faucet.title")}</h1>
+          <p className="text-muted text-sm">{t("faucet.subtitle")}</p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="panel p-6">

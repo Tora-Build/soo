@@ -46,6 +46,7 @@ import { VetoWindowBadge } from "../components/features/market/VetoWindow";
 import { CategoryBadge } from "../components/ui/CategoryBadge";
 import { EntityIcon } from "../components/ui/EntityIcon";
 import { useQuickTrade } from "../components/features/market/QuickTradeProvider";
+import { useHasModeBanner } from "../components/layout/ModeBanner";
 
 // ─── Category visual config ───────────────────────────────────────────────
 // Local category map is retained for the filter tab navigation below, which
@@ -648,6 +649,11 @@ const EventGroupCard = ({
 const ALL_CATEGORIES = CATEGORY_IDS;
 
 const MarketsInner = () => {
+  // h2 under the arcade banner (which is the page's heading there), h1 on
+  // /eastboard/markets, which has no shell and would otherwise have no
+  // top-level heading at all.
+  const hasModeBanner = useHasModeBanner();
+  const TitleTag = hasModeBanner ? "h2" : "h1";
   const { t } = useTranslation();
   const { markets: onChainMarkets, isLoading } = useVisibleMarkets();
   const [search, setSearch] = useState("");
@@ -871,12 +877,16 @@ const MarketsInner = () => {
 
   return (
     <div className="space-y-5">
-      {/* Header: title + right-aligned search */}
+      {/* Header: title + right-aligned search.
+          On /explore the shell's banner is already the page's heading
+          ("Read the odds. Make your move."), so marking this up as an <h1>
+          too gave the document two of them and the screen two names. It
+          looks identical either way — only its level changes. */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-xl font-bold text-ink flex items-center gap-2">
+        <TitleTag className="text-xl font-bold text-ink flex items-center gap-2">
           <Flame className="w-5 h-5 text-accent" />
           {t("nav.markets")}
-        </h1>
+        </TitleTag>
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
           <input

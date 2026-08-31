@@ -482,7 +482,7 @@ export const Learn = () => {
           </nav>
 
           {/* ── chapter body ── */}
-          <main className="lg:col-span-9 min-w-0">
+          <div className="lg:col-span-9 min-w-0">
             <Card className="border border-rule p-6 sm:p-8 space-y-8">
               {step === 0 && <Basics />}
               {step === 1 && <Creating />}
@@ -526,7 +526,7 @@ export const Learn = () => {
                 )}
               </div>
             </Card>
-          </main>
+          </div>
         </div>
       </div>
     </div>
@@ -570,8 +570,8 @@ const Basics = () => (
         },
         {
           icon: Scale,
-          title: "Four ways to resolve",
-          body: "From an automated proof to a bonded stranger to a committee vote.",
+          title: "Three ways to resolve",
+          body: "An automated proof, a named adjudicator, or a bonded stranger — the creator chooses.",
         },
       ].map(({ icon: Icon, title, body }) => (
         <div key={title} className="border border-rule bg-raised p-4">
@@ -601,9 +601,10 @@ const Basics = () => (
           </p>
           <p>
             <strong className="text-ink">Fee rebates.</strong> Every trade on the
-            curve mints the trader LP equal to the fee they just paid. Trading
-            makes you a liquidity provider as a side effect — you are paid back
-            in claims on the pool rather than in cash.
+            curve before graduation mints the trader new LP worth the fee they
+            just paid. Trading makes you a liquidity provider as a side effect —
+            the fee itself stays in the pool, and what you receive is a claim on
+            it rather than cash back.
           </p>
           <p>
             <strong className="text-ink">What LP is worth.</strong> Redeeming LP
@@ -650,7 +651,7 @@ const Basics = () => (
               [
                 "Resolution",
                 "One oracle, take it or leave it",
-                "Four modes, every step on-chain",
+                "Three routes, every step on-chain",
               ],
             ].map(([k, a, b]) => (
               <tr key={k} className="border-b border-rule/40">
@@ -799,14 +800,14 @@ const Trading: React.FC<{
       <SectionTitle icon={ArrowLeftRight}>Where your fee goes</SectionTitle>
       <div className="grid sm:grid-cols-3 gap-3">
         {[
-          ["You pay 5%", "Taken from the trade, like any venue."],
+          ["You pay 5%", "The whole fee goes into the market's fee pool."],
           [
-            "You get LP back",
-            "The same amount is minted to you as LP — a claim on the pool.",
+            "The pool is split four ways",
+            "Deepening the curve, the LP yield vault, the adjudicator, and the protocol treasury.",
           ],
           [
-            "The rest is split",
-            "Between deepening the curve, the LP yield vault, and the adjudicator.",
+            "You are minted LP",
+            "Separately, and only before graduation: new LP worth the fee you just paid. Not a refund — a claim on the pool it went into.",
           ],
         ].map(([h, b], i) => (
           <div key={h} className="border border-rule bg-inset p-3">
@@ -823,10 +824,16 @@ const Trading: React.FC<{
     <Panel>
       <SectionTitle icon={Lock}>Selling has a 24-hour lock</SectionTitle>
       <p className="text-sm text-muted leading-relaxed">
-        Proceeds from selling on the curve are held for 24 hours before you can
-        withdraw them. They stay usable for new trades the whole time — the lock
-        exists to stop a trader from pumping a price, selling into the curve and
-        leaving within the same minute. Selling on the orderbook has no lock.
+        Selling on the curve does not put USDC back in your wallet. The proceeds
+        leave the pool and sit in a lock account of their own for 24 hours;
+        after that you claim them in one more transaction. They are not
+        spendable in the meantime — not on new trades, not on anything — which
+        is the point: it stops a trader pumping a price, selling into the curve
+        and leaving inside the same minute.
+      </p>
+      <p className="text-sm text-muted leading-relaxed mt-3">
+        Selling on the orderbook has no lock, because there you are selling to
+        another trader rather than to the pool.
       </p>
     </Panel>
 
@@ -911,6 +918,32 @@ const Venues = () => (
     </div>
 
     <Panel>
+      <SectionTitle icon={Lock}>
+        Both sides of a book trade post cash
+      </SectionTitle>
+      <div className="space-y-3 text-sm text-muted leading-relaxed">
+        <p>
+          There is no borrowing here and nothing to short on margin. Selling
+          YES <em className="text-ink not-italic">is</em> buying NO: if YES
+          trades at 62¢, the buyer puts up 62¢ and the seller puts up 38¢, and
+          together they fund the whole dollar that the winner will be paid.
+        </p>
+        <p>
+          So the market's vault holds exactly{" "}
+          <strong className="text-ink">$1 for every open share</strong>, always.
+          Settlement can never run short, because the money was there before the
+          trade existed.
+        </p>
+        <p>
+          Post a resting order and your side of that dollar is escrowed the
+          moment you post it — held until someone fills you, or returned the
+          moment you cancel. Closing a position you already hold releases the
+          collateral behind it instead of asking for more.
+        </p>
+      </div>
+    </Panel>
+
+    <Panel>
       <SectionTitle icon={ArrowLeftRight}>Why two venues stay honest</SectionTitle>
       <p className="text-sm text-muted leading-relaxed">
         When the curve and the book disagree, anyone can buy on the cheaper one
@@ -924,6 +957,7 @@ const Venues = () => (
       items={[
         ["Seat", "your position in a market's book: one signed number"],
         ["Tick", "a price level, 1¢ to 99.9¢ on a single YES axis"],
+        ["Escrow", "the cash held behind a resting order until it fills"],
         ["Graduation", "fees reaching 100% of the creator's deposit"],
       ]}
     />
@@ -944,12 +978,13 @@ const Resolution = () => (
       <p className="text-muted leading-relaxed">
         This is the part every prediction market gets judged on. A market is
         only as good as the answer it settles to, so Soo does not have one
-        oracle — it has four routes to an answer, and the creator picks which
-        one applies when they make the market.
+        oracle. The creator picks one of three routes when they make the
+        market — and an adjudicated market can later hand the decision to a
+        committee rather than one key.
       </p>
     </div>
 
-    <div className="grid sm:grid-cols-2 gap-4">
+    <div className="grid sm:grid-cols-3 gap-4">
       {[
         {
           icon: ShieldCheck,
@@ -966,11 +1001,6 @@ const Resolution = () => (
           name: "Optimistic",
           gist: "Nobody is appointed. After the deadline anyone can assert the outcome by posting a bond. Unchallenged, it stands. Challenged, an arbiter decides and the loser's bond pays the winner.",
         },
-        {
-          icon: Users,
-          name: "Committee",
-          gist: "Up to five attestors vote in public. The vote that reaches the threshold writes the answer.",
-        },
       ].map(({ icon: Icon, name, gist }) => (
         <div key={name} className="border border-rule bg-raised p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -981,6 +1011,25 @@ const Resolution = () => (
         </div>
       ))}
     </div>
+
+    <Panel>
+      <SectionTitle icon={Users}>
+        An adjudicator can hand the decision to a committee
+      </SectionTitle>
+      <p className="text-sm text-muted leading-relaxed">
+        This is not a fourth choice at creation — it is something the
+        adjudicator of an existing market can do at any point before it
+        settles. They convene up to five attestors and set a threshold; members
+        then cast public, changeable votes, and the vote that brings agreement
+        up to the threshold writes the outcome. Downstream nothing can tell the
+        difference between that and a single key ruling.
+      </p>
+      <p className="text-sm text-muted leading-relaxed mt-3">
+        It is additive: the convening authority keeps their own ability to
+        attest alone. A committee that does not trust its convener should be
+        the authority itself, through a multisig.
+      </p>
+    </Panel>
 
     <Panel>
       <SectionTitle icon={Timer}>Every route ends the same way</SectionTitle>

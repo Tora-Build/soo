@@ -91,6 +91,27 @@ const MODES = [
   },
 ] as const;
 
+/**
+ * Does the shell render a hero for this route?
+ *
+ * Pages that ALSO print their own title end up with two competing names for
+ * the same screen — the banner says "Turn a question into a live arena" and
+ * the page says "Create Market" directly underneath. But several of these
+ * pages are mounted twice: once in the arcade (which has this banner) and
+ * once under /eastboard (which has no shell at all), where deleting the
+ * page's own header would leave it with no title. So the page asks.
+ */
+export function useHasModeBanner(): boolean {
+  const location = useLocation();
+  return MODES.some((item) =>
+    item.match.some(
+      (route) =>
+        location.pathname === route ||
+        location.pathname.startsWith(`${route}/`),
+    ),
+  );
+}
+
 export const ModeBanner = () => {
   const location = useLocation();
   const mode = MODES.find((item) =>
