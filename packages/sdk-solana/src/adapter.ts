@@ -1664,6 +1664,92 @@ export class SolanaChainAdapter implements ChainAdapter {
     };
   }
 
+  /**
+   * `distribute_fees_amm` — split the AMM fee pool four ways.
+   *
+   * Permissionless: the program's `cranker` is an unconstrained signer. The
+   * LP slice only becomes claimable once this runs — `redeem_lp` pays from
+   * `lp_yield_amm`, and fees sit in `fee_pool_amm` until distribution moves
+   * them. The adjudicator's and treasury's destination ATAs are created
+   * idempotently as pre-instructions, because a market whose adjudicator has
+   * never held this mint would otherwise be undistributable by anyone.
+   */
+  async buildDistributeFeesAmm(
+    market: MarketRef,
+    args: { user: AddressRef },
+  ): Promise<TradeRequest> {
+    const userPk = decodePubkeyRef(args.user);
+    const marketPda = decodePubkeyRef(market);
+    const resolved = await this.fetchMarket(marketPda);
+    const id = resolved.marketId;
+    const pid = this.programIds.soothCore;
+    const pda = (seed: string, extra: Uint8Array[] = []) =>
+      PublicKey.findProgramAddressSync(
+        [Buffer.from(seed), ...extra.map((e) => Buffer.from(e))],
+        pid,
+      )[0];
+    const [configPda] = deriveProtocolConfigPda(this.programIds);
+    const config = await (this.program.account as any).protocolConfig.fetch(
+      configPda,
+    );
+    const adjudicatorAta = getAssociatedTokenAddressSync(
+      this.ammMint,
+      resolved.adjudicator,
+      true,
+    );
+    const treasuryAta = getAssociatedTokenAddressSync(
+      this.ammMint,
+      config.treasury as PublicKey,
+      true,
+    );
+    const ix: TransactionInstruction = await (this.program.methods as any)
+      .distributeFeesAmm()
+      .accounts({
+        config: configPda,
+        market: marketPda,
+        feePoolAuthority: pda("fee_pool_authority"),
+        venueMint: this.ammMint,
+        feePool: pda("fee_pool_amm", [id]),
+        bBaseYieldVault: resolved.vaultAmm,
+        lpYieldAuthority: pda("lp_yield_authority"),
+        lpMint: pda("lp", [id]),
+        lpYieldVault: pda("lp_yield_amm", [id]),
+        adjudicatorFeeVault: adjudicatorAta,
+        protocolTreasuryVault: treasuryAta,
+        cranker: userPk,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
+    return {
+      kind: "trade",
+      serializedTx: undefined,
+      accounts: ixKeysToShim(ix.keys),
+      meta: {
+        marketPda: marketPda.toBase58(),
+        ...buildIxMeta(ix, userPk),
+        preIxs: [
+          serializeIx(
+            createAssociatedTokenAccountIdempotentInstruction(
+              userPk,
+              adjudicatorAta,
+              resolved.adjudicator,
+              this.ammMint,
+            ),
+          ),
+          serializeIx(
+            createAssociatedTokenAccountIdempotentInstruction(
+              userPk,
+              treasuryAta,
+              config.treasury as PublicKey,
+              this.ammMint,
+            ),
+          ),
+        ],
+        operation: "distributeFeesAmm",
+      },
+    };
+  }
+
   // ── Guardian veto ─────────────────────────────────────────────────────
 
   /**

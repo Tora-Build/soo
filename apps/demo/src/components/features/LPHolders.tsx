@@ -13,7 +13,8 @@ import { ERC20_ABI, ABIS } from "../../config/abis";
 import { formatUnits } from "@/lib/chain-shim";
 import { CircleDollarSign, HelpCircle } from "lucide-react";
 import { useChainStore } from "../../store/useChainStore";
-import { useAccount } from "@/lib/chain-shim";
+import { useAccount, useWriteContract } from "@/lib/chain-shim";
+import toast from "react-hot-toast";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/Badge";
 import { useTranslation } from "react-i18next";
@@ -94,6 +95,26 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
 
   // Hint state - must be before early return to satisfy Rules of Hooks
   const [showHint, setShowHint] = useState(false);
+  const [distributing, setDistributing] = useState(false);
+  const { writeContractAsync } = useWriteContract();
+  const onDistribute = async () => {
+    setDistributing(true);
+    try {
+      await writeContractAsync({
+        functionName: "distributeFees",
+        args: [`sol:${String(marketAddress).replace(/^0x/, "")}`],
+      } as never);
+      toast.success(
+        t("lp.distributed", {
+          defaultValue: "Fees distributed — the LP share is claimable now",
+        }),
+      );
+    } catch (e) {
+      toast.error((e as Error).message?.slice(0, 120) ?? "Distribution failed");
+    } finally {
+      setDistributing(false);
+    }
+  };
 
   if (!launchpad) {
     return null;
@@ -426,15 +447,35 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
             only when `distribute_fees` runs. Reporting the projection as a
             balance is how an empty vault advertised twenty dollars. */}
         {lpYieldPendingNum > 0 && (
-          <div className="flex justify-between items-center border-t border-rule pt-2 mt-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-              {t("lp.yieldPending", {
-                defaultValue: "Pending distribution",
-              })}
-            </span>
-            <span className="font-mono text-sm text-muted">
-              {fmtUsd(lpYieldPendingNum)}
-            </span>
+          <div className="border-t border-rule pt-2 mt-2 space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+                {t("lp.yieldPending", {
+                  defaultValue: "Pending distribution",
+                })}
+              </span>
+              <span className="font-mono text-sm text-muted">
+                {fmtUsd(lpYieldPendingNum)}
+              </span>
+            </div>
+            {/* Distribution is permissionless — the program takes an
+                unconstrained cranker — and until someone runs it the LP
+                slice is not claimable at all. Leaving that to a keeper
+                nobody has deployed means LPs wait forever, so the crank
+                belongs to whoever is looking at the market. */}
+            <button
+              type="button"
+              disabled={distributing}
+              onClick={onDistribute}
+              data-testid="lp-distribute-button"
+              className="w-full py-2 border border-accent bg-raised hover:bg-inset font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-accent disabled:opacity-50 transition-colors"
+            >
+              {distributing
+                ? t("lp.distributing", { defaultValue: "Distributing…" })
+                : t("lp.distributeCta", {
+                    defaultValue: "Distribute fees — makes this claimable",
+                  })}
+            </button>
           </div>
         )}
 

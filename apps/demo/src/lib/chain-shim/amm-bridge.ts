@@ -847,6 +847,9 @@ export async function dispatchAmmWrite(
   if (call.functionName === "guardianUpdate") {
     return dispatchGuardianUpdate(call, ctx);
   }
+  if (call.functionName === "distributeFees") {
+    return dispatchDistributeFees(call, ctx);
+  }
   if (call.functionName === "attestorUpdate") {
     return dispatchAttestorUpdate(call, ctx);
   }
@@ -1574,6 +1577,29 @@ async function dispatchBookPlace(
   invalidateBookCache(marketRef);
   const realSignature = receipt.txId.replace(/^sol:/, "");
   return synthHashFromSignature(realSignature);
+}
+
+/**
+ * `distributeFees(market)` — split a market's AMM fee pool.
+ *
+ * Permissionless by design (the program takes an unconstrained `cranker`
+ * signer), because the LP share only becomes claimable once someone runs
+ * it: fees sit in `fee_pool_amm` until distribution moves the LP slice into
+ * `lp_yield_amm`, which is what `redeem_lp` pays from. Leaving that to a
+ * keeper nobody has deployed means LPs wait forever, so the UI hands the
+ * crank to whoever is looking at the market.
+ */
+async function dispatchDistributeFees(
+  call: WriteCallShape,
+  ctx: AmmBridgeCtx,
+): Promise<string> {
+  const { signer, userBase58 } = requireWallet(ctx, "distributeFees");
+  const marketRef = toMarketRef((call.args ?? [])[0]);
+  if (!marketRef) throw new Error("distributeFees: invalid market reference");
+  const req = await ctx.adapter.buildDistributeFeesAmm(marketRef, {
+    user: `sol:${userBase58}`,
+  });
+  return submitAndSynth(ctx.adapter, req, signer);
 }
 
 /** `attestorUpdate(market, action, key?, threshold?)` — committee management. */
