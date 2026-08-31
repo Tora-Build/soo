@@ -22,7 +22,7 @@ import { GraduationProgress, AMMSettlementCard } from "..";
 import { SimpleTradingPanel } from "../SimpleTradingPanel";
 import { MegaEthTradingPanel } from "../megaeth/MegaEthTradingPanel";
 import { MarketDetailsCard } from "./MarketDetailsCard";
-import { LPHolders } from "../LPHolders";
+import { LPBackersButton } from "./LPBackersButton";
 import { OptimisticConsole } from "./OptimisticConsole";
 import { TradingContextBar } from "../TradingContextBar";
 import { EventChartCard } from "./EventChartCard";
@@ -250,9 +250,6 @@ export const AMMPageBody = ({
 
       {/* Full-width market details under the title bar */}
       <OptimisticConsole marketAddress={marketAddress} />
-      {/* Who backs this market — the one artifact worth saving from the
-          retired Vault page, shown where the question is actually asked. */}
-      <LPHolders marketAddress={marketAddress as `0x${string}`} />
       <MarketDetailsCard
         address={marketAddress}
         symbol={sqfMeta?.symbol}
@@ -267,6 +264,10 @@ export const AMMPageBody = ({
         chainId={chainId}
         rule={sqfMeta?.rule}
       />
+
+      {/* Provenance AFTER the market's own facts, and behind a click: a
+          trading page's job is trading. */}
+      <LPBackersButton marketAddress={marketAddress as `0x${string}`} />
 
       {/* Main Content Grid — chart on left, trading on right */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-1 bg-canvas">

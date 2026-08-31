@@ -178,11 +178,13 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
       : null;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between border-b border-rule pb-4">
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <CircleDollarSign className="w-5 h-5 text-ink" />
-          <h2 className="text-lg font-bold text-ink">{t("lp.leaderboard")}</h2>
+          <CircleDollarSign className="w-4 h-4 text-accent" />
+          <h3 className="font-mono text-xs uppercase tracking-[0.12em] text-muted">
+            {t("lp.leaderboard")}
+          </h3>
         </div>
 
         {/* Hint icon */}
@@ -216,10 +218,36 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
         </div>
       </div>
 
-      {/* Header Row */}
-      <div className="flex justify-between font-mono text-xs uppercase tracking-[0.12em] text-muted tracking-wider px-2">
+      {/* The market's own totals, first: a holder's slice means nothing
+          without the pie. */}
+      <div className="border border-rule bg-inset px-3 py-2 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+            {t("lp.poolTotal", { defaultValue: "Pool total" })}
+          </div>
+          <div className="font-mono text-sm text-ink tabular-nums">
+            {fmtLp(totalLpNum)} LP
+          </div>
+        </div>
+        <div className="text-right min-w-0">
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+            {t("lp.redeemRange", { defaultValue: "Redeems between" })}
+          </div>
+          <div className="font-mono text-sm text-ink tabular-nums">
+            {stats ? `${fmtUsd(marketFloorVal)} – ${fmtUsd(marketCeilingVal)}` : "—"}
+          </div>
+        </div>
+      </div>
+
+      {/* Column legend. "Floor / ceiling" is house vocabulary: the pair is a
+          RANGE — worst case if the outcome goes against the pool, best case
+          if it goes with it — and a reader who has to infer that from two
+          bare numbers infers something else. */}
+      <div className="flex justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-faint px-1">
         <div>{t("lp.holderShare")}</div>
-        <div>{t("lp.floorCeiling")}</div>
+        <div>
+          {t("lp.rangeLegend", { defaultValue: "worst case → best case" })}
+        </div>
       </div>
 
       {/* Creator Row (Always show if it's the primary holder) */}
