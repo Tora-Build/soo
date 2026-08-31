@@ -473,12 +473,12 @@ export const Learn = () => {
                       </p>
                       <p>
                         <strong className="text-ink">What LP is worth.</strong>{" "}
-                        LP redeems against whatever the vault holds after the
-                        outcome is paid — a range, because that depends on
-                        which side wins. The market page shows the pool's floor
-                        (worst case) and ceiling (best case), and your share of
-                        it. After graduation, order-book fees add to an LP
-                        yield pool on top.
+                        Redeeming LP pays your share of the market's LP yield
+                        vault — the slice of trading fees set aside for
+                        liquidity providers. Fees reach that vault when anyone
+                        runs the permissionless distribution step, so the
+                        market page shows both what is claimable now and what
+                        is still pending.
                       </p>
                       <p>
                         <strong className="text-ink">When you can redeem.</strong>{" "}

@@ -160,6 +160,8 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
   const lpYieldPendingNum = Number(formatUnits(lpYieldPending, decimals));
   const userYieldShare =
     totalLpNum > 0 ? (userLpNum / totalLpNum) * lpYieldPoolNum : 0;
+  const userPendingShare =
+    totalLpNum > 0 ? (userLpNum / totalLpNum) * lpYieldPendingNum : 0;
   const creatorYieldShare =
     totalLpNum > 0 ? (creatorLpNum / totalLpNum) * lpYieldPoolNum : 0;
   const creatorPendingShare =
@@ -250,25 +252,26 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
       <div className="border border-rule bg-inset px-3 py-2 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-            {t("lp.poolTotal", { defaultValue: "Pool backing" })}
+            {t("lp.claimablePool", { defaultValue: "Claimable pool" })}
           </div>
-          {/* Money first, LP count second. LP is a real token with a real
-              supply, but nobody asks "how many LP" — they ask what it is
-              worth, and the two numbers were previously so alike (both
-              derived from b·ln2) that the units read as interchangeable. */}
+          {/* THE pot LP redeems from. `redeem_lp` pays a holder's share of
+              the lp_yield vaults and never touches the AMM's collateral, so
+              headlining the collateral's floor/ceiling here described a
+              claim that does not exist: redeeming 5.9% of supply paid 5.9%
+              of THIS number, not of that one. */}
           <div className="font-mono text-sm text-ink tabular-nums">
-            {stats ? fmtUsd(marketFloorVal) : "—"}
+            {fmtUsd(lpYieldPoolNum)}
           </div>
           <div className="font-mono text-[10px] text-faint tabular-nums">
-            {fmtLp(totalLpNum)} LP total
+            {fmtLp(totalLpNum)} LP outstanding
           </div>
         </div>
         <div className="text-right min-w-0">
           <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-            {t("lp.redeemRange", { defaultValue: "Redeems between" })}
+            {t("lp.perLp", { defaultValue: "Per LP, now" })}
           </div>
           <div className="font-mono text-sm text-ink tabular-nums">
-            {stats ? `${fmtUsd(marketFloorVal)} – ${fmtUsd(marketCeilingVal)}` : "—"}
+            {totalLpNum > 0 ? `$${(lpYieldPoolNum / totalLpNum).toFixed(4)}` : "—"}
           </div>
         </div>
       </div>
@@ -279,9 +282,7 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
           bare numbers infers something else. */}
       <div className="flex justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-faint px-1">
         <div>{t("lp.holderShare")}</div>
-        <div>
-          {t("lp.rangeLegend", { defaultValue: "worst case → best case" })}
-        </div>
+        <div>{t("lp.redeemableNow", { defaultValue: "redeemable now" })}</div>
       </div>
 
       {/* Creator Row (Always show if it's the primary holder) */}
@@ -322,11 +323,7 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
           </div>
           <div className="text-right">
             <div className="font-mono text-ink font-bold">
-              {stats ? (
-                fmtUsd(creatorFloorVal)
-              ) : (
-                <span className="text-muted text-xs">{t("lp.finalized")}</span>
-              )}
+              {fmtUsd(creatorYieldShare)}
             </div>
           </div>
         </div>
@@ -351,8 +348,8 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
                       })}
             </span>
           </div>
-          <div className="text-muted font-mono">
-            {stats ? fmtUsd(creatorCeilingVal) : "-"}
+          <div className="text-faint font-mono text-[10px]">
+            {t("lp.ofPool", { defaultValue: "of the claimable pool" })}
           </div>
         </div>
       </div>
@@ -381,13 +378,7 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
             </div>
             <div className="text-right">
               <div className="font-mono text-ink font-bold">
-                {stats ? (
-                  fmtUsd(userFloorVal)
-                ) : (
-                  <span className="text-muted text-xs">
-                    {t("lp.finalized")}
-                  </span>
-                )}
+                {fmtUsd(userYieldShare)}
               </div>
             </div>
           </div>
@@ -399,17 +390,17 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
               </span>
               <span className="text-faint">•</span>
               <span className="text-faint">{fmtLp(userLpNum)} LP</span>
-              {userYieldShare > 0 && (
+              {userPendingShare > 0 && (
                 <>
                   <span className="text-faint">•</span>
-                  <span className="text-muted">
-                    +{fmtUsd(userYieldShare)} yield
+                  <span className="text-faint">
+                    {fmtUsd(userPendingShare)} pending
                   </span>
                 </>
               )}
             </div>
-            <div className="text-muted font-mono">
-              {stats ? fmtUsd(userCeilingVal) : "-"}
+            <div className="text-faint font-mono text-[10px]">
+              {t("lp.ofPool", { defaultValue: "of the claimable pool" })}
             </div>
           </div>
         </div>
@@ -499,8 +490,18 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
         )}
       </div>
 
-      {/* Stats Summary - Shows TOTAL market values with exchange rates */}
-      <div className="bg-raised p-4">
+      {/* Collateral backing — a solvency fact about the MARKET, not a claim
+          on it. redeem_lp never touches this vault; it pays only from the
+          lp_yield vaults above. Kept because "is this market covered" is
+          worth knowing, retitled because the old framing read as the LP
+          payout and is what sent a holder looking for $708 when redeeming
+          paid them their share of $228. */}
+      <div className="bg-raised p-4 border-t border-rule">
+        <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint mb-2">
+          {t("lp.collateralBacking", {
+            defaultValue: "Market collateral, after the outcome is paid",
+          })}
+        </div>
         <div className="grid grid-cols-2 gap-4 mb-4">
           {/* Floor */}
           <div>
