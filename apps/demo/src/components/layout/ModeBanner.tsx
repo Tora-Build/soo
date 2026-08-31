@@ -54,9 +54,13 @@ const MODES = [
   },
   {
     match: ["/learn"],
-    eyebrow: "Tutorial island",
-    title: "Learn the meta. Level up fast.",
-    detail: "Master markets, signals, liquidity, and resolution.",
+    eyebrow: "Tutorial",
+    // The tutorial is a protocol explainer, not an arena mode, and this
+    // banner is its ONLY heading — the page used to print a second title of
+    // its own directly underneath, so the reader met two competing names for
+    // the same page before any content.
+    title: "How Soo works.",
+    detail: "Six short chapters, from your first trade to how a market settles.",
     tone: "cyan",
     icon: BookOpenCheck,
   },
