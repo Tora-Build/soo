@@ -359,17 +359,7 @@ export async function dispatchAmmRead(
         // synthetic b·ln2 anchor, which is why a market's "LP supply" and
         // its USDC seed were the same number wearing two labels. The real
         // mint is a PDA of the market id.
-        // `Market.market_id` is [u8; 16], the first field after the
-        // discriminator — the same decode readAmmFinance uses.
-        const marketAccount = await ctx.adapter.connection.getAccountInfo(
-          new PublicKey(marketRef.replace(/^sol:/, "")),
-        );
-        const lpMintPda = marketAccount
-          ? PublicKey.findProgramAddressSync(
-              [Buffer.from("lp"), marketAccount.data.subarray(8, 8 + 16)],
-              ctx.adapter.programIds.soothCore,
-            )[0]
-          : null;
+        const lpMintPda = await lpMintFor(ctx, marketRef);
         return [
           synthCreator,
           (lpMintPda
@@ -1725,6 +1715,44 @@ async function dispatchOptArbitrate(
     outcome: outcome as 0 | 1 | 2,
   });
   return submitAndSynth(ctx.adapter, req, signer);
+}
+
+/**
+ * A market's LP mint, derived once per session.
+ *
+ * The mint is a PDA of `market_id`, which never changes — but reading that
+ * id costs an account fetch, and `markets()` is called for every market on
+ * every listing poll. Uncached, that was fourteen extra round trips per
+ * poll on the deck alone.
+ */
+const lpMintCache = new Map<string, PublicKey | null>();
+
+async function lpMintFor(
+  ctx: AmmBridgeCtx,
+  marketRef: string,
+): Promise<PublicKey | null> {
+  const key = marketRef.replace(/^sol:/, "");
+  const hit = lpMintCache.get(key);
+  if (hit !== undefined) return hit;
+  try {
+    const info = await ctx.adapter.connection.getAccountInfo(
+      new PublicKey(key),
+    );
+    // `Market.market_id` is [u8; 16], the first field after the discriminator
+    // — the same decode readAmmFinance uses.
+    const mint = info
+      ? PublicKey.findProgramAddressSync(
+          [Buffer.from("lp"), info.data.subarray(8, 8 + 16)],
+          ctx.adapter.programIds.soothCore,
+        )[0]
+      : null;
+    // Only a real answer is cached; a missing account may just be a slow
+    // RPC, and caching that would blank the market's LP for the session.
+    if (mint) lpMintCache.set(key, mint);
+    return mint;
+  } catch {
+    return null;
+  }
 }
 
 /** `bookCancel(market, orderSeq)` — a real sequence, not a synthesised id. */

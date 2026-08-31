@@ -32,6 +32,10 @@ import { PublicKey } from "@solana/web3.js";
 import { getAccount, getMint } from "@solana/spl-token";
 import { toMarketRef, type ReadCallShape } from "./amm-bridge";
 import { fallbackUnlessUnreachable } from "./rpc-errors";
+import {
+  lookupMarketQuestion,
+  rememberMarketQuestion,
+} from "../market-questions";
 
 // ─── AMM finance — the real numbers behind the EVM accounting reads ─────────
 //
@@ -168,23 +172,29 @@ export async function dispatchPortfolioRead(
       // market. Snapshot reads are memoized, so verifying existence here
       // costs one batched pass; a PDA that resolves to nothing is dropped
       // from the durable stores so it stops haunting the list.
+      // Existence, in ONE call. This asked `readSnapshot` per ref — two-plus
+      // RPCs each (market account, then AMM state) — for a question that is
+      // just "does this account exist", and it re-ran on every listing poll:
+      // 6.6 seconds of RPC before the deck could render its first card, and
+      // under rate limiting it never finished at all. `getMultipleAccounts`
+      // answers the same question for a hundred markets in one round trip.
       const refs = allKnownMarketRefs(ctx);
       const alive: string[] = [];
       const dead: string[] = [];
-      await Promise.all(
-        refs.map(async (ref) => {
-          try {
-            await ctx.adapter.readSnapshot(ref);
-            alive.push(ref);
-          } catch (e) {
-            const msg = String((e as Error).message ?? e);
-            if (/AccountNotFound|not found/i.test(msg)) dead.push(ref);
-            // Any other failure (RPC hiccup) keeps the market listed — a
-            // flaky node must not delete real markets from the stores.
-            else alive.push(ref);
-          }
-        }),
-      );
+      try {
+        const pubkeys = refs.map((r) => new PublicKey(r.replace(/^sol:/, "")));
+        const infos = await ctx.adapter.connection.getMultipleAccountsInfo(
+          pubkeys,
+        );
+        refs.forEach((ref, i) => {
+          if (infos[i]) alive.push(ref);
+          else dead.push(ref);
+        });
+      } catch {
+        // A failed batch is an RPC problem, not a verdict about any market:
+        // keep every ref listed and purge nothing.
+        alive.push(...refs);
+      }
       if (dead.length > 0) {
         const deadPdas = new Set(dead.map((r) => r.replace(/^sol:/, "")));
         const g = globalThis as unknown as { __soothCreatedMarketPdas?: string[] };
@@ -229,8 +239,33 @@ export async function dispatchPortfolioRead(
       // `useOnChainMarkets` sends this one.
       const marketRef = pickMarketRef(call, ctx);
       if (!marketRef) return "";
+      // Cache FIRST, and persist what the walk finds. A question is written
+      // once and never changes, but recovering one means walking the PDA's
+      // transaction history to its oldest signature — and doing that for
+      // every market on every session put the deck 75 seconds from its
+      // first card. Now it is a once-ever cost per market, per browser.
+      const pda = marketRef.replace(/^sol:/, "");
+      const cached = lookupMarketQuestion(pda);
+      if (cached) return cached;
       try {
-        return (await ctx.adapter.readMarketQuestion(marketRef)) ?? "";
+        // The walk keeps running and still caches — but it stops BLOCKING.
+        // Recovering fourteen questions serially gated the deck's first
+        // card behind every history walk on the page; racing a short
+        // deadline renders immediately with addresses, and the questions
+        // appear on the next poll once the walks land in the cache.
+        const walk = ctx.adapter
+          .readMarketQuestion(marketRef)
+          .then((q) => {
+            const text = q ?? "";
+            if (text) rememberMarketQuestion(pda, text);
+            return text;
+          })
+          .catch(() => "");
+        const raced = await Promise.race([
+          walk,
+          new Promise<string>((resolve) => setTimeout(() => resolve(""), 1200)),
+        ]);
+        return raced;
       } catch {
         // A market created before the event carried the question, or an
         // unreadable history. Empty string means "unknown", and the caller
