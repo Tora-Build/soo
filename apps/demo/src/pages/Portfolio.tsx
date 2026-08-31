@@ -97,7 +97,11 @@ export const Portfolio = () => {
             </p>
           </div>
           <div className="border border-rule bg-inset p-4">
-            <p className="text-xs text-muted">{t("portfolio.lpFloorValue")}</p>
+            <p className="text-xs text-muted">
+              {t("portfolio.lpClaimableValue", {
+                defaultValue: "LP claimable",
+              })}
+            </p>
             <p className="mt-1 text-base font-mono font-semibold text-ink">
               {formatAmm(totalLPValueNumber)}
             </p>
@@ -277,20 +281,29 @@ export const Portfolio = () => {
                       {formatBigint(position.lpBalance, 18, 4)}
                     </p>
                   </div>
+                  {/* Redemption pays from the LP yield vault and nothing
+                      else, so those are the two numbers a holder needs.
+                      Floor and ceiling used to sit here — collateral bounds
+                      that belong to the MARKET, quoting four figures beside
+                      a two-figure payout. */}
                   <div className="border border-rule bg-raised p-3">
                     <p className="text-xs text-muted">
-                      {t("portfolio.floorValue")}
+                      {t("portfolio.claimableNow", {
+                        defaultValue: "Claimable now",
+                      })}
                     </p>
                     <p className="mt-1 font-mono text-ink">
-                      ${formatBigint(position.floorValue, 6, 2)}
+                      ${formatBigint(position.claimableValue, 6, 2)}
                     </p>
                   </div>
                   <div className="border border-rule bg-raised p-3">
                     <p className="text-xs text-muted">
-                      {t("portfolio.ceilingValue")}
+                      {t("portfolio.awaitingDistribution", {
+                        defaultValue: "Awaiting distribution",
+                      })}
                     </p>
                     <p className="mt-1 font-mono text-ink">
-                      ${formatBigint(position.ceilingValue, 6, 2)}
+                      ${formatBigint(position.pendingValue, 6, 2)}
                     </p>
                   </div>
                 </div>

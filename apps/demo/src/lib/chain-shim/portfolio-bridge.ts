@@ -69,6 +69,40 @@ interface AmmFinance {
 // positions panel crawl while everything else was quick.
 const financeCache = new Map<string, { at: number; v: Promise<AmmFinance | null> }>();
 
+/** In-flight question walks, keyed by market PDA — see `marketQuestion`. */
+const questionWalks = new Map<string, Promise<string>>();
+/** PDAs whose walk found nothing, and when it is worth trying again. */
+const questionMisses = new Map<string, number>();
+const QUESTION_MISS_TTL = 10 * 60_000;
+
+/**
+ * Drop every derived-finance cache entry for a market.
+ *
+ * `readAmmFinance` memoises LP supply for 45s, which is the denominator in
+ * every share-percent and claimable figure on the page. After a redeem
+ * burns LP, that denominator is wrong for the rest of the window — the
+ * panel showed the holder still owning a share of a supply they had just
+ * left. Writes that move LP call this.
+ */
+export function invalidateAmmFinance(marketRef: string): void {
+  financeCache.delete(marketRef);
+}
+
+/**
+ * Clear everything keyed by chain state.
+ *
+ * These caches are keyed by market PDA alone, which is only unique WITHIN a
+ * cluster — the same address on devnet and a local validator are different
+ * accounts with different balances. Rather than thread a cluster id through
+ * every key, the chain-shim drops the caches when the selected chain
+ * changes, which is the only moment the ambiguity can bite.
+ */
+export function resetPortfolioCaches(): void {
+  financeCache.clear();
+  questionWalks.clear();
+  questionMisses.clear();
+}
+
 function readAmmFinance(
   ctx: PortfolioBridgeCtx,
   marketRef: string,
@@ -181,15 +215,41 @@ export async function dispatchPortfolioRead(
       const refs = allKnownMarketRefs(ctx);
       const alive: string[] = [];
       const dead: string[] = [];
+      const maybeDead: string[] = [];
       try {
         const pubkeys = refs.map((r) => new PublicKey(r.replace(/^sol:/, "")));
-        const infos = await ctx.adapter.connection.getMultipleAccountsInfo(
-          pubkeys,
-        );
+        // The RPC caps at 100 keys; past that the whole call throws and the
+        // purge silently stops working.
+        const infos: Array<unknown> = [];
+        for (let i = 0; i < pubkeys.length; i += 100) {
+          infos.push(
+            ...(await ctx.adapter.connection.getMultipleAccountsInfo(
+              pubkeys.slice(i, i + 100),
+            )),
+          );
+        }
         refs.forEach((ref, i) => {
           if (infos[i]) alive.push(ref);
-          else dead.push(ref);
+          // A null here is not proof: `getMultipleAccountsInfo` at a lagging
+          // commitment returns null for accounts that exist, and the purge
+          // DELETES from localStorage — which no on-chain registry can undo.
+          // Confirm each candidate individually before destroying it.
+          else maybeDead.push(ref);
         });
+        await Promise.all(
+          maybeDead.map(async (ref) => {
+            try {
+              const one = await ctx.adapter.connection.getAccountInfo(
+                new PublicKey(ref.replace(/^sol:/, "")),
+                "confirmed",
+              );
+              if (one) alive.push(ref);
+              else dead.push(ref);
+            } catch {
+              alive.push(ref);
+            }
+          }),
+        );
       } catch {
         // A failed batch is an RPC problem, not a verdict about any market:
         // keep every ref listed and purge nothing.
@@ -247,25 +307,51 @@ export async function dispatchPortfolioRead(
       const pda = marketRef.replace(/^sol:/, "");
       const cached = lookupMarketQuestion(pda);
       if (cached) return cached;
+      // A walk this poll already gave up on is not worth re-walking on the
+      // next one: an unrecoverable question (created before the event
+      // carried it) would otherwise re-walk its entire signature history
+      // every poll window, forever, for every such market.
+      if (Date.now() < (questionMisses.get(pda) ?? 0)) return "";
       try {
         // The walk keeps running and still caches — but it stops BLOCKING.
         // Recovering fourteen questions serially gated the deck's first
         // card behind every history walk on the page; racing a short
         // deadline renders immediately with addresses, and the questions
         // appear on the next poll once the walks land in the cache.
-        const walk = ctx.adapter
-          .readMarketQuestion(marketRef)
-          .then((q) => {
-            const text = q ?? "";
-            if (text) rememberMarketQuestion(pda, text);
-            return text;
-          })
-          .catch(() => "");
-        const raced = await Promise.race([
-          walk,
-          new Promise<string>((resolve) => setTimeout(() => resolve(""), 1200)),
-        ]);
-        return raced;
+        //
+        // Deduped by PDA: the race resolves in 1.2s while the walk runs for
+        // several, so each poll used to start ANOTHER walk for the same
+        // market on top of the ones still in flight — the fix for a slow
+        // deck quietly multiplying the work it was meant to avoid.
+        let walk = questionWalks.get(pda);
+        if (!walk) {
+          walk = ctx.adapter
+            .readMarketQuestion(marketRef)
+            .then((q) => {
+              const text = q ?? "";
+              if (text) rememberMarketQuestion(pda, text);
+              else questionMisses.set(pda, Date.now() + QUESTION_MISS_TTL);
+              return text;
+            })
+            .catch(() => {
+              questionMisses.set(pda, Date.now() + QUESTION_MISS_TTL);
+              return "";
+            })
+            .finally(() => questionWalks.delete(pda));
+          questionWalks.set(pda, walk);
+        }
+        // The timer is cleared either way: an uncancelled 1.2s timeout per
+        // market per poll keeps the event loop busy long after the read
+        // that wanted it has returned.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const deadline = new Promise<string>((resolve) => {
+          timer = setTimeout(() => resolve(""), 1200);
+        });
+        try {
+          return await Promise.race([walk, deadline]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
       } catch {
         // A market created before the event carried the question, or an
         // unreadable history. Empty string means "unknown", and the caller
@@ -402,7 +488,12 @@ export async function dispatchPortfolioRead(
     // facts: what LP can claim today, and what is still upstream of it.
     // Returned as a pair so the UI can say both without a second read.
     case "lpYieldVaults": {
-      const marketRef = pickMarketRef(call, ctx);
+      // `pickMarketRef` only resolves markets this browser knows about, while
+      // every sibling read here uses the shape-based `toMarketRef` — so the
+      // claimable pool read $0 on any market the visitor had not created,
+      // directly above collateral figures that resolved fine. Same resolver
+      // as its neighbours now.
+      const marketRef = toMarketRef(call.address) ?? pickMarketRef(call, ctx);
       if (!marketRef) return [0n, 0n] as const;
       try {
         const marketPda = new PublicKey(marketRef.replace(/^sol:/, ""));

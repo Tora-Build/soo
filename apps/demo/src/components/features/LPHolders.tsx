@@ -4,7 +4,6 @@ import {
   useLaunchpadMarketDirect,
   useDirectRead,
   readContractSafe,
-  useTruthMarketDirect,
 } from "../../hooks";
 import { useMarketStatsMath } from "../../hooks/useMarketStatsMath";
 import { useDeployments } from "../../hooks/useDeployments";
@@ -36,11 +35,10 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
   const ammEngineAddress = deployments?.contracts?.AMMEngine as `0x${string}`;
 
   // 1. Get Launchpad Data (includes userLpBalance)
-  const { launchpad } = useLaunchpadMarketDirect(marketAddress);
+  const { launchpad, refetch: refetchLaunchpad } =
+    useLaunchpadMarketDirect(marketAddress);
 
   // 1.5. Fetch creator's actual LP balance
-  const launchpadEngineAddress = deployments?.contracts
-    ?.LaunchpadEngine as `0x${string}`;
   const { data: creatorLpBalance } = useDirectRead({
     queryKey: [
       "v8",
@@ -90,8 +88,6 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
   const stats = useMarketStatsMath(launchpad as any, ammState, decimals);
 
   // 5. Truth Market State (for finalized check)
-  const { market: truthMarket } = useTruthMarketDirect(marketAddress);
-  const isFinalized = truthMarket?.isFinalized ?? false;
 
   // Hint state - must be before early return to satisfy Rules of Hooks
   const [showHint, setShowHint] = useState(false);
@@ -109,6 +105,9 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
           defaultValue: "Fees distributed — the LP share is claimable now",
         }),
       );
+      // Without this the panel keeps showing the pending figure it just
+      // cleared, so the button reads as a no-op and invites a second crank.
+      await refetchLaunchpad?.();
     } catch (e) {
       toast.error((e as Error).message?.slice(0, 120) ?? "Distribution failed");
     } finally {
@@ -120,10 +119,11 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
     return null;
   }
 
-  // If stats are missing (e.g. finalized market), only proceed if finalized
-  if (!stats && !isFinalized) {
-    return null;
-  }
+  // No early return on missing stats. `stats` is AMM-curve math, and every
+  // reader of it below is already null-guarded — but bailing here took the
+  // yield pool, the holder table and the Distribute button down with it, so
+  // one failed AMM read hid the whole panel and made a market look like it
+  // had no liquidity backers at all.
 
   // Safe stats accessors
   const floorRate = stats?.floorRate ?? 0;
@@ -133,14 +133,10 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
     launchpad.userLpBalance !== undefined && launchpad.userLpBalance > 0n;
   const userLP = launchpad.userLpBalance ?? 0n;
   const userLpNum = Number(formatUnits(userLP, 18));
-  const userFloorVal = userLpNum * floorRate;
-  const userCeilingVal = userLpNum * ceilingRate;
 
   // Creator LP - use actual fetched balance, not total supply
   const creatorLP = creatorLpBalance ?? 0n;
   const creatorLpNum = Number(formatUnits(creatorLP, 18));
-  const creatorFloorVal = creatorLpNum * floorRate;
-  const creatorCeilingVal = creatorLpNum * ceilingRate;
 
   // Total LP for market floor/ceiling display
   const totalLpNum = Number(formatUnits(launchpad.lpSupply, 18));

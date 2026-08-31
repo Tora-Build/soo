@@ -14,6 +14,10 @@ export interface LPPosition {
   ceilingValueFormatted: string;
   floorValue: bigint;
   floorValueFormatted: string;
+  /** What redeeming THIS balance pays out today, in USDC base units. */
+  claimableValue: bigint;
+  /** This balance's share of fees not yet run through `distribute_fees`. */
+  pendingValue: bigint;
   totalSupply: bigint;
   sharePercent: number;
   totalAssets: bigint;
@@ -79,6 +83,15 @@ export function useLPPositions() {
         abi: LAUNCHPAD_MARKET_ABI,
         functionName: "pureCeilingAssets" as const,
       },
+      // The only pot redemption actually pays from. Floor and ceiling below
+      // are the MARKET's collateral bounds — they move with trading and are
+      // not a claim on anything, so presenting them as an LP's position
+      // value overstated it by orders of magnitude.
+      {
+        address: market.address,
+        abi: LAUNCHPAD_MARKET_ABI,
+        functionName: "lpYieldVaults" as const,
+      },
     ]);
   }, [markets, userAddress]);
 
@@ -105,7 +118,7 @@ export function useLPPositions() {
 
     return markets
       .map((market, i) => {
-        const baseIdx = i * 8; // 8 contract calls per market
+        const baseIdx = i * 9; // 9 contract calls per market
         const lpBalance = (lpData[baseIdx]?.result as bigint) || 0n;
         const totalSupply = (lpData[baseIdx + 1]?.result as bigint) || 0n;
         const totalAssets = (lpData[baseIdx + 2]?.result as bigint) || 0n;
@@ -116,12 +129,26 @@ export function useLPPositions() {
         const ammCash = (lpData[baseIdx + 5]?.result as bigint) || 0n;
         const floorTVL = (lpData[baseIdx + 6]?.result as bigint) || 0n;
         const ceilingTVL = (lpData[baseIdx + 7]?.result as bigint) || 0n;
+        const vaults = lpData[baseIdx + 8]?.result as
+          | readonly [bigint, bigint]
+          | undefined;
+        const yieldPool = vaults?.[0] ?? 0n;
+        const feePoolUpstream = vaults?.[1] ?? 0n;
 
         const floorValue =
           totalSupply > 0n ? (lpBalance * floorTVL) / totalSupply : 0n;
 
         const ceilingValue =
           totalSupply > 0n ? (lpBalance * ceilingTVL) / totalSupply : 0n;
+
+        // LP and supply are both 18dp here, so the scale cancels and the
+        // result lands in the vault's own 6dp USDC.
+        const claimableValue =
+          totalSupply > 0n ? (lpBalance * yieldPool) / totalSupply : 0n;
+        const pendingValue =
+          totalSupply > 0n
+            ? (((lpBalance * feePoolUpstream) / totalSupply) * 3000n) / 10000n
+            : 0n;
 
         // Calculate share percent
         const sharePercent =
@@ -138,6 +165,8 @@ export function useLPPositions() {
           ceilingValueFormatted: formatUnits(ceilingValue, USDC_DECIMALS),
           floorValue,
           floorValueFormatted: formatUnits(floorValue, USDC_DECIMALS),
+          claimableValue,
+          pendingValue,
           // Alias kept for consumers that read `estimatedValue`.
           estimatedValue: floorValue,
           estimatedValueFormatted: formatUnits(floorValue, USDC_DECIMALS),
@@ -152,9 +181,16 @@ export function useLPPositions() {
       .filter((p) => p.lpBalance > 0n); // Only show positions with LP tokens
   }, [markets, lpData]);
 
-  // Total LP value across all markets (Using Floor Value for total)
+  // Portfolio headline = what these positions PAY, summed. It used to sum
+  // floorValue — a collateral bound that belongs to the market, not the
+  // holder — which made the Locker quote a four-figure "LP value" against a
+  // two-figure redemption.
   const totalLPValue = useMemo(() => {
-    return positions.reduce((acc, p) => acc + p.floorValue, 0n);
+    return positions.reduce((acc, p) => acc + p.claimableValue, 0n);
+  }, [positions]);
+
+  const totalPendingValue = useMemo(() => {
+    return positions.reduce((acc, p) => acc + p.pendingValue, 0n);
   }, [positions]);
 
   // Total Ceiling value
@@ -172,6 +208,7 @@ export function useLPPositions() {
     positions,
     totalLPValue,
     totalLPValueFormatted,
+    totalPendingValue,
     totalCeilingValue,
     totalCeilingValueFormatted,
     isLoading: marketsLoading || lpDataLoading,

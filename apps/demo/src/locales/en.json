@@ -69,7 +69,6 @@
     "subtitle": "Combined wallet position value and LP exposure.",
     "totalValue": "Total Value",
     "activePositionValue": "Active Position Value",
-    "lpFloorValue": "LP Floor Value",
     "openMarkets": "Open Markets",
     "activePositions": "Active Positions",
     "noPositions": "No active AMM positions yet.",
@@ -88,7 +87,10 @@
     "liveLpPosition": "Live LP position",
     "preLiveLpPosition": "Pre-live LP position",
     "markets": "markets",
-    "open": "open"
+    "open": "open",
+    "claimableNow": "Claimable now",
+    "awaitingDistribution": "Awaiting distribution",
+    "lpClaimableValue": "LP claimable"
   },
   "create": {
     "title": "Create Market",
@@ -228,7 +230,6 @@
   "lp": {
     "leaderboard": "LP Leaderboard",
     "holderShare": "LP Holder / Share",
-    "floorCeiling": "Floor / Ceiling",
     "creator": "Creator",
     "you": "You",
     "yieldPool": "LP Yield Pool",
@@ -240,7 +241,29 @@
     "ceiling": "Ceiling",
     "finalized": "Finalized",
     "total": "Total:",
-    "totalAccounted": "100% Accounted"
+    "totalAccounted": "100% Accounted",
+    "backersTitle": "Liquidity backers",
+    "backersSubtitle": "Who backs this market, and what their LP is worth",
+    "backersCta": "View",
+    "backersExplainer": "LP is never deposited here — it is minted to traders as a fee rebate, plus the creator's seed.",
+    "backersLearnMore": "How it works →",
+    "claimablePool": "Claimable pool",
+    "collateralBacking": "Market collateral, after the outcome is paid",
+    "distributeCta": "Distribute fees — makes this claimable",
+    "distributing": "Distributing…",
+    "distributed": "Fees distributed — the LP share is claimable now",
+    "ofPool": "of pool",
+    "ofSupply": "of supply",
+    "perLp": "per LP",
+    "redeemTitle": "Your Liquidity",
+    "redeemSubtitle": "LP you earned by trading or seeding. Redeeming burns it and pays your share of the market's fee pool.",
+    "redeemCta": "Redeem",
+    "redeemed": "LP redeemed — USDC is in your wallet",
+    "redeemableNow": "Redeemable now",
+    "yieldAfterGraduation": "Yield accrues after graduation",
+    "yieldClaimable": "claimable now",
+    "yieldNoneYet": "No yield yet",
+    "yieldPending": "Pending distribution"
   },
   "trading": {
     "currentPrice": "Current Price",

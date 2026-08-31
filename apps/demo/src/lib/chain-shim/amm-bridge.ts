@@ -33,6 +33,7 @@
 //   decimals        → 6 (USDC)
 
 import { rememberMarketQuestion } from "../market-questions";
+import { invalidateAmmFinance } from "./portfolio-bridge";
 import {
   ComputeBudgetProgram,
   Keypair,
@@ -1580,14 +1581,21 @@ async function dispatchBookPlace(
 }
 
 /**
- * `distributeFees(market)` — split a market's AMM fee pool.
+ * `distributeFees(market)` — split BOTH of a market's fee pools.
  *
  * Permissionless by design (the program takes an unconstrained `cranker`
  * signer), because the LP share only becomes claimable once someone runs
- * it: fees sit in `fee_pool_amm` until distribution moves the LP slice into
- * `lp_yield_amm`, which is what `redeem_lp` pays from. Leaving that to a
+ * it: fees sit in `fee_pool_*` until distribution moves the LP slice into
+ * `lp_yield_*`, which is what `redeem_lp` pays from. Leaving that to a
  * keeper nobody has deployed means LPs wait forever, so the UI hands the
  * crank to whoever is looking at the market.
+ *
+ * Both venues, because the figure the button sits under sums both pools.
+ * Cranking only the AMM left a graduated market's book fees stranded and
+ * the "pending" line stuck at a non-zero number no amount of clicking
+ * could clear. They are separate instructions because their splits differ
+ * (the book has no `b_base` share), so this is two transactions; the book
+ * pool is usually empty pre-graduation and that call is skipped.
  */
 async function dispatchDistributeFees(
   call: WriteCallShape,
@@ -1596,10 +1604,26 @@ async function dispatchDistributeFees(
   const { signer, userBase58 } = requireWallet(ctx, "distributeFees");
   const marketRef = toMarketRef((call.args ?? [])[0]);
   if (!marketRef) throw new Error("distributeFees: invalid market reference");
-  const req = await ctx.adapter.buildDistributeFeesAmm(marketRef, {
+
+  const ammReq = await ctx.adapter.buildDistributeFeesAmm(marketRef, {
     user: `sol:${userBase58}`,
   });
-  return submitAndSynth(ctx.adapter, req, signer);
+  const ammSig = await submitAndSynth(ctx.adapter, ammReq, signer);
+
+  // The book pool is empty on every market that has not graduated, and its
+  // instruction fails rather than no-oping on an empty pool. A failure here
+  // must not undo the AMM crank that already landed, so it is reported and
+  // swallowed — the AMM signature is what the caller gets either way.
+  try {
+    const bookReq = await ctx.adapter.buildDistributeFees(marketRef, {
+      venue: "book",
+      cranker: `sol:${userBase58}`,
+    });
+    await submitAndSynth(ctx.adapter, bookReq, signer);
+  } catch (err) {
+    console.info("[distributeFees] book pool not distributable:", err);
+  }
+  return ammSig;
 }
 
 /** `attestorUpdate(market, action, key?, threshold?)` — committee management. */
@@ -1752,6 +1776,12 @@ async function dispatchOptArbitrate(
  * poll on the deck alone.
  */
 const lpMintCache = new Map<string, PublicKey | null>();
+
+/** See `resetPortfolioCaches` — same reasoning, same trigger. */
+export function resetAmmCaches(): void {
+  lpMintCache.clear();
+  bookCache.clear();
+}
 
 async function lpMintFor(
   ctx: AmmBridgeCtx,
@@ -2057,7 +2087,11 @@ async function dispatchRedeemLp(
     user: `sol:${userBase58}`,
     lpAmount,
   });
-  return submitAndSynth(ctx.adapter, req, signer);
+  const sig = await submitAndSynth(ctx.adapter, req, signer);
+  // The burn changes LP supply — the denominator behind every share and
+  // claimable figure — and that supply is memoised for 45s.
+  invalidateAmmFinance(marketRef);
+  return sig;
 }
 
 

@@ -69,7 +69,6 @@
     "subtitle": "综合钱包持仓价值与 LP 敞口。",
     "totalValue": "总价值",
     "activePositionValue": "活跃持仓价值",
-    "lpFloorValue": "LP 底价价值",
     "openMarkets": "参与市场",
     "activePositions": "活跃持仓",
     "noPositions": "暂无 AMM 持仓。",
@@ -88,7 +87,10 @@
     "liveLpPosition": "活跃 LP 持仓",
     "preLiveLpPosition": "预上线 LP 持仓",
     "markets": "个市场",
-    "open": "个挂单"
+    "open": "个挂单",
+    "claimableNow": "当前可领取",
+    "awaitingDistribution": "待分配",
+    "lpClaimableValue": "LP 可领取"
   },
   "create": {
     "title": "创建市场",
@@ -228,7 +230,6 @@
   "lp": {
     "leaderboard": "LP 排行榜",
     "holderShare": "LP 持有者 / 份额",
-    "floorCeiling": "底价 / 天花板",
     "creator": "创建者",
     "you": "您",
     "yieldPool": "LP 收益池",
@@ -240,7 +241,29 @@
     "ceiling": "天花板",
     "finalized": "已完成",
     "total": "合计：",
-    "totalAccounted": "100% 已核算"
+    "totalAccounted": "100% 已核算",
+    "backersTitle": "流动性支持者",
+    "backersSubtitle": "谁在支持这个市场，他们的 LP 值多少",
+    "backersCta": "查看",
+    "backersExplainer": "这里的 LP 无需存入——它作为手续费返还铸造给交易者，另加创建者的初始份额。",
+    "backersLearnMore": "运作方式 →",
+    "claimablePool": "可领取资金池",
+    "collateralBacking": "结果结算后的市场抵押品",
+    "distributeCta": "分配手续费——使其可领取",
+    "distributing": "分配中…",
+    "distributed": "手续费已分配——LP 份额现在可以领取",
+    "ofPool": "占资金池",
+    "ofSupply": "占总供应量",
+    "perLp": "每 LP",
+    "redeemTitle": "你的流动性",
+    "redeemSubtitle": "你通过交易或初始注入获得的 LP。赎回会销毁它，并支付你在该市场手续费池中的份额。",
+    "redeemCta": "赎回",
+    "redeemed": "LP 已赎回——USDC 已到账",
+    "redeemableNow": "当前可赎回",
+    "yieldAfterGraduation": "收益在毕业后开始累积",
+    "yieldClaimable": "当前可领取",
+    "yieldNoneYet": "暂无收益",
+    "yieldPending": "待分配"
   },
   "trading": {
     "currentPrice": "当前价格",
