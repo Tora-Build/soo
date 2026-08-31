@@ -126,16 +126,16 @@ export function MarketIconButton({
             data-testid="icon-url-input"
             className={cn(
               "w-full bg-inset border px-2.5 py-2 font-mono text-xs text-ink placeholder:text-faint focus:outline-none",
-              issue || loadFailed ? "border-red-500/60" : "border-rule focus:border-accent",
+              issue || loadFailed ? "border-neg/60" : "border-rule focus:border-accent",
             )}
           />
           {issue ? (
-            <p className="flex items-center gap-1.5 font-mono text-[10px] text-red-400">
+            <p className="flex items-center gap-1.5 font-mono text-[10px] text-neg">
               <AlertTriangle className="h-3 w-3 shrink-0" />
               {issue}
             </p>
           ) : loadFailed ? (
-            <p className="flex items-center gap-1.5 font-mono text-[10px] text-red-400">
+            <p className="flex items-center gap-1.5 font-mono text-[10px] text-neg">
               <AlertTriangle className="h-3 w-3 shrink-0" />
               {t("launchpad.iconUnreachable", {
                 defaultValue: "That link did not load as an image",

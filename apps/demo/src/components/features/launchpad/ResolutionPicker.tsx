@@ -549,11 +549,11 @@ function AdjudicatorDirectory({
           data-testid="adjudicator-custom-input"
           className={cn(
             "w-full bg-inset border px-3 py-2 font-mono text-xs text-ink placeholder:text-faint focus:outline-none",
-            customError ? "border-red-500/60" : "border-rule focus:border-accent",
+            customError ? "border-neg/60" : "border-rule focus:border-accent",
           )}
         />
         {customError && (
-          <p className="font-mono text-[10px] text-red-400">{customError}</p>
+          <p className="font-mono text-[10px] text-neg">{customError}</p>
         )}
       </div>
       <a

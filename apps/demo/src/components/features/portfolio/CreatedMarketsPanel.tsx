@@ -385,7 +385,7 @@ function CreatedMarketRow({
               className={cn(
                 "font-mono text-[10px] uppercase tracking-[0.12em]",
                 view.phase === "veto" || view.phase === "pastDeadline"
-                  ? "text-amber-400"
+                  ? "text-warn"
                   : view.phase === "settleable"
                     ? "text-accent"
                     : "text-muted",
@@ -418,7 +418,7 @@ function CreatedMarketRow({
             </span>
             {isDelegated && (
               <span
-                className="font-mono text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5 border border-sky-500/50 text-sky-400"
+                className="font-mono text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5 border border-info/50 text-info"
                 title="You did not create this market — you hold a resolution role on it"
               >
                 {view.isAdjudicator ? "YOUR RULING" : "YOUR DUTY"}

@@ -274,7 +274,7 @@ function EndedChip({ deadline }: { deadline?: number }) {
   if (!deadline || deadline > 4102444800) return null;
   if (Date.now() / 1000 < deadline) return null;
   return (
-    <span className="font-mono text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5 border border-amber-500/50 text-amber-400">
+    <span className="font-mono text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5 border border-warn/50 text-warn">
       ENDED
     </span>
   );
@@ -385,7 +385,7 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
             <button
               type="button"
               onClick={openMarket}
-              className="flex-1 py-1.5 font-mono text-xs font-bold uppercase tracking-[0.08em] bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/25 transition-colors rounded-sm"
+              className="flex-1 py-1.5 font-mono text-xs font-bold uppercase tracking-[0.08em] bg-pos/10 text-pos hover:bg-pos/25 transition-colors rounded-sm"
               data-testid="card-buy-yes"
             >
               {t("marketsPage.buyYes", { defaultValue: "Buy Yes" })}
@@ -406,7 +406,7 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
             className={cn(
               "py-1.5 flex items-center justify-center gap-1.5 font-mono text-xs font-bold uppercase tracking-[0.12em] rounded-sm",
               market.winningOutcome === 1
-                ? "bg-emerald-500/10 text-emerald-500"
+                ? "bg-pos/10 text-pos"
                 : market.winningOutcome === 0
                   ? "bg-error/10 text-error"
                   : "bg-inset text-muted",
@@ -421,10 +421,10 @@ const MarketCard = ({ market }: { market: MarketCardData }) => {
           </div>
         ) : (
           <div
-            className="py-1.5 flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-amber-400/90 bg-amber-500/5 rounded-sm"
+            className="py-1.5 flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-warn/90 bg-warn/5 rounded-sm"
             data-testid="card-closed"
           >
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-warn animate-pulse" />
             {t("marketsPage.cardResolving", { defaultValue: "Resolving" })}
           </div>
         )}
@@ -485,13 +485,13 @@ const ChanceGauge = ({ address }: { address: string }) => {
           strokeWidth="3.5"
           strokeLinecap="round"
           strokeDasharray={`${half * yes} ${half}`}
-          className={yes >= 0.5 ? "stroke-emerald-500" : "stroke-error"}
+          className={yes >= 0.5 ? "stroke-pos" : "stroke-error"}
         />
       </svg>
       <span
         className={cn(
           "font-mono font-bold tabular-nums text-base -mt-2.5",
-          yes >= 0.5 ? "text-emerald-500" : "text-error",
+          yes >= 0.5 ? "text-pos" : "text-error",
         )}
       >
         {pct}%

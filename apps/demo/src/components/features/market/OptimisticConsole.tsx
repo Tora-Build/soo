@@ -138,7 +138,7 @@ export function OptimisticConsole({ marketAddress }: { marketAddress: string }) 
       ) : proposal.challenger ? (
         <>
           <p className="text-sm text-muted leading-relaxed">
-            <span className="text-amber-400 font-semibold">
+            <span className="text-warn font-semibold">
               {t("optimistic.challenged", { defaultValue: "CHALLENGED." })}
             </span>{" "}
             {t("optimistic.challengedDetail", {
@@ -196,7 +196,7 @@ export function OptimisticConsole({ marketAddress }: { marketAddress: string }) 
                 "Challenged — the arbiter decides, loser pays winner",
               )
             }
-            className="px-4 py-2 font-mono text-xs font-bold uppercase tracking-[0.1em] border border-amber-500/60 text-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
+            className="px-4 py-2 font-mono text-xs font-bold uppercase tracking-[0.1em] border border-warn/60 text-warn hover:bg-warn/10 disabled:opacity-50"
             data-testid="opt-challenge"
           >
             {busy === "challenge" ? (

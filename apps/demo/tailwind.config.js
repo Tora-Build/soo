@@ -37,9 +37,18 @@ export default {
       info: "var(--info)",
       error: "var(--neg)",
     },
-    borderColor: {
+    // `border` with no colour stays transparent — the design system's
+    // deliberate default, so a bare `border` never draws a stray hairline.
+    // But this key REPLACED the palette instead of setting its default, so
+    // every `border-<colour>` in the app resolved to nothing: border-accent,
+    // border-emerald-500, border-red-500 and friends were silently invisible
+    // wherever they were used, which is why controls kept "not showing up"
+    // no matter how much contrast they were given. Spreading the palette
+    // back restores them and keeps the transparent default.
+    borderColor: ({ theme }) => ({
+      ...theme("colors"),
       DEFAULT: "transparent",
-    },
+    }),
     extend: {
       fontFamily: {
         sans: [

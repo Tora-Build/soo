@@ -82,10 +82,10 @@ export function VetoControl({
 
   return (
     <div
-      className="mt-2 border border-amber-500/40 bg-amber-500/5 p-2.5 space-y-1.5"
+      className="mt-2 border border-warn/40 bg-warn/5 p-2.5 space-y-1.5"
       data-testid="veto-control"
     >
-      <p className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-amber-400">
+      <p className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-warn">
         <ShieldAlert className="h-3 w-3" />
         {t("veto.title", { defaultValue: "Guardian veto — reject this ruling" })}
       </p>
@@ -105,7 +105,7 @@ export function VetoControl({
             type="button"
             disabled={busy}
             onClick={() => veto(claim)}
-            className="px-2.5 py-1 font-mono text-[10px] font-bold uppercase border border-amber-500/50 text-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
+            className="px-2.5 py-1 font-mono text-[10px] font-bold uppercase border border-warn/50 text-warn hover:bg-warn/10 disabled:opacity-50"
             data-testid={`veto-claim-${claim}`}
           >
             {busy ? (
@@ -177,7 +177,7 @@ export function GuardianManager({ market }: { market: string }) {
                 type="button"
                 disabled={busy}
                 onClick={() => update(g, true)}
-                className="text-faint hover:text-red-400 disabled:opacity-50"
+                className="text-faint hover:text-neg disabled:opacity-50"
                 aria-label={`Remove guardian ${g}`}
               >
                 <X className="h-3 w-3" />
@@ -333,7 +333,7 @@ export function CommitteeControls({
                   type="button"
                   disabled={busy}
                   onClick={() => write(["remove", a], "Attestor removed")}
-                  className="text-faint hover:text-red-400 disabled:opacity-50"
+                  className="text-faint hover:text-neg disabled:opacity-50"
                   aria-label={`Remove attestor ${a}`}
                 >
                   <X className="h-3 w-3" />

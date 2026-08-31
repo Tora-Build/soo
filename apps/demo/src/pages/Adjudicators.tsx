@@ -213,11 +213,11 @@ export default function Adjudicators() {
                   className={cn(
                     "text-3xl font-bold tabular-nums leading-none",
                     score.tier === "trusted"
-                      ? "text-emerald-400"
+                      ? "text-pos"
                       : score.tier === "caution"
-                        ? "text-red-400"
+                        ? "text-neg"
                         : score.tier === "standing"
-                          ? "text-sky-400"
+                          ? "text-info"
                           : "text-muted",
                   )}
                 >
@@ -249,16 +249,16 @@ export default function Adjudicators() {
                 <CopyableAddress address={authority} />
                 <div className="flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px] text-muted">
                   <span>{score.record.resolvedRulings} resolved</span>
-                  <span className="text-emerald-400">
+                  <span className="text-pos">
                     {score.record.cleanRulings} clean
                   </span>
                   {score.record.overriddenRulings > 0 && (
-                    <span className="text-red-400">
+                    <span className="text-neg">
                       {score.record.overriddenRulings} vetoed
                     </span>
                   )}
                   {score.record.forcedInvalids > 0 && (
-                    <span className="text-amber-400">
+                    <span className="text-warn">
                       {score.record.forcedInvalids} forced invalid
                     </span>
                   )}

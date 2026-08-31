@@ -121,7 +121,7 @@ export const Portfolio = () => {
 
       <ClaimRefundPanel marketRef={panelMarketRef} />
 
-      <RedeemLpPanel marketRef={panelMarketRef} />
+      <RedeemLpPanel />
 
       <OperatorActionsPanel />
 

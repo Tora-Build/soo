@@ -1,171 +1,113 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAccount, useWriteContract } from "@/lib/chain-shim";
+/**
+ * Redeem LP — every position the wallet holds, in one place.
+ *
+ * This panel used to redeem exactly ONE market: whichever arrived in the
+ * `?market=` query string, falling back to the single env-seeded market. A
+ * holder with LP in five markets could reach one of them, and only by
+ * following a link that happened to carry it — while `useLPPositions`, two
+ * components up the page, already knew about all five.
+ *
+ * Redemption lives HERE and not in the market page's liquidity drawer on
+ * purpose: the drawer answers "who backs this market" for anyone looking at
+ * it, while claiming is a thing you do to your OWN holdings, and holdings
+ * belong in the Locker beside every other position.
+ */
+import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
-import { useDemo } from "../../../lib/DemoContext";
-import { demoConfig } from "../../../lib/config";
-import { Button } from "../../ui/Button";
+import { Coins, Loader2 } from "lucide-react";
+
+import { useWriteContract } from "@/lib/chain-shim";
+import { useLPPositions } from "../../../hooks";
 import { Card } from "../../ui/Card";
+import { cn } from "../../../lib/utils";
 
-interface RedeemLpPanelProps {
-  marketRef?: string | null;
-}
-
-interface LpState {
-  isGraduated: boolean;
-  lpBalance: bigint;
-  lpSupply: bigint;
-  lpYieldVaultAmount: bigint;
-}
-
-const REFRESH_MS = 8_000;
-const LP_DECIMALS = 6;
-
-export function RedeemLpPanel({ marketRef }: RedeemLpPanelProps) {
-  const { isConnected, address } = useAccount();
-  const demo = useDemo();
-  const adapter = demo?.adapter ?? null;
+export function RedeemLpPanel() {
+  const { t } = useTranslation();
+  const { positions, isLoading, refetch } = useLPPositions();
   const { writeContractAsync } = useWriteContract();
-  const activeMarketRef = marketRef ?? demoConfig.marketRef;
-  const userRef = useMemo(
-    () => (address ? `sol:${String(address).replace(/^0x/, "")}` : null),
-    [address],
+  const [busyMarket, setBusyMarket] = useState<string | null>(null);
+
+  const held = useMemo(
+    () => positions.filter((p) => p.lpBalance > 0n),
+    [positions],
   );
-  const [state, setState] = useState<LpState | null>(null);
-  const [amount, setAmount] = useState("");
-  const [pending, setPending] = useState(false);
 
-  const refresh = useCallback(async () => {
-    if (!adapter || !activeMarketRef || !userRef) {
-      setState(null);
-      return;
-    }
-    try {
-      const info = await adapter.readLpRedemption(activeMarketRef, userRef);
-      setState({
-        isGraduated: info.isGraduated,
-        lpBalance: info.lpBalance,
-        lpSupply: info.lpSupply,
-        lpYieldVaultAmount: info.lpYieldVaultAmount,
-      });
-      setAmount((prev) => prev || formatLp(info.lpBalance));
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("[RedeemLpPanel] refresh failed", e);
-      setState(null);
-    }
-  }, [adapter, activeMarketRef, userRef]);
+  if (isLoading && held.length === 0) return null;
+  if (held.length === 0) return null;
 
-  useEffect(() => {
-    void refresh();
-    const id = window.setInterval(() => void refresh(), REFRESH_MS);
-    return () => window.clearInterval(id);
-  }, [refresh]);
-
-  const lpAmount = useMemo(() => parseLpAmount(amount), [amount]);
-  const expectedPayout =
-    state && state.lpSupply > 0n && lpAmount > 0n
-      ? (state.lpYieldVaultAmount * lpAmount) / state.lpSupply
-      : 0n;
-  const amountValid =
-    !!state && lpAmount > 0n && lpAmount <= state.lpBalance && !pending;
-
-  const redeem = useCallback(async () => {
-    if (!activeMarketRef || lpAmount <= 0n) return;
-    const tid = toast.loading("Redeeming LP…");
-    setPending(true);
+  const redeem = async (marketAddress: string, lpBalance: bigint) => {
+    setBusyMarket(marketAddress);
     try {
       await writeContractAsync({
         functionName: "redeemLp",
-        args: [activeMarketRef, lpAmount],
-      });
-      toast.success("LP redeemed", { id: tid });
-      setAmount("");
-      void refresh();
+        // Whole balance: partial redemption is a slider nobody asked for,
+        // and LP has no reason to be held back — its claim is a share of a
+        // pot, not a position with upside.
+        args: [`sol:${marketAddress.replace(/^0x/, "")}`, lpBalance],
+      } as never);
+      toast.success(
+        t("lp.redeemed", { defaultValue: "LP redeemed — USDC is in your wallet" }),
+      );
+      refetch?.();
     } catch (e) {
-      toast.error((e as Error).message?.slice(0, 100) ?? "Redeem LP failed", {
-        id: tid,
-      });
+      toast.error((e as Error).message?.slice(0, 140) ?? "Redeem failed");
     } finally {
-      setPending(false);
+      setBusyMarket(null);
     }
-  }, [activeMarketRef, lpAmount, refresh, writeContractAsync]);
-
-  if (!isConnected || !activeMarketRef || !state) return null;
-  if (!state.isGraduated || state.lpBalance <= 0n) return null;
+  };
 
   return (
     <Card className="bg-raised border border-rule p-6">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-base font-semibold text-ink">Redeem LP</h3>
-        <span className="text-xs font-mono text-muted uppercase tracking-[0.12em]">
-          graduated
-        </span>
+      <div className="flex items-center gap-2 mb-1">
+        <Coins className="w-4 h-4 text-accent" />
+        <h3 className="text-base font-semibold text-ink">
+          {t("lp.redeemTitle", { defaultValue: "Your Liquidity" })}
+        </h3>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 mb-4">
-        <Stat label="LP balance" value={formatLp(state.lpBalance)} />
-        <Stat label="Yield vault" value={`$${formatUsdc(state.lpYieldVaultAmount)}`} />
-        <Stat label="Expected payout" value={`$${formatUsdc(expectedPayout)}`} />
-      </div>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <label className="flex-1">
-          <span className="block text-[10px] font-mono uppercase tracking-[0.12em] text-muted mb-1">
-            LP amount
-          </span>
-          <input
-            type="number"
-            min={0}
-            step="0.000001"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="w-full bg-inset border border-rule px-3 py-2 text-sm font-mono text-ink"
-            data-testid="redeem-lp-amount"
-          />
-        </label>
-        <Button
-          className="btn btn-primary"
-          onClick={redeem}
-          disabled={!amountValid}
-          isLoading={pending}
-          data-testid="redeem-lp-button"
-        >
-          REDEEM LP
-        </Button>
+      <p className="text-sm text-muted leading-relaxed mb-4">
+        {t("lp.redeemSubtitle", {
+          defaultValue:
+            "LP you earned by trading or seeding. Redeeming burns it and pays your share of the market's fee pool.",
+        })}
+      </p>
+
+      <div className="space-y-2" data-testid="lp-redeem-list">
+        {held.map((position) => (
+          <div
+            key={position.marketAddress}
+            className="border border-rule bg-inset px-3 py-2.5 flex items-center gap-3"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-ink leading-snug line-clamp-1">
+                {position.question}
+              </p>
+              <p className="font-mono text-[10px] text-faint tabular-nums">
+                {Number(position.lpBalanceFormatted).toFixed(2)} LP ·{" "}
+                {position.sharePercent.toFixed(1)}%{" "}
+                {t("lp.ofSupply", { defaultValue: "of supply" })}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={busyMarket !== null}
+              onClick={() => redeem(position.marketAddress, position.lpBalance)}
+              data-testid={`lp-redeem-${position.marketAddress.slice(0, 8)}`}
+              className={cn(
+                "shrink-0 px-3 py-1.5 border border-accent bg-accent text-canvas",
+                "font-mono text-[10px] font-bold uppercase tracking-[0.12em]",
+                "hover:opacity-90 disabled:opacity-50 transition-opacity",
+              )}
+            >
+              {busyMarket === position.marketAddress ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                t("lp.redeemCta", { defaultValue: "Redeem" })
+              )}
+            </button>
+          </div>
+        ))}
       </div>
     </Card>
   );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border border-rule bg-inset p-3">
-      <p className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted">
-        {label}
-      </p>
-      <p className="mt-1 text-sm font-mono text-ink truncate">{value}</p>
-    </div>
-  );
-}
-
-function parseLpAmount(v: string): bigint {
-  const trimmed = v.trim();
-  if (!trimmed) return 0n;
-  const [wholeRaw, fracRaw = ""] = trimmed.split(".");
-  if (!/^\d+$/.test(wholeRaw || "0") || !/^\d*$/.test(fracRaw)) return 0n;
-  const whole = BigInt(wholeRaw || "0");
-  const frac = BigInt((fracRaw.slice(0, LP_DECIMALS).padEnd(LP_DECIMALS, "0")) || "0");
-  return whole * 1_000_000n + frac;
-}
-
-function formatLp(v: bigint): string {
-  return (Number(v) / 1_000_000).toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 6,
-  });
-}
-
-function formatUsdc(v: bigint): string {
-  return (Number(v) / 1_000_000).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
-  });
 }
