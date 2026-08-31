@@ -327,13 +327,15 @@ export async function dispatchPortfolioRead(
     // amm-bridge's mint-shaped balanceOf, which would otherwise resolve the
     // market address to a venue mint and report the holder's USDC as "LP".
     case "balanceOf": {
+      // `toMarketRef` is a SHAPE test, not an existence test: it converts
+      // any 0x<base58> into a ref, including the LP mint this is usually
+      // called with. So the market path must fall THROUGH to the mint path
+      // when no AMM finance backs the address, rather than bailing — that
+      // silent bail is what kept every LP balance at zero after the mint
+      // address itself was fixed.
       const marketRef = toMarketRef(call.address);
-      // Called with the LP MINT itself (what `markets()` now reports in its
-      // lpToken slot): read the holder's ATA on that mint directly. No
-      // market lookup needed — the mint is the whole question.
-      if (!marketRef) return balanceOfMint(call, ctx);
-      const fin = await readAmmFinance(ctx, marketRef);
-      if (!fin) return PORTFOLIO_NOT_HANDLED;
+      const fin = marketRef ? await readAmmFinance(ctx, marketRef) : null;
+      if (!fin) return balanceOfMint(call, ctx);
       const holder = String(call.args?.[0] ?? "").replace(/^(0x|sol:)/, "");
       try {
         const holderPk = new PublicKey(holder);
@@ -353,9 +355,8 @@ export async function dispatchPortfolioRead(
     // anchor in markets-bridge remains only for calls that name no market.
     case "totalSupply": {
       const marketRef = toMarketRef(call.address);
-      if (!marketRef) return supplyOfMint(call, ctx);
-      const fin = await readAmmFinance(ctx, marketRef);
-      if (!fin) return PORTFOLIO_NOT_HANDLED;
+      const fin = marketRef ? await readAmmFinance(ctx, marketRef) : null;
+      if (!fin) return supplyOfMint(call, ctx);
       return fin.lpSupplyRaw * 1_000_000_000_000n;
     }
 

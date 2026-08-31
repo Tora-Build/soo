@@ -26,24 +26,34 @@ export function LPBackersButton({
 
   return (
     <>
+      {/* Reads as a control, not a caption: accent border and tint, a
+          filled icon chip, and an explicit VIEW affordance on the right.
+          The first version was a bordered row in the page's own palette,
+          which is indistinguishable from the read-only cards above it —
+          nobody clicks what looks like a heading. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
         data-testid="lp-backers-button"
-        className="w-full flex items-center gap-2.5 px-4 py-3 border border-rule bg-raised hover:border-accent/50 hover:bg-inset transition-all text-left"
+        className="group w-full flex items-center gap-3 px-4 py-3 border border-accent/40 bg-accent-muted/20 hover:bg-accent-muted/40 hover:border-accent transition-all text-left"
       >
-        <CircleDollarSign className="h-4 w-4 text-accent shrink-0" />
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+          <CircleDollarSign className="h-4 w-4" />
+        </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-ink">
+          <span className="block text-sm font-semibold text-ink">
             {t("lp.backersTitle", { defaultValue: "Liquidity backers" })}
           </span>
-          <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+          <span className="block text-xs text-muted">
             {t("lp.backersSubtitle", {
-              defaultValue: "Who holds this market's LP, and what it redeems for",
+              defaultValue: "Who backs this market, and what their LP redeems for",
             })}
           </span>
         </span>
-        <ChevronRight className="h-4 w-4 text-faint shrink-0" />
+        <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-accent">
+          {t("lp.backersCta", { defaultValue: "View" })}
+          <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+        </span>
       </button>
 
       <Drawer
