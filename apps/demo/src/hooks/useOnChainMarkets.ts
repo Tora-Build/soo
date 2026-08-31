@@ -35,6 +35,8 @@ export interface OnChainMarket {
   stage: "bonding" | "orderbook" | "settled" | "finalized" | "dismissed" | "expired";
   // Parsed SQF fields (populated from name)
   question: string; // extracted from §question or raw name
+  /** False while `question` is still the shortened-address placeholder. */
+  questionResolved?: boolean;
   /** Market.lifecycle === Open. False while Locked/resolving — a market that
    *  looks ordinary but rejects every trade. */
   isLive?: boolean;
@@ -301,6 +303,13 @@ export function useOnChainMarkets() {
                 bCurrent: bBase,
                 creatorDeposit,
                 stage,
+                // Did the real question ever arrive, or is this still the
+                // shortened address standing in for one? Callers that infer
+                // anything FROM the question (the explorer's categories) need
+                // to know the difference — a placeholder is not a short
+                // question, and treating it as one buckets the market on
+                // evidence that does not exist.
+                questionResolved: question !== symbol,
                 // Parsed SQF fields:
                 question: sqf.question,
                 event: sqf.event,

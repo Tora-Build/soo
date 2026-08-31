@@ -228,3 +228,26 @@ export function effectiveCategory(
   if (normalized !== "others") return normalized;
   return normalizeCategory(inferCategory(question));
 }
+
+/**
+ * Is this market's category still being decided?
+ *
+ * Questions are recovered by walking a market's transaction history, which
+ * does not finish before the first render — so a market whose category can
+ * only come from its question text has no category YET. Inferring from an
+ * empty string quietly answers "others", and when the walk lands a few
+ * seconds later the market moves. On a cold cache that was fifteen of
+ * forty-three markets sitting in Other and then jumping to Crypto, with the
+ * counts changing under the reader.
+ *
+ * Callers use this to hold a market out of the per-category buckets until
+ * its question arrives, rather than parking it in a bucket that is about
+ * to be wrong. A market with a specific stored category is never pending —
+ * the chain already answered.
+ */
+export function isCategoryPending(
+  stored: string | undefined | null,
+  question: string,
+): boolean {
+  return normalizeCategory(stored) === "others" && !question.trim();
+}

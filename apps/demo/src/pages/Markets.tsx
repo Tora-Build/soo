@@ -10,7 +10,7 @@
  * - Sort: Trending / Newest / Ending Soon / Graduated
  * - Search + category tabs + stage filter
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -37,6 +37,7 @@ import {
   CATEGORY_IDS,
   CATEGORY_KEYWORDS,
   effectiveCategory,
+  isCategoryPending,
   inferCategory,
   normalizeCategory,
 } from "../lib/categories";
@@ -174,6 +175,8 @@ interface MarketCardData {
   winningOutcome?: number | null;
   event?: string;
   category: string;
+  /** True while `category` is a guess made from a not-yet-loaded question. */
+  categoryPending?: boolean;
   stage: string;
   isGraduated: boolean;
   bCurrent: bigint;
@@ -673,6 +676,15 @@ const MarketsInner = () => {
           m.category ?? localMeta?.category,
           m.question,
         ),
+        // A category inferred from a question that has not loaded yet is a
+        // guess about to be revised — see `isCategoryPending`. An unrecovered
+        // question is NOT an empty string: it is the shortened address
+        // standing in for one, which reads as perfectly good evidence unless
+        // the hook says otherwise.
+        categoryPending: isCategoryPending(
+          m.category ?? localMeta?.category,
+          m.questionResolved === false ? "" : m.question,
+        ),
         isLive: m.isLive,
         winningOutcome: m.winningOutcome,
         stage: m.stage,
@@ -709,7 +721,8 @@ const MarketsInner = () => {
           CATEGORY_KEYWORDS[m.category]?.some(
             (kw) => kw.includes(q) || q.includes(kw),
           ));
-      const matchCat = category === "all" || m.category === category;
+      const matchCat =
+        category === "all" || (!m.categoryPending && m.category === category);
       const matchStage = matchesStageFilter(m, stage);
       return matchSearch && matchCat && matchStage;
     });
@@ -797,10 +810,36 @@ const MarketsInner = () => {
     const stageFiltered = markets.filter((m) => matchesStageFilter(m, stage));
     const counts: Record<string, number> = { all: stageFiltered.length };
     for (const m of stageFiltered) {
-      counts[m.category] = (counts[m.category] || 0) + 1;
+      // Pending markets are counted in All (they exist, and All is where
+      // they are visible) but not into a bucket, so the per-category
+      // numbers never have to be revised downward as questions land.
+      if (!m.categoryPending) counts[m.category] = (counts[m.category] || 0) + 1;
     }
     return counts;
   }, [markets, stage]);
+
+  /**
+   * Are the per-category numbers still moving?
+   *
+   * Questions arrive over two poll windows, and each arrival can move a
+   * market out of Other into a real bucket — so publishing a number early
+   * shows a wrong total that LOOKS settled, sitting still for twenty
+   * seconds before jumping (Crypto 24 → 28, Other 10 → 3).
+   *
+   * Waiting for zero pending markets would never finish: some questions are
+   * genuinely unrecoverable (created before the event carried one) and stay
+   * pending forever. So the signal is that the pending count has stopped
+   * SHRINKING — two consecutive polls agreeing means everything that was
+   * going to arrive has arrived, whether that leaves stragglers or not.
+   */
+  const pendingCount = markets.filter((m) => m.categoryPending).length;
+  const prevPendingRef = useRef<number | null>(null);
+  const settledRef = useRef(false);
+  if (!settledRef.current) {
+    if (prevPendingRef.current === pendingCount) settledRef.current = true;
+    else prevPendingRef.current = pendingCount;
+  }
+  const categoriesSettling = !settledRef.current && pendingCount > 0;
 
   // Stage counts — MUST use the same displayStage vocabulary as the filter
   // (counting raw stages advertised 'Live 2' whose click then showed zero),
@@ -814,7 +853,8 @@ const MarketsInner = () => {
         m.question.toLowerCase().includes(q) ||
         m.address.toLowerCase().includes(q) ||
         m.event?.toLowerCase().includes(q);
-      const matchCat = category === "all" || m.category === category;
+      const matchCat =
+        category === "all" || (!m.categoryPending && m.category === category);
       return matchSearch && matchCat;
     });
     const counts: Record<string, number> = { all: preStage.length, live: 0 };
@@ -874,7 +914,7 @@ const MarketsInner = () => {
                   : config
                     ? t(config.labelKey)
                     : cat}
-                {count > 0 && (
+                {count > 0 && (cat === "all" || !categoriesSettling) && (
                   <span
                     className={cn(
                       "text-[10px]",
