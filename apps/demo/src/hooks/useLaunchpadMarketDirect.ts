@@ -253,16 +253,33 @@ export function useLaunchpadMarketDirect(marketAddress: Address | undefined) {
         ? postGradFeeBps
         : preGradFeeBps;
 
-      // Compute lpYieldPool: post-graduation fees x lpYieldShareBps / 10000
-      // feesAccrued and graduationThreshold are in WAD (1e18).
-      // Convert result to USDC decimals for display consistency.
+      // LP yield, read from the chain rather than projected.
+      //
+      // Fees land in `fee_pool_*` and only reach the `lp_yield_*` vaults
+      // when `distribute_fees` runs, so the honest answer is two numbers:
+      // what LP can claim TODAY (the vaults) and what is still upstream
+      // awaiting distribution (the fee pools × the LP share). The old
+      // single projected figure claimed the second as if it were the
+      // first, which is why a market with an empty yield vault advertised
+      // twenty dollars of yield.
       const yieldBps = BigInt(lpYieldShareBps ?? 3000);
-      const lpYieldPoolWad =
-        isEffectiveGraduated && feesAccrued > graduationThreshold
-          ? ((feesAccrued - graduationThreshold) * yieldBps) / 10000n
-          : 0n;
-      // WAD → USDC: divide by 1e12 (1e18 / 1e6)
-      const lpYieldPool = lpYieldPoolWad / 1_000_000_000_000n;
+      let lpYieldPool = 0n;
+      let lpYieldPending = 0n;
+      try {
+        const vaults = await readContractSafe<readonly [bigint, bigint]>(
+          client,
+          {
+            address: marketAddress!,
+            abi: ABIS.TruthMarket,
+            functionName: "lpYieldVaults",
+          },
+        );
+        lpYieldPool = vaults?.[0] ?? 0n;
+        const undistributed = vaults?.[1] ?? 0n;
+        lpYieldPending = (undistributed * yieldBps) / 10000n;
+      } catch {
+        // Unreadable vaults: claim nothing rather than invent a figure.
+      }
 
       const userLpBalance =
         userAddress && lpToken !== ZERO_ADDRESS
@@ -318,6 +335,7 @@ export function useLaunchpadMarketDirect(marketAddress: Address | undefined) {
         feesAccrued: feesAccrued ?? feesAccruedFromMarket,
         lpSupply: totalLPSupply,
         lpYieldPool,
+        lpYieldPending,
         isGraduated: isEffectiveGraduated,
         createdAt,
         graduatedAt,

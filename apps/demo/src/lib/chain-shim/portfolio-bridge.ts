@@ -395,6 +395,45 @@ export async function dispatchPortfolioRead(
       return fin.lpSupplyRaw * 1_000_000_000_000n;
     }
 
+    // The LP yield actually SITTING in the on-chain vaults, as opposed to
+    // the projection the client used to compute from accrued fees. Fees
+    // land in `fee_pool_*` and only reach `lp_yield_*` when someone calls
+    // `distribute_fees`, so these two numbers are genuinely different
+    // facts: what LP can claim today, and what is still upstream of it.
+    // Returned as a pair so the UI can say both without a second read.
+    case "lpYieldVaults": {
+      const marketRef = pickMarketRef(call, ctx);
+      if (!marketRef) return [0n, 0n] as const;
+      try {
+        const marketPda = new PublicKey(marketRef.replace(/^sol:/, ""));
+        const info = await ctx.adapter.connection.getAccountInfo(marketPda);
+        if (!info) return [0n, 0n] as const;
+        const marketId = info.data.subarray(8, 8 + 16);
+        const pid = ctx.adapter.programIds.soothCore;
+        const balanceOfPda = async (seed: string) => {
+          const [pda] = PublicKey.findProgramAddressSync(
+            [Buffer.from(seed), marketId],
+            pid,
+          );
+          try {
+            return (await getAccount(ctx.adapter.connection, pda)).amount;
+          } catch {
+            // Vault not created yet — nothing distributed, which is zero.
+            return 0n;
+          }
+        };
+        const [yieldAmm, yieldBook, feeAmm, feeBook] = await Promise.all([
+          balanceOfPda("lp_yield_amm"),
+          balanceOfPda("lp_yield_book"),
+          balanceOfPda("fee_pool_amm"),
+          balanceOfPda("fee_pool_book"),
+        ]);
+        return [yieldAmm + yieldBook, feeAmm + feeBook] as const;
+      } catch {
+        return [0n, 0n] as const;
+      }
+    }
+
     // ─── Locked-funds — graceful zero (no per-user EVM-shaped read here) ─
     case "lockedProceeds":
     case "lockedBalance":

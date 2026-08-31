@@ -131,12 +131,18 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
     totalLpNum > 0 ? (creatorLpNum / totalLpNum) * 100 : 0;
 
   // LP Yield Pool (USDC decimals) - only accrues post-graduation
+  // Claimable now (the on-chain lp_yield vaults) vs still upstream in the
+  // fee pools awaiting `distribute_fees`. Two facts, shown as two.
   const lpYieldPool = launchpad.lpYieldPool ?? 0n;
   const lpYieldPoolNum = Number(formatUnits(lpYieldPool, decimals));
+  const lpYieldPending = launchpad.lpYieldPending ?? 0n;
+  const lpYieldPendingNum = Number(formatUnits(lpYieldPending, decimals));
   const userYieldShare =
     totalLpNum > 0 ? (userLpNum / totalLpNum) * lpYieldPoolNum : 0;
   const creatorYieldShare =
     totalLpNum > 0 ? (creatorLpNum / totalLpNum) * lpYieldPoolNum : 0;
+  const creatorPendingShare =
+    totalLpNum > 0 ? (creatorLpNum / totalLpNum) * lpYieldPendingNum : 0;
 
   // Formatters
   const fmtUsd = (val: number) => {
@@ -315,11 +321,13 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
             <span className={creatorYieldShare > 0 ? "text-pos" : "text-faint"}>
               {creatorYieldShare > 0
                 ? `+${fmtUsd(creatorYieldShare)} yield`
-                : isGraduated
-                  ? t("lp.yieldNoneYet", { defaultValue: "no yield yet" })
-                  : t("lp.yieldAfterGraduation", {
-                      defaultValue: "yield starts at graduation",
-                    })}
+                : creatorPendingShare > 0
+                  ? `${fmtUsd(creatorPendingShare)} pending`
+                  : isGraduated
+                    ? t("lp.yieldNoneYet", { defaultValue: "no yield yet" })
+                    : t("lp.yieldAfterGraduation", {
+                        defaultValue: "yield starts at graduation",
+                      })}
             </span>
           </div>
           <div className="text-muted font-mono">
@@ -399,15 +407,36 @@ export const LPHolders: React.FC<LPHoldersProps> = ({ marketAddress }) => {
               </span>
             )}
           </div>
-          <span
-            className={cn(
-              "text-lg font-bold font-mono",
-              lpYieldPoolNum > 0 ? "text-ink" : "text-faint",
-            )}
-          >
-            {fmtUsd(lpYieldPoolNum)}
-          </span>
+          <div className="text-right">
+            <span
+              className={cn(
+                "text-lg font-bold font-mono",
+                lpYieldPoolNum > 0 ? "text-ink" : "text-faint",
+              )}
+            >
+              {fmtUsd(lpYieldPoolNum)}
+            </span>
+            <div className="font-mono text-[10px] text-faint">
+              {t("lp.yieldClaimable", { defaultValue: "claimable now" })}
+            </div>
+          </div>
         </div>
+
+        {/* Undistributed fees are NOT yield yet — they reach the LP vault
+            only when `distribute_fees` runs. Reporting the projection as a
+            balance is how an empty vault advertised twenty dollars. */}
+        {lpYieldPendingNum > 0 && (
+          <div className="flex justify-between items-center border-t border-rule pt-2 mt-2">
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+              {t("lp.yieldPending", {
+                defaultValue: "Pending distribution",
+              })}
+            </span>
+            <span className="font-mono text-sm text-muted">
+              {fmtUsd(lpYieldPendingNum)}
+            </span>
+          </div>
+        )}
 
         {/* User's yield share */}
         {(hasUserLp || isCreator) && lpYieldPoolNum > 0 && (
