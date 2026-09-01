@@ -29,18 +29,83 @@ export const Tooltip: React.FC<TooltipProps> = ({
   const tooltipRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
 
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Clicking the help icon PINS the bubble open.
+   *
+   * Hover alone cannot carry a tooltip that contains a link. The bubble sits
+   * outside the trigger's box, so reaching the link means crossing dead
+   * space, and any timing tuned to make that comfortable on a mouse is still
+   * completely unusable on a touch screen, where there is no hover at all.
+   * Pinned, the bubble ignores mouseleave and closes on Escape, an outside
+   * click, or a second click of the icon.
+   */
+  const [pinned, setPinned] = useState(false);
+
+  const cancelHide = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  };
+
   const show = () => {
+    cancelHide();
     timeoutRef.current = setTimeout(() => {
       setIsVisible(true);
     }, delay);
   };
 
+  /**
+   * Closing is DELAYED, and that grace period is the whole reason a tooltip
+   * with a `learnMore` link is usable at all.
+   *
+   * The bubble is positioned outside the trigger's own box (`bottom-full`
+   * plus a margin), so reaching it means the pointer leaves the trigger and
+   * crosses a gap of dead space. Hiding on that `mouseleave` tore the bubble
+   * down mid-journey, and the link inside it could never be clicked — it
+   * vanished the moment you moved toward it. The bubble cancels this timer
+   * when the pointer or keyboard focus arrives.
+   */
   const hide = () => {
+    if (pinned) return;
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
-    setIsVisible(false);
+    cancelHide();
+    hideTimeoutRef.current = setTimeout(() => setIsVisible(false), 160);
   };
+
+  useEffect(() => {
+    if (!pinned) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setPinned(false);
+        setIsVisible(false);
+      }
+    };
+    const onDown = (e: MouseEvent) => {
+      if (!triggerRef.current?.contains(e.target as Node)) {
+        setPinned(false);
+        setIsVisible(false);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [pinned]);
+
+  // Never leave either timer running past unmount.
+  useEffect(
+    () => () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+    },
+    [],
+  );
 
   // Adjust position if tooltip would overflow viewport
   useEffect(() => {
@@ -100,6 +165,16 @@ export const Tooltip: React.FC<TooltipProps> = ({
           type="button"
           className="inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
           aria-label="Help"
+          aria-expanded={isVisible}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            cancelHide();
+            setPinned((wasPinned) => {
+              setIsVisible(!wasPinned);
+              return !wasPinned;
+            });
+          }}
           onMouseEnter={show}
           onMouseLeave={hide}
           onFocus={show}
@@ -112,6 +187,10 @@ export const Tooltip: React.FC<TooltipProps> = ({
       {isVisible && (
         <div
           ref={tooltipRef}
+          onMouseEnter={cancelHide}
+          onMouseLeave={hide}
+          onFocusCapture={cancelHide}
+          onBlurCapture={hide}
           className={cn(
             // `w-max` sizes the bubble to its own text (up to max-w-xs) instead of
             // to the containing block. The trigger is an inline-flex box only as
