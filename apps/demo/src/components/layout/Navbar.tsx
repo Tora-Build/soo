@@ -41,7 +41,12 @@ import {
 import { useArenaPlayer } from "../../features/arena/ArenaPlayerProvider";
 import { usePlayerStats } from "../../features/arena/usePlayerStats";
 import { ArenaApiError } from "../../features/arena/arenaApi";
-import { SEASON } from "../../features/arena/season";
+import {
+  SEASON,
+  formatSeasonLeft,
+  isSeasonOver,
+  seasonNow,
+} from "../../features/arena/season";
 import { shortenAddress } from "../../utils/format";
 import { useTranslation } from "react-i18next";
 
@@ -51,6 +56,17 @@ import { useTranslation } from "react-i18next";
 const ARENA_SYNC_CONFIGURED = Boolean(import.meta.env.VITE_ARENA_API_BASE);
 
 export const Navbar = () => {
+  // Re-rendered once a minute, not once a second: the label's smallest unit
+  // is a minute, so a per-second tick would repaint the whole navbar sixty
+  // times for every change a reader could see.
+  const [nowTs, setNowTs] = useState(seasonNow);
+  useEffect(() => {
+    const id = setInterval(() => setNowTs(seasonNow()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const seasonOver = isSeasonOver(nowTs);
+  const seasonLeft = formatSeasonLeft(nowTs);
+
   const { t } = useTranslation();
   const { open } = useAppKit();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -88,7 +104,10 @@ export const Navbar = () => {
               <span className="arcade-season-badge">{SEASON.id}</span>
               <div>
                 <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-faint">
-                  Current season
+                  {/* The deadline is the whole point of a season. Saying
+                      "current season" forever told a player their climb had
+                      no horizon; the clock is what turns it into a race. */}
+                  {seasonOver ? "Season closed" : `Ends in ${seasonLeft}`}
                 </div>
                 <div className="mt-0.5 text-xs font-bold uppercase tracking-wide text-ink">
                   {SEASON.name}

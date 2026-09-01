@@ -125,7 +125,14 @@ function boardFromCache(
   }
   // The cache keeps the full tape; the season is a fold-time window, so past
   // seasons stay recomputable from the same cache.
-  const seasonPlays = plays.filter((p) => p.ts >= SEASON.startTs);
+  // Bounded at BOTH ends. Without the upper bound "the season ended" would
+  // be a caption over a leaderboard that kept re-ordering itself as people
+  // traded — the standings have to actually stop for a final result to mean
+  // anything. Trading after the close is unaffected; it just scores nothing
+  // for this season, and stays on the tape for the next one.
+  const seasonPlays = plays.filter(
+    (p) => p.ts >= SEASON.startTs && p.ts < SEASON.endTs,
+  );
   const full = buildLeaderboard(seasonPlays);
   const board = full.filter((entry) => !isHouseWallet(entry.wallet));
   const house = full.filter((entry) => isHouseWallet(entry.wallet));

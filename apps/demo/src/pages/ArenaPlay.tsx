@@ -59,7 +59,7 @@ import {
   XP_PER_LEVEL,
 } from "../store/useArenaPlayerStore";
 import { usePlayerStats } from "../features/arena/usePlayerStats";
-import { SEASON } from "../features/arena/season";
+import { SEASON, isSeasonOver } from "../features/arena/season";
 import { shortenAddress } from "../utils/format";
 import type {
   ArenaOutcome,
@@ -420,11 +420,23 @@ export const ArenaPlay = () => {
             <strong>{deck.length} realities ready</strong>
           </div>
         </div>
-        <div className="play-status-center">
+        {/* Position in the deck, not progress through it.
+            This was a bar that FILLED as you moved, which reads as
+            completion — but the deck wraps (`moveDeck` is modulo), so it
+            climbed to 100% and silently restarted at card one, having
+            promised an end that does not exist. A marker travelling along a
+            rail says "you are here, in a loop", which is the truth. */}
+        <div
+          className="play-status-center"
+          role="group"
+          aria-label={`Card ${activeIndex + 1} of ${deck.length}`}
+        >
           <span>{String(activeIndex + 1).padStart(2, "0")}</span>
           <div>
             <i
-              style={{ width: `${((activeIndex + 1) / deck.length) * 100}%` }}
+              style={{
+                left: `${((activeIndex + 0.5) / Math.max(1, deck.length)) * 100}%`,
+              }}
             />
           </div>
           <small>{String(deck.length).padStart(2, "0")}</small>
@@ -1141,7 +1153,12 @@ const ArenaSidecar = ({ board }: { board: SeasonLeaderboard }) => {
             <strong>${Math.round(board.season.totalVolume).toLocaleString()}</strong>
             <small>volume</small>
           </span>
-          <span className="play-squad-reward">{SEASON.id} live</span>
+          {/* Now that the season has a close, this pill has to know about
+              it — "S01 live" over a frozen leaderboard is the caption
+              contradicting the number underneath it. */}
+          <span className="play-squad-reward">
+            {SEASON.id} {isSeasonOver() ? "final" : "live"}
+          </span>
         </div>
       </section>
 
