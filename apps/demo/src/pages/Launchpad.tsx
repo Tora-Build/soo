@@ -85,6 +85,7 @@ import {
 } from "../components/features/launchpad/rule-services";
 import { computeRuleHash } from "@sooth/sdk-solana";
 import { CATEGORY_IDS } from "../lib/categories";
+import { Tooltip } from "../components/ui/Tooltip";
 
 const NO_EXPIRY_DEADLINE = 7258118399;
 // 1000 wei (1e-15 WAD) headroom for LMSR floor rounding in the program's
@@ -686,11 +687,26 @@ export const Launchpad = () => {
                 roster belongs to the delegate, not to us. */}
             {effectiveMode === "manual" && chosenAdjudicator === null && (
               <div className="space-y-1">
-                <label className="font-mono text-xs uppercase tracking-[0.12em] text-muted">
-                  {t("launchpad.guardiansLabel", {
-                    defaultValue: "Guardians (optional)",
-                  })}
-                </label>
+                {/* Committees are convened AFTER a market exists, by its
+                    adjudicator — so they get a tooltip here rather than a
+                    field. Adding a second "paste pubkeys" input beside the
+                    guardian one would put two near-identical controls that
+                    mean opposite things (veto my ruling vs. rule instead of
+                    me) on the screen where the creator is thinking about
+                    their question. This is the exact audience who can
+                    convene one: the creator IS the adjudicator here. */}
+                <Tooltip
+                  content="You can also convene a committee later, from your Locker: up to 5 attestors who vote instead of you ruling alone."
+                  learnMore="/learn#resolution"
+                  showIcon
+                  position="top"
+                >
+                  <label className="font-mono text-xs uppercase tracking-[0.12em] text-muted">
+                    {t("launchpad.guardiansLabel", {
+                      defaultValue: "Guardians (optional)",
+                    })}
+                  </label>
+                </Tooltip>
                 <input
                   type="text"
                   value={guardianInput}

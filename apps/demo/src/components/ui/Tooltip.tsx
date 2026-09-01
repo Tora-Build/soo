@@ -113,7 +113,12 @@ export const Tooltip: React.FC<TooltipProps> = ({
         <div
           ref={tooltipRef}
           className={cn(
-            'absolute z-[9999] max-w-xs p-3 bg-tooltip border border-rule text-ink shadow-none',
+            // `w-max` sizes the bubble to its own text (up to max-w-xs) instead of
+            // to the containing block. The trigger is an inline-flex box only as
+            // wide as its label, so without this an absolutely-positioned bubble
+            // is squeezed into that width — a long tip on a small trigger rendered
+            // as a one-word-per-line column hundreds of pixels tall.
+            'absolute z-[9999] w-max max-w-xs p-3 bg-tooltip border border-rule text-ink shadow-none',
             positionClasses[actualPosition]
           )}
           role="tooltip"
