@@ -696,5 +696,19 @@
     "dismissedLine": "已撤销——按成本退款。",
     "initializing": "尚未激活——曲线尚未注资。",
     "openNoAdjudicator": "交易至 {{date}}。尚未注册裁定者——现在指定裁定者是你唯一可以提前完成的步骤。"
+  },
+  "committee": {
+    "addLabel": "添加成员",
+    "browse": "查看记录",
+    "addPlaceholder": "粘贴见证人地址",
+    "full": "最多五名成员。",
+    "thresholdLabel": "裁定所需票数",
+    "setThreshold": "设置",
+    "ofMembers": "／共 {{count}} 名成员",
+    "needMembers": "请先添加至少一名成员。",
+    "yourBallot": "你的投票",
+    "hint": "成员公开投票。达到门槛的那一票即写入裁定——你仍可独自裁定。",
+    "toggle": "委员会（{{threshold}}／{{count}}）",
+    "create": "召集委员会"
   }
 }

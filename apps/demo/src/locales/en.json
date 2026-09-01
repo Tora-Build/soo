@@ -696,5 +696,19 @@
     "dismissedLine": "Dismissed — deposits refund at cost.",
     "initializing": "Not activated yet — no curve has been funded.",
     "openNoAdjudicator": "Trading until {{date}}. No adjudicator is registered yet — naming one now is the only step you can take early."
+  },
+  "committee": {
+    "addLabel": "Add member",
+    "browse": "Browse records",
+    "addPlaceholder": "Paste an attestor address",
+    "full": "Five members is the maximum.",
+    "thresholdLabel": "Votes needed to rule",
+    "setThreshold": "Set",
+    "ofMembers": "of {{count}} members",
+    "needMembers": "Add at least one member first.",
+    "yourBallot": "Your ballot",
+    "hint": "Members vote in public. The vote that reaches the threshold writes the ruling — you can still rule alone.",
+    "toggle": "Committee ({{threshold}}-of-{{count}})",
+    "create": "Convene a committee"
   }
 }
