@@ -96,3 +96,32 @@ test("the whole /draft path, real network, stubbed model", async () => {
   assert.ok(Number(body.candidates[0].reading) > 0);
   console.log(JSON.stringify(body, null, 2));
 });
+
+// The catalog's whole claim is "every entry below was fetched and parsed
+// against the live endpoint". That claim decays silently: a host adds a
+// User-Agent requirement, or starts redirecting, and the entry keeps costing
+// the model a retry per question while looking fine in review. Two entries had
+// already rotted this way before this test existed. It sweeps the list rather
+// than sampling it, because the point is the entries nobody thinks about.
+test("every catalog entry still answers a bare GET with the field it names", async () => {
+  const { CATALOG } = await import("../src/catalog.js");
+  const failures = [];
+
+  for (const entry of CATALOG) {
+    const r = await validateProposal(
+      {
+        url: entry.url,
+        parsePath: entry.parsePath,
+        comparator: "gt",
+        threshold: "0",
+        valueScale: 8,
+        confidence: 0.9,
+        rationale: entry.what,
+      },
+      { timeoutMs: 15_000 },
+    );
+    if (!r.ok) failures.push(`${entry.url} ${entry.parsePath}: ${r.reason}`);
+  }
+
+  assert.deepEqual(failures, [], `dead catalog entries:\n${failures.join("\n")}`);
+});

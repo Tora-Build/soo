@@ -12,6 +12,25 @@
 // and parsed by scripts against the live endpoint before being added; none is
 // here on recall.
 //
+// Two endpoints that look catalogable are deliberately absent, and both
+// failures are invisible from a laptop:
+//
+//   api.github.com     — 403 without a User-Agent. curl sends one, Workers do
+//                        not. It validated by hand and died in production,
+//                        burning all three model attempts on every repo
+//                        question. A header would fix the fetch and not the
+//                        market: headers are not part of `rule_hash`, so the
+//                        committed rule is the bare GET, and the bare GET is
+//                        what Primus later replays.
+//   api.frankfurter.app — 301 to .dev. The validator follows redirects, so it
+//                        passes here; Primus attests the session it opened,
+//                        whose body is the redirect, not the rate. The .dev
+//                        URL is committed instead.
+//
+// The rule both cases teach: an entry earns its place by answering a bare,
+// header-less, redirect-less GET, because that is the only request the chain
+// can be made to trust.
+
 // It is a PREFERENCE, never a whitelist. A question these do not answer must
 // still get the model's own proposal, and every candidate — catalogued or not —
 // is fetched and validated before it reaches a creator. Nothing here is
@@ -22,15 +41,18 @@ export const CATALOG = [
   { category: "crypto", url: "https://api.coinbase.com/v2/prices/ETH-USD/spot", parsePath: "$.data.amount", what: "Coinbase spot ETH/USD (any -USD pair works)" },
   { category: "crypto", url: "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", parsePath: "$.price", what: "Binance ticker (any symbol)" },
   { category: "crypto", url: "https://api.kraken.com/0/public/Ticker?pair=XBTUSD", parsePath: "$.result.XXBTZUSD.c[0]", what: "Kraken last trade" },
-  { category: "crypto", url: "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd", parsePath: "$.bitcoin.usd", what: "CoinGecko price by coin id" },
+  { category: "crypto", url: "https://api.coinpaprika.com/v1/tickers/btc-bitcoin", parsePath: "$.quotes.USD.price", what: "Coinpaprika price by coin id (eth-ethereum, sol-solana)" },
   { category: "crypto", url: "https://mempool.space/api/blocks/tip/height", parsePath: "$", what: "Bitcoin block height" },
+  { category: "crypto", url: "https://api.blockchain.info/stats", parsePath: "$.hash_rate", what: "Bitcoin network stats (hash_rate, n_tx, minutes_between_blocks)" },
+  { category: "crypto", url: "https://api.llama.fi/tvl/jupiter-perpetual-exchange", parsePath: "$", what: "DefiLlama TVL for any protocol slug — bare number" },
   { category: "weather", url: "https://api.open-meteo.com/v1/forecast?latitude=13.75&longitude=100.5&current=temperature_2m", parsePath: "$.current.temperature_2m", what: "Open-Meteo current temperature at any lat/long" },
   { category: "weather", url: "https://api.open-meteo.com/v1/forecast?latitude=51.5&longitude=-0.12&daily=precipitation_sum&forecast_days=1&timezone=UTC", parsePath: "$.daily.precipitation_sum[0]", what: "Open-Meteo daily rainfall at any lat/long" },
-  { category: "tech", url: "https://api.github.com/repos/solana-labs/solana", parsePath: "$.stargazers_count", what: "GitHub stars for any owner/repo" },
+  { category: "weather", url: "https://api.open-meteo.com/v1/forecast?latitude=40.71&longitude=-74.01&daily=temperature_2m_max&forecast_days=1&timezone=UTC", parsePath: "$.daily.temperature_2m_max[0]", what: "Open-Meteo daily high at any lat/long" },
   { category: "tech", url: "https://api.npmjs.org/downloads/point/last-week/react", parsePath: "$.downloads", what: "npm downloads for any package" },
   { category: "others", url: "https://open.er-api.com/v6/latest/USD", parsePath: "$.rates.JPY", what: "Exchange rate, any base and quote" },
-  { category: "others", url: "https://api.frankfurter.app/latest?from=USD&to=EUR", parsePath: "$.rates.EUR", what: "ECB reference rate" },
+  { category: "others", url: "https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR", parsePath: "$.rates.EUR", what: "ECB reference rate" },
   { category: "others", url: "https://api.wheretheiss.at/v1/satellites/25544", parsePath: "$.altitude", what: "ISS altitude in km" },
+  { category: "others", url: "https://earthquake.usgs.gov/fdsnws/event/1/count?format=geojson&minmagnitude=6&starttime=2026-01-01", parsePath: "$.count", what: "USGS earthquake count over any magnitude and window" },
 ];
 
 /**
@@ -60,12 +82,15 @@ export function catalogLines() {
 const KEYWORDS = [
   { match: /\b(btc|bitcoin)\b/i, urls: ["api.coinbase.com/v2/prices/BTC-USD", "api.binance.com", "api.kraken.com"], category: "crypto" },
   { match: /\b(eth|ethereum)\b/i, urls: ["ETH-USD"], category: "crypto" },
-  { match: /\b(iss|space station)\b/i, urls: ["wheretheiss"], category: "tech" },
+  { match: /\b(sol|solana)\b/i, urls: ["coinpaprika"], category: "crypto" },
+  { match: /\b(tvl|defi)\b/i, urls: ["llama.fi"], category: "crypto" },
+  { match: /\b(hash ?rate|difficulty)\b/i, urls: ["blockchain.info"], category: "crypto" },
+  { match: /\b(iss|space station)\b/i, urls: ["wheretheiss"], category: "others" },
   { match: /\b(rain|temperature|weather|hot|cold)\b/i, urls: ["open-meteo"], category: "weather" },
   { match: /\b(jpy|yen|eur|euro|exchange rate)\b/i, urls: ["er-api", "frankfurter"], category: "others" },
+  { match: /\b(earthquake|quake|magnitude)\b/i, urls: ["usgs.gov"], category: "others" },
   { match: /\bblock height\b/i, urls: ["mempool.space"], category: "crypto" },
   { match: /\bnpm|downloads\b/i, urls: ["npmjs"], category: "tech" },
-  { match: /\bgithub|stars\b/i, urls: ["api.github.com"], category: "tech" },
 ];
 
 const MONTHS = "january|february|march|april|may|june|july|august|september|october|november|december";
