@@ -103,6 +103,12 @@ test("the whole /draft path, real network, stubbed model", async () => {
 // the model a retry per question while looking fine in review. Two entries had
 // already rotted this way before this test existed. It sweeps the list rather
 // than sampling it, because the point is the entries nobody thinks about.
+//
+// What it CANNOT see: this runs from a developer's IP. Endpoints that block or
+// rate-limit by IP reputation answer a laptop and refuse Cloudflare's shared
+// egress — Binance 403s, BLS and OpenAlex 429, all green here. That failure
+// only shows from inside the Worker, so `npm run check:prod` hits the deployed
+// /catalog-check, and a new entry is not proven until that says so.
 test("every catalog entry still answers a bare GET with the field it names", async () => {
   const { CATALOG } = await import("../src/catalog.js");
   const failures = [];

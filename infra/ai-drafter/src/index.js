@@ -16,7 +16,7 @@
 // or in any response.
 
 import { draft } from "./draft.js";
-import { catalogFallbackProposals, heuristicPolish } from "./catalog.js";
+import { CATALOG, catalogFallbackProposals, heuristicPolish } from "./catalog.js";
 import { validateProposal } from "./validate.js";
 import { createGeminiModel } from "./gemini.js";
 import { take } from "./ratelimit.js";
@@ -56,6 +56,52 @@ export async function handle(request, env, _ctx, deps = {}) {
 
   if (url.pathname === "/health") {
     return json({ ok: true, geminiConfigured: Boolean(env?.GEMINI_API_KEY) });
+  }
+
+  // The catalog check, run from where it matters.
+  //
+  // `test:integration` sweeps the catalog from a laptop, which catches a
+  // renamed field or a new redirect and misses the failure that actually
+  // happens: an endpoint that rate-limits or blocks by IP reputation answers a
+  // developer and refuses Cloudflare's shared egress. BLS did exactly that —
+  // green in the test, 'REQUEST_NOT_PROCESSED' in production, on every CPI
+  // question. So the same validator runs here, inside the Worker.
+  //
+  // Windowed with ?from&to because 35 entries is more subrequests than one
+  // invocation should spend, and rate-limited because it is 10 outbound
+  // fetches to third parties for one cheap inbound request.
+  if (url.pathname === "/catalog-check") {
+    const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+    const gate = take(ip, {
+      max: Number(env?.RATE_LIMIT_MAX ?? 12),
+      windowMs: Number(env?.RATE_LIMIT_WINDOW_SECONDS ?? 600) * 1000,
+    });
+    if (!gate.allowed) {
+      return json({ error: "rate limited" }, 429, { "retry-after": String(gate.retryAfter) });
+    }
+    const from = Math.max(0, Number(url.searchParams.get("from") ?? 0) || 0);
+    const to = Math.min(CATALOG.length, from + 10);
+    const results = [];
+    for (const entry of CATALOG.slice(from, to)) {
+      const r = await validateProposal(
+        {
+          url: entry.url,
+          parsePath: entry.parsePath,
+          comparator: "gt",
+          threshold: "0",
+          valueScale: 8,
+          confidence: 0.9,
+          rationale: entry.what,
+        },
+        { timeoutMs: 12_000 },
+      );
+      results.push(
+        r.ok
+          ? { ok: true, url: entry.url, reading: r.candidate.reading }
+          : { ok: false, url: entry.url, reason: r.reason },
+      );
+    }
+    return json({ total: CATALOG.length, from, to, dead: results.filter((r) => !r.ok).length, results });
   }
 
   if (url.pathname !== "/draft") return json({ error: "not found" }, 404);
